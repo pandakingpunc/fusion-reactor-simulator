@@ -1,0 +1,156 @@
+/**
+ * MANYETİK AYNA — 0D güç dengesi (tek sıcaklık), kayıp konisi hapsetmesi.
+ *
+ * Durum y: [0] W [J]  [1] E_fus [J]  [2] E_in [J]  [3] N_n
+ * Hapsetme: Pastukhov-benzeri τ_E ≈ κ · R_m · log₁₀(R_m) · τ_ii (tandem: ambipolar
+ * potansiyel bariyeri ile artırılmış). Basit ayna için τ ~ √R_m · τ_ii.
+ * Kaynak: Pastukhov, Nucl. Fusion 14 (1974) 3; NRL Formulary (çarpışma zamanları).
+ * APPROXIMATION: 0D, sabit yoğunluk, izotropik dağılım.
+ */
+import { MirrorConfig } from '../types';
+import { FUEL_SPECIES } from '../reactivity';
+import { bremsstrahlung } from '../radiation';
+import { U } from '../units';
+import { C } from '../constants';
+import { DiagSpec, HistoryFrame, ShotReport, SimEvent } from '../types';
+import { PulsedBase, fusionRates } from './common';
+
+const IDX = { W: 0, Efus: 1, Ein: 2, Nn: 3 } as const;
+const NSTATE = 4;
+
+const MIRROR_DIAGS: DiagSpec[] = [
+  { key: 'Ti', label: 'T (iyon≈elektron)', unit: 'keV', group: 'Sıcaklık' },
+  { key: 'ne', label: 'n_e', unit: '1e20 m⁻³', group: 'Yoğunluk' },
+  { key: 'P_fus', label: 'P_füzyon', unit: 'MW', group: 'Güç' },
+  { key: 'P_aux', label: 'P_yardımcı (NBI/ECRH)', unit: 'MW', group: 'Güç' },
+  { key: 'P_alpha', label: 'P_yüklü', unit: 'MW', group: 'Güç' },
+  { key: 'P_brems', label: 'P_brems', unit: 'MW', group: 'Radyasyon' },
+  { key: 'P_cond', label: 'P_uç kaybı (W/τ)', unit: 'MW', group: 'Güç' },
+  { key: 'Q', label: 'Q bilimsel', unit: '', group: 'Performans' },
+  { key: 'tauE', label: 'τ_E (uç kaybı)', unit: 's', group: 'Hapsetme' },
+  { key: 'triple', label: 'n·T·τ', unit: 'keV s m⁻³', group: 'Performans', log: true },
+  { key: 'W', label: 'W_termal', unit: 'MJ', group: 'Enerji' },
+  { key: 'Rm', label: 'Ayna oranı', unit: '', group: 'MHD' },
+];
+
+export class MirrorModel extends PulsedBase {
+  readonly method = 'mirror' as const;
+  readonly nState = NSTATE;
+  readonly diagSpecs = MIRROR_DIAGS;
+
+  private cfg: MirrorConfig;
+  private V: number;
+  private na: number;
+  private nb: number;
+  private ne: number;
+  private Zeff: number;
+  private Aavg: number;
+  private lastTauE = 1e-3;
+
+  constructor(cfg: MirrorConfig) {
+    const atol = new Float64Array(NSTATE);
+    atol.set([1e2, 1e2, 1e2, 1e12]);
+    super({ seed: cfg.seed, tEnd: cfg.t_end, timeUnit: 's', dt0: Math.min(1e-4, cfg.t_end / 1000),
+      integratorOpts: { rtol: 2e-5, atol, dtMin: 1e-8, dtMax: cfg.t_end / 300, nonNegative: true } });
+    this.cfg = cfg;
+    this.V = Math.PI * cfg.a_m * cfg.a_m * cfg.L_m;
+    const fs = FUEL_SPECIES[cfg.fuel];
+    this.na = cfg.n0 * fs.fracA;
+    this.nb = cfg.n0 * (1 - fs.fracA);
+    this.ne = this.na * fs.a.Z + this.nb * fs.b.Z;
+    this.Zeff = (this.na * fs.a.Z ** 2 + this.nb * fs.b.Z ** 2) / Math.max(this.ne, 1);
+    this.Aavg = fs.fracA * fs.a.A + (1 - fs.fracA) * fs.b.A;
+    this.ctrl = { P_aux_MW: cfg.P_aux_MW, kappa_conf: 50 };
+  }
+
+  private T(y: Float64Array): number {
+    return Math.max(y[IDX.W] / (3 * this.ne * this.V * C.keV_J), 0.01);
+  }
+  /**
+   * Uç (end-loss) hapsetme süresi [s]. Kayıp konisindeki parçacıklar bir geçiş
+   * süresinde kaçar; ayna oranı R ile iyileşir: τ ≈ κ · R · L / v_th.
+   * τ ∝ 1/√T olduğundan P_kayıp = W/τ ∝ n T^{3/2} artar → sıcaklık SINIRLANIR
+   * (Pastukhov τ ∝ τ_ii ∝ T^{3/2} kullanılırsa 0D'de termal kaçış olur; bu daha
+   * fiziksel uç-kaybı sınırıdır).
+   */
+  private tauE(T_keV: number): number {
+    const m_i = this.Aavg * C.amu;
+    const v_th = Math.sqrt((2 * Math.max(T_keV, 0.01) * C.keV_J) / m_i);
+    const R = Math.max(this.cfg.mirrorRatio, 1.5);
+    const conf = this.cfg.tandem ? R * Math.log10(R) : R;
+    return Math.max((this.ctrl.kappa_conf * conf * this.cfg.L_m) / v_th, 1e-7);
+  }
+
+  initialState(): Float64Array {
+    const y = new Float64Array(NSTATE);
+    y[IDX.W] = 3 * this.ne * U.keV_to_J(this.cfg.T_keV) * this.V;
+    return y;
+  }
+
+  rhs(_t: number, y: Float64Array, d: Float64Array): void {
+    d.fill(0);
+    const T = this.T(y);
+    const fus = fusionRates(this.cfg.fuel, this.na, this.nb, T);
+    const P_ch = fus.P_charged * this.V;
+    const P_brems = bremsstrahlung(this.ne, T, this.Zeff) * this.V;
+    const P_aux_inj = this.ctrl.P_aux_MW * 1e6;
+    const P_aux = P_aux_inj * 0.7;
+    const tauE = this.tauE(T);
+    this.lastTauE = tauE;
+    const P_cond = y[IDX.W] / tauE;
+    d[IDX.W] = P_aux + P_ch - P_brems - P_cond;
+    d[IDX.Efus] = fus.P_total * this.V;
+    d[IDX.Ein] = P_aux_inj;
+    d[IDX.Nn] = fus.neutrons * this.V;
+  }
+
+  diagnostics(_t: number, y: Float64Array): Record<string, number> {
+    const T = this.T(y);
+    const fus = fusionRates(this.cfg.fuel, this.na, this.nb, T);
+    const P_fus = fus.P_total * this.V;
+    const P_ch = fus.P_charged * this.V;
+    const P_brems = bremsstrahlung(this.ne, T, this.Zeff) * this.V;
+    const tauE = this.tauE(T);
+    const P_aux_inj = this.ctrl.P_aux_MW * 1e6;
+    const P_cond = y[IDX.W] / tauE;
+    return {
+      Ti: T, Te: T, ne: this.ne / 1e20, P_fus: P_fus / 1e6, P_aux: P_aux_inj / 1e6, P_alpha: P_ch / 1e6,
+      P_brems: P_brems / 1e6, P_cond: P_cond / 1e6, Q: P_fus / Math.max(P_aux_inj, 1e4), tauE,
+      triple: this.ne * T * tauE, W: y[IDX.W] / 1e6, Rm: this.cfg.mirrorRatio,
+      Efus_MJ: y[IDX.Efus] / 1e6, Ein_MJ: y[IDX.Ein] / 1e6, Nn: y[IDX.Nn],
+    };
+  }
+
+  protected extraSave(): Record<string, number> { return { lastTauE: this.lastTauE }; }
+  protected extraRestore(s: Record<string, number>): void { this.lastTauE = s.lastTauE ?? 1e-3; }
+
+  geometryInfo(): Record<string, number> {
+    return { L: this.cfg.L_m, a: this.cfg.a_m, B: this.cfg.B_center_T, mirrorRatio: this.cfg.mirrorRatio, V: this.V, tandem: this.cfg.tandem ? 1 : 0 };
+  }
+
+  report(hist: HistoryFrame[], events: SimEvent[]): ShotReport {
+    const col = (k: string) => hist.map((h) => h.d[k] ?? 0);
+    const max = (a: number[]) => a.reduce((m, v) => (v > m ? v : m), 0);
+    return this.buildReport(hist, events, {
+      fuel: this.cfg.fuel, wallArea: 2 * Math.PI * this.cfg.a_m * this.cfg.L_m,
+      scoreBreakdown: [
+        { label: 'Q_bilimsel (max)', value: max(col('Q')), ref: 1, unit: '', note: 'Ayna için başabaş çok zor' },
+        { label: 'Sıcaklık (max)', value: max(col('Ti')), ref: 10, unit: 'keV', note: 'İyon sıcaklığı' },
+        { label: 'Üçlü çarpım', value: max(col('triple')), ref: 1e21, unit: 'keV s m⁻³', note: 'Ateşleme ≈ 3e21 (DT)' },
+        { label: 'Stabil süre', value: hist[hist.length - 1].t, ref: this.cfg.t_end, unit: 's', note: 'Planlanan süre' },
+        { label: 'Füzyon enerjisi', value: hist[hist.length - 1].d.Efus_MJ ?? 0, ref: 1, unit: 'MJ', note: 'Atış başına' },
+      ],
+      historical: [
+        { label: 'GDT / GAMMA-10: T_i ~keV', ratio: max(col('Ti')) / 10, note: 'sıcaklık' },
+        { label: 'Q≥1 hedefi (WHAM/ölçekli)', ratio: max(col('Q')) / 1, note: 'Q' },
+      ],
+      engineering: {
+        'Hacim (m³)': +this.V.toFixed(3), 'Merkez B (T)': this.cfg.B_center_T, 'Ayna oranı': this.cfg.mirrorRatio,
+        'Tandem': this.cfg.tandem, 'τ_E son (ms)': +(this.lastTauE * 1e3).toFixed(3),
+      },
+      extras: { 'Uç kaybı baskın': 'evet (kayıp konisi)', 'Yardımcı güç (MW)': this.cfg.P_aux_MW },
+      warnings: max(col('Q')) < 0.05 ? ['Basit/tandem ayna kayıp konisi nedeniyle düşük Q verir — kesme akış veya derin potansiyel bariyeri olmadan net enerji beklenmez.'] : [],
+      Q_eng_note: 'Ayna kavramsal/deneyseldir; Q_müh modellenmedi.',
+    });
+  }
+}

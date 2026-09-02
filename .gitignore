@@ -1,0 +1,24 @@
+# Bağımlılıklar
+node_modules/
+
+# Derleme çıktıları
+dist/
+build/
+*.tsbuildinfo
+
+# Ortam / gizli (ileride eklenirse diye — asla commit'leme)
+.env
+.env.*
+*.key
+*.pem
+
+# Editör / işletim sistemi
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Log / geçici
+*.log
+npm-debug.log*
+scratch/

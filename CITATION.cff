@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "Bu yazılımı kullanırsanız lütfen aşağıdaki bilgiyle atıf yapın."
+title: "Füzyon Reaktörü Simülatörü (Fusion Reactor Simulator)"
+abstract: >-
+  0-boyutlu, zaman-çözümlü füzyon reaktörü güç-dengesi simülasyon motoru.
+  Manyetik hapsetme (tokamak, sferik tokamak, stellarator) ve diğer şemaları
+  açık literatürdeki ölçekleme yasaları ve reaksiyon verileriyle modeller;
+  ITER, JET, SPARC, DEMO, W7-X gibi gerçek makine preset'leri içerir.
+type: software
+authors:
+  # TODO: İsim/soyisim ve (varsa) ORCID'ini doğrula
+  - given-names: Mustafa
+    family-names: Karatum
+    # orcid: "https://orcid.org/0000-0000-0000-0000"
+license: MIT
+version: "0.1.0"
+date-released: "2026-09-02"
+keywords:
+  - nuclear fusion
+  - tokamak
+  - plasma physics
+  - reactor simulation
+  - power balance
+  - confinement scaling
+repository-code: "https://github.com/KULLANICI_ADIN/fusion-reactor-simulator"

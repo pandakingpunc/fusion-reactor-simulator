@@ -38,42 +38,42 @@ const NSTATE = 14;
 export const LAWSON_DT = 3e21;
 
 export const MAGNETIC_DIAGS: DiagSpec[] = [
-  { key: 'Ti', label: 'T_i (hacim ort.)', unit: 'keV', group: 'Sıcaklık' },
-  { key: 'Te', label: 'T_e (hacim ort.)', unit: 'keV', group: 'Sıcaklık' },
-  { key: 'Ti0', label: 'T_i (eksen)', unit: 'keV', group: 'Sıcaklık' },
-  { key: 'ne', label: 'n_e', unit: '1e20 m⁻³', group: 'Yoğunluk' },
-  { key: 'nG_frac', label: 'n/n_Greenwald', unit: '', group: 'Yoğunluk' },
-  { key: 'fHe', label: 'He kül oranı', unit: '', group: 'Yoğunluk' },
-  { key: 'P_fus', label: 'P_füzyon', unit: 'MW', group: 'Güç' },
-  { key: 'P_alpha', label: 'P_alfa (biriken)', unit: 'MW', group: 'Güç' },
-  { key: 'P_bt', label: 'P_füzyon demet-hedef', unit: 'MW', group: 'Güç' },
-  { key: 'P_aux', label: 'P_yardımcı', unit: 'MW', group: 'Güç' },
-  { key: 'P_oh', label: 'P_ohmik', unit: 'MW', group: 'Güç' },
-  { key: 'P_brems', label: 'P_brems', unit: 'MW', group: 'Radyasyon' },
-  { key: 'P_sync', label: 'P_senkrotron', unit: 'MW', group: 'Radyasyon' },
-  { key: 'P_line', label: 'P_çizgi', unit: 'MW', group: 'Radyasyon' },
-  { key: 'P_rad', label: 'P_rad toplam', unit: 'MW', group: 'Radyasyon' },
-  { key: 'P_cond', label: 'P_iletim (W/τ_E)', unit: 'MW', group: 'Güç' },
-  { key: 'Q', label: 'Q bilimsel', unit: '', group: 'Performans' },
-  { key: 'tauE', label: 'τ_E', unit: 's', group: 'Hapsetme' },
-  { key: 'H_mode', label: 'Mod (1=H, 0=L)', unit: '', group: 'Hapsetme' },
-  { key: 'P_LH', label: 'P_LH eşiği', unit: 'MW', group: 'Hapsetme' },
+  { key: 'Ti', label: 'T_i (volume avg.)', unit: 'keV', group: 'Temperature' },
+  { key: 'Te', label: 'T_e (volume avg.)', unit: 'keV', group: 'Temperature' },
+  { key: 'Ti0', label: 'T_i (axis)', unit: 'keV', group: 'Temperature' },
+  { key: 'ne', label: 'n_e', unit: '1e20 m⁻³', group: 'Density' },
+  { key: 'nG_frac', label: 'n/n_Greenwald', unit: '', group: 'Density' },
+  { key: 'fHe', label: 'He ash fraction', unit: '', group: 'Density' },
+  { key: 'P_fus', label: 'P_fusion', unit: 'MW', group: 'Power' },
+  { key: 'P_alpha', label: 'P_alpha (deposited)', unit: 'MW', group: 'Power' },
+  { key: 'P_bt', label: 'P_fusion beam-target', unit: 'MW', group: 'Power' },
+  { key: 'P_aux', label: 'P_auxiliary', unit: 'MW', group: 'Power' },
+  { key: 'P_oh', label: 'P_ohmic', unit: 'MW', group: 'Power' },
+  { key: 'P_brems', label: 'P_brems', unit: 'MW', group: 'Radiation' },
+  { key: 'P_sync', label: 'P_synchrotron', unit: 'MW', group: 'Radiation' },
+  { key: 'P_line', label: 'P_line', unit: 'MW', group: 'Radiation' },
+  { key: 'P_rad', label: 'P_rad total', unit: 'MW', group: 'Radiation' },
+  { key: 'P_cond', label: 'P_conduction (W/τ_E)', unit: 'MW', group: 'Power' },
+  { key: 'Q', label: 'Scientific Q', unit: '', group: 'Performance' },
+  { key: 'tauE', label: 'τ_E', unit: 's', group: 'Confinement' },
+  { key: 'H_mode', label: 'Mode (1=H, 0=L)', unit: '', group: 'Confinement' },
+  { key: 'P_LH', label: 'P_LH threshold', unit: 'MW', group: 'Confinement' },
   { key: 'betaN', label: 'β_N', unit: '', group: 'MHD' },
   { key: 'betaT', label: 'β_T', unit: '%', group: 'MHD' },
   { key: 'q95', label: 'q95', unit: '', group: 'MHD' },
   { key: 'NTM', label: 'NTM (0/1)', unit: '', group: 'MHD' },
-  { key: 'W', label: 'W_plazma', unit: 'MJ', group: 'Enerji' },
-  { key: 'Wf', label: 'W_hızlı iyon', unit: 'MJ', group: 'Enerji' },
-  { key: 'triple', label: 'n·T·τ_E', unit: 'keV s m⁻³', group: 'Performans', log: true },
-  { key: 'lawson', label: 'Lawson oranı', unit: '', group: 'Performans' },
-  { key: 'Zeff', label: 'Z_eff', unit: '', group: 'Safsızlık' },
-  { key: 'cZ', label: 'c_Z (n_Z/n_e)', unit: '', group: 'Safsızlık', log: true },
+  { key: 'W', label: 'W_plasma', unit: 'MJ', group: 'Energy' },
+  { key: 'Wf', label: 'W_fast ions', unit: 'MJ', group: 'Energy' },
+  { key: 'triple', label: 'n·T·τ_E', unit: 'keV s m⁻³', group: 'Performance', log: true },
+  { key: 'lawson', label: 'Lawson ratio', unit: '', group: 'Performance' },
+  { key: 'Zeff', label: 'Z_eff', unit: '', group: 'Impurities' },
+  { key: 'cZ', label: 'c_Z (n_Z/n_e)', unit: '', group: 'Impurities', log: true },
   { key: 'Ip', label: 'I_p', unit: 'MA', group: 'MHD' },
-  { key: 'S_fuel', label: 'Besleme', unit: '1e20 /s', group: 'Yoğunluk' },
-  { key: 'burnFrac', label: 'T yanma oranı', unit: '', group: 'Yakıt' },
-  { key: 'q_div', label: 'Divertör ısı akısı', unit: 'MW/m²', group: 'Mühendislik' },
-  { key: 'n_wall', label: 'Nötron duvar yükü', unit: 'MW/m²', group: 'Mühendislik' },
-  { key: 'fuelFracA', label: 'D oranı n_D/(n_D+n_T)', unit: '', group: 'Yakıt' },
+  { key: 'S_fuel', label: 'Fueling', unit: '1e20 /s', group: 'Density' },
+  { key: 'burnFrac', label: 'T burn fraction', unit: '', group: 'Fuel' },
+  { key: 'q_div', label: 'Divertor heat flux', unit: 'MW/m²', group: 'Engineering' },
+  { key: 'n_wall', label: 'Neutron wall load', unit: 'MW/m²', group: 'Engineering' },
+  { key: 'fuelFracA', label: 'D fraction n_D/(n_D+n_T)', unit: '', group: 'Fuel' },
 ];
 
 type Phase = 'normal' | 'thermal_quench' | 'current_quench' | 'ended';
@@ -151,8 +151,8 @@ export class MagneticModel implements SimModel {
     if (this.magnetInfo.quench) {
       this.phase = 'ended';
       this.terminated = {
-        t: 0, natural: false, reason: 'Mıknatıs quench',
-        diagnosis: `Toroidal alan bobinindeki tepe alan B_coil = ${this.magnetInfo.B_coil.toFixed(1)} T, ${MAGNET_TECH[cfg.magnet.tech].label} için limit ${this.magnetInfo.B_max} T. Bobin quench etti; atış iptal.`,
+        t: 0, natural: false, reason: 'Magnet quench',
+        diagnosis: `Peak field in the toroidal field coil B_coil = ${this.magnetInfo.B_coil.toFixed(1)} T, ${MAGNET_TECH[cfg.magnet.tech].label} has a limit of ${this.magnetInfo.B_max} T. The coil quenched; shot aborted.`,
         fix: DISRUPTION_FIXES.magnet_quench,
       };
     }
@@ -520,10 +520,10 @@ export class MagneticModel implements SimModel {
       if (!this.isStell) {
         const P_L = dg.P_heat; // P_heat − dW/dt ≈ P_heat (APPROXIMATION)
         if (!this.hmode && P_L > dg.P_LH && t > 0.05) {
-          this.hmode = true; ev.push({ t, kind: 'LH', msg: `L→H geçişi: P_heat ${P_L.toFixed(1)} MW > P_LH ${dg.P_LH.toFixed(1)} MW` });
+          this.hmode = true; ev.push({ t, kind: 'LH', msg: `L→H transition: P_heat ${P_L.toFixed(1)} MW > P_LH ${dg.P_LH.toFixed(1)} MW` });
           this.tNextELM = t + 0.05;
         } else if (this.hmode && P_L < 0.7 * dg.P_LH) {
-          this.hmode = false; ev.push({ t, kind: 'HL', msg: `H→L geri geçiş: P_heat ${P_L.toFixed(1)} MW < 0.7·P_LH ${(0.7 * dg.P_LH).toFixed(1)} MW — τ_E çöktü` });
+          this.hmode = false; ev.push({ t, kind: 'HL', msg: `H→L back-transition: P_heat ${P_L.toFixed(1)} MW < 0.7·P_LH ${(0.7 * dg.P_LH).toFixed(1)} MW — τ_E collapsed` });
           this.tNextELM = Infinity; this.elmAvgPower = 0; this.elmPartRate = 0;
         }
       }
@@ -548,15 +548,15 @@ export class MagneticModel implements SimModel {
         y[IDX.We] *= 1 - drop; y[IDX.Wi] *= 1 - drop;
         // kül ve safsızlığı merkezden karıştırır → kaybı artırır
         y[IDX.nHe] *= 0.97; y[IDX.nZ] *= 0.97;
-        ev.push({ t, kind: 'sawtooth', msg: `Testere dişi çökmesi: ΔW ≈ ${(drop * 100).toFixed(1)}%`, value: drop });
+        ev.push({ t, kind: 'sawtooth', msg: `Sawtooth crash: ΔW ≈ ${(drop * 100).toFixed(1)}%`, value: drop });
         this.tNextSaw = t + Math.max(0.05, 0.6 * this.tauE_last * (0.8 + 0.4 * this.rng.next()));
         // NTM tohumu: β_N > β_onset ise sawtooth NTM tetikler (Sauter 2002: β_N,onset ~ 2 ITER'de)
         if (c.events.ntm && !this.ntm && dg.betaN > 0.7 * c.limits.betaN_limit) {
-          this.ntm = true; ev.push({ t, kind: 'NTM_onset', msg: `Sawtooth-tohumlu NTM (3/2) başladı: β_N = ${dg.betaN.toFixed(2)} — τ_E bozunuyor` });
+          this.ntm = true; ev.push({ t, kind: 'NTM_onset', msg: `Sawtooth-seeded NTM (3/2) started: β_N = ${dg.betaN.toFixed(2)} — τ_E is degrading` });
         }
       }
       if (this.ntm && dg.betaN < 0.5 * c.limits.betaN_limit) {
-        this.ntm = false; ev.push({ t, kind: 'NTM_gone', msg: `NTM söndü: β_N ${dg.betaN.toFixed(2)} marjinal eşiğin altında` });
+        this.ntm = false; ev.push({ t, kind: 'NTM_gone', msg: `NTM decayed: β_N ${dg.betaN.toFixed(2)} below the marginal threshold` });
       }
       // ---- W birikimi: ELM/sawtooth yoksa merkez birikimi (neoklasik pinch) ----
       this.tauW_accum = c.impurity.species === 'W' && (!c.events.elms || !c.events.sawteeth) ? 4 : 1;
@@ -567,40 +567,40 @@ export class MagneticModel implements SimModel {
       // Histerezis (ELM titreşimi olay yağmuruna yol açmasın): giriş P_α ≥ P_kayıp, çıkış P_α < 0.9 P_kayıp
       const ignOn = dg.P_alpha >= P_loss_total && dg.P_fus > 1 && dg.Q >= 5;
       const ignOff = dg.P_alpha < 0.9 * P_loss_total || dg.Q < 4;
-      if (ignOn && !this.ignited) { this.ignited = true; ev.push({ t, kind: 'ignition', msg: `ATEŞLEME: P_alfa ${dg.P_alpha.toFixed(0)} MW ≥ P_kayıp ${P_loss_total.toFixed(0)} MW` }); }
-      if (ignOff && this.ignited) { this.ignited = false; ev.push({ t, kind: 'info', msg: 'Ateşleme koşulu kayboldu' }); }
-      if (dg.Q >= 1 && !this.burning) { this.burning = true; ev.push({ t, kind: 'burn_start', msg: `Q ≥ 1 (bilimsel başabaş)` }); }
+      if (ignOn && !this.ignited) { this.ignited = true; ev.push({ t, kind: 'ignition', msg: `IGNITION: P_alpha ${dg.P_alpha.toFixed(0)} MW ≥ P_loss ${P_loss_total.toFixed(0)} MW` }); }
+      if (ignOff && this.ignited) { this.ignited = false; ev.push({ t, kind: 'info', msg: 'Ignition condition lost' }); }
+      if (dg.Q >= 1 && !this.burning) { this.burning = true; ev.push({ t, kind: 'burn_start', msg: `Q ≥ 1 (scientific breakeven)` }); }
       if (dg.Q < 1 && this.burning) { this.burning = false; ev.push({ t, kind: 'burn_end', msg: 'Q < 1' }); }
 
       // ---- uyarılar ----
-      if (dg.q_div > 10 && !this.warned.has('div')) { this.warned.add('div'); ev.push({ t, kind: 'warning', msg: `Divertör ısı akısı ${dg.q_div.toFixed(0)} MW/m² > 10 MW/m² — malzeme ömrü tehlikede` }); }
-      if (dg.nG_frac > 0.85 && !this.warned.has('nG')) { this.warned.add('nG'); ev.push({ t, kind: 'warning', msg: `n/n_G = ${dg.nG_frac.toFixed(2)} — yoğunluk limitine yaklaşılıyor` }); }
-      if (dg.betaN > 0.85 * c.limits.betaN_limit && !this.warned.has('bN')) { this.warned.add('bN'); ev.push({ t, kind: 'warning', msg: `β_N = ${dg.betaN.toFixed(2)} — Troyon limitine yaklaşılıyor` }); }
+      if (dg.q_div > 10 && !this.warned.has('div')) { this.warned.add('div'); ev.push({ t, kind: 'warning', msg: `Divertor heat flux ${dg.q_div.toFixed(0)} MW/m² > 10 MW/m² — material lifetime at risk` }); }
+      if (dg.nG_frac > 0.85 && !this.warned.has('nG')) { this.warned.add('nG'); ev.push({ t, kind: 'warning', msg: `n/n_G = ${dg.nG_frac.toFixed(2)} — approaching the density limit` }); }
+      if (dg.betaN > 0.85 * c.limits.betaN_limit && !this.warned.has('bN')) { this.warned.add('bN'); ev.push({ t, kind: 'warning', msg: `β_N = ${dg.betaN.toFixed(2)} — approaching the Troyon limit` }); }
 
       // ---- LİMİT KONTROLLERİ → disruption ----
       let cause: DisruptionCause = 'none';
       let diag = '';
       if (!this.isStell) {
-        if (dg.nG_frac > c.limits.greenwald_limit) { cause = 'density_limit'; diag = `n/n_G ${dg.nG_frac.toFixed(2)}'e çıktı`; }
+        if (dg.nG_frac > c.limits.greenwald_limit) { cause = 'density_limit'; diag = `n/n_G reached ${dg.nG_frac.toFixed(2)}`; }
         else if (dg.betaN > c.limits.betaN_limit) { cause = 'beta_limit'; diag = `β_N ${dg.betaN.toFixed(2)} > ${c.limits.betaN_limit}`; }
         else if (dg.q95 < c.limits.q95_limit) { cause = 'q95_limit'; diag = `q95 = ${dg.q95.toFixed(2)} < ${c.limits.q95_limit}`; }
         else if (dg.cZ > c.limits.W_conc_limit && c.impurity.species === 'W') { cause = 'tungsten_accumulation'; diag = `c_W = ${dg.cZ.toExponential(1)} > ${c.limits.W_conc_limit.toExponential(1)}`; }
-        else if (dg.P_rad > dg.P_heat && t > 0.5 && dg.Te < 2) { cause = 'radiative_collapse'; diag = `P_rad ${dg.P_rad.toFixed(1)} MW > P_heat ${dg.P_heat.toFixed(1)} MW, T_e ${dg.Te.toFixed(2)} keV'e düştü`; }
+        else if (dg.P_rad > dg.P_heat && t > 0.5 && dg.Te < 2) { cause = 'radiative_collapse'; diag = `P_rad ${dg.P_rad.toFixed(1)} MW > P_heat ${dg.P_heat.toFixed(1)} MW, T_e fell to ${dg.Te.toFixed(2)} keV`; }
       } else {
         // Stellarator: disruption yok; radyatif çöküş (Sudo limiti) plazmayı söndürür
-        if (dg.nG_frac > 1.0 && dg.P_rad > dg.P_heat && t > 0.5 && dg.Te < 0.5) { cause = 'radiative_collapse'; diag = `n/n_Sudo = ${dg.nG_frac.toFixed(2)} ve P_rad > P_heat — radyatif çöküş (disruption değil, yumuşak sönüş)`; }
+        if (dg.nG_frac > 1.0 && dg.P_rad > dg.P_heat && t > 0.5 && dg.Te < 0.5) { cause = 'radiative_collapse'; diag = `n/n_Sudo = ${dg.nG_frac.toFixed(2)} and P_rad > P_heat — radiative collapse (soft extinction, not a disruption)`; }
       }
       if (cause !== 'none') {
         this.disruptCause = cause; this.tDisrupt = t; this.Wd = W;
         this.phase = this.isStell ? 'current_quench' : 'thermal_quench';
         this.elmAvgPower = 0; this.tNextELM = Infinity;
-        ev.push({ t, kind: 'disruption', msg: `${this.isStell ? 'RADYATİF ÇÖKÜŞ' : 'DISRUPTION'}: ${DISRUPTION_LABELS[cause]} — ${diag}` });
+        ev.push({ t, kind: 'disruption', msg: `${this.isStell ? 'RADIATIVE COLLAPSE' : 'DISRUPTION'}: ${DISRUPTION_LABELS[cause]} — ${diag}` });
         this.diagText = diag;
       }
     } else if (this.phase === 'thermal_quench') {
       if (W < 0.02 * this.Wd || t - this.tDisrupt > 0.05) {
         this.phase = 'current_quench';
-        ev.push({ t, kind: 'quench', msg: `Termal quench tamamlandı (${((t - this.tDisrupt) * 1e3).toFixed(1)} ms) → akım quench başlıyor` });
+        ev.push({ t, kind: 'quench', msg: `Thermal quench complete (${((t - this.tDisrupt) * 1e3).toFixed(1)} ms) → current quench starting` });
       }
     } else if (this.phase === 'current_quench') {
       const done = this.isStell ? W < 0.02 * this.Wd || t - this.tDisrupt > 0.2 : y[IDX.Ip] < 0.03 * this.Ip0;
@@ -609,17 +609,17 @@ export class MagneticModel implements SimModel {
         const rep = disruptionReport({ cause: this.disruptCause, t: this.tDisrupt, g: this.g, Ip_MA: this.Ip0 / 1e6, W_th_J: this.Wd, B0: c.B0 });
         this.terminated = {
           t, natural: false, reason: DISRUPTION_LABELS[this.disruptCause],
-          diagnosis: `${DISRUPTION_LABELS[this.disruptCause]} — ${this.diagText}, t = ${this.tDisrupt.toFixed(2)} s. ${this.isStell ? '' : `Termal quench ${rep.tau_TQ_ms.toFixed(1)} ms, akım quench ${rep.tau_CQ_ms.toFixed(0)} ms; halo akımı I_h/I_p·TPF = ${rep.halo_TPF_product.toFixed(2)}; kaçak elektron çığı e^${rep.runaway_avalanche_efolds.toFixed(0)} → ~${rep.runaway_current_MA.toFixed(1)} MA; duvara ${rep.wall_energy_density_MJm2.toFixed(1)} MJ/m².`}`,
+          diagnosis: `${DISRUPTION_LABELS[this.disruptCause]} — ${this.diagText}, t = ${this.tDisrupt.toFixed(2)} s. ${this.isStell ? '' : `Thermal quench ${rep.tau_TQ_ms.toFixed(1)} ms, current quench ${rep.tau_CQ_ms.toFixed(0)} ms; halo current I_h/I_p·TPF = ${rep.halo_TPF_product.toFixed(2)}; runaway electron avalanche e^${rep.runaway_avalanche_efolds.toFixed(0)} → ~${rep.runaway_current_MA.toFixed(1)} MA; wall deposition ${rep.wall_energy_density_MJm2.toFixed(1)} MJ/m².`}`,
           fix: DISRUPTION_FIXES[this.disruptCause],
           disruption: this.isStell ? undefined : rep,
         };
-        ev.push({ t, kind: 'end', msg: 'Plazma söndü' });
+        ev.push({ t, kind: 'end', msg: 'Plasma extinguished' });
       }
     }
     if (!this.terminated && t >= this.tEnd - 1e-9) {
       this.phase = 'ended';
-      this.terminated = { t, natural: true, reason: 'Planlı bitiş', diagnosis: `Atış planlanan ${this.tEnd} s süreyi disruption olmadan tamamladı.`, fix: '' };
-      ev.push({ t, kind: 'end', msg: 'Planlı atış sonu' });
+      this.terminated = { t, natural: true, reason: 'Scheduled end', diagnosis: `The shot completed the scheduled duration of ${this.tEnd} s without disruption.`, fix: '' };
+      ev.push({ t, kind: 'end', msg: 'Scheduled end of shot' });
     }
     return ev;
   }
@@ -664,7 +664,7 @@ export class MagneticModel implements SimModel {
       if (hist[i].d.Q >= 1) burnTime += dt;
       if (hist[i].d.P_alpha >= hist[i].d.P_rad + hist[i].d.P_cond && hist[i].d.P_fus > 1 && hist[i].d.Q >= 5) ignTime += dt;
     }
-    const term = this.terminated ?? { t: last.t, natural: true, reason: 'Devam ediyor', diagnosis: '', fix: '' };
+    const term = this.terminated ?? { t: last.t, natural: true, reason: 'In progress', diagnosis: '', fix: '' };
     const stableTime = this.tDisrupt > 0 && !term.natural ? this.tDisrupt : last.t;
     const Efus = last.d.Efus_MJ, Ein = last.d.Ein_MJ;
     const Qavg = Ein > 0 ? Efus / Ein : 0;
@@ -686,51 +686,51 @@ export class MagneticModel implements SimModel {
       capitalOverride_MUSD: c.economics.capital_MUSD_override,
     });
     const warnings: string[] = [];
-    if (tbr < 1.05 && c.fuel === 'DT') warnings.push(`TBR = ${tbr.toFixed(2)} < 1.05 — bu reaktör kendi trityumunu üretemez.`);
-    if (max(d('q_div')) > 10) warnings.push(`Divertör ısı akısı tepe ${max(d('q_div')).toFixed(0)} MW/m² > 10 MW/m² — hedef plakalar dayanmaz; divertör radyasyon oranını artır.`);
-    if (mag.overstress) warnings.push(`TF bobin gerilmesi ${mag.stress_MPa.toFixed(0)} MPa > ${mag.stress_limit} MPa limit.`);
-    if (nwl.dpa_per_year > 20) warnings.push(`Nötron hasarı ${nwl.dpa_per_year.toFixed(0)} dpa/yıl — ilk duvar birkaç yılda değişmeli.`);
-    if (eco.P_net_MW < 0) warnings.push(`Net elektrik negatif (${eco.P_net_MW.toFixed(0)} MW): Q_müh < 1, tesis şebekeden güç çekiyor.`);
+    if (tbr < 1.05 && c.fuel === 'DT') warnings.push(`TBR = ${tbr.toFixed(2)} < 1.05 — this reactor cannot breed its own tritium.`);
+    if (max(d('q_div')) > 10) warnings.push(`Peak divertor heat flux ${max(d('q_div')).toFixed(0)} MW/m² > 10 MW/m² — target plates cannot withstand this; increase the divertor radiation fraction.`);
+    if (mag.overstress) warnings.push(`TF coil stress ${mag.stress_MPa.toFixed(0)} MPa > ${mag.stress_limit} MPa limit.`);
+    if (nwl.dpa_per_year > 20) warnings.push(`Neutron damage ${nwl.dpa_per_year.toFixed(0)} dpa/year — the first wall needs replacement within a few years.`);
+    if (eco.P_net_MW < 0) warnings.push(`Negative net electricity (${eco.P_net_MW.toFixed(0)} MW): Q_eng < 1, the plant draws power from the grid.`);
     // skor
     const scoreBreakdown = [
-      { label: 'Q_bilimsel (max)', value: max(Q), ref: 10, unit: '', note: 'ITER hedefi Q=10' },
-      { label: 'Füzyon enerjisi', value: Efus, ref: 59, unit: 'MJ', note: 'JET DTE2 rekoru 59 MJ (2021)' },
-      { label: 'Üçlü çarpım', value: triple, ref: lawsonRef, unit: 'keV s m⁻³', note: 'Ateşleme ≈ 3e21' },
-      { label: 'Stabil süre', value: stableTime, ref: c.t_end, unit: 's', note: 'Planlanan süre' },
-      { label: 'Sıcaklık', value: Tmax, ref: 20, unit: 'keV', note: 'ITER eksen ~20 keV' },
+      { label: 'Q_scientific (max)', value: max(Q), ref: 10, unit: '', note: 'ITER target Q=10' },
+      { label: 'Fusion energy', value: Efus, ref: 59, unit: 'MJ', note: 'JET DTE2 record 59 MJ (2021)' },
+      { label: 'Triple product', value: triple, ref: lawsonRef, unit: 'keV s m⁻³', note: 'Ignition ≈ 3e21' },
+      { label: 'Stable time', value: stableTime, ref: c.t_end, unit: 's', note: 'Scheduled duration' },
+      { label: 'Temperature', value: Tmax, ref: 20, unit: 'keV', note: 'ITER axis ~20 keV' },
     ];
     let score = 0;
     for (const s of scoreBreakdown) score += 20 * Math.min(1, s.value / s.ref);
     if (!term.natural && !this.isStell) score *= 0.7;
     const historical = [
-      { label: 'JET DTE2 (2021): 59 MJ', ratio: Efus / 59, note: 'füzyon enerjisi' },
-      { label: 'JET 1997: P_fus 16.1 MW', ratio: max(Pf) / 16.1, note: 'tepe füzyon gücü' },
-      { label: 'JT-60U (1996): nTτ 1.5e21', ratio: triple / 1.53e21, note: 'üçlü çarpım (D-D eşdeğer)' },
-      { label: 'ITER hedefi: Q=10, 500 MW', ratio: max(Q) / 10, note: 'Q' },
-      { label: 'NIF 2022: 3.15 MJ', ratio: Efus / 3.15, note: 'atış başına füzyon enerjisi' },
+      { label: 'JET DTE2 (2021): 59 MJ', ratio: Efus / 59, note: 'fusion energy' },
+      { label: 'JET 1997: P_fus 16.1 MW', ratio: max(Pf) / 16.1, note: 'peak fusion power' },
+      { label: 'JT-60U (1996): nTτ 1.5e21', ratio: triple / 1.53e21, note: 'triple product (D-D equivalent)' },
+      { label: 'ITER target: Q=10, 500 MW', ratio: max(Q) / 10, note: 'Q' },
+      { label: 'NIF 2022: 3.15 MJ', ratio: Efus / 3.15, note: 'fusion energy per shot' },
     ];
     return {
       method: this.method, duration: last.t, timeUnit: 's',
       Tmax_keV: Tmax, Tmax_MC: U.keV_to_MC(Tmax), Timax_keV: max(Ti), Temax_keV: max(Te),
       stableTime_s: stableTime, burnTime_s: burnTime, ignitionTime_s: ignTime,
-      stableDefinition: 'Stabil süre = plazmanın disruption/sönme olmadan sürdürüldüğü süre. Yanma süresi = Q ≥ 1 (P_füzyon ≥ P_yardımcı+P_ohmik) koşulunun sağlandığı süre. Ateşleme süresi = P_alfa ≥ P_rad + P_iletim (dış ısıtma olmadan kendini besler) süresi.',
+      stableDefinition: 'Stable time = duration for which the plasma is sustained without disruption/extinction. Burn time = duration with Q ≥ 1 (P_fusion ≥ P_auxiliary+P_ohmic). Ignition time = duration with P_alpha ≥ P_rad + P_conduction (self-sustaining without external heating).',
       Q_sci_max: max(Q), Q_sci_avg: Qavg, Q_eng: eco.Q_eng,
-      Q_eng_note: `Q_müh = P_elektrik,brüt / P_devridaim = (${eco.P_gross_MW.toFixed(0)} MW) / (${eco.P_recirc_MW.toFixed(0)} MW). Q_bilimsel plazma sınırında (P_füz/P_ısıtma,absorbe), Q_müh duvar prizinde: ısıtma priz verimi ${(c.economics.wallPlugEff * 100).toFixed(0)}%, termik verim ${(c.economics.thermalEff * 100).toFixed(0)}%.`,
+      Q_eng_note: `Q_eng = P_electric,gross / P_recirculating = (${eco.P_gross_MW.toFixed(0)} MW) / (${eco.P_recirc_MW.toFixed(0)} MW). Scientific Q is measured at the plasma boundary (P_fusion/P_heating,absorbed), Q_eng at the wall plug: heating wall-plug efficiency ${(c.economics.wallPlugEff * 100).toFixed(0)}%, thermal efficiency ${(c.economics.thermalEff * 100).toFixed(0)}%.`,
       E_fusion_MJ: Efus, E_input_MJ: Ein,
       neutronYield: last.d.Nn, neutronFluence_m2: last.d.Nn / nwl.S_wall,
       tripleProduct_max: triple, lawson_ratio: triple / lawsonRef,
-      lawsonNote: `Referans (nTτ_E)_ateşleme ≈ ${lawsonRef.toExponential(1)} keV s m⁻³ (${c.fuel}); 1.0 = ateşleme eşiği (profil etkileri ihmal).`,
+      lawsonNote: `Reference (nTτ_E)_ignition ≈ ${lawsonRef.toExponential(1)} keV s m⁻³ (${c.fuel}); 1.0 = ignition threshold (profile effects neglected).`,
       termination: term, score: Math.round(score), scoreBreakdown, historical, warnings,
       engineering: {
-        'B_coil (T)': +mag.B_coil.toFixed(2), 'B_max teknoloji (T)': mag.B_max, 'TF gerilme (MPa)': +mag.stress_MPa.toFixed(0), 'Gerilme limiti (MPa)': mag.stress_limit,
-        'Manyetik enerji (GJ)': +mag.storedEnergy_GJ.toFixed(2),
-        'Divertör q_max (MW/m²)': +max(d('q_div')).toFixed(1), 'Nötron duvar yükü (MW/m²)': +nwl.load_MWm2.toFixed(2), 'dpa/yıl': +nwl.dpa_per_year.toFixed(1),
-        'TBR': +tbr.toFixed(3), 'Trityum yanma oranı': +(last.d.burnFrac ?? 0).toFixed(3),
-        'P_füzyon ort. (MW)': +Pfus_avg.toFixed(1), 'P_termal (MW)': +eco.P_th_MW.toFixed(0), 'P_elektrik brüt (MW)': +eco.P_gross_MW.toFixed(0),
-        'P_devridaim (MW)': +eco.P_recirc_MW.toFixed(0), 'P_net elektrik (MW)': +eco.P_net_MW.toFixed(0),
-        'Sermaye (M$)': +eco.Ccap_MUSD.toFixed(0), 'LCOE ($/MWh)': isFinite(eco.LCOE_USD_MWh) ? +eco.LCOE_USD_MWh.toFixed(0) : 'yok (net<0)', 'EROI': +eco.EROI.toFixed(1),
+        'B_coil (T)': +mag.B_coil.toFixed(2), 'Technology B_max (T)': mag.B_max, 'TF stress (MPa)': +mag.stress_MPa.toFixed(0), 'Stress limit (MPa)': mag.stress_limit,
+        'Magnetic energy (GJ)': +mag.storedEnergy_GJ.toFixed(2),
+        'Divertor q_max (MW/m²)': +max(d('q_div')).toFixed(1), 'Neutron wall load (MW/m²)': +nwl.load_MWm2.toFixed(2), 'dpa/year': +nwl.dpa_per_year.toFixed(1),
+        'TBR': +tbr.toFixed(3), 'Tritium burn fraction': +(last.d.burnFrac ?? 0).toFixed(3),
+        'Avg. P_fusion (MW)': +Pfus_avg.toFixed(1), 'P_thermal (MW)': +eco.P_th_MW.toFixed(0), 'Gross P_electric (MW)': +eco.P_gross_MW.toFixed(0),
+        'P_recirculating (MW)': +eco.P_recirc_MW.toFixed(0), 'Net P_electric (MW)': +eco.P_net_MW.toFixed(0),
+        'Capital cost (M$)': +eco.Ccap_MUSD.toFixed(0), 'LCOE ($/MWh)': isFinite(eco.LCOE_USD_MWh) ? +eco.LCOE_USD_MWh.toFixed(0) : 'n/a (net<0)', 'EROI': +eco.EROI.toFixed(1),
       },
-      extras: { 'He kül oranı (son)': +(last.d.fHe ?? 0).toFixed(3), 'Z_eff (son)': +(last.d.Zeff ?? 0).toFixed(2), 'ELM sayısı': events.filter((e) => e.kind === 'ELM').length, 'Sawtooth sayısı': events.filter((e) => e.kind === 'sawtooth').length },
+      extras: { 'He ash fraction (final)': +(last.d.fHe ?? 0).toFixed(3), 'Z_eff (final)': +(last.d.Zeff ?? 0).toFixed(2), 'ELM count': events.filter((e) => e.kind === 'ELM').length, 'Sawtooth count': events.filter((e) => e.kind === 'sawtooth').length },
     };
   }
 }

@@ -22,14 +22,14 @@ const TU = 1e-6; // µs → s
 const P_T = 0.68; // sıcaklık sıkışma üssü (kayıplı adyabatik)
 
 const MTF_DIAGS: DiagSpec[] = [
-  { key: 'Ti', label: 'T (sıkışmış)', unit: 'keV', group: 'Sıcaklık' },
-  { key: 'ne', label: 'n (sıkışmış)', unit: '1e20 m⁻³', group: 'Yoğunluk', log: true },
-  { key: 'C', label: 'Sıkışma C(t)', unit: '', group: 'Sıkışma' },
-  { key: 'P_fus', label: 'P_füzyon (anlık)', unit: 'MW', group: 'Güç' },
-  { key: 'Q', label: 'Q (kümülatif)', unit: '', group: 'Performans' },
-  { key: 'triple', label: 'n·T·τ', unit: 'keV s m⁻³', group: 'Performans', log: true },
-  { key: 'Nn', label: 'Nötron sayısı', unit: '', group: 'Nötron', log: true },
-  { key: 'B', label: 'B (sıkışmış)', unit: 'T', group: 'MHD' },
+  { key: 'Ti', label: 'T (compressed)', unit: 'keV', group: 'Temperature' },
+  { key: 'ne', label: 'n (compressed)', unit: '1e20 m⁻³', group: 'Density', log: true },
+  { key: 'C', label: 'Compression C(t)', unit: '', group: 'Compression' },
+  { key: 'P_fus', label: 'P_fusion (instantaneous)', unit: 'MW', group: 'Power' },
+  { key: 'Q', label: 'Q (cumulative)', unit: '', group: 'Performance' },
+  { key: 'triple', label: 'n·T·τ', unit: 'keV s m⁻³', group: 'Performance', log: true },
+  { key: 'Nn', label: 'Neutron count', unit: '', group: 'Neutrons', log: true },
+  { key: 'B', label: 'B (compressed)', unit: 'T', group: 'MHD' },
 ];
 
 export class MTFModel extends PulsedBase {
@@ -119,7 +119,7 @@ export class MTFModel extends PulsedBase {
     if (!this._peaked && t >= this.tc && this.CR_eff > 1.0001) {
       this._peaked = true;
       const s = this.state(this.tc);
-      ev.push({ t, kind: 'stagnation', msg: `Durgunluk: C = ${s.Cc.toFixed(1)}, n = ${(s.n / 1e20).toExponential(1)}e20 m⁻³, T = ${s.T.toFixed(2)} keV, B = ${s.B.toFixed(0)} T` });
+      ev.push({ t, kind: 'stagnation', msg: `Stagnation: C = ${s.Cc.toFixed(1)}, n = ${(s.n / 1e20).toExponential(1)}e20 m⁻³, T = ${s.T.toFixed(2)} keV, B = ${s.B.toFixed(0)} T` });
     }
     return ev;
   }
@@ -137,30 +137,30 @@ export class MTFModel extends PulsedBase {
     const last = hist[hist.length - 1];
     const G = (last.d.Efus_MJ ?? 0) / Math.max(this.cfg.driverEnergy_MJ, 1e-6);
     const warnings: string[] = [];
-    if (this.CR_eff < 0.9 * this.cfg.compressionRatio) warnings.push(`Kararsızlık etkin sıkışmayı düşürdü: CR ${this.cfg.compressionRatio} → ${this.CR_eff.toFixed(1)} (jitter/liner/kesme-akış).`);
-    if (G < 0.01) warnings.push('MTF bu parametrelerde net enerjiden uzak (G≪1) — mevcut deneylerin durumuyla tutarlı.');
+    if (this.CR_eff < 0.9 * this.cfg.compressionRatio) warnings.push(`Instability reduced effective compression: CR ${this.cfg.compressionRatio} → ${this.CR_eff.toFixed(1)} (jitter/liner/flow shear).`);
+    if (G < 0.01) warnings.push('MTF is far from net energy at these parameters (G≪1) — consistent with current experiments.');
     return this.buildReport(hist, events, {
       fuel: this.cfg.fuel, wallArea: 2 * Math.PI * this.cfg.r0_m * this.cfg.L_m,
       scoreBreakdown: [
-        { label: 'Kazanç G', value: G, ref: 1, unit: '', note: 'Sürücü enerjisine göre' },
-        { label: 'Durgunluk T (max)', value: max(col('Ti')), ref: 10, unit: 'keV', note: 'Sıkışma sıcaklığı' },
-        { label: 'Üçlü çarpım', value: max(col('triple')), ref: 1e21, unit: 'keV s m⁻³', note: 'Ateşleme ≈ 3e21 (DT)' },
-        { label: 'Nötron verimi', value: last.d.Nn ?? 0, ref: 1e17, unit: '', note: 'MagLIF hedefi ~1e17-1e18' },
-        { label: 'Füzyon enerjisi', value: last.d.Efus_MJ ?? 0, ref: 1, unit: 'MJ', note: 'Atış başına' },
+        { label: 'Gain G', value: G, ref: 1, unit: '', note: 'Relative to driver energy' },
+        { label: 'Stagnation T (max)', value: max(col('Ti')), ref: 10, unit: 'keV', note: 'Compression temperature' },
+        { label: 'Triple product', value: max(col('triple')), ref: 1e21, unit: 'keV s m⁻³', note: 'Ignition ≈ 3e21 (DT)' },
+        { label: 'Neutron yield', value: last.d.Nn ?? 0, ref: 1e17, unit: '', note: 'MagLIF target ~1e17-1e18' },
+        { label: 'Fusion energy', value: last.d.Efus_MJ ?? 0, ref: 1, unit: 'MJ', note: 'Per shot' },
       ],
       historical: [
-        { label: 'MagLIF (Z): ~1e13 nötron', ratio: (last.d.Nn ?? 0) / 1e13, note: 'nötron verimi' },
-        { label: 'Başabaş (G=1)', ratio: G / 1, note: 'kazanç' },
+        { label: 'MagLIF (Z): ~1e13 neutrons', ratio: (last.d.Nn ?? 0) / 1e13, note: 'neutron yield' },
+        { label: 'Breakeven (G=1)', ratio: G / 1, note: 'gain' },
       ],
       engineering: {
-        'İlk yarıçap r0 (mm)': +(this.cfg.r0_m * 1e3).toFixed(2), 'Sıkışma CR (nominal)': this.cfg.compressionRatio,
-        'Sıkışma CR (etkin)': +this.CR_eff.toFixed(1), 'Sürücü akımı (MA)': this.cfg.current_MA,
-        'Sürücü enerjisi (MJ)': this.cfg.driverEnergy_MJ, 'Ön-ısıtma (kJ)': this.cfg.preheat_kJ, 'Kazanç G': +G.toFixed(4),
+        'Initial radius r0 (mm)': +(this.cfg.r0_m * 1e3).toFixed(2), 'Compression CR (nominal)': this.cfg.compressionRatio,
+        'Compression CR (effective)': +this.CR_eff.toFixed(1), 'Driver current (MA)': this.cfg.current_MA,
+        'Driver energy (MJ)': this.cfg.driverEnergy_MJ, 'Preheat (kJ)': this.cfg.preheat_kJ, 'Gain G': +G.toFixed(4),
       },
-      extras: { 'Sıkışma zamanı (µs)': this.cfg.compressionTime_us, 'Kesme-akış': this.cfg.flowShear },
+      extras: { 'Compression time (µs)': this.cfg.compressionTime_us, 'Flow shear': this.cfg.flowShear },
       warnings,
-      stableDefinition: 'MTF darbelidir: "süre" sıkışma+durgunluk penceresidir (µs). G = E_füzyon / E_sürücü.',
-      Q_eng_note: 'MTF/MagLIF/Z-pinch deneyseldir; Q_müh modellenmedi.',
+      stableDefinition: 'MTF is pulsed: "duration" is the compression+stagnation window (µs). G = E_fusion / E_driver.',
+      Q_eng_note: 'MTF/MagLIF/Z-pinch are experimental; Q_eng is not modeled.',
     });
   }
 }

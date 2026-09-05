@@ -60,7 +60,7 @@ export function checkLimits(x: LimitInputs): LimitCheck[] {
     { name: 'Greenwald', value: fG / x.greenwald_frac_limit, ok: fG < x.greenwald_frac_limit, desc: `n/n_G = ${fG.toFixed(2)}` },
     { name: 'Troyon', value: bN / x.betaN_limit, ok: bN < x.betaN_limit, desc: `β_N = ${bN.toFixed(2)}` },
     { name: 'q95', value: x.q95_limit / q, ok: q > x.q95_limit, desc: `q95 = ${q.toFixed(2)}` },
-    { name: 'Radyatif', value: fRad, ok: fRad < 1, desc: `P_rad/P_heat = ${fRad.toFixed(2)}` },
+    { name: 'Radiative', value: fRad, ok: fRad < 1, desc: `P_rad/P_heat = ${fRad.toFixed(2)}` },
     { name: 'Tungsten', value: x.W_conc / x.W_conc_limit, ok: x.W_conc < x.W_conc_limit, desc: `c_W = ${x.W_conc.toExponential(1)}` },
   ];
 }

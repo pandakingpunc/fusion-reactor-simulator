@@ -13,25 +13,25 @@ interface TestDef { id: string; presetId: string; title: string; criteria: Crite
 // Beklenen değerler yayınlanmış deney/tasarım sonuçlarından (eğitsel toleranslarla).
 const TESTS: TestDef[] = [
   {
-    id: 'iter', presetId: 'ITER', title: 'ITER — Q ≈ 10 (tasarım noktası)',
+    id: 'iter', presetId: 'ITER', title: 'ITER — Q ≈ 10 (design point)',
     criteria: [
-      { label: 'Q_sci maks', get: (r) => r.Q_sci_max, lo: 8, hi: 20, unit: '', source: 'ITER Physics Basis 1999; Q=10 hedefi, 0D model 15’e kadar kabul' },
-      { label: 'T_i maks', get: (r) => r.Timax_keV, lo: 8, hi: 20, unit: 'keV', source: '⟨T_i⟩ ≈ 8–10 keV, tepe ≈ 20 keV' },
-      { label: 'Disruption yok', get: (r) => (r.termination.disruption ? 1 : 0), lo: 0, hi: 0, unit: '', source: 'Tasarım noktası tüm limitlerin içinde' },
+      { label: 'Q_sci max', get: (r) => r.Q_sci_max, lo: 8, hi: 20, unit: '', source: 'ITER Physics Basis 1999; Q=10 target, 0D model accepts up to 20' },
+      { label: 'T_i max', get: (r) => r.Timax_keV, lo: 8, hi: 20, unit: 'keV', source: '⟨T_i⟩ ≈ 8–10 keV, peak ≈ 20 keV' },
+      { label: 'No disruption', get: (r) => (r.termination.disruption ? 1 : 0), lo: 0, hi: 0, unit: '', source: 'Design point within all limits' },
     ],
   },
   {
     id: 'jet', presetId: 'JET', title: 'JET DTE2 (2021) — 59 MJ',
     criteria: [
-      { label: 'E_füzyon', get: (r) => r.E_fusion_MJ, lo: 45, hi: 75, unit: 'MJ', source: 'JET DTE2 rekor atışı #99971: 59 MJ / 5 s' },
-      { label: 'Q_sci ort.', get: (r) => r.Q_sci_avg, lo: 0.2, hi: 0.6, unit: '', source: 'Q ≈ 0.33' },
+      { label: 'E_fusion', get: (r) => r.E_fusion_MJ, lo: 45, hi: 75, unit: 'MJ', source: 'JET DTE2 record shot #99971: 59 MJ / 5 s' },
+      { label: 'Q_sci avg.', get: (r) => r.Q_sci_avg, lo: 0.2, hi: 0.6, unit: '', source: 'Q ≈ 0.33' },
     ],
   },
   {
-    id: 'nif', presetId: 'NIF', title: 'NIF N221204 — kazanç ≈ 1.5',
+    id: 'nif', presetId: 'NIF', title: 'NIF N221204 — gain ≈ 1.5',
     criteria: [
-      { label: 'Kazanç (Q)', get: (r) => r.Q_sci_max, lo: 1, hi: 2, unit: '', source: '2.05 MJ lazer → 3.15 MJ füzyon (Dec 2022)' },
-      { label: 'E_füzyon', get: (r) => r.E_fusion_MJ, lo: 2, hi: 4.5, unit: 'MJ', source: '3.15 MJ' },
+      { label: 'Gain (Q)', get: (r) => r.Q_sci_max, lo: 1, hi: 2, unit: '', source: '2.05 MJ laser → 3.15 MJ fusion (Dec 2022)' },
+      { label: 'E_fusion', get: (r) => r.E_fusion_MJ, lo: 2, hi: 4.5, unit: 'MJ', source: '3.15 MJ' },
     ],
   },
 ];
@@ -76,15 +76,15 @@ export function Validation({ runAll }: Props) {
       <div className="panel full">
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <div>
-            <h2 style={{ margin: 0 }}>Doğrulama</h2>
-            <div className="muted small">Model, bilinen deneylerle karşılaştırılır. <b className="accent">Test başarısızsa modeli düzelt, testi değil.</b> Her test arka planda (worker) tam hızda koşar.</div>
+            <h2 style={{ margin: 0 }}>Validation</h2>
+            <div className="muted small">The model is compared with known experiments. <b className="accent">If a test fails, fix the model, not the test.</b>  Each test runs at full speed in the background (worker).</div>
           </div>
           <div className="row">
-            <button className="btn primary" onClick={runAllTests} disabled={busy !== null}>{busy && busy !== 'sweep' ? `çalışıyor: ${busy}…` : '▶ 3 testi çalıştır'}</button>
-            <button className="btn" onClick={runSweep} disabled={busy !== null}>{busy === 'sweep' ? `tarama… ${sweep.length}/${PRESETS.length}` : 'Tüm ön ayarları tara'}</button>
+            <button className="btn primary" onClick={runAllTests} disabled={busy !== null}>{busy && busy !== 'sweep' ? `running: ${busy}…` : '▶ Run 3 tests'}</button>
+            <button className="btn" onClick={runSweep} disabled={busy !== null}>{busy === 'sweep' ? `scanning… ${sweep.length}/${PRESETS.length}` : 'Scan all presets'}</button>
           </div>
         </div>
-        {rows.length > 0 && <div style={{ marginTop: 6 }}><span className={`badge ${passCount === rows.length ? 'ok' : 'bad'}`}>{passCount}/{rows.length} test geçti</span></div>}
+        {rows.length > 0 && <div style={{ marginTop: 6 }}><span className={`badge ${passCount === rows.length ? 'ok' : 'bad'}`}>{passCount}/{rows.length}  tests passed</span></div>}
       </div>
 
       {TESTS.map((t) => {
@@ -95,8 +95,8 @@ export function Validation({ runAll }: Props) {
             <div className="panel-title">
               <h3>{t.title}</h3>
               <span className="row" style={{ gap: 6 }}>
-                {ok !== undefined && <span className={`badge ${ok ? 'ok' : 'bad'}`}>{ok ? 'GEÇTİ' : 'KALDI'}</span>}
-                <button className="btn sm" onClick={() => runTest(t)} disabled={busy !== null}>çalıştır</button>
+                {ok !== undefined && <span className={`badge ${ok ? 'ok' : 'bad'}`}>{ok ? 'PASS' : 'FAIL'}</span>}
+                <button className="btn sm" onClick={() => runTest(t)} disabled={busy !== null}>run</button>
               </span>
             </div>
             {row?.error && <pre className="err">{row.error}</pre>}
@@ -115,7 +115,7 @@ export function Validation({ runAll }: Props) {
                 );
               })}
               {row?.report && (
-                <tr><td className="small muted">Sonlanma</td><td className="small muted">{row.report.termination.reason} · {row.ms?.toFixed(0)} ms</td></tr>
+                <tr><td className="small muted">Termination</td><td className="small muted">{row.report.termination.reason} · {row.ms?.toFixed(0)} ms</td></tr>
               )}
             </tbody></table>
           </div>
@@ -124,9 +124,9 @@ export function Validation({ runAll }: Props) {
 
       {sweep.length > 0 && (
         <div className="panel full" style={{ overflowX: 'auto' }}>
-          <h3>Ön ayar taraması</h3>
+          <h3>Preset scan</h3>
           <table className="cmp">
-            <thead><tr><th>Ön ayar</th><th>Beklenen</th><th>Q_sci maks</th><th>T_max [keV]</th><th>E_füz [MJ]</th><th>Sonlanma</th><th>Puan</th></tr></thead>
+            <thead><tr><th>Preset</th><th>Expected</th><th>Q_sci max</th><th>T_max [keV]</th><th>E_fusion [MJ]</th><th>Termination</th><th>Score</th></tr></thead>
             <tbody>
               {sweep.map((s) => (
                 <tr key={s.name}>

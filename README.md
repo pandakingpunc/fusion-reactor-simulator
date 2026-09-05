@@ -1,5 +1,8 @@
 # Füzyon Reaktörü Simülatörü
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22259861.svg)](https://doi.org/10.5281/zenodo.22259861)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 > 0-boyutlu (0D), zaman-çözümlü füzyon reaktörü güç-dengesi simülasyon motoru.
 > Manyetik hapsetme (tokamak, sferik tokamak, stellarator) başta olmak üzere birden
 > çok hapsetme yöntemini; gerçek makine preset'leriyle (ITER, JET, SPARC, DEMO, W7-X, …)

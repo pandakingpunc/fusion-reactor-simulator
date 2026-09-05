@@ -13,9 +13,9 @@ import { BlanketType, MagnetTech } from './types';
  * Gerilme: yapısal çelik (316LN) ~ 660 MPa izin verilen (ITER tasarım).
  */
 export const MAGNET_TECH: Record<MagnetTech, { Bmax_coil: number; stress_MPa: number; label: string; cryo_W_per_W: number; cost_rel: number }> = {
-  Cu: { Bmax_coil: 9.0, stress_MPa: 300, label: 'Bakır (su soğutmalı, darbeli)', cryo_W_per_W: 0, cost_rel: 0.4 },
-  NbTi: { Bmax_coil: 8.5, stress_MPa: 660, label: 'NbTi süperiletken (4.5 K)', cryo_W_per_W: 300, cost_rel: 0.8 },
-  Nb3Sn: { Bmax_coil: 13.0, stress_MPa: 660, label: 'Nb3Sn süperiletken (4.5 K, ITER)', cryo_W_per_W: 300, cost_rel: 1.0 },
+  Cu: { Bmax_coil: 9.0, stress_MPa: 300, label: 'Copper (water-cooled, pulsed)', cryo_W_per_W: 0, cost_rel: 0.4 },
+  NbTi: { Bmax_coil: 8.5, stress_MPa: 660, label: 'NbTi superconductor (4.5 K)', cryo_W_per_W: 300, cost_rel: 0.8 },
+  Nb3Sn: { Bmax_coil: 13.0, stress_MPa: 660, label: 'Nb3Sn superconductor (4.5 K, ITER)', cryo_W_per_W: 300, cost_rel: 1.0 },
   REBCO: { Bmax_coil: 23.0, stress_MPa: 800, label: 'REBCO HTS (20 K, SPARC/ARC)', cryo_W_per_W: 40, cost_rel: 1.6 },
 };
 

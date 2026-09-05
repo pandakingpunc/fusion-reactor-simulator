@@ -12,7 +12,7 @@ export function Field({ def, value, onChange }: Props) {
         <span className="lbl"><span>{def.label}</span></span>
         <span className="row" style={{ gap: 6 }}>
           <input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} />
-          <span className="small muted">{value ? 'açık' : 'kapalı'}</span>
+          <span className="small muted">{value ? 'on' : 'off'}</span>
         </span>
         {def.hint && <span className="hint">{def.hint}</span>}
       </label>
@@ -58,7 +58,7 @@ function NumberField({ def, value, onChange }: { def: FieldDef; value: number; o
           value={isFinite(shown) ? Math.min(def.max, Math.max(def.min, shown)) : def.min}
           onChange={(e) => { const v = parseFloat(e.target.value); setText(fmtEdit(v)); onChange(v * scale); }} />
       )}
-      {(def.hint || out) && <span className={`hint ${out ? 'warn' : ''}`}>{out ? `Önerilen aralık dışında (${def.min}–${def.max})` : def.hint}</span>}
+      {(def.hint || out) && <span className={`hint ${out ? 'warn' : ''}`}>{out ? `Outside the recommended range (${def.min}–${def.max})` : def.hint}</span>}
     </label>
   );
 }

@@ -78,25 +78,25 @@ export function disruptionReport(p: {
 }
 
 export const DISRUPTION_LABELS: Record<DisruptionCause, string> = {
-  density_limit: 'Yoğunluk limiti disruption\'ı (Greenwald)',
-  beta_limit: 'Beta limiti — ideal MHD kararsızlığı (Troyon)',
-  q95_limit: 'q95 < 2 — kilitli mod / dikey yer değiştirme (VDE)',
-  radiative_collapse: 'Radyatif çöküş (P_rad > P_heat)',
-  tungsten_accumulation: 'Tungsten birikimi — merkez radyatif çöküş',
-  vde: 'Dikey yer değiştirme olayı (VDE)',
-  ntm_locked_mode: 'NTM büyüdü ve kilitlendi (locked mode)',
-  magnet_quench: 'Mıknatıs quench — atış iptal',
+  density_limit: 'Density-limit disruption (Greenwald)',
+  beta_limit: 'Beta limit — ideal MHD instability (Troyon)',
+  q95_limit: 'q95 < 2 — locked mode / vertical displacement (VDE)',
+  radiative_collapse: 'Radiative collapse (P_rad > P_heat)',
+  tungsten_accumulation: 'Tungsten accumulation — core radiative collapse',
+  vde: 'Vertical displacement event (VDE)',
+  ntm_locked_mode: 'NTM grew and locked (locked mode)',
+  magnet_quench: 'Magnet quench — shot aborted',
   none: '—',
 };
 
 export const DISRUPTION_FIXES: Record<DisruptionCause, string> = {
-  density_limit: 'Hedef yoğunluğu düşür (n/n_G < 0.85), plazma akımını artır veya küçük yarıçapı azalt; besleme hızını sınırla.',
-  beta_limit: 'Isıtma gücünü azalt, B_T veya I_p\'yi artır (β_N = β a B / I_p), ya da duvar stabilizasyonu/şekillendirme ile β_N limitini yükselt.',
-  q95_limit: 'Plazma akımını azalt veya B_T\'yi artır: q95 ≈ 5 a² B κ_eff / (R I_p) > 3 hedefle.',
-  radiative_collapse: 'Safsızlık konsantrasyonunu düşür (duvar koşullandırma), yardımcı ısıtmayı artır, yoğunluğu azalt.',
-  tungsten_accumulation: 'Merkez ECRH ile W birikimini engelle, ELM frekansını artır (pellet pacing), W kaynağını (divertör sıçratma) azalt.',
-  vde: 'Elongasyonu düşür veya dikey konum kontrolünü güçlendir.',
-  ntm_locked_mode: 'β_N\'yi NTM eşiğinin altında tut veya ECCD ile adayı stabilize et.',
-  magnet_quench: 'B_T\'yi mıknatıs teknolojisinin limitinin altına çek veya HTS (REBCO) seç.',
+  density_limit: 'Lower the target density (n/n_G < 0.85), increase plasma current or reduce the minor radius; limit the fueling rate.',
+  beta_limit: 'Reduce heating power, increase B_T or I_p (β_N = β a B / I_p), or raise the β_N limit through wall stabilization/shaping.',
+  q95_limit: 'Reduce plasma current or increase B_T: aim for q95 ≈ 5 a² B κ_eff / (R I_p) > 3.',
+  radiative_collapse: 'Reduce impurity concentration (wall conditioning), increase auxiliary heating, and lower density.',
+  tungsten_accumulation: 'Prevent W accumulation with central ECRH, increase ELM frequency (pellet pacing), and reduce the W source (divertor sputtering).',
+  vde: 'Reduce elongation or strengthen vertical position control.',
+  ntm_locked_mode: 'Keep β_N below the NTM threshold or stabilize the island with ECCD.',
+  magnet_quench: 'Reduce B_T below the magnet technology limit or select HTS (REBCO).',
   none: '',
 };

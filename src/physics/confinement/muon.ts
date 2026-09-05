@@ -20,12 +20,12 @@ const TAU_MU = 2.197e-6; // s, müon ömrü
 const E_DT_MeV = 17.589;
 
 const MUON_DIAGS: DiagSpec[] = [
-  { key: 'Yf', label: 'Füzyon / müon', unit: '', group: 'Katalizör' },
-  { key: 'P_fus', label: 'P_füzyon', unit: 'MW', group: 'Güç' },
-  { key: 'P_in', label: 'P_müon üretimi', unit: 'MW', group: 'Güç' },
-  { key: 'Q', label: 'Q bilimsel', unit: '', group: 'Performans' },
-  { key: 'Nn', label: 'Nötron sayısı', unit: '', group: 'Nötron', log: true },
-  { key: 'Ti', label: 'Sıcaklık (soğuk!)', unit: 'keV', group: 'Sıcaklık', log: true },
+  { key: 'Yf', label: 'Fusions / muon', unit: '', group: 'Catalyst' },
+  { key: 'P_fus', label: 'P_fusion', unit: 'MW', group: 'Power' },
+  { key: 'P_in', label: 'P_muon production', unit: 'MW', group: 'Power' },
+  { key: 'Q', label: 'Scientific Q', unit: '', group: 'Performance' },
+  { key: 'Nn', label: 'Neutron count', unit: '', group: 'Neutrons', log: true },
+  { key: 'Ti', label: 'Temperature (cold!)', unit: 'keV', group: 'Temperature', log: true },
 ];
 
 export class MuonModel extends PulsedBase {
@@ -81,24 +81,24 @@ export class MuonModel extends PulsedBase {
     return this.buildReport(hist, events, {
       fuel: 'DT',
       scoreBreakdown: [
-        { label: 'Q_bilimsel', value: Q, ref: 1, unit: '', note: 'Başabaş = 1 (µCF ~0.3-0.4)' },
-        { label: 'Füzyon / müon', value: this.Yf, ref: 150, unit: '', note: 'Yapışma limiti ~150' },
-        { label: 'Füzyon enerjisi', value: last.d.Efus_MJ ?? 0, ref: 1, unit: 'MJ', note: '1 s boyunca' },
+        { label: 'Q_scientific', value: Q, ref: 1, unit: '', note: 'Breakeven = 1 (µCF ~0.3-0.4)' },
+        { label: 'Fusions / muon', value: this.Yf, ref: 150, unit: '', note: 'Sticking limit ~150' },
+        { label: 'Fusion energy', value: last.d.Efus_MJ ?? 0, ref: 1, unit: 'MJ', note: 'Over 1 s' },
       ],
       historical: [
-        { label: 'Deneysel µCF: ~150 füzyon/müon', ratio: this.Yf / 150, note: 'katalizör verimi' },
-        { label: 'Başabaş (Q=1)', ratio: Q / 1, note: 'Q' },
+        { label: 'Experimental µCF: ~150 fusions/muon', ratio: this.Yf / 150, note: 'catalyst yield' },
+        { label: 'Breakeven (Q=1)', ratio: Q / 1, note: 'Q' },
       ],
       engineering: {
-        'Füzyon / müon': +this.Yf.toFixed(1), 'α-yapışma olasılığı': this.cfg.stickingProb,
-        'Müon maliyeti (GeV)': this.cfg.muonCost_GeV, 'Çalışma sıcaklığı (K)': this.cfg.T_K,
+        'Fusions / muon': +this.Yf.toFixed(1), 'α-sticking probability': this.cfg.stickingProb,
+        'Muon cost (GeV)': this.cfg.muonCost_GeV, 'Operating temperature (K)': this.cfg.T_K,
       },
       extras: {
-        'Neden Q<1?': 'α-yapışma müonu tüketir (~%0.5/döngü) + müon üretimi pahalı (~5 GeV)',
-        'Durum': 'Bilinen fizikle net enerji üretmez (easter egg)',
+        'Why Q<1?': 'α-sticking consumes muons (~0.5%/cycle) + muon production is expensive (~5 GeV)',
+        'Status': 'No net energy production under known physics (easter egg)',
       },
-      warnings: ['Müon-katalizli füzyon oda/soğuk sıcaklıkta çalışır ama α-yapışma ve müon üretim maliyeti nedeniyle Q<1 kalır (temel fizik sınırı).'],
-      Q_eng_note: 'µCF için Q_bilimsel zaten <1; mühendislik Q daha da düşüktür.',
+      warnings: ['Muon-catalyzed fusion works at room/cold temperatures but remains at Q<1 due to α-sticking and muon production costs (a fundamental physics limit).'],
+      Q_eng_note: 'For µCF, scientific Q is already <1; engineering Q is even lower.',
       tempKey: 'Ti',
     });
   }

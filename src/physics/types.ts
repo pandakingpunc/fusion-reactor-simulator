@@ -15,18 +15,18 @@ export type Method =
   | 'frc' | 'mirror' | 'muon';
 
 export const METHOD_LABELS: Record<Method, string> = {
-  tokamak: 'Tokamak (konvansiyonel)',
-  spherical_tokamak: 'Sferik Tokamak (ST)',
+  tokamak: 'Tokamak (conventional)',
+  spherical_tokamak: 'Spherical Tokamak (ST)',
   stellarator: 'Stellarator',
-  icf_direct: 'Lazer ICF — doğrudan tahrik',
-  icf_indirect: 'Lazer ICF — dolaylı tahrik (hohlraum)',
-  mtf_liner: 'MTF — elektromanyetik liner',
-  mtf_piston: 'MTF — sıvı metal piston',
-  zpinch_sfs: 'Z-pinch (kesme-akış stabilize)',
+  icf_direct: 'Laser ICF — direct drive',
+  icf_indirect: 'Laser ICF — indirect drive (hohlraum)',
+  mtf_liner: 'MTF — electromagnetic liner',
+  mtf_piston: 'MTF — liquid-metal piston',
+  zpinch_sfs: 'Z-pinch (sheared-flow stabilized)',
   maglif: 'MagLIF',
-  frc: 'Alan Tersinmiş Konfigürasyon (FRC)',
-  mirror: 'Manyetik Ayna',
-  muon: 'Müon-katalizli füzyon (easter egg)',
+  frc: 'Field-Reversed Configuration (FRC)',
+  mirror: 'Magnetic Mirror',
+  muon: 'Muon-catalyzed fusion (easter egg)',
 };
 
 export type MagnetTech = 'Cu' | 'NbTi' | 'Nb3Sn' | 'REBCO';
@@ -204,12 +204,13 @@ export interface ScoreEntry {
 
 export interface ShotReport {
   method: Method;
-  duration: number; // s veya ns
+  duration: number; // In timeUnit (s, ns, or µs).
   timeUnit: string;
   Tmax_keV: number;
   Tmax_MC: number; // milyon °C
   Timax_keV: number;
   Temax_keV: number;
+  /** Stable, burn, and ignition times are always in seconds, regardless of timeUnit. */
   stableTime_s: number;
   burnTime_s: number;
   ignitionTime_s: number;

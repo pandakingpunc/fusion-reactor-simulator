@@ -182,8 +182,8 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
           </span>
         ))}
         <span className="spacer" />
-        <span className="li" onClick={() => setLogY((v) => !v)} title="logaritmik y ekseni">{logY ? 'log' : 'lin'}</span>
-        {xRange && <span className="li" onClick={() => setXRange(null)} title="zoom sıfırla (çift tık)">⟲</span>}
+        <span className="li" onClick={() => setLogY((v) => !v)} title="logarithmic y-axis">{logY ? 'log' : 'lin'}</span>
+        {xRange && <span className="li" onClick={() => setXRange(null)} title="reset zoom (double-click)">⟲</span>}
       </div>
     </div>
   );

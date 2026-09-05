@@ -1,6 +1,6 @@
 {
-  "title": "Füzyon Reaktörü Simülatörü (Fusion Reactor Simulator)",
-  "description": "0-boyutlu, zaman-çözümlü füzyon reaktörü güç-dengesi simülasyon motoru. Manyetik hapsetme (tokamak, sferik tokamak, stellarator) ve diğer şemaları açık literatürdeki ölçekleme yasaları ve reaksiyon verileriyle modeller; ITER, JET, SPARC, DEMO, W7-X gibi gerçek makine preset'leri içerir.",
+  "title": "Fusion Reactor Simulator",
+  "description": "A zero-dimensional, time-resolved fusion reactor power-balance simulation engine. Models magnetic confinement (tokamak, spherical tokamak, stellarator) and other schemes using scaling laws and reaction data from the open literature; includes presets for real machines such as ITER, JET, SPARC, DEMO, and W7-X.",
   "upload_type": "software",
   "license": "MIT",
   "access_right": "open",

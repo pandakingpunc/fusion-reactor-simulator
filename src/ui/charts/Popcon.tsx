@@ -135,7 +135,7 @@ export function Popcon({ cfg, point, height = 260 }: Props) {
     for (const lv of levels) { ctx.fillStyle = lv.c; ctx.fillText(lv.lbl, L + pw - 44, ly); ly += 12; }
     ctx.fillStyle = '#06d6a0'; ctx.fillText('P_aux<0', L + pw - 44, ly); ly += 12;
     ctx.fillStyle = '#ef476f'; ctx.fillText('β_N>lim', L + pw - 44, ly); ly += 12;
-    ctx.fillStyle = '#7f8ba3'; ctx.fillText('koyu: P<P_LH', L + pw - 74, ly);
+    ctx.fillStyle = '#7f8ba3'; ctx.fillText('dark: P<P_LH', L + pw - 74, ly);
     // çalışma noktası
     if (point && isFinite(point.n) && isFinite(point.T)) {
       const px = xp(Math.min(point.n, nMax)), py = yp(Math.min(point.T, TMax));

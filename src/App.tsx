@@ -24,11 +24,11 @@ export interface SavedShot {
 }
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'setup', label: 'Kurulum' },
-  { id: 'run', label: 'Çalıştır' },
-  { id: 'report', label: 'Rapor' },
-  { id: 'compare', label: 'Karşılaştır' },
-  { id: 'validate', label: 'Doğrulama' },
+  { id: 'setup', label: 'Setup' },
+  { id: 'run', label: 'Run' },
+  { id: 'report', label: 'Report' },
+  { id: 'compare', label: 'Compare' },
+  { id: 'validate', label: 'Validation' },
 ];
 
 export default function App() {
@@ -63,7 +63,7 @@ export default function App() {
   const pill = useMemo(() => {
     const s = state.status;
     const cls = s === 'running' ? 'running' : s === 'done' ? 'done' : s === 'error' ? 'error' : '';
-    const label = s === 'idle' ? 'hazır değil' : s === 'loading' ? 'yükleniyor…' : s === 'ready' ? 'hazır' : s === 'running' ? `çalışıyor · ${state.speed}×` : s === 'paused' ? 'duraklatıldı' : s === 'done' ? 'tamamlandı' : 'HATA';
+    const label = s === 'idle' ? 'Not ready' : s === 'loading' ? 'Loading…' : s === 'ready' ? 'Ready' : s === 'running' ? `Running · ${state.speed}×` : s === 'paused' ? 'Paused' : s === 'done' ? 'Completed' : 'ERROR';
     const t = state.meta ? ` · t = ${fmtTime(state.t, state.meta.timeUnit)}` : '';
     return <span className={`status-pill ${cls}`}>{label}{t}</span>;
   }, [state.status, state.speed, state.t, state.meta]);
@@ -71,7 +71,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand"><span className="dot" />FÜZYON REAKTÖR SİMÜLATÖRÜ</div>
+        <div className="brand"><span className="dot" />FUSION REACTOR SIMULATOR</div>
         <nav className="tabs">
           {TABS.map((tb) => (
             <button key={tb.id} className={`tab ${tab === tb.id ? 'active' : ''}`} onClick={() => setTab(tb.id)}

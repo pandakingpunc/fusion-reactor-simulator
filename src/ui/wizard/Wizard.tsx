@@ -35,7 +35,7 @@ export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
   };
   const update = (path: string, v: unknown) => {
     setCfg(setPath(cfg, path, v));
-    if (activePreset) setName(`${name.replace(/ \(değiştirildi\)$/, '')} (değiştirildi)`);
+    if (activePreset) setName(`${name.replace(/ \(değiştirildi\)$/, '')} (modified)`);
   };
 
   const groups = useMemo(() => {
@@ -48,8 +48,8 @@ export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
     if (id === 'method') {
       return (
         <>
-          <h2>1 · Hapsetme yöntemi</h2>
-          <p className="muted small">Her yöntem kendi fizik modülüyle koşar. Yöntem değiştirmek o yöntemin referans presetini yükler.</p>
+          <h2>1 · Confinement method</h2>
+          <p className="muted small">Each method runs its own physics module. Changing the method loads its reference preset.</p>
           {groups.map(([grp, ms]) => (
             <div key={grp} style={{ marginBottom: 12 }}>
               <h3>{grp}</h3>
@@ -68,13 +68,13 @@ export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
     }
     if (id === 'run') return <RunSummary cfg={cfg} name={name} onRun={onRun} />;
     const def = steps.find((s) => s.id === id);
-    if (!def) return <p className="muted">Bu yöntem için bu adımda ayar yok.</p>;
+    if (!def) return <p className="muted">No settings for this method at this step.</p>;
     const fields = def.fields.filter((f) => fieldVisible(cfg.method, f.path));
     return (
       <>
         <h2>{stepIdx + 1} · {def.title}</h2>
         {def.note && <p className="muted small">{def.note}</p>}
-        {fields.length === 0 && !def.note && <p className="muted">Bu adımda ayar yok.</p>}
+        {fields.length === 0 && !def.note && <p className="muted">No settings at this step.</p>}
         <div className="fields">
           {fields.map((f) => <Field key={f.path} def={f} value={getPath(cfg, f.path)} onChange={(v) => update(f.path, v)} />)}
         </div>
@@ -85,7 +85,7 @@ export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
   return (
     <div className="wizard">
       <aside className="panel">
-        <h3>Kurulum adımları</h3>
+        <h3>Setup steps</h3>
         <div className="steps">
           {STEP_IDS.map((id, i) => (
             <div key={id} className={`step ${i === stepIdx ? 'active' : ''} ${i < stepIdx ? 'done' : ''}`} onClick={() => setStepIdx(i)}>
@@ -95,20 +95,20 @@ export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
         </div>
         <div style={{ marginTop: 14 }}>
           <label className="field">
-            <span className="lbl"><span>Yapılandırma adı</span></span>
+            <span className="lbl"><span>Configuration name</span></span>
             <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
           </label>
         </div>
         <div className="row" style={{ marginTop: 12, justifyContent: 'space-between' }}>
-          <button className="btn sm" disabled={stepIdx === 0} onClick={() => setStepIdx(stepIdx - 1)}>◀ Geri</button>
+          <button className="btn sm" disabled={stepIdx === 0} onClick={() => setStepIdx(stepIdx - 1)}>◀ Back</button>
           {stepIdx < STEP_IDS.length - 1
-            ? <button className="btn sm" onClick={() => setStepIdx(stepIdx + 1)}>İleri ▶</button>
-            : <button className="btn sm primary" onClick={() => onRun(cfg)}>ÇALIŞTIR ▶</button>}
+            ? <button className="btn sm" onClick={() => setStepIdx(stepIdx + 1)}>Next ▶</button>
+            : <button className="btn sm primary" onClick={() => onRun(cfg)}>RUN ▶</button>}
         </div>
       </aside>
       <section className="panel" style={{ overflow: 'auto' }}>{renderStep(stepId)}</section>
       <aside className="panel" style={{ overflow: 'auto' }}>
-        <div className="panel-title"><h3>Presetler</h3><span className="muted small">{PRESETS.length} cihaz</span></div>
+        <div className="panel-title"><h3>Presets</h3><span className="muted small">{PRESETS.length}  devices</span></div>
         <div className="preset-list">
           {PRESETS.map((p) => (
             <div key={p.id} className={`preset ${activePreset === p.id ? 'active' : ''}`} onClick={() => pickPreset(p.id)}>
@@ -116,7 +116,7 @@ export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
                 <span className="name">{p.name}</span>
                 <span className="row" style={{ gap: 6 }}>
                   <span className="muted small">{METHOD_INFO[p.cfg.method].name}</span>
-                  <button className="btn sm primary" title="Bu preseti doğrudan çalıştır"
+                  <button className="btn sm primary" title="Run this preset directly"
                     onClick={(e) => { e.stopPropagation(); pickPreset(p.id); onRun(p.cfg); }}>▶</button>
                 </span>
               </div>
@@ -135,12 +135,12 @@ function RunSummary({ cfg, name, onRun }: { cfg: ReactorConfig; name: string; on
   const steps = stepsFor(cfg.method);
   return (
     <>
-      <h2>6 · Çalıştır</h2>
+      <h2>6 · Run</h2>
       <p className="muted small">
-        <b>{name}</b> — {METHOD_INFO[cfg.method].name}. Simülasyon web worker'da koşar; canlı grafikler, kesit ve POPCON eşzamanlı güncellenir.
-        Çalışırken ısıtma/besleme/yoğunluk kaydırıcılarıyla müdahale edebilirsiniz.
+        <b>{name}</b> — {METHOD_INFO[cfg.method].name}. The simulation runs in a web worker; live charts, cross-section, and POPCON update simultaneously.
+        You can adjust heating/fueling/density sliders while it runs.
       </p>
-      <button className="btn primary" style={{ fontSize: 15, padding: '10px 26px', margin: '8px 0 16px' }} onClick={() => onRun(cfg)}>▶ ATIŞI BAŞLAT</button>
+      <button className="btn primary" style={{ fontSize: 15, padding: '10px 26px', margin: '8px 0 16px' }} onClick={() => onRun(cfg)}>▶ START SHOT</button>
       <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
         {steps.map((s) => {
           const fields = s.fields.filter((f) => fieldVisible(cfg.method, f.path));
@@ -152,7 +152,7 @@ function RunSummary({ cfg, name, onRun }: { cfg: ReactorConfig; name: string; on
                 <tbody>
                   {fields.map((f) => {
                     const v = getPath(cfg, f.path);
-                    const shown = typeof v === 'number' ? fmtNum(v / (f.scale ?? 1)) : typeof v === 'boolean' ? (v ? 'açık' : 'kapalı') : v === undefined || v === '' ? '—' : String(v);
+                    const shown = typeof v === 'number' ? fmtNum(v / (f.scale ?? 1)) : typeof v === 'boolean' ? (v ? 'on' : 'off') : v === undefined || v === '' ? '—' : String(v);
                     return <tr key={f.path}><td>{f.label}</td><td className="num">{shown} <span className="muted small">{f.unit ?? ''}</span></td></tr>;
                   })}
                 </tbody>

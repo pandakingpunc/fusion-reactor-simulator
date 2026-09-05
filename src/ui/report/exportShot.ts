@@ -11,7 +11,7 @@ function download(name: string, text: string, mime: string) {
 }
 
 export function exportJSON(name: string, cfg: ReactorConfig, report: ShotReport, events: SimEvent[]) {
-  download(`${safe(name)}_rapor.json`, JSON.stringify({ name, exportedAt: new Date().toISOString(), cfg, report, events }, null, 2), 'application/json');
+  download(`${safe(name)}_report.json`, JSON.stringify({ name, exportedAt: new Date().toISOString(), cfg, report, events }, null, 2), 'application/json');
 }
 
 export function exportCSV(name: string, frames: HistoryFrame[], specs: DiagSpec[], timeUnit: string) {
@@ -21,7 +21,7 @@ export function exportCSV(name: string, frames: HistoryFrame[], specs: DiagSpec[
   const header = [`t_${timeUnit}`, ...cols.map((k) => { const s = specs.find((x) => x.key === k); return s && s.unit ? `${k}_${s.unit.replace(/[^\w⁻²³¹⁰]/g, '')}` : k; })];
   const lines = [header.join(',')];
   for (const f of frames) lines.push([f.t, ...cols.map((k) => f.d[k] ?? '')].map((v) => (typeof v === 'number' ? v.toPrecision(7) : v)).join(','));
-  download(`${safe(name)}_zaman_serisi.csv`, lines.join('\n'), 'text/csv');
+  download(`${safe(name)}_time_series.csv`, lines.join('\n'), 'text/csv');
 }
 
 export function exportReportCSV(name: string, report: ShotReport) {
@@ -36,8 +36,8 @@ export function exportReportCSV(name: string, report: ShotReport) {
     ...Object.entries(report.engineering).map(([k, v]) => [`eng.${k}`, String(v)] as [string, string]),
     ...Object.entries(report.extras).map(([k, v]) => [`extra.${k}`, v] as [string, string | number]),
   ];
-  download(`${safe(name)}_ozet.csv`, ['key,value', ...rows.map(([k, v]) => `${k},${csvCell(v)}`)].join('\n'), 'text/csv');
+  download(`${safe(name)}_summary.csv`, ['key,value', ...rows.map(([k, v]) => `${k},${csvCell(v)}`)].join('\n'), 'text/csv');
 }
 
 function csvCell(v: string | number): string { return typeof v === 'number' ? String(v) : `"${v.replace(/"/g, '""')}"`; }
-function safe(s: string): string { return s.replace(/[^\w\-]+/g, '_').slice(0, 60) || 'atis'; }
+function safe(s: string): string { return s.replace(/[^\w\-]+/g, '_').slice(0, 60) || 'shot'; }

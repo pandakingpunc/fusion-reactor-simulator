@@ -85,8 +85,8 @@ export abstract class PulsedBase implements SimModel {
     if (this.terminated) return [];
     const ev = this.stepEvents(t, dt, y);
     if (!this.terminated && t >= this.tEnd - Math.max(1e-9, this.tEnd * 1e-6)) {
-      this.terminated = { t, natural: true, reason: 'Planlı bitiş', diagnosis: `Atış planlanan ${this.tEnd} ${this.timeUnit} süreyi tamamladı.`, fix: '' };
-      ev.push({ t, kind: 'end', msg: 'Planlı atış sonu' });
+      this.terminated = { t, natural: true, reason: 'Scheduled end', diagnosis: `The shot completed the scheduled duration of ${this.tEnd} ${this.timeUnit}.`, fix: '' };
+      ev.push({ t, kind: 'end', msg: 'Scheduled end of shot' });
     }
     return ev;
   }
@@ -121,23 +121,25 @@ export abstract class PulsedBase implements SimModel {
       if ((hist[i].d.Q ?? 0) >= 1) burnTime += dt;
       if ((hist[i].d.ignited ?? 0) > 0) ignTime += dt;
     }
-    const term: TerminationInfo = this.terminated ?? { t: last.t, natural: true, reason: 'Devam ediyor', diagnosis: '', fix: '' };
+    const term: TerminationInfo = this.terminated ?? { t: last.t, natural: true, reason: 'In progress', diagnosis: '', fix: '' };
     let raw = 0;
     for (const s of o.scoreBreakdown) raw += s.ref > 0 ? Math.min(1, s.value / s.ref) : 0;
     let score = Math.round((100 / Math.max(o.scoreBreakdown.length, 1)) * raw);
     if (!term.natural) score = Math.round(score * 0.7);
     const TeMax = maxOf(col('Te'));
+    const secondsPerUnit = this.timeUnit === 'ns' ? 1e-9 : this.timeUnit === 'µs' ? 1e-6 : 1;
     return {
       method: this.method, duration: last.t, timeUnit: this.timeUnit,
       Tmax_keV: Tmax, Tmax_MC: U.keV_to_MC(Tmax), Timax_keV: Tmax, Temax_keV: TeMax > 0 ? TeMax : Tmax,
-      stableTime_s: o.stableTime ?? last.t, burnTime_s: burnTime, ignitionTime_s: ignTime,
-      stableDefinition: o.stableDefinition ?? 'Stabil süre = plazmanın sürdürüldüğü süre. Yanma süresi = Q ≥ 1 süresi. Ateşleme süresi = kendini besleyen (P_alfa ≥ kayıplar) süre.',
+      stableTime_s: (o.stableTime ?? last.t) * secondsPerUnit,
+      burnTime_s: burnTime * secondsPerUnit, ignitionTime_s: ignTime * secondsPerUnit,
+      stableDefinition: o.stableDefinition ?? 'Stable time = duration for which the plasma is sustained. Burn time = duration with Q ≥ 1. Ignition time = self-sustaining duration (P_alpha ≥ losses).',
       Q_sci_max: maxOf(Q), Q_sci_avg: Qavg, Q_eng: o.Q_eng ?? 0,
-      Q_eng_note: o.Q_eng_note ?? 'Q_müh (duvar prizi) bu deneysel/kavramsal cihaz için ayrıntılı modellenmedi.',
+      Q_eng_note: o.Q_eng_note ?? 'Q_eng (wall plug) is not modeled in detail for this experimental/conceptual device.',
       E_fusion_MJ: Efus, E_input_MJ: Ein,
       neutronYield: last.d.Nn ?? 0, neutronFluence_m2: (last.d.Nn ?? 0) / Math.max(o.wallArea ?? 1, 1e-9),
       tripleProduct_max: triple, lawson_ratio: triple / lawsonRef,
-      lawsonNote: `Referans (nTτ)_ateşleme ≈ ${lawsonRef.toExponential(1)} keV s m⁻³ (${o.fuel}); 1.0 = ateşleme eşiği.`,
+      lawsonNote: `Reference (nTτ)_ignition ≈ ${lawsonRef.toExponential(1)} keV s m⁻³ (${o.fuel}); 1.0 = ignition threshold.`,
       termination: term, score, scoreBreakdown: o.scoreBreakdown, historical: o.historical, warnings: o.warnings,
       engineering: o.engineering, extras: o.extras,
     };

@@ -24,13 +24,13 @@ const ICF_CAL = 0.07; // geometrik ρR → gerçekçi ρR kalibrasyonu (NIF'e ay
 const E_DT_MeV = 17.589;
 
 const ICF_DIAGS: DiagSpec[] = [
-  { key: 'P_fus', label: 'P_füzyon (anlık)', unit: 'MW', group: 'Güç' },
-  { key: 'Ti', label: 'Hotspot T', unit: 'keV', group: 'Sıcaklık' },
-  { key: 'rhoR', label: 'ρR (areal yoğunluk)', unit: 'g/cm²', group: 'Sıkışma' },
-  { key: 'Q', label: 'Kazanç G (kümülatif)', unit: '', group: 'Performans' },
-  { key: 'Efus_MJ', label: 'E_füzyon (birikmiş)', unit: 'MJ', group: 'Enerji' },
-  { key: 'Nn', label: 'Nötron sayısı', unit: '', group: 'Nötron', log: true },
-  { key: 'ignited', label: 'Ateşleme (0/1)', unit: '', group: 'Performans' },
+  { key: 'P_fus', label: 'P_fusion (instantaneous)', unit: 'MW', group: 'Power' },
+  { key: 'Ti', label: 'Hotspot T', unit: 'keV', group: 'Temperature' },
+  { key: 'rhoR', label: 'ρR (areal density)', unit: 'g/cm²', group: 'Compression' },
+  { key: 'Q', label: 'Gain G (cumulative)', unit: '', group: 'Performance' },
+  { key: 'Efus_MJ', label: 'E_fusion (accumulated)', unit: 'MJ', group: 'Energy' },
+  { key: 'Nn', label: 'Neutron count', unit: '', group: 'Neutrons', log: true },
+  { key: 'ignited', label: 'Ignition (0/1)', unit: '', group: 'Performance' },
 ];
 
 export class ICFModel extends PulsedBase {
@@ -123,8 +123,8 @@ export class ICFModel extends PulsedBase {
     const ev: SimEvent[] = [];
     if (!this._banged && t >= this.bang) {
       this._banged = true;
-      if (this.ignited) ev.push({ t, kind: 'ignition', msg: `Bang-time: ATEŞLEME (χ_ig = ${this.chi_ig.toFixed(2)} ≥ 1), hotspot ${this.T_hs.toFixed(1)} keV, ρR = ${this.rhoR_eff.toFixed(2)} g/cm²` });
-      else ev.push({ t, kind: 'warning', msg: `Bang-time: ateşleme YOK (χ_ig = ${this.chi_ig.toFixed(2)} < 1) — düşük yanma` });
+      if (this.ignited) ev.push({ t, kind: 'ignition', msg: `Bang-time: IGNITION (χ_ig = ${this.chi_ig.toFixed(2)} ≥ 1), hotspot ${this.T_hs.toFixed(1)} keV, ρR = ${this.rhoR_eff.toFixed(2)} g/cm²` });
+      else ev.push({ t, kind: 'warning', msg: `Bang-time: NO ignition (χ_ig = ${this.chi_ig.toFixed(2)} < 1) — low burn` });
     }
     return ev;
   }
@@ -142,34 +142,34 @@ export class ICFModel extends PulsedBase {
   report(hist: HistoryFrame[], events: SimEvent[]): ShotReport {
     const G = this.E_fus_total / Math.max(this.E_laser_J, 1);
     const warnings: string[] = [];
-    if (!this.ignited) warnings.push(`Ateşleme eşiğinin altında (χ_ig = ${this.chi_ig.toFixed(2)} < 1): hız, ρR, asimetri veya pürüzlülük yetersiz — yanma verimi düşük.`);
-    if (this.cfg.asymmetry_rms > 3) warnings.push(`Düşük-mod asimetri %${this.cfg.asymmetry_rms} yüksek — hotspot bozulur, verim düşer.`);
+    if (!this.ignited) warnings.push(`Below the ignition threshold (χ_ig = ${this.chi_ig.toFixed(2)} < 1): inadequate velocity, ρR, asymmetry, or roughness — low burn efficiency.`);
+    if (this.cfg.asymmetry_rms > 3) warnings.push(`Low-mode asymmetry of ${this.cfg.asymmetry_rms}% is high — the hotspot degrades and yield drops.`);
     return this.buildReport(hist, events, {
       fuel: this.cfg.fuel, wallArea: 314, // ~5 m yarıçaplı hedef odası
       Q_eng: G * (this.cfg.method === 'icf_indirect' ? this.cfg.hohlraumEff : this.cfg.absorption) * 0.1,
-      Q_eng_note: 'ICF için Q_müh ≈ G × kaplin × duvar-prizi verimi (lazer verimi ~%10 dahil); net enerji için G ≳ 100 gerekir.',
+      Q_eng_note: 'For ICF, Q_eng ≈ G × coupling × wall-plug efficiency (including ~10% laser efficiency); net energy requires G ≳ 100.',
       scoreBreakdown: [
-        { label: 'Kazanç G', value: G, ref: 1, unit: '', note: 'G>1 = bilimsel başabaş (NIF 2022)' },
-        { label: 'Hotspot T', value: this.T_hs, ref: 5, unit: 'keV', note: 'Ateşleme ~ 4-5 keV' },
-        { label: 'ρR', value: this.rhoR_eff, ref: 0.3, unit: 'g/cm²', note: 'Yanma için ρR ≳ 0.3' },
-        { label: 'Ateşleme parametresi', value: this.chi_ig, ref: 1, unit: '', note: 'χ_ig ≥ 1 = ateşleme' },
-        { label: 'Füzyon enerjisi', value: this.E_fus_total / 1e6, ref: 3.15, unit: 'MJ', note: 'NIF 2022: 3.15 MJ' },
+        { label: 'Gain G', value: G, ref: 1, unit: '', note: 'G>1 = scientific breakeven (NIF 2022)' },
+        { label: 'Hotspot T', value: this.T_hs, ref: 5, unit: 'keV', note: 'Ignition ~ 4-5 keV' },
+        { label: 'ρR', value: this.rhoR_eff, ref: 0.3, unit: 'g/cm²', note: 'Burn requires ρR ≳ 0.3' },
+        { label: 'Ignition parameter', value: this.chi_ig, ref: 1, unit: '', note: 'χ_ig ≥ 1 = ignition' },
+        { label: 'Fusion energy', value: this.E_fus_total / 1e6, ref: 3.15, unit: 'MJ', note: 'NIF 2022: 3.15 MJ' },
       ],
       historical: [
-        { label: 'NIF 2022 (N221204): 3.15 MJ, G=1.5', ratio: G / 1.5, note: 'kazanç' },
-        { label: 'NIF 2022: 3.15 MJ füzyon', ratio: this.E_fus_total / 3.15e6, note: 'füzyon enerjisi' },
+        { label: 'NIF 2022 (N221204): 3.15 MJ, G=1.5', ratio: G / 1.5, note: 'gain' },
+        { label: 'NIF 2022: 3.15 MJ fusion', ratio: this.E_fus_total / 3.15e6, note: 'fusion energy' },
       ],
       engineering: {
-        'Kazanç G': +G.toFixed(2), 'ρR (g/cm²)': +this.rhoR_eff.toFixed(3), 'Ateşleme χ_ig': +this.chi_ig.toFixed(2),
-        'Hotspot T (keV)': +this.T_hs.toFixed(1), 'Kaplin': this.cfg.method === 'icf_indirect' ? `hohlraum ${(this.cfg.hohlraumEff * 100).toFixed(0)}%` : `doğrudan ${(this.cfg.absorption * 100).toFixed(0)}%`,
-        'Lazer (MJ)': this.cfg.E_laser_MJ, 'Ateşlendi': this.ignited,
+        'Gain G': +G.toFixed(2), 'ρR (g/cm²)': +this.rhoR_eff.toFixed(3), 'Ignition χ_ig': +this.chi_ig.toFixed(2),
+        'Hotspot T (keV)': +this.T_hs.toFixed(1), 'Coupling': this.cfg.method === 'icf_indirect' ? `hohlraum ${(this.cfg.hohlraumEff * 100).toFixed(0)}%` : `direct ${(this.cfg.absorption * 100).toFixed(0)}%`,
+        'Laser (MJ)': this.cfg.E_laser_MJ, 'Ignited': this.ignited,
       },
       extras: {
-        'Sıkışma oranı (CR)': this.cfg.convergenceRatio, 'Adiabat α': this.cfg.adiabat,
-        'İmplozyon hızı (km/s)': this.cfg.implosionVelocity_kms,
+        'Convergence ratio (CR)': this.cfg.convergenceRatio, 'Adiabat α': this.cfg.adiabat,
+        'Implosion velocity (km/s)': this.cfg.implosionVelocity_kms,
       },
       warnings,
-      stableDefinition: 'ICF darbelidir: "süre" bang-time çevresindeki yanma penceresidir (ns). Kazanç G = E_füzyon / E_lazer.',
+      stableDefinition: 'ICF is pulsed: "duration" is the burn window around bang-time (ns). Gain G = E_fusion / E_laser.',
       tempKey: 'Ti',
     });
   }

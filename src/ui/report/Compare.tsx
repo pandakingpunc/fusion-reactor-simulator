@@ -6,40 +6,40 @@ import { fmtNum } from '../format';
 interface Props { shots: SavedShot[]; onRemove: (id: number) => void; onLoad: (s: SavedShot) => void }
 
 const ROWS: { label: string; get: (r: ShotReport) => number | string; unit?: string; best?: 'max' | 'min' }[] = [
-  { label: 'Yöntem', get: (r) => METHOD_LABELS[r.method] },
-  { label: 'Süre', get: (r) => `${fmtNum(r.duration)} ${r.timeUnit}` },
+  { label: 'Method', get: (r) => METHOD_LABELS[r.method] },
+  { label: 'Duration', get: (r) => `${fmtNum(r.duration)} ${r.timeUnit}` },
   { label: 'T_max', get: (r) => r.Tmax_keV, unit: 'keV', best: 'max' },
   { label: 'T_max', get: (r) => r.Tmax_MC, unit: 'M°C', best: 'max' },
-  { label: 'Q_sci maks', get: (r) => r.Q_sci_max, best: 'max' },
-  { label: 'Q_sci ort.', get: (r) => r.Q_sci_avg, best: 'max' },
+  { label: 'Q_sci max', get: (r) => r.Q_sci_max, best: 'max' },
+  { label: 'Q_sci avg.', get: (r) => r.Q_sci_avg, best: 'max' },
   { label: 'Q_eng', get: (r) => r.Q_eng, best: 'max' },
-  { label: 'E_füzyon', get: (r) => r.E_fusion_MJ, unit: 'MJ', best: 'max' },
-  { label: 'E_girdi', get: (r) => r.E_input_MJ, unit: 'MJ', best: 'min' },
-  { label: 'Ateşleme süresi', get: (r) => r.ignitionTime_s, unit: 's', best: 'max' },
-  { label: 'Yanma süresi', get: (r) => r.burnTime_s, unit: 's', best: 'max' },
-  { label: 'Kararlı süre', get: (r) => r.stableTime_s, unit: 's', best: 'max' },
-  { label: 'nTτ maks', get: (r) => r.tripleProduct_max, unit: 'keV·s·m⁻³', best: 'max' },
-  { label: 'Lawson oranı', get: (r) => r.lawson_ratio, best: 'max' },
-  { label: 'Nötron verimi', get: (r) => r.neutronYield, best: 'max' },
-  { label: 'Sonlanma', get: (r) => r.termination.reason },
-  { label: 'Puan', get: (r) => r.score, best: 'max' },
+  { label: 'E_fusion', get: (r) => r.E_fusion_MJ, unit: 'MJ', best: 'max' },
+  { label: 'E_input', get: (r) => r.E_input_MJ, unit: 'MJ', best: 'min' },
+  { label: 'Ignition time', get: (r) => r.ignitionTime_s, unit: 's', best: 'max' },
+  { label: 'Burn time', get: (r) => r.burnTime_s, unit: 's', best: 'max' },
+  { label: 'Stable time', get: (r) => r.stableTime_s, unit: 's', best: 'max' },
+  { label: 'nTτ max', get: (r) => r.tripleProduct_max, unit: 'keV·s·m⁻³', best: 'max' },
+  { label: 'Lawson ratio', get: (r) => r.lawson_ratio, best: 'max' },
+  { label: 'Neutron yield', get: (r) => r.neutronYield, best: 'max' },
+  { label: 'Termination', get: (r) => r.termination.reason },
+  { label: 'Score', get: (r) => r.score, best: 'max' },
 ];
 
 export function Compare({ shots, onRemove, onLoad }: Props) {
-  if (!shots.length) return <div className="panel muted">Karşılaştırmak için önce bir atış tamamlayın. Tamamlanan her atış otomatik olarak buraya eklenir.</div>;
+  if (!shots.length) return <div className="panel muted">Complete a shot first to compare results. Every completed shot is added here automatically.</div>;
   return (
     <div className="panel" style={{ overflowX: 'auto' }}>
-      <div className="panel-title"><h3>Yan yana karşılaştırma</h3><span className="muted small">{shots.length} atış · en iyi değer vurgulu</span></div>
+      <div className="panel-title"><h3>Side-by-side comparison</h3><span className="muted small">{shots.length}  shots · best value highlighted</span></div>
       <table className="cmp">
         <thead>
           <tr>
-            <th>Büyüklük</th>
+            <th>Quantity</th>
             {shots.map((s) => (
               <th key={s.id}>
                 <div>{s.name}</div>
                 <div className="row" style={{ justifyContent: 'flex-end', gap: 4, marginTop: 3 }}>
-                  <button className="btn sm" onClick={() => onLoad(s)} title="Yapılandırmayı sihirbaza yükle">yükle</button>
-                  <button className="btn sm danger" onClick={() => onRemove(s.id)} title="Listeden çıkar">×</button>
+                  <button className="btn sm" onClick={() => onLoad(s)} title="Load configuration into the wizard">load</button>
+                  <button className="btn sm danger" onClick={() => onRemove(s.id)} title="Remove from list">×</button>
                 </div>
               </th>
             ))}
@@ -67,11 +67,11 @@ export function Compare({ shots, onRemove, onLoad }: Props) {
             );
           })}
           <tr>
-            <td>Uyarı sayısı</td>
+            <td>Warning count</td>
             {shots.map((s) => <td key={s.id}>{s.report.warnings.length}</td>)}
           </tr>
           <tr>
-            <td>Olay sayısı</td>
+            <td>Event count</td>
             {shots.map((s) => <td key={s.id}>{s.events.length}</td>)}
           </tr>
         </tbody>

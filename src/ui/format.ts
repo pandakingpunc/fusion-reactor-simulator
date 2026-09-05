@@ -12,7 +12,7 @@ export function fmtNum(x: number | undefined | null, digits = 3): string {
 
 export function fmtInt(x: number): string {
   if (!isFinite(x)) return '—';
-  return Math.round(x).toLocaleString('tr-TR');
+  return Math.round(x).toLocaleString('en-US');
 }
 
 export function fmtTime(t: number, unit: string): string {

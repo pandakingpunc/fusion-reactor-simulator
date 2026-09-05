@@ -18,17 +18,17 @@ const IDX = { W: 0, Efus: 1, Ein: 2, Nn: 3 } as const;
 const NSTATE = 4;
 
 const FRC_DIAGS: DiagSpec[] = [
-  { key: 'Ti', label: 'T (iyon≈elektron)', unit: 'keV', group: 'Sıcaklık' },
-  { key: 'ne', label: 'n_e', unit: '1e20 m⁻³', group: 'Yoğunluk' },
-  { key: 'P_fus', label: 'P_füzyon', unit: 'MW', group: 'Güç' },
-  { key: 'P_aux', label: 'P_NBI', unit: 'MW', group: 'Güç' },
-  { key: 'P_alpha', label: 'P_yüklü (kendini ısıtma)', unit: 'MW', group: 'Güç' },
-  { key: 'P_brems', label: 'P_brems', unit: 'MW', group: 'Radyasyon' },
-  { key: 'P_cond', label: 'P_iletim (W/τ_E)', unit: 'MW', group: 'Güç' },
-  { key: 'Q', label: 'Q bilimsel', unit: '', group: 'Performans' },
-  { key: 'tauE', label: 'τ_E', unit: 's', group: 'Hapsetme' },
-  { key: 'triple', label: 'n·T·τ_E', unit: 'keV s m⁻³', group: 'Performans', log: true },
-  { key: 'W', label: 'W_termal', unit: 'MJ', group: 'Enerji' },
+  { key: 'Ti', label: 'T (ion≈electron)', unit: 'keV', group: 'Temperature' },
+  { key: 'ne', label: 'n_e', unit: '1e20 m⁻³', group: 'Density' },
+  { key: 'P_fus', label: 'P_fusion', unit: 'MW', group: 'Power' },
+  { key: 'P_aux', label: 'P_NBI', unit: 'MW', group: 'Power' },
+  { key: 'P_alpha', label: 'P_charged (self-heating)', unit: 'MW', group: 'Power' },
+  { key: 'P_brems', label: 'P_brems', unit: 'MW', group: 'Radiation' },
+  { key: 'P_cond', label: 'P_conduction (W/τ_E)', unit: 'MW', group: 'Power' },
+  { key: 'Q', label: 'Scientific Q', unit: '', group: 'Performance' },
+  { key: 'tauE', label: 'τ_E', unit: 's', group: 'Confinement' },
+  { key: 'triple', label: 'n·T·τ_E', unit: 'keV s m⁻³', group: 'Performance', log: true },
+  { key: 'W', label: 'W_thermal', unit: 'MJ', group: 'Energy' },
   { key: 'beta', label: 'β (FRC ~1)', unit: '', group: 'MHD' },
 ];
 
@@ -123,23 +123,23 @@ export class FRCModel extends PulsedBase {
     return this.buildReport(hist, events, {
       fuel: this.cfg.fuel, wallArea,
       scoreBreakdown: [
-        { label: 'Q_bilimsel (max)', value: max(col('Q')), ref: 1, unit: '', note: 'FRC/NBI için başabaş hedefi' },
-        { label: 'Sıcaklık (max)', value: max(col('Ti')), ref: 10, unit: 'keV', note: 'Yüksek-β FRC hedefi' },
-        { label: 'Üçlü çarpım', value: max(col('triple')), ref: 1e21, unit: 'keV s m⁻³', note: 'Ateşleme ≈ 3e21 (DT)' },
-        { label: 'Füzyon enerjisi', value: hist[hist.length - 1].d.Efus_MJ ?? 0, ref: 1, unit: 'MJ', note: 'Atış başına' },
-        { label: 'Stabil süre', value: hist[hist.length - 1].t, ref: this.cfg.t_end, unit: 's', note: 'Planlanan süre' },
+        { label: 'Q_scientific (max)', value: max(col('Q')), ref: 1, unit: '', note: 'Breakeven target for FRC/NBI' },
+        { label: 'Temperature (max)', value: max(col('Ti')), ref: 10, unit: 'keV', note: 'High-β FRC target' },
+        { label: 'Triple product', value: max(col('triple')), ref: 1e21, unit: 'keV s m⁻³', note: 'Ignition ≈ 3e21 (DT)' },
+        { label: 'Fusion energy', value: hist[hist.length - 1].d.Efus_MJ ?? 0, ref: 1, unit: 'MJ', note: 'Per shot' },
+        { label: 'Stable time', value: hist[hist.length - 1].t, ref: this.cfg.t_end, unit: 's', note: 'Scheduled duration' },
       ],
       historical: [
-        { label: 'TAE Norman: T_e ~1 keV, τ~ms', ratio: max(col('Ti')) / 1, note: 'sıcaklık' },
-        { label: 'ITER hedefi: Q=10', ratio: max(col('Q')) / 10, note: 'Q' },
+        { label: 'TAE Norman: T_e ~1 keV, τ~ms', ratio: max(col('Ti')) / 1, note: 'temperature' },
+        { label: 'ITER target: Q=10', ratio: max(col('Q')) / 10, note: 'Q' },
       ],
       engineering: {
-        'Hacim (m³)': +this.V.toFixed(3), 'Dış alan B_e (T)': this.cfg.Be_T,
-        'τ_E son (ms)': +(this.lastTauE * 1e3).toFixed(3), 'n_0 (1e20 m⁻³)': +(this.cfg.n0 / 1e20).toFixed(3),
+        'Volume (m³)': +this.V.toFixed(3), 'External field B_e (T)': this.cfg.Be_T,
+        'Final τ_E (ms)': +(this.lastTauE * 1e3).toFixed(3), 'n_0 (1e20 m⁻³)': +(this.cfg.n0 / 1e20).toFixed(3),
       },
-      extras: { 'NBI gücü (MW)': this.cfg.P_NBI_MW, 'β (FRC)': '~1 (yüksek-β konfigürasyon)' },
-      warnings: max(col('Q')) < 0.01 ? ['FRC bu parametrelerde bilimsel başabaştan çok uzak (Q≪1) — beklenen: mevcut FRC deneyleri henüz net enerji üretmez.'] : [],
-      Q_eng_note: 'FRC deneysel bir konfigürasyondur; Q_müh modellenmedi.',
+      extras: { 'NBI power (MW)': this.cfg.P_NBI_MW, 'β (FRC)': '~1 (high-β configuration)' },
+      warnings: max(col('Q')) < 0.01 ? ['FRC is far from scientific breakeven at these parameters (Q≪1) — as expected: current FRC experiments do not yet produce net energy.'] : [],
+      Q_eng_note: 'FRC is an experimental configuration; Q_eng is not modeled.',
     });
   }
 }

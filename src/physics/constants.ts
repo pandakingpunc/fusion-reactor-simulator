@@ -25,13 +25,13 @@ export const FUSION = {
   DD_pT: { Etot: 4.03, Echarged: 4.03, Eneutron: 0, products: 'T (1.01 MeV) + p (3.02 MeV)' },
   DD_nHe3: { Etot: 3.27, Echarged: 0.82, Eneutron: 2.45, products: 'He3 (0.82 MeV) + n (2.45 MeV)' },
   DHe3: { Etot: 18.35, Echarged: 18.35, Eneutron: 0, products: 'He4 (3.6 MeV) + p (14.7 MeV)' },
-  pB11: { Etot: 8.68, Echarged: 8.68, Eneutron: 0, products: '3 He4 (8.68 MeV toplam)' },
+  pB11: { Etot: 8.68, Echarged: 8.68, Eneutron: 0, products: '3 He4 (8.68 MeV total)' },
 } as const;
 
 /** Safsızlık iyonlarının atom numaraları ve kütleleri */
 export const IMPURITIES = {
-  Be: { Z: 4, A: 9.012, name: 'Berilyum' },
-  C: { Z: 6, A: 12.011, name: 'Karbon' },
+  Be: { Z: 4, A: 9.012, name: 'Beryllium' },
+  C: { Z: 6, A: 12.011, name: 'Carbon' },
   Ne: { Z: 10, A: 20.18, name: 'Neon' },
   Ar: { Z: 18, A: 39.948, name: 'Argon' },
   W: { Z: 74, A: 183.84, name: 'Tungsten' },

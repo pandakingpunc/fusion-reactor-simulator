@@ -19,18 +19,18 @@ const IDX = { W: 0, Efus: 1, Ein: 2, Nn: 3 } as const;
 const NSTATE = 4;
 
 const MIRROR_DIAGS: DiagSpec[] = [
-  { key: 'Ti', label: 'T (iyon≈elektron)', unit: 'keV', group: 'Sıcaklık' },
-  { key: 'ne', label: 'n_e', unit: '1e20 m⁻³', group: 'Yoğunluk' },
-  { key: 'P_fus', label: 'P_füzyon', unit: 'MW', group: 'Güç' },
-  { key: 'P_aux', label: 'P_yardımcı (NBI/ECRH)', unit: 'MW', group: 'Güç' },
-  { key: 'P_alpha', label: 'P_yüklü', unit: 'MW', group: 'Güç' },
-  { key: 'P_brems', label: 'P_brems', unit: 'MW', group: 'Radyasyon' },
-  { key: 'P_cond', label: 'P_uç kaybı (W/τ)', unit: 'MW', group: 'Güç' },
-  { key: 'Q', label: 'Q bilimsel', unit: '', group: 'Performans' },
-  { key: 'tauE', label: 'τ_E (uç kaybı)', unit: 's', group: 'Hapsetme' },
-  { key: 'triple', label: 'n·T·τ', unit: 'keV s m⁻³', group: 'Performans', log: true },
-  { key: 'W', label: 'W_termal', unit: 'MJ', group: 'Enerji' },
-  { key: 'Rm', label: 'Ayna oranı', unit: '', group: 'MHD' },
+  { key: 'Ti', label: 'T (ion≈electron)', unit: 'keV', group: 'Temperature' },
+  { key: 'ne', label: 'n_e', unit: '1e20 m⁻³', group: 'Density' },
+  { key: 'P_fus', label: 'P_fusion', unit: 'MW', group: 'Power' },
+  { key: 'P_aux', label: 'P_auxiliary (NBI/ECRH)', unit: 'MW', group: 'Power' },
+  { key: 'P_alpha', label: 'P_charged', unit: 'MW', group: 'Power' },
+  { key: 'P_brems', label: 'P_brems', unit: 'MW', group: 'Radiation' },
+  { key: 'P_cond', label: 'P_end loss (W/τ)', unit: 'MW', group: 'Power' },
+  { key: 'Q', label: 'Scientific Q', unit: '', group: 'Performance' },
+  { key: 'tauE', label: 'τ_E (end loss)', unit: 's', group: 'Confinement' },
+  { key: 'triple', label: 'n·T·τ', unit: 'keV s m⁻³', group: 'Performance', log: true },
+  { key: 'W', label: 'W_thermal', unit: 'MJ', group: 'Energy' },
+  { key: 'Rm', label: 'Mirror ratio', unit: '', group: 'MHD' },
 ];
 
 export class MirrorModel extends PulsedBase {
@@ -134,23 +134,23 @@ export class MirrorModel extends PulsedBase {
     return this.buildReport(hist, events, {
       fuel: this.cfg.fuel, wallArea: 2 * Math.PI * this.cfg.a_m * this.cfg.L_m,
       scoreBreakdown: [
-        { label: 'Q_bilimsel (max)', value: max(col('Q')), ref: 1, unit: '', note: 'Ayna için başabaş çok zor' },
-        { label: 'Sıcaklık (max)', value: max(col('Ti')), ref: 10, unit: 'keV', note: 'İyon sıcaklığı' },
-        { label: 'Üçlü çarpım', value: max(col('triple')), ref: 1e21, unit: 'keV s m⁻³', note: 'Ateşleme ≈ 3e21 (DT)' },
-        { label: 'Stabil süre', value: hist[hist.length - 1].t, ref: this.cfg.t_end, unit: 's', note: 'Planlanan süre' },
-        { label: 'Füzyon enerjisi', value: hist[hist.length - 1].d.Efus_MJ ?? 0, ref: 1, unit: 'MJ', note: 'Atış başına' },
+        { label: 'Q_scientific (max)', value: max(col('Q')), ref: 1, unit: '', note: 'Breakeven is very difficult for a mirror' },
+        { label: 'Temperature (max)', value: max(col('Ti')), ref: 10, unit: 'keV', note: 'Ion temperature' },
+        { label: 'Triple product', value: max(col('triple')), ref: 1e21, unit: 'keV s m⁻³', note: 'Ignition ≈ 3e21 (DT)' },
+        { label: 'Stable time', value: hist[hist.length - 1].t, ref: this.cfg.t_end, unit: 's', note: 'Scheduled duration' },
+        { label: 'Fusion energy', value: hist[hist.length - 1].d.Efus_MJ ?? 0, ref: 1, unit: 'MJ', note: 'Per shot' },
       ],
       historical: [
-        { label: 'GDT / GAMMA-10: T_i ~keV', ratio: max(col('Ti')) / 10, note: 'sıcaklık' },
-        { label: 'Q≥1 hedefi (WHAM/ölçekli)', ratio: max(col('Q')) / 1, note: 'Q' },
+        { label: 'GDT / GAMMA-10: T_i ~keV', ratio: max(col('Ti')) / 10, note: 'temperature' },
+        { label: 'Q≥1 target (WHAM/scaled)', ratio: max(col('Q')) / 1, note: 'Q' },
       ],
       engineering: {
-        'Hacim (m³)': +this.V.toFixed(3), 'Merkez B (T)': this.cfg.B_center_T, 'Ayna oranı': this.cfg.mirrorRatio,
-        'Tandem': this.cfg.tandem, 'τ_E son (ms)': +(this.lastTauE * 1e3).toFixed(3),
+        'Volume (m³)': +this.V.toFixed(3), 'Central B (T)': this.cfg.B_center_T, 'Mirror ratio': this.cfg.mirrorRatio,
+        'Tandem': this.cfg.tandem, 'Final τ_E (ms)': +(this.lastTauE * 1e3).toFixed(3),
       },
-      extras: { 'Uç kaybı baskın': 'evet (kayıp konisi)', 'Yardımcı güç (MW)': this.cfg.P_aux_MW },
-      warnings: max(col('Q')) < 0.05 ? ['Basit/tandem ayna kayıp konisi nedeniyle düşük Q verir — kesme akış veya derin potansiyel bariyeri olmadan net enerji beklenmez.'] : [],
-      Q_eng_note: 'Ayna kavramsal/deneyseldir; Q_müh modellenmedi.',
+      extras: { 'End loss dominant': 'yes (loss cone)', 'Auxiliary power (MW)': this.cfg.P_aux_MW },
+      warnings: max(col('Q')) < 0.05 ? ['Simple/tandem mirrors yield low Q due to the loss cone — net energy is not expected without flow shear or a deep potential barrier.'] : [],
+      Q_eng_note: 'Mirrors are conceptual/experimental; Q_eng is not modeled.',
     });
   }
 }

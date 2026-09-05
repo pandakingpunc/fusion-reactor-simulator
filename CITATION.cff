@@ -1,11 +1,11 @@
 cff-version: 1.2.0
-message: "Bu yazılımı kullanırsanız lütfen aşağıdaki bilgiyle atıf yapın."
-title: "Füzyon Reaktörü Simülatörü (Fusion Reactor Simulator)"
+message: "If you use this software, please cite it using the information below."
+title: "Fusion Reactor Simulator"
 abstract: >-
-  0-boyutlu, zaman-çözümlü füzyon reaktörü güç-dengesi simülasyon motoru.
-  Manyetik hapsetme (tokamak, sferik tokamak, stellarator) ve diğer şemaları
-  açık literatürdeki ölçekleme yasaları ve reaksiyon verileriyle modeller;
-  ITER, JET, SPARC, DEMO, W7-X gibi gerçek makine preset'leri içerir.
+  A zero-dimensional, time-resolved fusion reactor power-balance simulation engine.
+  Models magnetic confinement (tokamak, spherical tokamak, stellarator) and other
+  schemes using scaling laws and reaction data from the open literature;
+  includes presets for real machines such as ITER, JET, SPARC, DEMO, and W7-X.
 type: software
 authors:
   # TODO: İsim/soyisim ve (varsa) ORCID'ini doğrula
@@ -13,8 +13,12 @@ authors:
     family-names: Karatum
     # orcid: "https://orcid.org/0000-0000-0000-0000"
 license: MIT
-version: "0.1.0"
-date-released: "2026-09-02"
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.22259861
+    description: Concept DOI representing all versions (always resolves to the latest version)
+version: "2.0.0"
+date-released: "2026-09-05"
 keywords:
   - nuclear fusion
   - tokamak
@@ -22,4 +26,4 @@ keywords:
   - reactor simulation
   - power balance
   - confinement scaling
-repository-code: "https://github.com/KULLANICI_ADIN/fusion-reactor-simulator"
+repository-code: "https://github.com/pandakingpunc/fusion-reactor-simulator"

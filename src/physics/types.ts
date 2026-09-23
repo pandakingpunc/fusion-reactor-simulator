@@ -33,6 +33,67 @@ export type MagnetTech = 'Cu' | 'NbTi' | 'Nb3Sn' | 'REBCO';
 export type BlanketType = 'HCPB' | 'HCLL' | 'WCLL' | 'DCLL' | 'FLiBe' | 'none';
 export type FuelingMethod = 'gas' | 'pellet' | 'nbi' | 'mixed';
 
+/** Model doğruluğu: 0D güç dengesi veya 1.5D profil taşınımı + Grad–Shafranov dengesi */
+export type Fidelity = '0D' | '1.5D';
+
+/** 1.5D profil modeli ayarları (yalnız tokamak / ST) */
+export interface ProfileSettings {
+  /** radyal hücre sayısı (ρ_tor) */
+  nRho: number;
+  /** GS ızgarası R yönü düğüm sayısı */
+  eqNR: number;
+  /** denge güncelleme aralığı üst sınırı [s] */
+  eqUpdateInterval: number;
+  /** LCFS şekli (verilmezse geometry.kappa/delta) */
+  lcfsKappa?: number;
+  lcfsDelta?: number;
+  /** 'scaling': τ_E ölçeklemesiyle kısıtlanmış taşınım (doğrulanmış global dinamik, fiziksel profil şekli);
+   *  'cgm': kritik-gradyan modeli (öngörücü, kalibrasyonsuz) */
+  transportModel: 'scaling' | 'cgm';
+  /** χ şekli ∝ 1 + chiShape·ρ² */
+  chiShape: number;
+  /** profil sertliği: χ ×= 1 + stiffness·max(0, (R/L_T)/critGrad − 1) (ITG/TEM kritik gradyanı) */
+  stiffness: number;
+  critGrad: number;
+  /** χ_i / χ_e */
+  chiRatio: number;
+  /** D / χ_e */
+  DoverChi: number;
+  /** pedestal genişliği (ρ_tor) ve ETB bastırma çarpanı χ_ETB / χ_turb(ρ_ped) */
+  pedestalWidth: number;
+  etbFactor: number;
+  /** ELM tetik eşiği çarpanı (α_crit) ve çöküş kesri ΔW/W_ped */
+  alphaCritFactor: number;
+  elmFraction: number;
+  /** testere dişi tetik kayması s₁ */
+  sawtoothShear: number;
+  /** ECRH birikim merkezi / genişliği, ICRH genişliği (ρ_tor) */
+  ecrhRho: number;
+  ecrhWidth: number;
+  icrhWidth: number;
+  /** NBI teğet yarıçapı / R0 */
+  nbiRtan: number;
+  /** akım sürme verimleri γ [10²⁰ A W⁻¹ m⁻²] */
+  nbcdEff: number;
+  eccdEff: number;
+  /** sabit ayırıcı sıcaklığı [keV]; verilmezse iki-nokta modeli */
+  Tsep_keV?: number;
+  /** n_sep / ⟨n_e⟩ */
+  nsepFrac: number;
+}
+
+/** Kesit çizimi için akı yüzeyi anlık görüntüsü (dengeden) */
+export interface EqSnapshot {
+  R: number[][];
+  Z: number[][];
+  rho: number[]; // her konturun ρ_tor değeri
+  Raxis: number;
+  Zaxis: number;
+  q95: number;
+  li: number;
+  betaP: number;
+}
+
 export interface MagneticConfig {
   method: 'tokamak' | 'spherical_tokamak' | 'stellarator';
   geometry: Geometry;
@@ -68,6 +129,9 @@ export interface MagneticConfig {
   economics: { capital_MUSD_override?: number; availability: number; thermalEff: number; wallPlugEff: number; discountRate: number; lifetime_yr: number };
   t_end: number; // s
   seed: number;
+  /** '1.5D' → profil taşınımı + Grad–Shafranov (stellarator için yok sayılır) */
+  fidelity?: Fidelity;
+  profiles?: Partial<ProfileSettings>;
 }
 
 export interface ICFConfig {
@@ -185,6 +249,17 @@ export interface SimModel {
   report(history: HistoryFrame[], events: SimEvent[]): ShotReport;
   /** statik: geometrik çizim verisi */
   geometryInfo(): Record<string, number>;
+  /**
+   * İsteğe bağlı kendi zaman adımlayıcısı (örtük PDE çözücüleri): verilirse Simulation
+   * Dormand–Prince yerine bunu çağırır; y yerinde güncellenir, yeni t döner (≤ tMax).
+   */
+  step?(t: number, y: Float64Array, tMax: number): number;
+  /** son adımın önerdiği zaman adımı (UI gösterimi) */
+  readonly currentDt?: number;
+  /** İsteğe bağlı radyal profil anlık görüntüsü (1.5D) — geçmiş karelerine eklenir */
+  profiles?(y: Float64Array): Record<string, number[]>;
+  /** Denge değiştiyse yeni akı yüzeyi görüntüsü (bir kez döner, sonra null) */
+  takeEqSnapshot?(): EqSnapshot | null;
 }
 
 export interface HistoryFrame {
@@ -192,6 +267,10 @@ export interface HistoryFrame {
   y: number[]; // durum (geri sarma için)
   d: Record<string, number>;
   internal: Record<string, number>;
+  /** radyal profiller (yalnız 1.5D, düzenli çıktı karelerinde) */
+  prof?: Record<string, number[]>;
+  /** akı yüzeyleri (yalnız dengenin güncellendiği karelerde) */
+  eq?: EqSnapshot;
 }
 
 export interface ScoreEntry {

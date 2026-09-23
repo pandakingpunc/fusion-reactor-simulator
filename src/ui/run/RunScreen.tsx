@@ -3,6 +3,7 @@ import { MagneticConfig } from '../../physics/types';
 import { SimApi } from '../useSim';
 import { TimeChart, Series } from '../charts/TimeChart';
 import { Popcon } from '../charts/Popcon';
+import { ProfileChart } from '../charts/ProfileChart';
 import { CrossSection } from '../viz/CrossSection';
 import { Implosion } from '../viz/Implosion';
 import { fmtNum, fmtTime, keVtoMC, PALETTE } from '../format';
@@ -30,6 +31,17 @@ export function RunScreen({ sim, onReport, onSetup }: Props) {
     return [...m.entries()].map(([name, series]) => ({ name, series }));
   }, [meta]);
 
+  // 1.5D: son profil karesi ve son denge anlık görüntüsü
+  const { profFrame, eqFrame } = useMemo(() => {
+    let pf: (typeof frames)[number] | null = null, ef: (typeof frames)[number] | null = null;
+    for (let i = frames.length - 1; i >= 0 && (!pf || !ef); i--) {
+      if (!pf && frames[i].prof) pf = frames[i];
+      if (!ef && frames[i].eq) ef = frames[i];
+    }
+    return { profFrame: pf, eqFrame: ef };
+  }, [frames]);
+  const crossProf = useMemo(() => (profFrame?.prof ? { rho: profFrame.prof.rho, Te: profFrame.prof.Te } : null), [profFrame]);
+
   const kpis = useMemo(() => {
     if (!meta || !last) return [];
     const specs = new Map(meta.diagSpecs.map((s) => [s.key, s]));
@@ -40,6 +52,7 @@ export function RunScreen({ sim, onReport, onSetup }: Props) {
 
   const isMag = meta.kind === 'magnetic' && (meta.method === 'tokamak' || meta.method === 'spherical_tokamak' || meta.method === 'stellarator');
   const isPulsed = meta.kind === 'pulsed';
+  const is15 = (meta.geometry.profiles ?? 0) > 0;
   const cfg = state.cfg!;
   const canPlay = status === 'ready' || status === 'paused';
   const stepDt = meta.tEnd / 200;
@@ -156,7 +169,14 @@ export function RunScreen({ sim, onReport, onSetup }: Props) {
               gap={meta.geometry.gap ?? 0.5} coilThickness={meta.geometry.coilThickness ?? 0.5}
               T0_keV={last.d.Ti0 ?? last.d.Ti ?? 0} alphaT={(cfg as MagneticConfig).transport?.alpha_T ?? 1}
               Hmode={(last.d.H_mode ?? 0) > 0.5} divertor={(meta.geometry.kappa ?? 1) > 1.25} stellarator={meta.method === 'stellarator'}
-              disrupted={disrupted} elmFlash={elmFlash} height={320} />
+              disrupted={disrupted} elmFlash={elmFlash} height={320}
+              eq={is15 ? eqFrame?.eq ?? null : null} prof={is15 ? crossProf : null} />
+          </div>
+        )}
+        {is15 && (
+          <div className="panel tight">
+            <div className="panel-title"><h3>Radial profiles</h3><span className="muted small">1.5D transport</span></div>
+            <ProfileChart prof={profFrame?.prof} t={profFrame ? `t = ${fmtTime(profFrame.t, meta.timeUnit)}` : undefined} height={230} />
           </div>
         )}
         {isMag && (

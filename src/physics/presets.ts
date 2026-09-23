@@ -127,6 +127,14 @@ export const DEMO = defaultMagnetic({
   t_end: 2000, seed: 21,
 });
 
+// 1.5D profil modeli preset'leri: aynı makineler, radyal taşınım + Grad–Shafranov dengesi.
+// ITER/DEMO için LCFS şekli (κ_sep, δ_sep) kullanılır; 0D preset'lerdeki κ, δ 95% yüzey değerleridir
+// (ITER: κ95 = 1.70 → κ_sep = 1.85, δ95 = 0.33 → δ_sep = 0.49; ITER Physics Basis 1999).
+export const ITER_15D: MagneticConfig = { ...ITER, fidelity: '1.5D', profiles: { lcfsKappa: 1.85, lcfsDelta: 0.49 } };
+export const JET_15D: MagneticConfig = { ...JET, fidelity: '1.5D' };
+export const SPARC_15D: MagneticConfig = { ...SPARC, fidelity: '1.5D' };
+export const DEMO_15D: MagneticConfig = { ...DEMO, fidelity: '1.5D', profiles: { lcfsKappa: 1.85, lcfsDelta: 0.5 } };
+
 // NIF N221204 (Aralık 2022): 2.05 MJ lazer (351 nm), 3.15 MJ verim (G≈1.5); HDC kapsül ~1.05 mm dış yarıçap,
 // DT buz ~ 220 µg (≈ 0.065 mm kalınlık), v_imp ≈ 390 km/s, CR ≈ 30, α ≈ 2.5–3, hohlraum η ≈ 0.10–0.12 (Zylstra 2022, Abu-Shawareb 2024)
 export const NIF: ICFConfig = {
@@ -176,6 +184,10 @@ export const PRESETS: Preset[] = [
   { id: 'MASTU', name: 'MAST-U', desc: 'Spherical tokamak A≈1.3, B=0.75 T', cfg: MASTU },
   { id: 'W7X', name: 'Wendelstein 7-X', desc: 'Stellarator R=5.5 m, B=2.5 T, 7.5 MW ECRH', cfg: W7X },
   { id: 'DEMO', name: 'EU DEMO', desc: 'R=9.07 m, B=5.86 T, I_p=17.75 MA, 2 GW fusion', cfg: DEMO },
+  { id: 'ITER15', name: 'ITER · 1.5D profiles', desc: 'Radial transport + Grad–Shafranov equilibrium; sawteeth, ELMs, NTMs, bootstrap', cfg: ITER_15D, validation: 'Q ≈ 10, P_fus ≈ 500 MW, f_bs ≈ 0.2' },
+  { id: 'JET15', name: 'JET DTE2 · 1.5D profiles', desc: 'Profiles with beam-target fusion from 3-component NBI', cfg: JET_15D, validation: 'E_fus ≈ 59 MJ (1.5D: +40%)' },
+  { id: 'SPARC15', name: 'SPARC · 1.5D profiles', desc: 'High-field compact tokamak with profile physics', cfg: SPARC_15D },
+  { id: 'DEMO15', name: 'EU DEMO · 1.5D profiles', desc: '2000 s burn, bootstrap ≈ 0.4, NBCD', cfg: DEMO_15D, validation: 'P_fus ≈ 2 GW' },
   { id: 'NIF', name: 'NIF (N221204)', desc: '2.05 MJ laser, indirect drive → 3.15 MJ (G=1.5)', cfg: NIF, validation: 'Gain ≈ 1–2' },
   { id: 'DIRECT', name: 'Direct-drive ICF', desc: '1.9 MJ, CH ablator', cfg: DIRECT_DRIVE },
   { id: 'Z', name: 'Z Machine (MagLIF)', desc: '20 MA, 100 ns, Be liner, 12 T, 2 kJ preheat', cfg: ZMACHINE },

@@ -1,0 +1,26 @@
+/** 1.5D profil modeli varsayılan ayarları (UI sihirbazı da kullanır — modelin tamamını içe aktarmadan) */
+import { ProfileSettings } from '../types';
+
+export const DEFAULT_PROFILE_SETTINGS: ProfileSettings = {
+  nRho: 50,
+  eqNR: 49,
+  eqUpdateInterval: 10,
+  transportModel: 'scaling',
+  chiShape: 3,
+  stiffness: 2,
+  critGrad: 5,
+  chiRatio: 1.0,
+  DoverChi: 0.3,
+  pedestalWidth: 0.06,
+  etbFactor: 0.08,
+  alphaCritFactor: 1,
+  elmFraction: 0.35,
+  sawtoothShear: 0.2,
+  ecrhRho: 0.3,
+  ecrhWidth: 0.08,
+  icrhWidth: 0.3,
+  nbiRtan: 0.9,
+  nbcdEff: 0.25,
+  eccdEff: 0.0,
+  nsepFrac: 0.35,
+};

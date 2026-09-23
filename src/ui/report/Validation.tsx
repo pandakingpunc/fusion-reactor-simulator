@@ -28,6 +28,16 @@ const TESTS: TestDef[] = [
     ],
   },
   {
+    id: 'iter15', presetId: 'ITER15', title: 'ITER 1.5D — profiles, equilibrium, MHD',
+    criteria: [
+      { label: 'Q_sci avg. (E_fus/E_in)', get: (r) => r.Q_sci_avg, lo: 5, hi: 20, unit: '', source: 'ITER Q = 10 baseline (Shimada et al., NF 47 (2007) S1)' },
+      { label: 'Bootstrap fraction', get: (r) => Number(r.engineering['Bootstrap fraction (avg.)']), lo: 0.1, hi: 0.4, unit: '', source: 'Inductive scenario f_bs ≈ 0.15–0.25 (Sips 2005)' },
+      { label: 'ℓ_i(3)', get: (r) => Number(r.engineering['ℓ_i(3) (avg.)']), lo: 0.6, hi: 1.1, unit: '', source: 'ITER flat-top ℓ_i(3) ≈ 0.7–1.0' },
+      { label: 'T_e pedestal', get: (r) => Number(r.extras['T_ped (final, keV)']), lo: 2, hi: 7, unit: 'keV', source: 'EPED prediction T_ped ≈ 4–5 keV' },
+      { label: 'No disruption', get: (r) => (r.termination.disruption ? 1 : 0), lo: 0, hi: 0, unit: '', source: 'Sawteeth/ELMs/NTMs must not terminate the baseline' },
+    ],
+  },
+  {
     id: 'nif', presetId: 'NIF', title: 'NIF N221204 — gain ≈ 1.5',
     criteria: [
       { label: 'Gain (Q)', get: (r) => r.Q_sci_max, lo: 1, hi: 2, unit: '', source: '2.05 MJ laser → 3.15 MJ fusion (Dec 2022)' },
@@ -80,7 +90,7 @@ export function Validation({ runAll }: Props) {
             <div className="muted small">The model is compared with known experiments. <b className="accent">If a test fails, fix the model, not the test.</b>  Each test runs at full speed in the background (worker).</div>
           </div>
           <div className="row">
-            <button className="btn primary" onClick={runAllTests} disabled={busy !== null}>{busy && busy !== 'sweep' ? `running: ${busy}…` : '▶ Run 3 tests'}</button>
+            <button className="btn primary" onClick={runAllTests} disabled={busy !== null}>{busy && busy !== 'sweep' ? `running: ${busy}…` : `▶ Run ${TESTS.length} tests`}</button>
             <button className="btn" onClick={runSweep} disabled={busy !== null}>{busy === 'sweep' ? `scanning… ${sweep.length}/${PRESETS.length}` : 'Scan all presets'}</button>
           </div>
         </div>

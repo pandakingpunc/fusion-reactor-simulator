@@ -1,6 +1,6 @@
 {
   "title": "Fusion Reactor Simulator",
-  "description": "A zero-dimensional, time-resolved fusion reactor power-balance simulation engine. Models magnetic confinement (tokamak, spherical tokamak, stellarator) and other schemes using scaling laws and reaction data from the open literature; includes presets for real machines such as ITER, JET, SPARC, DEMO, and W7-X.",
+  "description": "A time-resolved fusion reactor simulation engine with a zero-dimensional power balance and a 1.5D radial transport model (T_e, T_i, n_e and poloidal flux on the normalised toroidal-flux coordinate) coupled to a fixed-boundary Grad-Shafranov equilibrium solver, with Sauter bootstrap current, NBI/RF sources, beam-target fusion, sawteeth, ELMs and NTMs. Covers magnetic confinement (tokamak, spherical tokamak, stellarator) and other schemes; verified against manufactured solutions and validated against ITER, JET DTE2, SPARC, EU DEMO and NIF. Includes a built-in publication-quality figure engine (SVG/PDF) and multi-core parameter scans.",
   "upload_type": "software",
   "license": "MIT",
   "access_right": "open",
@@ -15,6 +15,10 @@
     "plasma physics",
     "reactor simulation",
     "power balance",
-    "confinement scaling"
-  ]
+    "confinement scaling",
+    "transport modelling",
+    "Grad-Shafranov equilibrium",
+    "bootstrap current"
+  ],
+  "version": "3.0.0"
 }

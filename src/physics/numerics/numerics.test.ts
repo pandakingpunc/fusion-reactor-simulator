@@ -1,0 +1,137 @@
+import { describe, expect, it } from 'vitest';
+import { BandedLU, luFactor, luSolve, solveBlockTridiag2, solveDense, solveTridiag } from './linalg';
+import { gaussLegendre, integrateGL, profileNodes } from './quadrature';
+import { Bicubic, CubicSpline, Pchip, lerpTable } from './interp';
+import { brent } from './roots';
+import { eulerFixed, rk4Fixed } from './rk4';
+
+describe('linalg', () => {
+  it('Thomas algorithm solves a diagonally dominant tridiagonal system', () => {
+    const n = 50;
+    const a = new Float64Array(n).fill(-1), b = new Float64Array(n).fill(4), c = new Float64Array(n).fill(-1);
+    const xTrue = Float64Array.from({ length: n }, (_, i) => Math.sin(i));
+    const d = new Float64Array(n);
+    for (let i = 0; i < n; i++) d[i] = (i > 0 ? a[i] * xTrue[i - 1] : 0) + b[i] * xTrue[i] + (i < n - 1 ? c[i] * xTrue[i + 1] : 0);
+    const x = solveTridiag(a, b, c, d, new Float64Array(n));
+    for (let i = 0; i < n; i++) expect(x[i]).toBeCloseTo(xTrue[i], 12);
+  });
+
+  it('2×2 block tridiagonal solver matches the dense solution', () => {
+    const n = 7, N = 2 * n;
+    const A = new Float64Array(4 * n), B = new Float64Array(4 * n), C = new Float64Array(4 * n);
+    const dense = new Float64Array(N * N);
+    for (let i = 0; i < n; i++) {
+      const blk = (arr: Float64Array, di: number, vals: number[]) => {
+        arr.set(vals, 4 * i);
+        const j = i + di;
+        if (j < 0 || j >= n) return;
+        dense[(2 * i) * N + 2 * j] = vals[0]; dense[(2 * i) * N + 2 * j + 1] = vals[1];
+        dense[(2 * i + 1) * N + 2 * j] = vals[2]; dense[(2 * i + 1) * N + 2 * j + 1] = vals[3];
+      };
+      blk(A, -1, [-1, 0.1 * i, 0, -0.5]);
+      blk(B, 0, [5 + i, -1, 0.7, 6]);
+      blk(C, 1, [-1.2, 0, 0.3, -1]);
+    }
+    const d = Float64Array.from({ length: N }, (_, k) => Math.cos(k) + 2);
+    const u = solveBlockTridiag2(A, B, C, d, new Float64Array(N), n);
+    const ref = solveDense(dense, d, N);
+    for (let k = 0; k < N; k++) expect(u[k]).toBeCloseTo(ref[k], 11);
+  });
+
+  it('dense LU with pivoting', () => {
+    const M = Float64Array.from([0, 2, 1, 1, 1, 1, 2, 1, 3]);
+    const b = [3, 3, 6];
+    const piv = luFactor(M, 3);
+    const x = luSolve(M, 3, piv, b);
+    expect(Array.from(x).map((v) => +v.toFixed(12))).toEqual([1, 1, 1]);
+  });
+
+  it('banded LU reproduces the 2-D Poisson operator solution', () => {
+    const nx = 12, ny = 9, n = nx * ny;
+    const L = new BandedLU(n, nx, nx);
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const r = j * nx + i;
+      L.set(r, r, 4 + 0.01 * i);
+      if (i > 0) L.set(r, r - 1, -1);
+      if (i < nx - 1) L.set(r, r + 1, -1.1);
+      if (j > 0) L.set(r, r - nx, -0.9);
+      if (j < ny - 1) L.set(r, r + nx, -1);
+    }
+    const xTrue = Float64Array.from({ length: n }, (_, k) => Math.sin(0.3 * k) + 0.5);
+    const b = L.mul(xTrue, new Float64Array(n));
+    L.factor();
+    const x = L.solve(b);
+    for (let k = 0; k < n; k++) expect(x[k]).toBeCloseTo(xTrue[k], 11);
+  });
+});
+
+describe('quadrature', () => {
+  it('n-point Gauss–Legendre integrates degree 2n−1 polynomials exactly', () => {
+    const { w } = gaussLegendre(8);
+    expect(w.reduce((s, v) => s + v, 0)).toBeCloseTo(2, 14);
+    expect(integrateGL((x) => x ** 15 + 3 * x ** 14, -1, 1, 8)).toBeCloseTo(6 / 15, 12);
+    expect(integrateGL(Math.exp, 0, 1, 12)).toBeCloseTo(Math.E - 1, 13);
+  });
+  it('profile nodes give volume averages ∫ f 2ρ dρ', () => {
+    const { rho, wt } = profileNodes(10);
+    let s = 0, s2 = 0;
+    for (let i = 0; i < rho.length; i++) { s += wt[i]; s2 += wt[i] * (1 - rho[i] ** 2) ** 2; }
+    expect(s).toBeCloseTo(1, 14);
+    expect(s2).toBeCloseTo(1 / 3, 13); // <(1−ρ²)^2> = 1/3
+  });
+});
+
+describe('interpolation', () => {
+  it('clamped cubic spline reproduces a cubic exactly (value, derivative, integral)', () => {
+    const f = (x: number) => x ** 3 - 2 * x + 1, df = (x: number) => 3 * x * x - 2;
+    const xs = [0, 0.3, 0.7, 1.2, 2.0];
+    const s = new CubicSpline(xs, xs.map(f), { d1Start: df(0), d1End: df(2) });
+    for (const x of [0.1, 0.55, 1.0, 1.9]) {
+      expect(s.eval(x)).toBeCloseTo(f(x), 12);
+      expect(s.deriv(x)).toBeCloseTo(df(x), 11);
+    }
+    expect(s.integral(2)).toBeCloseTo(2 ** 4 / 4 - 4 + 2, 12);
+  });
+  it('PCHIP is monotone and exact at nodes', () => {
+    const xs = [0, 1, 2, 3, 4], ys = [0, 0.1, 0.1, 5, 5.1];
+    const p = new Pchip(xs, ys);
+    let prev = -Infinity;
+    for (let x = 0; x <= 4; x += 0.01) { const v = p.eval(x); expect(v).toBeGreaterThanOrEqual(prev - 1e-12); prev = v; }
+    expect(p.eval(3)).toBeCloseTo(5, 14);
+    expect(lerpTable(xs, ys, 2.5)).toBeCloseTo(2.55, 14);
+  });
+  it('bicubic spline interpolates a smooth field with accurate gradients', () => {
+    const F = (x: number, y: number) => Math.exp(-x * x - 2 * y * y) * (1 + 0.3 * x);
+    const nx = 41, ny = 61, x0 = -2, y0 = -3, hx = 4 / (nx - 1), hy = 6 / (ny - 1);
+    const f = new Float64Array(nx * ny);
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) f[j * nx + i] = F(x0 + i * hx, y0 + j * hy);
+    const bi = new Bicubic(f, nx, ny, x0, y0, hx, hy);
+    const out = new Float64Array(3);
+    for (const [x, y] of [[0.123, -0.456], [-0.7, 0.3], [0.9, 0.05]]) {
+      bi.evalGrad(x, y, out);
+      const e = 1e-6;
+      expect(out[0]).toBeCloseTo(F(x, y), 4);
+      expect(out[1]).toBeCloseTo((F(x + e, y) - F(x - e, y)) / (2 * e), 3);
+      expect(out[2]).toBeCloseTo((F(x, y + e) - F(x, y - e)) / (2 * e), 3);
+    }
+  });
+});
+
+describe('roots', () => {
+  it('Brent finds roots to machine precision', () => {
+    expect(brent((x) => Math.cos(x) - x, 0, 1)).toBeCloseTo(0.7390851332151607, 14);
+    expect(brent((x) => x ** 3 - 2, 0, 2)).toBeCloseTo(Math.cbrt(2), 12);
+  });
+});
+
+describe('fixed-step integrators (order of accuracy)', () => {
+  // y' = −2 t y, y(0) = 1  →  y(1) = e^{−1}
+  const rhs = (t: number, y: Float64Array, d: Float64Array) => { d[0] = -2 * t * y[0]; };
+  const err = (f: typeof rk4Fixed, n: number) => { const y = Float64Array.of(1); f(rhs, y, 0, 1, n); return Math.abs(y[0] - Math.exp(-1)); };
+  it('classical RK4 converges at fourth order', () => {
+    expect(Math.log2(err(rk4Fixed, 20) / err(rk4Fixed, 40))).toBeCloseTo(4, 0);
+  });
+  it('explicit Euler converges at first order', () => {
+    expect(Math.log2(err(eulerFixed, 200) / err(eulerFixed, 400))).toBeCloseTo(1, 1);
+  });
+});

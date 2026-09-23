@@ -69,14 +69,14 @@ export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
     if (id === 'run') return <RunSummary cfg={cfg} name={name} onRun={onRun} />;
     const def = steps.find((s) => s.id === id);
     if (!def) return <p className="muted">No settings for this method at this step.</p>;
-    const fields = def.fields.filter((f) => fieldVisible(cfg.method, f.path));
+    const fields = def.fields.filter((f) => fieldVisible(cfg.method, f.path, cfg));
     return (
       <>
         <h2>{stepIdx + 1} · {def.title}</h2>
         {def.note && <p className="muted small">{def.note}</p>}
         {fields.length === 0 && !def.note && <p className="muted">No settings at this step.</p>}
         <div className="fields">
-          {fields.map((f) => <Field key={f.path} def={f} value={getPath(cfg, f.path)} onChange={(v) => update(f.path, v)} />)}
+          {fields.map((f) => <Field key={f.path} def={f} value={getPath(cfg, f.path) ?? f.def} onChange={(v) => update(f.path, v)} />)}
         </div>
       </>
     );
@@ -143,7 +143,7 @@ function RunSummary({ cfg, name, onRun }: { cfg: ReactorConfig; name: string; on
       <button className="btn primary" style={{ fontSize: 15, padding: '10px 26px', margin: '8px 0 16px' }} onClick={() => onRun(cfg)}>▶ START SHOT</button>
       <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
         {steps.map((s) => {
-          const fields = s.fields.filter((f) => fieldVisible(cfg.method, f.path));
+          const fields = s.fields.filter((f) => fieldVisible(cfg.method, f.path, cfg));
           if (!fields.length) return null;
           return (
             <div key={s.id} className="panel tight" style={{ background: 'var(--bg2)' }}>
@@ -151,7 +151,7 @@ function RunSummary({ cfg, name, onRun }: { cfg: ReactorConfig; name: string; on
               <table className="kv">
                 <tbody>
                   {fields.map((f) => {
-                    const v = getPath(cfg, f.path);
+                    const v = getPath(cfg, f.path) ?? f.def;
                     const shown = typeof v === 'number' ? fmtNum(v / (f.scale ?? 1)) : typeof v === 'boolean' ? (v ? 'on' : 'off') : v === undefined || v === '' ? '—' : String(v);
                     return <tr key={f.path}><td>{f.label}</td><td className="num">{shown} <span className="muted small">{f.unit ?? ''}</span></td></tr>;
                   })}

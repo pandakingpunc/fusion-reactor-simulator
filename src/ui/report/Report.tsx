@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { METHOD_LABELS } from '../../physics/types';
 import { SavedShot } from '../../App';
 import { fmtNum, fmtTime } from '../format';
@@ -8,7 +8,12 @@ import { exportCSV, exportJSON, exportReportCSV } from './exportShot';
 
 interface Props { shot: SavedShot | null; onRerun: () => void; onEdit: () => void }
 
+type FigKind = 'traces' | 'profiles' | 'cross';
+const FIG_LABEL: Record<FigKind, string> = { traces: 'Figure: time traces', profiles: 'Figure: radial profiles (1.5D)', cross: 'Figure: GS cross-section (1.5D)' };
+
 export function Report({ shot, onRerun, onEdit }: Props) {
+  const [figKind, setFigKind] = useState<FigKind>('traces');
+  const [figBusy, setFigBusy] = useState(false);
   if (!shot) return <div className="panel muted">No completed shots yet.</div>;
   const { report: r, meta, frames, events, cfg, name } = shot;
   const term = r.termination;
@@ -19,6 +24,15 @@ export function Report({ shot, onRerun, onEdit }: Props) {
 
   const keyList = ['Ti', 'P_fus', 'Q'].filter((k) => meta.diagSpecs.some((s) => s.key === k));
   const series = keyList.map((k, i) => { const s = meta.diagSpecs.find((x) => x.key === k)!; return { key: k, label: s.label, unit: s.unit, color: PALETTE[i], log: s.log }; });
+  const figKinds: FigKind[] = ['traces', ...(frames.some((f) => f.prof) ? ['profiles' as const] : []), ...(frames.some((f) => f.eq) ? ['cross' as const] : [])];
+  // yayın figürü: grafik kütüphanesi yalnız tıklamada yüklenir (dinamik import)
+  const exportFig = async (format: 'svg' | 'pdf') => {
+    setFigBusy(true);
+    try {
+      const m = await import('./exportFigures');
+      m.exportFigure({ name, cfg, frames, events, diagSpecs: meta.diagSpecs, timeUnit: meta.timeUnit }, figKinds.includes(figKind) ? figKind : 'traces', format);
+    } finally { setFigBusy(false); }
+  };
 
   return (
     <div className="report">
@@ -32,6 +46,11 @@ export function Report({ shot, onRerun, onEdit }: Props) {
             <button className="btn sm" onClick={() => exportJSON(name, cfg, r, events)}>JSON ↓</button>
             <button className="btn sm" onClick={() => exportReportCSV(name, r)}>Summary CSV ↓</button>
             <button className="btn sm" onClick={() => exportCSV(name, frames, meta.diagSpecs, meta.timeUnit)}>Time series CSV ↓</button>
+            <select value={figKinds.includes(figKind) ? figKind : 'traces'} onChange={(e) => setFigKind(e.target.value as FigKind)} title="Publication-quality vector figure (SVG for web, PDF for papers)">
+              {figKinds.map((k) => <option key={k} value={k}>{FIG_LABEL[k]}</option>)}
+            </select>
+            <button className="btn sm" disabled={figBusy} onClick={() => exportFig('svg')}>SVG ↓</button>
+            <button className="btn sm" disabled={figBusy} onClick={() => exportFig('pdf')}>PDF ↓</button>
             <button className="btn sm" onClick={onEdit}>Edit</button>
             <button className="btn sm primary" onClick={onRerun}>Run again</button>
           </div>

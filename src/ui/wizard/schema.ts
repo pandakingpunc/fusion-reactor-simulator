@@ -4,6 +4,7 @@
  * (UI değeri = cfg değeri / scale) — böylece n [m⁻³] arayüzde 1e20 biriminde görünür.
  */
 import { Method, ReactorConfig } from '../../physics/types';
+import { DEFAULT_PROFILE_SETTINGS as PS } from '../../physics/profiles/defaults';
 import { DIIID, DIRECT_DRIVE, GF_PISTON, ITER, JET, JT60SA, MASTU, MIRROR, MTF_LINER, MUON, NIF, PRESETS, SPARC, TAE, W7X, ZAP, ZMACHINE, DEMO } from '../../physics/presets';
 
 export type FieldType = 'number' | 'select' | 'bool';
@@ -16,6 +17,8 @@ export interface FieldDef {
   scale?: number;
   options?: { value: string; label: string }[];
   hint?: string;
+  /** cfg'de değer yoksa gösterilen (modelin kullandığı) varsayılan */
+  def?: unknown;
 }
 export interface StepDef { id: string; title: string; fields: FieldDef[]; note?: string }
 
@@ -55,6 +58,8 @@ const fuel = (path = 'fuel'): FieldDef => ({ path, label: 'Fuel', type: 'select'
 
 const MAGNETIC_STEPS: StepDef[] = [
   { id: 'geometry', title: 'Geometry & field', fields: [
+    { path: 'fidelity', label: 'Model fidelity', type: 'select', def: '0D', options: [{ value: '0D', label: '0D — global power balance (fast)' }, { value: '1.5D', label: '1.5D — radial profiles + Grad–Shafranov equilibrium' }],
+      hint: '1.5D: T_e, T_i, n_e and poloidal flux on ρ_tor with sawteeth, ELMs, NTMs, bootstrap/NBCD; ~10–100× slower than 0D' },
     { path: 'geometry.R', label: 'Major radius R', unit: 'm', min: 0.3, max: 12, step: 0.01 },
     { path: 'geometry.a', label: 'Minor radius a', unit: 'm', min: 0.1, max: 4, step: 0.01 },
     { path: 'geometry.kappa', label: 'Elongation κ', min: 1, max: 3, step: 0.01 },
@@ -71,11 +76,11 @@ const MAGNETIC_STEPS: StepDef[] = [
     { path: 'fuelFracA', label: 'Species a fraction (n_D/(n_D+n_T))', min: 0.05, max: 1, step: 0.01 },
     { path: 'n_target', label: 'Target n_e', unit: '10²⁰ m⁻³', scale: 1e20, min: 0.01, max: 20, step: 0.01 },
     { path: 'n_rampTime', label: 'Density ramp', unit: 's', min: 0.01, max: 500, step: 0.1 },
-    { path: 'impurity.species', label: 'Main impurity', type: 'select', options: ['Be', 'C', 'W', 'Ar', 'Ne', 'N', 'Fe'].map((v) => ({ value: v, label: v })) },
+    { path: 'impurity.species', label: 'Main impurity', type: 'select', options: ['Be', 'C', 'Ne', 'Ar', 'W'].map((v) => ({ value: v, label: v })) },
     { path: 'impurity.concentration', label: 'Impurity c_Z = n_Z/n_e', min: 0, max: 0.1, step: 1e-5 },
     { path: 'impurity.wallReflectivity', label: 'Wall reflectivity (synchrotron)', min: 0, max: 0.99, step: 0.01 },
     { path: 'impurity.W_source_frac', label: 'Additional W source', min: 0, max: 1, step: 0.01, hint: 'Divertor W erosion → core accumulation' },
-    { path: 'impurity.seedSpecies', label: 'Seeding impurity', type: 'select', options: [{ value: '', label: 'none' }, ...['Ar', 'Ne', 'N'].map((v) => ({ value: v, label: v }))] },
+    { path: 'impurity.seedSpecies', label: 'Seeding impurity', type: 'select', options: [{ value: '', label: 'none' }, ...['Ne', 'Ar'].map((v) => ({ value: v, label: v }))] },
     { path: 'impurity.seedConcentration', label: 'Seed c_s', min: 0, max: 0.05, step: 1e-4 },
   ] },
   { id: 'driver', title: 'Magnet, blanket, divertor, economics', fields: [
@@ -118,6 +123,30 @@ const MAGNETIC_STEPS: StepDef[] = [
     { path: 'events.elms', label: 'Type-I ELM', type: 'bool' },
     { path: 'events.sawteeth', label: 'Sawteeth', type: 'bool' },
     { path: 'events.ntm', label: 'NTM', type: 'bool' },
+    // ---- 1.5D profil modeli (yalnız fidelity = 1.5D)
+    { path: 'profiles.transportModel', label: '1.5D · transport model', type: 'select', def: PS.transportModel, options: [{ value: 'scaling', label: 'τ_E-scaling constrained (validated)' }, { value: 'cgm', label: 'Critical-gradient model (predictive, experimental)' }] },
+    { path: 'profiles.nRho', label: '1.5D · radial cells N_ρ', min: 16, max: 200, step: 1, def: PS.nRho },
+    { path: 'profiles.eqNR', label: '1.5D · Grad–Shafranov grid N_R', min: 25, max: 129, step: 2, def: PS.eqNR },
+    { path: 'profiles.lcfsKappa', label: '1.5D · LCFS elongation', min: 1, max: 3, step: 0.01, hint: 'Blank = geometry κ (κ_95 ≈ κ_LCFS/1.1)' },
+    { path: 'profiles.lcfsDelta', label: '1.5D · LCFS triangularity', min: -0.3, max: 0.8, step: 0.01, hint: 'Blank = geometry δ' },
+    { path: 'profiles.chiShape', label: '1.5D · χ shape c in (1 + cρ²)', min: 0, max: 10, step: 0.1, def: PS.chiShape },
+    { path: 'profiles.chiRatio', label: '1.5D · χ_i / χ_e', min: 0.2, max: 5, step: 0.05, def: PS.chiRatio },
+    { path: 'profiles.DoverChi', label: '1.5D · D / χ_e', min: 0.05, max: 2, step: 0.05, def: PS.DoverChi },
+    { path: 'profiles.stiffness', label: '1.5D · profile stiffness', min: 0, max: 10, step: 0.1, def: PS.stiffness, hint: 'χ ×= 1 + stiffness·max(0, (R/L_T)/(R/L_T)_crit − 1)' },
+    { path: 'profiles.critGrad', label: '1.5D · critical R/L_T', min: 1, max: 15, step: 0.1, def: PS.critGrad },
+    { path: 'profiles.pedestalWidth', label: '1.5D · pedestal width Δ_ped', unit: 'ρ', min: 0.02, max: 0.15, step: 0.005, def: PS.pedestalWidth },
+    { path: 'profiles.etbFactor', label: '1.5D · ETB χ reduction', min: 0.01, max: 1, step: 0.01, def: PS.etbFactor },
+    { path: 'profiles.alphaCritFactor', label: '1.5D · ballooning limit × α_crit', min: 0.5, max: 2, step: 0.05, def: PS.alphaCritFactor, hint: 'ELM trigger: α_ped > factor · α_crit(s, κ, δ)' },
+    { path: 'profiles.elmFraction', label: '1.5D · ELM crash depth ΔW/W_ped', min: 0.05, max: 0.8, step: 0.01, def: PS.elmFraction },
+    { path: 'profiles.sawtoothShear', label: '1.5D · sawtooth trigger shear s₁', min: 0.05, max: 1, step: 0.01, def: PS.sawtoothShear },
+    { path: 'profiles.ecrhRho', label: '1.5D · ECRH deposition ρ', min: 0, max: 0.9, step: 0.01, def: PS.ecrhRho },
+    { path: 'profiles.ecrhWidth', label: '1.5D · ECRH width', min: 0.02, max: 0.3, step: 0.01, def: PS.ecrhWidth },
+    { path: 'profiles.icrhWidth', label: '1.5D · ICRH width', min: 0.05, max: 0.6, step: 0.01, def: PS.icrhWidth },
+    { path: 'profiles.nbiRtan', label: '1.5D · NBI tangency radius / R', min: 0.3, max: 1.3, step: 0.01, def: PS.nbiRtan },
+    { path: 'profiles.nbcdEff', label: '1.5D · NBCD efficiency factor', min: 0, max: 1, step: 0.01, def: PS.nbcdEff },
+    { path: 'profiles.eccdEff', label: '1.5D · ECCD efficiency factor', min: 0, max: 1, step: 0.01, def: PS.eccdEff },
+    { path: 'profiles.nsepFrac', label: '1.5D · separatrix density n_sep/⟨n_e⟩', min: 0.1, max: 0.8, step: 0.01, def: PS.nsepFrac },
+    { path: 'profiles.Tsep_keV', label: '1.5D · separatrix T_e', unit: 'keV', min: 0.02, max: 0.5, step: 0.005, hint: 'Blank = two-point model (Eich λ_q)' },
   ] },
 ];
 
@@ -232,8 +261,10 @@ export function stepsFor(method: Method): StepDef[] {
   }
 }
 
-/** Belirli bir alan bu yöntem için anlamlı mı (stellarator/ICF dallanmaları) */
-export function fieldVisible(method: Method, path: string): boolean {
+/** Belirli bir alan bu yöntem (ve model seçimi) için anlamlı mı (stellarator/ICF/1.5D dallanmaları) */
+export function fieldVisible(method: Method, path: string, cfg?: ReactorConfig): boolean {
+  if (path === 'fidelity') return method === 'tokamak' || method === 'spherical_tokamak';
+  if (path.startsWith('profiles.')) return (method === 'tokamak' || method === 'spherical_tokamak') && (cfg as { fidelity?: string } | undefined)?.fidelity === '1.5D';
   if (path.startsWith('stellarator.')) return method === 'stellarator';
   if (path === 'Ip_MA' || path === 'scaling') return method !== 'stellarator';
   if (path.startsWith('limits.') || path.startsWith('events.')) return method !== 'stellarator';

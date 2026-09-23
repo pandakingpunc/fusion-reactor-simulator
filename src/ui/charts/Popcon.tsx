@@ -7,67 +7,13 @@
  */
 import React, { useEffect, useMemo, useRef } from 'react';
 import { MagneticConfig } from '../../physics/types';
-import { peakFromAverage, plasmaSurface, plasmaVolume, profileIntegral } from '../../physics/geometry';
-import { tauIPB98y2, tauISS04, tauSTValovic, pLH_Martin } from '../../physics/transport';
-import { FUEL_CHANNELS } from '../../physics/reactivity';
-import { bremsstrahlung } from '../../physics/radiation';
-import { greenwaldDensity, betaToroidal, betaNormalized } from '../../physics/limits';
+import { computePopcon, PopconGrid } from '../../physics/popcon';
 import { fmtAxis } from '../format';
 
 const NX = 44, NY = 44;
-const E_KEV = 1.602176634e-16; // J/keV
 
-interface Grid { n: number[]; T: number[]; Paux: Float64Array; Q: Float64Array; betaN: Float64Array; PLH_ok: Uint8Array; nG: number }
-
-/** Yakıtın tüm kanalları: güç yoğunluğu = n_a n_b (Σ σv_k E_k) · (aynı tür ise ½) */
-function fusionChannel(fuel: MagneticConfig['fuel']) {
-  const chs = FUEL_CHANNELS[fuel];
-  const same = chs[0].sameSpecies;
-  // <σv>·E toplamı [m³/s · J] ve yüklü parçacık payı (T=10 keV'de kanal ağırlıklı, APPROXIMATION)
-  const svE = (T: number) => chs.reduce((s, c) => s + c.sigmav(T) * c.Etot_MeV, 0) * 1e6 * 1.602176634e-19;
-  const w = chs.map((c) => c.sigmav(10) * c.Etot_MeV), wsum = w.reduce((a, b) => a + b, 0) || 1;
-  const fCharged = chs.reduce((s, c, i) => s + (w[i] / wsum) * (c.Echarged_MeV / c.Etot_MeV), 0);
-  return { svE, same, fCharged };
-}
-
-function computeGrid(cfg: MagneticConfig): Grid {
-  const g = cfg.geometry, V = plasmaVolume(g), S = plasmaSurface(g);
-  const nG = greenwaldDensity(cfg.Ip_MA, g.a);
-  const nMax = cfg.method === 'stellarator' ? cfg.n_target * 2.5 : nG * 1.6;
-  const n = Array.from({ length: NX }, (_, i) => (nMax * (i + 0.5)) / NX);
-  const T = Array.from({ length: NY }, (_, j) => 0.5 + (40 - 0.5) * ((j + 0.5) / NY) ** 1.4);
-  const ch = fusionChannel(cfg.fuel);
-  const fA = cfg.fuelFracA, prodFrac = ch.same ? 0.5 * fA * fA : fA * (1 - fA);
-  const Zeff = 1 + cfg.impurity.concentration * 20; // APPROXIMATION: Z(Z−1)·c_Z kaba
-  const aN = cfg.transport.alpha_n, aT = cfg.transport.alpha_T;
-  const M = cfg.fuel === 'DT' ? 2.5 : cfg.fuel === 'DD' ? 2 : cfg.fuel === 'DHe3' ? 2.5 : 1;
-  const Paux = new Float64Array(NX * NY), Q = new Float64Array(NX * NY), betaN = new Float64Array(NX * NY), PLH_ok = new Uint8Array(NX * NY);
-  for (let i = 0; i < NX; i++) for (let j = 0; j < NY; j++) {
-    const ne = n[i], Tk = T[j], n0 = peakFromAverage(ne, aN), T0 = peakFromAverage(Tk, aT);
-    // <n² σv> profil integrali
-    const fusAvg = profileIntegral((r) => { const nn = n0 * Math.pow(1 - r * r, aN); return nn * nn * ch.svE(T0 * Math.pow(1 - r * r, aT)); }, 24);
-    const Pfus = prodFrac * fusAvg * V;
-    const Palpha = Pfus * ch.fCharged;
-    const Pbrems = profileIntegral((r) => bremsstrahlung(n0 * Math.pow(1 - r * r, aN), T0 * Math.pow(1 - r * r, aT), Zeff), 24) * V;
-    const W = 3 * ne * Tk * E_KEV * V; // iyon + elektron, Ti = Te
-    // kararlı durum: P_cond = W/τ_E(P_cond) sabit-nokta
-    let Pc = Math.max(Palpha, 1e6);
-    for (let k = 0; k < 25; k++) {
-      const tau = cfg.method === 'stellarator'
-        ? tauISS04(g, cfg.B0, ne, Pc, cfg.stellarator.iota23, cfg.stellarator.f_ren)
-        : (cfg.scaling === 'ST_Valovic' ? tauSTValovic : tauIPB98y2)(g, cfg.Ip_MA, cfg.B0, ne, Pc, M) * cfg.H98;
-      const Pn = W / Math.max(tau, 1e-4);
-      Pc = 0.5 * Pc + 0.5 * Pn;
-    }
-    const Pa = Pc + Pbrems - Palpha;
-    const k = i * NY + j;
-    Paux[k] = Pa; Q[k] = Pa > 0 ? Pfus / Pa : Infinity;
-    const p = 2 * ne * Tk * E_KEV; // Pa (n_e T_e + n_i T_i)
-    betaN[k] = cfg.Ip_MA > 0 ? betaNormalized(betaToroidal(p, cfg.B0), g.a, cfg.B0, cfg.Ip_MA) : 0;
-    PLH_ok[k] = Pc + Pbrems >= pLH_Martin(ne, cfg.B0, S, M) ? 1 : 0;
-  }
-  return { n, T, Paux, Q, betaN, PLH_ok, nG };
-}
+/** Izgara hesabı fizik katmanında (physics/popcon.ts) — makale figürüyle ortak */
+function computeGrid(cfg: MagneticConfig): PopconGrid { return computePopcon(cfg, { nx: NX, ny: NY }); }
 
 interface Props { cfg: MagneticConfig; point?: { n: number; T: number } | null; height?: number }
 

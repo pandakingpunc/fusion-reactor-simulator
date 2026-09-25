@@ -17,10 +17,14 @@ authors:
     family-names: Karatum
     # orcid: "https://orcid.org/0000-0000-0000-0000"
 license: MIT
+doi: 10.5281/zenodo.22925078
 identifiers:
   - type: doi
     value: 10.5281/zenodo.22259861
     description: Concept DOI representing all versions (always resolves to the latest version)
+  - type: doi
+    value: 10.5281/zenodo.22925078
+    description: DOI of version 3.0.0
 version: "3.0.0"
 date-released: "2026-09-23"
 keywords:

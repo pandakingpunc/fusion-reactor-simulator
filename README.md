@@ -123,7 +123,8 @@ olarak `çekirdek − 1` iş parçacığı kullanır (`--threads` ile sınırlan
 
 Bu projeyi kullanırsanız lütfen `CITATION.cff` dosyasındaki bilgiyle atıf yapın (GitHub'da
 **"Cite this repository"**). Tüm sürümleri temsil eden kavram DOI'si:
-[10.5281/zenodo.22259861](https://doi.org/10.5281/zenodo.22259861).
+[10.5281/zenodo.22259861](https://doi.org/10.5281/zenodo.22259861). v3.0.0 sürümünün DOI'si:
+[10.5281/zenodo.22925078](https://doi.org/10.5281/zenodo.22925078).
 
 ## Lisans
 

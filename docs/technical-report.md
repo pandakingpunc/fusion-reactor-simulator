@@ -5,6 +5,7 @@
 **Tarih:** 23 Eylül 2026
 **Lisans:** MIT (kod), CC-BY-4.0 (bu rapor önerilir)
 **Kavram DOI:** [10.5281/zenodo.22259861](https://doi.org/10.5281/zenodo.22259861)
+**Sürüm DOI (v3.0.0):** [10.5281/zenodo.22925078](https://doi.org/10.5281/zenodo.22925078)
 
 ---
 

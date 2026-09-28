@@ -51,6 +51,28 @@ export function q95(g: Geometry, B0: number, Ip_MA: number): number {
 }
 
 /**
+ * q95 — düşük en-boy oranında da geçerli fit: O. Sauter, "Geometric formulas for system codes
+ * including the effect of negative triangularity", Fusion Eng. Des. 112 (2016) 633:
+ *  q95 = (4.1 a² B / (R I_p[MA])) · [1 + 1.2(κ−1) + 0.56(κ−1)²] · (1 + 0.09δ + 0.16δ²)
+ *        · (1 + 0.45 δ ε) / (1 − 0.74 ε) · [1 + 0.55 (w07 − 1)],   w07 = 1 (karelik yok)
+ * Uckan formülündeki (1 − ε²)⁻² çarpanı ε → 1'de ıraksar (MAST-U, ε = 0.76: q95 = 34); bu fit
+ * (1 − 0.74 ε)⁻¹ ile sınırlı kalır. PROCESS'teki 'Sauter' akım ölçeklemesiyle aynı biçim.
+ */
+export function q95Sauter(g: Geometry, B0: number, Ip_MA: number): number {
+  if (Ip_MA <= 0) return Infinity;
+  const eps = g.a / g.R, k = g.kappa - 1, d = g.delta;
+  const fk = 1 + 1.2 * k + 0.56 * k * k;
+  const fd = 1 + 0.09 * d + 0.16 * d * d;
+  const fe = (1 + 0.45 * d * eps) / (1 - 0.74 * eps);
+  return ((4.1 * g.a * g.a * B0) / (g.R * Ip_MA)) * fk * fd * fe;
+}
+
+/** Yönteme göre q95: sferik tokamak → Sauter (2016) düşük en-boy fiti; diğerleri → ITER (Uckan) formülü */
+export function q95ForMethod(method: string, g: Geometry, B0: number, Ip_MA: number): number {
+  return method === 'spherical_tokamak' ? q95Sauter(g, B0, Ip_MA) : q95(g, B0, Ip_MA);
+}
+
+/**
  * Profil şekilleri: f(ρ) = f0 (1 − ρ²)^α ; hacim ort. <f> = f0/(1+α)
  * Silindirik hacim ağırlığı 2ρ dρ (APPROXIMATION: Shafranov kayması ve şekil ihmal).
  */

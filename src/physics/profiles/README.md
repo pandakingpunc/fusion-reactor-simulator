@@ -146,8 +146,6 @@ implement the hooks; other parts are listed in `ProfileModel.checkpointParts`.
   the new geometry, i.e. an outer iteration between the transport tables and the solver.
 - The stored energy is summed in two places (`acceptStep` as W_e + W_i, `ctx.storedEnergy` for
   frames no step produced and the quench); they agree to rounding only.
-- `ProfileModel` still carries the `rhs`/`integratorOpts` stub that `SimModel` requires, although
-  it advances with `step()` only.
 - `'cgm'` is uncalibrated; its outermost face uses the gradient between the last two cells, not
   the one to the separatrix value, and it is slow on JET-size machines.
 - P_SOL (two-point T_sep) follows the lagged global balance P_heat − P_rad − dW/dt, not P_bound, on

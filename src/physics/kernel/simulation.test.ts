@@ -171,6 +171,13 @@ describe('SimModel contract check', () => {
     expect(built.n).toBe(0);
     expect(sim.history[0].sim && 'integ' in sim.history[0].sim).toBe(false);
   });
+
+  it('the 1.5D model carries no rhs() / integratorOpts stub: it has its own step() and needs neither', () => {
+    const model = new Simulation(presetCfg('JET15', 0.1)).model as ProfileModel;
+    expect(typeof model.step).toBe('function');
+    expect('rhs' in model).toBe(false);
+    expect('integratorOpts' in model).toBe(false);
+  });
 });
 
 describe('FSAL stage reuse', () => {

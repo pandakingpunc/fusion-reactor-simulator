@@ -86,8 +86,6 @@ export class ProfileModel implements SimModel {
   readonly outputDt: number;
   readonly nState: number;
   readonly diagSpecs = PROFILE_DIAGS;
-  /** SimModel requires these for its Dormand–Prince path; this model advances with step() and never uses them */
-  readonly integratorOpts = { rtol: 1e-4, atol: 1, dtMin: 1e-7, dtMax: 1 };
   readonly dt0 = 1e-3;
 
   /** shared state of the shot */
@@ -200,9 +198,7 @@ export class ProfileModel implements SimModel {
     return y;
   }
 
-  /** Not used: the model advances with step() (see integratorOpts) */
-  rhs(_t: number, _y: Float64Array, d: Float64Array): void { d.fill(0); }
-
+  /** The model advances with its own implicit stepper; it has no rhs() and Simulation builds no Dormand–Prince stepper for it. */
   step(t: number, y: Float64Array, tMax: number): number { return this.stepper.step(t, y, tMax); }
 
   /** Grad–Shafranov update from the profiles of y at time t; returns whether it was accepted */

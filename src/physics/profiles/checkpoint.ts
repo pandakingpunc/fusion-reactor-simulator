@@ -58,8 +58,11 @@ export class CheckpointStore {
  * state (P_SOL filter, Γ_b, n_sep gain), α_ped/α_crit, loop voltage, τ_E used by the fueling loop
  * of the next step, the disruption state; the equilibrium/geometry pair, the issued warnings, the
  * disruption cause and text and the last diagnostics by reference or copy. Actuator set-points
- * (applyControl) are deliberately not part of it: after a rewind the latest controls stay in
- * force. The output state (termination, pending events, stale flag) is reset.
+ * (applyControl) are deliberately not part of it: a direct model.restoreInternal() leaves the
+ * latest controls in force. Through the kernel, Simulation.rewindTo() re-applies the controls of
+ * the frame (frame.sim.controls) after the restore, so there the set-points are those in force at
+ * the frame (kernel/determinism15.test.ts). The output state (termination, pending events, stale
+ * flag) is reset.
  *
  * The last diagnostics and profiles are part of it because the quench phases of a disruption
  * patch them in place on top of the values of the last normal step (quenchDiagnostics): they

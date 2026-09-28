@@ -7,7 +7,7 @@ export default defineConfig({
   worker: { format: 'es' },
   build: { target: 'es2022' },
   test: {
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'bench/**/*.test.ts'],
     // `npm run coverage` (vitest run --coverage). Code that runs only in child processes or worker
     // threads (the CLIs, *.worker.ts) is not seen by V8 coverage of the test process.
     coverage: {

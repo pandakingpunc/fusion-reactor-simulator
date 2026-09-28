@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Equilibrium, EquilibriumOptions, GSFailure, GSGrid, GSSolver, TableProfileSpec } from './gs';
 import { PhysicalSolovev, SolovevEquilibrium, solovevBoundary } from './solovev';
+import { CubicSpline, Pchip } from '../numerics/interp';
 
 const MU0 = 1.25663706212e-6;
 const ITER = { R: 6.2, a: 2.0, kappa: 1.7, delta: 0.33 };
@@ -107,6 +108,50 @@ describe('table (transport-coupling) mode', () => {
     expect(cold.q95 / warm.q95).toBeCloseTo(1, 4);
   });
 
+  it('force-balance measures flag a pressure the field does not hold (the pre-v4 table-mode state)', () => {
+    // ⟨j_φ/R⟩ scaled by 0.8 → c ≈ 1.25. The old table mode scaled p′ together with FF′ by c, so its
+    // field held c·p′ while it reported p′: emulated here by reporting p′/c against this field.
+    const eq = solver.solve({ Ip, B0, profile: table(0.8), tol: 1e-8 });
+    const c = eq.currentScale!;
+    expect(c).toBeGreaterThan(1.2);
+    const pS = new Pchip(ref.prof.psiN, ref.prof.p), fS = new CubicSpline(eq.prof.psiN, eq.prof.FFp);
+    const pp = (x: number) => -pS.deriv(Math.min(Math.max(x, 0), 1)) / eq.psiAxis;
+    const ffp = (x: number) => fS.eval(x);
+    const held = solver.forceBalanceOf(eq.psi, pp, ffp);
+    expect(held.residual).toBeLessThan(1e-4);
+    expect(held.ratio).toBeCloseTo(1, 4);
+    const old = solver.forceBalanceOf(eq.psi, (x) => pp(x) / c, ffp);
+    expect(old.ratio).toBeCloseTo(c * held.ratio, 9); // the ratio is linear in 1/p′
+    expect(old.residual).toBeCloseTo(c - 1, 3);
+    const low = solver.forceBalanceOf(eq.psi, (x) => 0.8 * pp(x), ffp);
+    expect(low.ratio).toBeCloseTo(1.25, 3);
+    expect(low.residual).toBeCloseTo(0.25, 3);
+  });
+
+  it('forceBalanceResidual of an unconverged state follows its Picard residual', () => {
+    const fb = [2, 3].map((maxIter) => solver.solve({ Ip, B0, profile: table(1), maxIter }));
+    expect(fb[0].converged).toBe(false);
+    expect(fb[0].forceBalanceResidual).toBeGreaterThan(0.05);
+    expect(Math.abs(fb[0].forceBalanceRatio - 1)).toBeGreaterThan(0.05);
+    expect(fb[1].forceBalanceResidual).toBeLessThan(fb[0].forceBalanceResidual / 4);
+    expect(fb[1].forceBalanceResidual).toBeGreaterThan(fb[1].residual / 10);
+    expect(solver.solve({ Ip, B0, profile: table(1), tol: 1e-8 }).forceBalanceResidual).toBeLessThan(1e-6);
+  });
+
+  it('warns when the current table needs |currentScale − 1| > 0.1 to meet I_p', () => {
+    const codes = (eq: Equilibrium) => eq.warnings.map((w) => w.code);
+    expect(codes(solver.solve({ Ip, B0, profile: table(1), tol: 1e-8 }))).toEqual([]);
+    const off = solver.solve({ Ip, B0, profile: table(0.8), tol: 1e-8 });
+    expect(off.converged).toBe(true);
+    expect(codes(off)).toEqual(['table-current-rescaled']);
+    expect(off.warnings[0].message).toMatch(/80\.\d % of I_p/);
+    const near = { Ip, B0, profile: table(1.1), tol: 1e-8 }; // c ≈ 0.91
+    expect(codes(solver.solve(near))).toEqual([]);
+    expect(codes(solver.solve({ ...near, currentScaleWarn: 0.05 }))).toEqual(['table-current-rescaled']);
+    const unconverged = solver.solve({ Ip, B0, profile: table(1), maxIter: 3 });
+    expect(codes(unconverged)).toContain('not-converged');
+  });
+
   it('I(ψ_N) and ⟨j_φ/R⟩ tables describe the same equilibrium', () => {
     const I = ref.prof.Ienc.map((v, k) => (k === 0 ? 0 : v));
     const a = solver.solve({ Ip, B0, profile: { kind: 'table', psiN: ref.prof.psiN, p: ref.prof.p, I }, tol: 1e-8 });
@@ -115,6 +160,36 @@ describe('table (transport-coupling) mode', () => {
     expect(a.q95 / b.q95).toBeCloseTo(1, 2);
     expect(a.li3 / b.li3).toBeCloseTo(1, 2);
     expect(a.forceBalanceRatio).toBeCloseTo(1, 2);
+  });
+});
+
+describe('transport coupling through a stale geometry (MAST-U-like, the 1.5D MASTU15 case)', () => {
+  // The 1.5D model maps its ρ_tor profiles to ψ_N through the previous accepted equilibrium. Here
+  // the plasma is at β_p = 0.8 while that equilibrium is still the β_p = 0.1 start-up one.
+  const solver = new GSSolver({ R: 0.85, a: 0.65, kappa: 2.5, delta: 0.5 }, { NR: 33 });
+  const Ist = 1e6, Bst = 0.75;
+  const start = solver.solve({ Ip: Ist, B0: Bst, profile: { kind: 'shape', alphaM: 2, alphaN: 1.3, betaP: 0.1 }, tol: 1e-7 });
+  const hot = solver.solve({ Ip: Ist, B0: Bst, profile: { kind: 'shape', alphaM: 2, alphaN: 1.3, betaP: 0.8 }, tol: 1e-7 });
+  const pOfRho = new Pchip(hot.prof.rhoTor, hot.prof.p), jOfRho = new Pchip(hot.prof.rhoTor, jRof(hot));
+  const tableVia = (eq: Equilibrium): TableProfileSpec =>
+    ({ kind: 'table', psiN: eq.prof.psiN, p: Array.from(eq.prof.rhoTor, (r) => pOfRho.eval(r)), jR: Array.from(eq.prof.rhoTor, (r) => jOfRho.eval(r)) });
+
+  it('flags tables mapped through the stale equilibrium; the same profiles on their own ψ_N are consistent', () => {
+    const stale = solver.solve({ Ip: Ist, B0: Bst, profile: tableVia(start), psiInit: start.psi, tol: 1e-7, maxIter: 200 });
+    expect(stale.converged).toBe(true);
+    // the ⟨j_φ/R⟩ table carries ~80 % of I_p on the returned surfaces and β_p is ~25 % low
+    expect(stale.currentScale!).toBeGreaterThan(1.15);
+    expect(stale.warnings.map((w) => w.code)).toEqual(['table-current-rescaled']);
+    expect(stale.betaP / hot.betaP).toBeLessThan(0.8);
+    // still a force-balanced equilibrium of the tables as given, with a large axis step from `start`
+    expect(stale.forceBalanceResidual).toBeLessThan(1e-4);
+    expect((stale.Raxis - start.Raxis) / 0.65).toBeGreaterThan(0.08);
+    const own = solver.solve({ Ip: Ist, B0: Bst, profile: tableVia(hot), psiInit: start.psi, tol: 1e-7, maxIter: 200 });
+    expect(own.converged).toBe(true);
+    expect(Math.abs(own.currentScale! - 1)).toBeLessThan(0.01);
+    expect(own.warnings).toEqual([]);
+    expect(own.betaP / hot.betaP).toBeCloseTo(1, 2);
+    expect(Math.abs(own.Raxis - hot.Raxis)).toBeLessThan(2e-3);
   });
 });
 
@@ -137,6 +212,8 @@ describe('shape mode', () => {
     const hi = solver.solve({ Ip, B0, profile: { kind: 'shape', alphaM: 2, alphaN: 1.3, betaP: 1.3 } });
     expect(hi.converged).toBe(true);
     expect(hi.betaPTargetMet).toBe(true);
+    expect(lo.warnings).toEqual([]);
+    expect(hi.warnings).toEqual([]);
     expect(hi.beta0!).toBeGreaterThan(1);
     expect(hi.betaP).toBeCloseTo(1.3, 1);
     expect(hi.prof.FFp[0]).toBeLessThan(0);
@@ -149,6 +226,7 @@ describe('shape mode', () => {
     const eq = solver.solve({ Ip, B0, profile: { kind: 'shape', alphaM: 2, alphaN: 1.3, betaP: 5 } });
     expect(eq.converged).toBe(true);
     expect(eq.betaPTargetMet).toBe(false);
+    expect(eq.warnings.map((w) => w.code)).toEqual(['betaP-target-unreachable']);
     expect(eq.beta0).toBeCloseTo(solver.beta0Max, 12);
     expect(eq.betaP).toBeLessThan(5);
     // j_φ ≥ 0 at the limit
@@ -250,8 +328,11 @@ describe('failure paths', () => {
       ['length mismatch', () => solver.solve({ Ip, B0, profile: { kind: 'table', psiN, p: p.slice(1), jR } })],
       ['NaN in table', () => solver.solve({ Ip, B0, profile: { kind: 'table', psiN, p, jR: [1, NaN, 1, 1, 1] } })],
       ['neither I nor jR', () => solver.solve({ Ip, B0, profile: { kind: 'table', psiN, p } })],
+      ['currentScaleWarn < 0', () => solver.solve({ Ip, B0, profile: { kind: 'table', psiN, p, jR }, currentScaleWarn: -0.1 })],
       ['grid NR < 9', () => new GSGrid(ITER, { NR: 5 })],
       ['R ≤ a(1 + margin)', () => new GSGrid({ R: 1, a: 1, kappa: 1, delta: 0 })],
+      ['forceBalanceOf ψ size', () => solver.forceBalanceOf(new Float64Array(10), () => 0, () => 0)],
+      ['forceBalanceOf ψ ≤ 0 on the axis', () => solver.forceBalanceOf(new Float64Array(solver.grid.NR * solver.grid.NZ), () => 0, () => 0)],
     ];
     for (const [name, fn] of bad) {
       const e = failure(fn);
@@ -274,5 +355,8 @@ describe('failure paths', () => {
     expect(eq.residual).toBeLessThan(1e-8);
     expect(eq.iterations).toBeGreaterThan(1);
     expect(eq.forceBalanceRatio).toBeCloseTo(1, 3);
+    // this ad-hoc table is not normalised to I_p: only that is reported
+    expect(Math.abs(eq.currentScale! - 1)).toBeGreaterThan(0.1);
+    expect(eq.warnings.map((w) => w.code)).toEqual(['table-current-rescaled']);
   });
 });

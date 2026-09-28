@@ -59,11 +59,12 @@ describe('heating.autoOff (ignition test)', { timeout: 60_000 }, () => {
     const r = runWithEventDiag({ ...cfg, H98: 1.4, events: { ...cfg.events, ntm: false } });
     expect(r.atIgnition.length).toBeGreaterThan(0);
     for (const d of r.atIgnition) {
-      expect(d.P_alpha).toBeGreaterThanOrEqual(d.P_rad + d.P_transport);
       // P_alpha is the charged-product heating only: at most what the products bring in (the pool
-      // lags a rising P_charged), and the beams are a separate term, still on during the ramp-down
+      // lags a rising P_charged), and the beams are a separate term, still on during the ramp-down.
+      // (Before the pool split P_alpha included the beams and IGNITION was logged with the NBI on.)
       expect(d.P_alpha).toBeLessThanOrEqual(1.02 * d.P_charged);
       expect(d.P_beam_heat).toBeGreaterThan(0);
+      expect(d.P_alpha).toBeGreaterThanOrEqual(d.P_rad + d.P_transport);
     }
     // ignition declared with the heating still ramping down must hold once it is fully off
     const tOff = r.sim.events.find((e: SimEvent) => e.kind === 'info' && /heating/i.test(e.msg))!.t;

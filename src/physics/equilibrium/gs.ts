@@ -34,6 +34,9 @@
  *      A pure multiplicative FF' scale was not used: near β_p ≈ 1 FF' ≈ 0 on average, and the
  *      scale factor (I_p − I_p')/I_FF' becomes ill-conditioned or changes sign; scaling ⟨j_φ/R⟩
  *      (c ≈ I_p/I_table) keeps the current-profile shape and is always well conditioned.
+ *      c is also a consistency check: tables mapped to ψ_N through the returned equilibrium give
+ *      c ≈ 1; tables mapped through a distant (e.g. stale) equilibrium give |c − 1| ≫ 0, which is
+ *      reported as a 'table-current-rescaled' warning (Equilibrium.warnings).
  */
 import { Geometry } from '../geometry';
 import { BandedLU } from '../numerics/linalg';
@@ -72,6 +75,29 @@ export class GSFailure extends Error {
     this.residual = residual;
   }
 }
+
+/** Machine-readable caveat about a returned equilibrium (Equilibrium.warnings). */
+export type GSWarningCode =
+  /** the iteration stopped at maxIter with the residual above tol */
+  | 'not-converged'
+  /** shape mode: the β_p target needs β0 beyond the current-positivity limit (betaPTargetMet = false) */
+  | 'betaP-target-unreachable'
+  /**
+   * table mode: |currentScale − 1| > currentScaleWarn. The current table integrates to I_p/c over
+   * the returned flux surfaces: it was not built on this equilibrium — typically mapped to ψ_N
+   * through a distant one (in transport coupling: a stale geometry) — or not normalised to I_p.
+   * The returned state is a correct equilibrium for the tables as given, but the caller's own
+   * geometry and profiles disagree with it by about that much.
+   */
+  | 'table-current-rescaled';
+
+export interface GSWarning {
+  code: GSWarningCode;
+  message: string;
+}
+
+/** default of EquilibriumOptions.currentScaleWarn (every accepted table solve of the 1.5D golden cases but one has |c − 1| ≤ 0.07) */
+const CURRENT_SCALE_WARN = 0.1;
 
 function badInput(msg: string): never { throw new GSFailure('bad-input', msg); }
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -558,6 +584,8 @@ export interface EquilibriumOptions {
   nTheta?: number;
   /** previous solution on the same grid (warm start) */
   psiInit?: Float64Array;
+  /** table mode: |currentScale − 1| above which a 'table-current-rescaled' warning is added (default 0.1) */
+  currentScaleWarn?: number;
   /** diagnostics: called every Picard iteration with (iteration, residual, ψ_axis) */
   onIter?: (it: number, resid: number, psiAxis: number) => void;
 }
@@ -644,6 +672,8 @@ export interface Equilibrium {
   betaPTargetMet?: boolean;
   /** table mode: factor c applied to ⟨j_φ/R⟩ to meet I_p (1 for a self-consistent table) */
   currentScale?: number;
+  /** caveats about this state (empty when there are none); see GSWarningCode */
+  warnings: GSWarning[];
 }
 
 /**
@@ -748,6 +778,7 @@ function validateOptions(o: EquilibriumOptions, nGrid: number): void {
   if (o.andersonDepth !== undefined && !(Number.isInteger(o.andersonDepth) && o.andersonDepth >= 0 && o.andersonDepth <= 20)) badInput(`andersonDepth must be an integer in [0, 20] (got ${o.andersonDepth})`);
   if (o.nSurf !== undefined && !(Number.isInteger(o.nSurf) && o.nSurf >= 4)) badInput(`nSurf must be an integer ≥ 4 (got ${o.nSurf})`);
   if (o.nTheta !== undefined && !(Number.isInteger(o.nTheta) && o.nTheta >= 8)) badInput(`nTheta must be an integer ≥ 8 (got ${o.nTheta})`);
+  if (o.currentScaleWarn !== undefined && !(finite(o.currentScaleWarn) && o.currentScaleWarn >= 0)) badInput(`currentScaleWarn must be ≥ 0 (got ${o.currentScaleWarn})`);
   if (o.psiInit !== undefined) {
     if (o.psiInit.length !== nGrid) badInput(`psiInit has ${o.psiInit.length} values, the grid ${nGrid}`);
     for (let k = 0; k < nGrid; k++) if (!Number.isFinite(o.psiInit[k])) badInput('psiInit contains non-finite values');
@@ -944,10 +975,21 @@ export class GSSolver {
     }
     const ffpTable = prof.kind === 'table' ? new CubicSpline(tabXs, tabA.map((a, i) => cScale * a + tabB[i])) : null;
     const eq = this.postProcess(gx, o, beta0, tail, ffpTable, ppN, Math.min(it, maxIter), converged, resid);
+    const warn = (code: GSWarningCode, message: string) => eq.warnings.push({ code, message });
+    if (!converged) warn('not-converged', `residual ${resid.toExponential(2)} > tol ${tol} after ${eq.iterations} iterations`);
     if (prof.kind === 'shape') {
       eq.beta0 = beta0;
-      if (betaTarget !== undefined) eq.betaPTargetMet = !beta0Pinned;
-    } else eq.currentScale = cScale;
+      if (betaTarget !== undefined) {
+        eq.betaPTargetMet = !beta0Pinned;
+        if (beta0Pinned) warn('betaP-target-unreachable', `β_p target ${betaTarget} needs β0 above the current-positivity limit ${this.beta0Max.toFixed(4)}; β_p = ${eq.betaP.toFixed(4)} returned`);
+      }
+    } else {
+      eq.currentScale = cScale;
+      const lim = o.currentScaleWarn ?? CURRENT_SCALE_WARN;
+      if (Math.abs(cScale - 1) > lim) {
+        warn('table-current-rescaled', `the current table integrates to ${(100 / cScale).toFixed(1)} % of I_p over the returned flux surfaces (currentScale ${cScale.toFixed(4)}, |c − 1| > ${lim}): it was not built on this equilibrium (e.g. mapped to ψ_N through a stale geometry) or not normalised to I_p`);
+      }
+    }
     return eq;
   }
 
@@ -1056,7 +1098,26 @@ export class GSSolver {
       q95, q0: P.q[0], qmin, shafranovShift: ax.R - R0,
       iterations, converged, residual,
       forceBalanceResidual: fb.residual, forceBalanceRatio: fb.ratio,
+      warnings: [],
     };
+  }
+
+  /**
+   * Force balance of any state on this solver's grid, in the measures of
+   * Equilibrium.forceBalanceResidual / forceBalanceRatio: ψ (NR·NZ values, ψ_b = 0; interior and
+   * boundary nodes are used, the exterior is refilled) with p'(ψ_N) = dp/dψ [Pa/(Wb/rad)] and
+   * FF'(ψ_N) [T²m²/(Wb/rad)]. E.g. to test a pressure profile against the field of an equilibrium.
+   */
+  forceBalanceOf(psi: ArrayLike<number>, pp: (psiN: number) => number, ffp: (psiN: number) => number): { residual: number; ratio: number } {
+    const grid = this.grid;
+    if (psi.length !== grid.NR * grid.NZ) badInput(`ψ has ${psi.length} values, the grid ${grid.NR * grid.NZ}`);
+    const p = Float64Array.from(psi);
+    for (let k = 0; k < p.length; k++) if (grid.kind[k] !== 0 && !Number.isFinite(p[k])) badInput('ψ contains non-finite values');
+    grid.extend(p);
+    const bi = grid.bicubic(p);
+    const ax = findAxis(grid, p, bi);
+    if (!(ax.psi > 0)) badInput('ψ on the magnetic axis must be positive (ψ_b = 0)');
+    return this.forceBalance(p, bi, ax.psi, pp, ffp);
   }
 
   /** Volume-integrated force balance of (ψ, p', FF') — see Equilibrium.forceBalanceResidual. */

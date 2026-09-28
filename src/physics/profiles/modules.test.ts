@@ -116,6 +116,35 @@ describe('plug-in interfaces', () => {
     expect(calls.current).toBe(calls.heat);
   }, 60000);
 
+  it('SourceModel and TransportModel with state take part in the checkpoints', () => {
+    class Counting implements SourceModel {
+      readonly id = 'counting';
+      n = 0;
+      prepare() { this.n++; }
+      save(rec: CheckpointRecord) { rec.countingN = this.n; }
+      restore(rec: Readonly<CheckpointRecord>) { this.n = rec.countingN; }
+    }
+    const src = new Counting();
+    const tr = Object.assign(new ScalingTransport(), {
+      calls: 0,
+      save(rec: CheckpointRecord) { rec.trCalls = tr.calls; },
+      restore(rec: Readonly<CheckpointRecord>) { tr.calls = rec.trCalls; },
+    });
+    const diff = tr.diffusivities.bind(tr);
+    tr.diffusivities = (c, s, e, i) => { tr.calls++; diff(c, s, e, i); };
+    const m = new ProfileModel(cfg(T), { sources: [...defaultSources(), src], transport: tr });
+    const y = m.initialState();
+    m.diagnostics(0, y);
+    const rec = m.saveInternal();
+    expect([rec.countingN, rec.trCalls]).toEqual([src.n, tr.calls]);
+    const at = [src.n, tr.calls];
+    let t = 0;
+    while (t < 0.05) t = m.step(t, y, 0.05);
+    expect(src.n).toBeGreaterThan(at[0]);
+    m.restoreInternal(rec);
+    expect([src.n, tr.calls]).toEqual(at);
+  }, 60000);
+
   it('TransportModel: a predictive model sets χ and closes τ_E as W/P_loss, without the C_χ controller', () => {
     const fixed: TransportModel = {
       id: 'fixed', predictive: true,

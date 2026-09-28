@@ -14,13 +14,16 @@
  *
  * The heat equation takes Q_e = Σ(electron heating) − P_rad and Q_i = Σ(ion heating) from the work
  * arrays listed in assembleHeatSources (sources/index.ts); a new source writes its own arrays and
- * adds them there. A source with caches on the transport geometry rebuilds them in geometryChanged.
+ * adds them there. A source with caches on the transport geometry rebuilds them in geometryChanged;
+ * a source with state beyond y (a population evolved from step to step) implements the
+ * Checkpointable hooks and takes part in the model's checkpoints.
  */
+import type { Checkpointable } from '../checkpoint';
 import type { ProfileContext, StepConstants } from '../context';
 import type { TransportGeometry } from '../geometry1d';
 import type { ProfileState } from '../state';
 
-export interface SourceModel {
+export interface SourceModel extends Partial<Checkpointable> {
   /** short identifier (logs, tests) */
   readonly id: string;
   /** once per step on the old state st at time t; writes into the work arrays and K */

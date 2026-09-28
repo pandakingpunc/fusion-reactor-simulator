@@ -104,13 +104,13 @@ export function crossSection(ch: keyof typeof BH_SIGMA, E_cm_keV: number): numbe
 }
 
 /**
- * Demet-hedef (beam-target) reaktivitesi: hızlı iyonun yavaşlama dağılımı üzerinden ortalama.
- * Kararlı kaynak için f(E) ∝ dt/dE ∝ 1 / (E (1 + (E_c/E)^{3/2})) · E^{1/2}  (Stix 1972)
+ * Beam-target reactivity: averaged over the slowing-down distribution of the fast ion.
+ * For a steady source f(E) ∝ dt/dE ∝ 1 / (E (1 + (E_c/E)^{3/2})) · E^{1/2}  (Stix 1972)
  *   <σv>_bt = ∫ σ(E_cm) v_b(E) f(E) dE / ∫ f(E) dE ,  E_cm = E_lab · m_t/(m_b + m_t)
- * Hedef, kanalın ikinci reaktanıdır: a+a kanallarında (D-D, D-³He'nin D-D yan kolları) tür a
- * (E_cm = E_lab/2), diğerlerinde tür b. Hedef yoğunluğu için bkz. beamTargetDensity.
- * APPROXIMATION: hedef iyonlar durgun (E_b ≫ T_i), demet izotropik, 48 noktalı log-ızgara.
- * Kanal başına m³/s dizisi döndürür (FUEL_CHANNELS sırasıyla).
+ * The target is the second reactant of the channel: species a in the a+a channels (D-D, the D-D side branches of D-³He)
+ * (E_cm = E_lab/2), species b in the others. For the target density see beamTargetDensity.
+ * APPROXIMATION: the target ions are at rest (E_b ≫ T_i), the beam is isotropic, 48-point log grid.
+ * Returns an array of m³/s per channel (in FUEL_CHANNELS order).
  */
 export function beamTargetReactivity(fuel: FuelType, E0_lab_keV: number, Ec_keV: number, Ti_keV: number): number[] {
   const sp = FUEL_SPECIES[fuel];
@@ -242,7 +242,7 @@ function pB11_cgs(T_keV: number): number {
   return pB11_SI(T_keV) * 1e6;
 }
 
-/** Yüklü füzyon ürünü (doğuşta): kütle [amu], yük, kinetik enerji [MeV] */
+/** Charged fusion product (at birth): mass [amu], charge, kinetic energy [MeV] */
 export interface ChargedProduct {
   name: string;
   A: number;
@@ -257,27 +257,27 @@ export interface FuelChannel {
   Echarged_MeV: number;
   Eneutron_MeV: number;
   /**
-   * true: iki reaktan da tür a'dır (a + a, hız ½ n_a² ⟨σv⟩); false: a + b (n_a n_b ⟨σv⟩).
-   * Tek-türlü yakıtta (D-D: a ve b ikisi de döteryum) n_a yerine n_a + n_b kullanılır —
-   * bkz. pairDensity / isSingleSpecies.
+   * true: both reactants are species a (a + a, rate ½ n_a² ⟨σv⟩); false: a + b (n_a n_b ⟨σv⟩).
+   * In a single-species fuel (D-D: a and b are both deuterium) n_a + n_b is used instead of n_a —
+   * see pairDensity / isSingleSpecies.
    */
   sameSpecies: boolean;
   sigmav: (T: number) => number;
   /**
-   * Yüklü ürünler ve doğuş enerjileri (Σ E = Echarged). Hızlı-ürün havuzunun Stix kritik enerjisi,
-   * iyon ısıtma kesri G ve yavaşlama süresi ürün başına hesaplanıp güç-ağırlıklı ortalanır.
-   * Enerjiler iki-cisim kinematiğinden (E_1 = Q m_2/(m_1+m_2)); p-¹¹B'nin 3 α'sı eşit paylaşımla
-   * (APPROXIMATION: gerçek α spektrumu geniştir). D-T α'sı literatürdeki 3.5 MeV ile (Echarged).
+   * Charged products and their birth energies (Σ E = Echarged). The Stix critical energy of the fast-product pool,
+   * the ion-heating fraction G and the slowing-down time are computed per product and power-weighted.
+   * The energies follow from two-body kinematics (E_1 = Q m_2/(m_1+m_2)); the 3 α of p-¹¹B share equally
+   * (APPROXIMATION: the real α spectrum is broad). The D-T α has the literature's 3.5 MeV (Echarged).
    */
   products: ChargedProduct[];
   /**
-   * Kül sayacı (n_He) için reaksiyon başına parçacık: D-T, D-³He → 1 ⁴He; p-¹¹B → 3 ⁴He;
-   * D-D kolları → ½ (APPROXIMATION: ³He/T/p ürünleri ayrı izlenmez, yarısı kül gibi seyreltir).
+   * Particles per reaction for the ash counter (n_He): D-T, D-³He → 1 ⁴He; p-¹¹B → 3 ⁴He;
+   * D-D branches → ½ (APPROXIMATION: the ³He/T/p products are not tracked separately, half of them dilutes like ash).
    */
   ash: number;
 }
 
-// yüklü ürünler (çekirdek kütleleri, amu — CODATA 2018)
+// charged products (nuclear masses, amu — CODATA 2018)
 const ALPHA = (E_MeV: number): ChargedProduct => ({ name: 'He4', A: 4.001506, Z: 2, E_MeV });
 const PROTON = (E_MeV: number): ChargedProduct => ({ name: 'p', A: 1.007276, Z: 1, E_MeV });
 const TRITON = (E_MeV: number): ChargedProduct => ({ name: 'T', A: 3.015501, Z: 1, E_MeV });
@@ -287,11 +287,11 @@ const DD_PT: FuelChannel = { name: 'D+D→p+T', Etot_MeV: 4.03, Echarged_MeV: 4.
 const DD_NHE3: FuelChannel = { name: 'D+D→n+He3', Etot_MeV: 3.27, Echarged_MeV: 0.82, Eneutron_MeV: 2.45, sameSpecies: true, sigmav: sigmav.DD_nHe3, products: [HELION(0.82)], ash: 0.5 };
 
 /**
- * Yakıt başına reaksiyon kanalları; ana reaksiyon her zaman ilk sıradadır.
- * D-³He, döteryumun kendi reaksiyonlarını (D(d,p)T ve D(d,n)³He) yan kol olarak içerir: bu yakıtın
- * tek nötron kaynağıdır (reaksiyon enerjileri: J. Wesson, "Tokamaks", 4. bs., OUP 2011, Böl. 1;
- * reaktiviteler: Bosch & Hale 1992). APPROXIMATION: yan kolların T ve ³He ürünlerinin ikincil
- * yanması (D-T, D-³He) izlenmez — ürünler yakıt olarak geri dönmeden pompalanmış kabul edilir.
+ * Reaction channels per fuel; the main reaction is always first.
+ * D-³He includes the deuterium reactions of its own (D(d,p)T and D(d,n)³He) as side branches: they are the only
+ * neutron source of this fuel (reaction energies: J. Wesson, "Tokamaks", 4th ed., OUP 2011, ch. 1;
+ * reactivities: Bosch & Hale 1992). APPROXIMATION: the secondary burn of the T and ³He products of the side
+ * branches (D-T, D-³He) is not tracked — the products are assumed to be pumped out without returning as fuel.
  */
 export const FUEL_CHANNELS: Record<FuelType, FuelChannel[]> = {
   DT: [{ name: 'D+T', Etot_MeV: 17.589, Echarged_MeV: 3.5, Eneutron_MeV: 14.1, sameSpecies: false, sigmav: sigmav.DT, products: [ALPHA(3.5)], ash: 1 }],
@@ -311,14 +311,14 @@ export const FUEL_SPECIES: Record<FuelType, { a: { Z: number; A: number; label: 
   pB11: { a: { Z: 1, A: 1.007, label: 'p' }, b: { Z: 5, A: 11.009, label: 'B11' }, fracA: 0.85 }, // p zengin karışım tipik (Z_eff azaltmak için)
 };
 
-/** Tek-türlü yakıt (a ve b aynı çekirdek: D-D): reaksiyona giren yoğunluk n_a + n_b'dir. */
+/** Single-species fuel (a and b are the same nucleus: D-D): the reacting density is n_a + n_b. */
 export function isSingleSpecies(fuel: FuelType): boolean {
   return FUEL_SPECIES[fuel].a.label === FUEL_SPECIES[fuel].b.label;
 }
 
 /**
- * Reaksiyon hızı yoğunluğu / ⟨σv⟩ [m⁻⁶]: a+a kanalı için ½ n_a², a+b için n_a n_b.
- * Tek-türlü yakıtta (D-D) n_a yerine n_a + n_b: yuva bölüşümü (fuelFracA) fiziği değiştirmez.
+ * Reaction-rate density / ⟨σv⟩ [m⁻⁶]: ½ n_a² for an a+a channel, n_a n_b for a+b.
+ * In a single-species fuel (D-D) n_a + n_b replaces n_a: the split between the slots (fuelFracA) does not change the physics.
  */
 export function pairDensity(fuel: FuelType, ch: FuelChannel, na: number, nb: number): number {
   if (!ch.sameSpecies) return na * nb;
@@ -326,15 +326,15 @@ export function pairDensity(fuel: FuelType, ch: FuelChannel, na: number, nb: num
   return 0.5 * nD * nD;
 }
 
-/** Demet-hedef reaksiyonunda hedef yoğunluğu (demet = tür a): a+a kanalı → tür a (D-D'de n_a + n_b), yoksa tür b. */
+/** Target density in a beam-target reaction (beam = species a): a+a channel → species a (n_a + n_b in D-D), otherwise species b. */
 export function beamTargetDensity(fuel: FuelType, ch: FuelChannel, na: number, nb: number): number {
   if (!ch.sameSpecies) return nb;
   return isSingleSpecies(fuel) ? na + nb : na;
 }
 
 /**
- * Reaksiyon başına tüketilen yakıt [Δn_a, Δn_b]: a+b kanalı birer iyon; a+a kanalı iki tür-a iyonu
- * (tek-türlü yakıtta iki yuvadan yoğunluk oranında).
+ * Fuel consumed per reaction [Δn_a, Δn_b]: one ion of each for an a+b channel; two species-a ions for an a+a channel
+ * (in a single-species fuel shared between the two slots in proportion to their densities).
  */
 export function burnPerReaction(fuel: FuelType, ch: FuelChannel, na: number, nb: number): [number, number] {
   if (!ch.sameSpecies) return [1, 1];

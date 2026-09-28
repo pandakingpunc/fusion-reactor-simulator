@@ -121,9 +121,9 @@ export interface MagneticConfig {
   scaling: 'IPB98y2' | 'ST_Valovic';
   stellarator: {
     iota23: number;
-    /** @deprecated eş ad: H_ISS04 verilmezse τ_E = f_ren · H98 · τ_ISS04 (eski davranış) */
+    /** @deprecated alias: if H_ISS04 is not given, τ_E = f_ren · H98 · τ_ISS04 (the old behaviour) */
     f_ren: number;
-    /** ISS04'e göre hapsetme çarpanı: τ_E = H_ISS04 · τ_ISS04 (verilirse f_ren ve H98 kullanılmaz) */
+    /** confinement multiplier relative to ISS04: τ_E = H_ISS04 · τ_ISS04 (when given, f_ren and H98 are not used) */
     H_ISS04?: number;
   };
   limits: { betaN_limit: number; greenwald_limit: number; q95_limit: number; W_conc_limit: number };
@@ -158,9 +158,9 @@ export interface ICFConfig {
   surfaceRoughness_nm: number; // RT tohumu
   fuel: FuelType;
   seed: number;
-  /** sürücü (lazer) duvar-fişi verimi, Q_eng için (varsayılan 0.1) */
+  /** driver (laser) wall-plug efficiency, for Q_eng (default 0.1) */
   driverEff?: number;
-  /** termal → elektrik dönüşüm verimi, Q_eng için (varsayılan 0.4) */
+  /** thermal → electric conversion efficiency, for Q_eng (default 0.4) */
   thermalEff?: number;
 }
 
@@ -197,7 +197,7 @@ export interface MirrorConfig {
   L_m: number; a_m: number; B_center_T: number; mirrorRatio: number;
   n0: number; T_keV: number; P_aux_MW: number; tandem: boolean;
   t_end: number; seed: number; fuel: FuelType;
-  /** tandem uç tıkacı potansiyeli eφ_c / T_i (varsayılan 1; yalnız tandem) */
+  /** tandem end-plug potential eφ_c / T_i (default 1; tandem only) */
   plugPotential?: number;
 }
 export interface MuonConfig {

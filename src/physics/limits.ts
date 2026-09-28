@@ -4,12 +4,12 @@
 import { Geometry, q95 } from './geometry';
 
 /** Greenwald yoğunluk limiti — Greenwald et al., Nucl. Fusion 28 (1988) 2199:
- *  n_G [10^20 m^-3] = I_p[MA] / (π a²). Limit ÇİZGİ-ortalamalı yoğunluk n̄_e içindir (bkz. lineAverageFactor). */
+ *  n_G [10^20 m^-3] = I_p[MA] / (π a²). The limit applies to the LINE-averaged density n̄_e (see lineAverageFactor). */
 export function greenwaldDensity(Ip_MA: number, a: number): number {
   return (Ip_MA / (Math.PI * a * a)) * 1e20; // m^-3
 }
 
-/** ln Γ(x), x > 0 — Lanczos yaklaşımı (C. Lanczos, J. SIAM Numer. Anal. B 1 (1964) 86; g = 7, 9 terim), bağıl hata ~1e-15 */
+/** ln Γ(x), x > 0 — Lanczos approximation (C. Lanczos, J. SIAM Numer. Anal. B 1 (1964) 86; g = 7, 9 terms), relative error ~1e-15 */
 function lnGamma(x: number): number {
   const c = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059,
     12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
@@ -21,10 +21,10 @@ function lnGamma(x: number): number {
 }
 
 /**
- * Çizgi-ortalama / hacim-ortalama yoğunluk oranı, n = n0 (1 − ρ²)^α_n profili için:
- *  n̄ = n0 ∫₀¹ (1 − ρ²)^α dρ = n0 √π Γ(α+1) / (2 Γ(α+3/2))   (eksenden geçen yatay kiriş)
- *  ⟨n⟩ = n0/(1+α)   (2ρ dρ hacim ağırlığı, geometry.profileIntegral ile aynı)
- * Düz profil 1, parabolik (α=1) 4/3. APPROXIMATION: silindirik kesit, Shafranov kayması ihmal.
+ * Ratio of the line-averaged to the volume-averaged density for the profile n = n0 (1 − ρ²)^α_n:
+ *  n̄ = n0 ∫₀¹ (1 − ρ²)^α dρ = n0 √π Γ(α+1) / (2 Γ(α+3/2))   (horizontal chord through the axis)
+ *  ⟨n⟩ = n0/(1+α)   (2ρ dρ volume weight, the same as geometry.profileIntegral)
+ * Flat profile 1, parabolic (α=1) 4/3. APPROXIMATION: cylindrical cross-section, Shafranov shift neglected.
  */
 export function lineAverageFactor(alpha_n: number): number {
   const a = Math.max(alpha_n, 0);

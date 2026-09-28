@@ -1,16 +1,16 @@
 /**
- * POPCON (Plasma OPeration CONtour): (⟨n_e⟩, ⟨T⟩) düzleminde kararlı durum için gereken yardımcı
- * güç P_aux ve Q = P_fus/P_aux haritası (Houlberg, Attenberger & Hively, Nucl. Fusion 22 (1982) 935).
+ * POPCON (Plasma OPeration CONtour): map of the auxiliary power P_aux and of Q = P_fus/P_aux required for steady state in the
+ * (⟨n_e⟩, ⟨T⟩) plane (Houlberg, Attenberger & Hively, Nucl. Fusion 22 (1982) 935).
  *
- * Kararlı durum güç dengesi (0D modelle aynı bileşenler ve aynı kayıp gücü tanımı):
+ * Steady-state power balance (the same components as the 0D model and the same loss-power definition):
  *   P_aux + P_α = P_rad + W/τ_E(P_L),   P_L = P_heat − P_rad,core  (dW/dt = 0; P_rad,core: ρ < RHO_CORE)
- * ⇒ P_L = W/τ_E(P_L) + P_rad,manto; sabit-nokta iterasyonuyla çözülür (τ_E ∝ P^−0.69 → yakınsak).
- * L-H erişimi: P_L ≥ P_LH (Martin 2008 + Ryter 2014 düşük yoğunluk kolu, çizgi-ort. yoğunlukla).
- * Bileşim: yarı-nötrallikten yakıt seyrelmesi (ana safsızlık, tohum, He külü); He külü kararlı
- * durumdan n_He = R_füzyon τ_He / V, τ_He = (τ_He/τ_E)·τ_E. Işınım: bremsstrahlung (ana iyonlar +
- * He), Mavrin çizgi soğuması (safsızlık + tohum), senkrotron (Albajar). Profiller
- * n = n₀(1−ρ²)^α_n, T = T₀(1−ρ²)^α_T; ⟨·⟩ hacim ortalaması (1.5D yörüngesiyle aynı tanım).
- * APPROXIMATION: T_i = T_e; H-kipi (H98·IPB98) her yerde; demet-hedef füzyonu ve ohmik güç yok.
+ * ⇒ P_L = W/τ_E(P_L) + P_rad,mantle; solved by fixed-point iteration (τ_E ∝ P^−0.69 → convergent).
+ * L-H access: P_L ≥ P_LH (Martin 2008 + Ryter 2014 low-density branch, with the line-averaged density).
+ * Composition: fuel dilution from quasi-neutrality (main impurity, seed, He ash); the He ash from the steady
+ * state n_He = R_fusion τ_He / V, τ_He = (τ_He/τ_E)·τ_E. Radiation: bremsstrahlung (main ions +
+ * He), Mavrin line cooling (impurity + seed), synchrotron (Albajar). Profiles
+ * n = n₀(1−ρ²)^α_n, T = T₀(1−ρ²)^α_T; ⟨·⟩ is the volume average (the same definition as the 1.5D trajectory).
+ * APPROXIMATION: T_i = T_e; H-mode (H98·IPB98) everywhere; no beam-target fusion and no ohmic power.
  */
 import { MagneticConfig } from './types';
 import { plasmaSurface, plasmaVolume, profileIntegral, profileIntegralSplit } from './geometry';
@@ -32,7 +32,7 @@ export interface PopconGrid {
   betaN: Float64Array;
   PLH_ok: Uint8Array;
   fHe: Float64Array; // kararlı durum He külü oranı n_He/n_e
-  /** Greenwald limiti bu ızgaranın ⟨n_e⟩ (hacim ort.) ekseninde: n_G / f_line(α_n) (n_G çizgi ort. içindir) */
+  /** Greenwald limit on the ⟨n_e⟩ (volume-average) axis of this grid: n_G / f_line(α_n) (n_G is for the line average) */
   nG: number;
 }
 
@@ -54,7 +54,7 @@ export function computePopcon(cfg: MagneticConfig, o: { nx?: number; ny?: number
   const im = cfg.impurity;
   const cs = im.seedConcentration ?? 0;
   const Wprof = ((1 + aN) * (1 + aT)) / (1 + aN + aT); // ⟨nT⟩ = Wprof·⟨n⟩⟨T⟩
-  // ölçeklemeler çizgi-ortalamalı yoğunlukla (n̄ = f_line ⟨n_e⟩)
+  // the scalings use the line-averaged density (n̄ = f_line ⟨n_e⟩)
   const fLine = lineAverageFactor(aN);
   const tauOf = (ne: number, P: number) => stell
     ? tauISS04(g, cfg.B0, fLine * ne, P, cfg.stellarator.iota23, stellaratorHISS04(cfg.stellarator, cfg.H98))
@@ -67,11 +67,11 @@ export function computePopcon(cfg: MagneticConfig, o: { nx?: number; ny?: number
     // T'ye bağlı profil integralleri (yoğunluktan bağımsız)
     const T0 = T[j] * (1 + aT);
     const prof = (f: (Tl: number) => number, N = 24) => profileIntegral((r) => Math.pow(sh(r), 2 * aN) * f(T0 * Math.pow(sh(r), aT)), N);
-    // radyasyon integralleri: toplam ve çekirdek (ρ < RHO_CORE) payı
+    // radiation integrals: the total and the core (ρ < RHO_CORE) share
     const profS = (f: (Tl: number) => number, N = 24) => profileIntegralSplit((r) => Math.pow(sh(r), 2 * aN) * f(T0 * Math.pow(sh(r), aT)), RHO_CORE, N);
     const Ich = chans.map((ch) => prof(ch.sigmav, 32));
     const Ibr0 = profS((Tl) => bremsstrahlung(1, Tl, 0)), Ibr01 = profS((Tl) => bremsstrahlung(1, Tl, 1));
-    const Ibr1 = Ibr01.total - Ibr0.total, Ibr1c = Ibr01.inner - Ibr0.inner; // brems Z_eff'te doğrusal
+    const Ibr1 = Ibr01.total - Ibr0.total, Ibr1c = Ibr01.inner - Ibr0.inner; // brems is linear in Z_eff
     const Iline = profS((Tl) => coolingRate(im.species, Tl));
     const Iseed = im.seedSpecies && cs ? profS((Tl) => coolingRate(im.seedSpecies!, Tl)) : { total: 0, inner: 0 };
     const Zz = meanCharge(im.species, T[j]);
@@ -97,7 +97,7 @@ export function computePopcon(cfg: MagneticConfig, o: { nx?: number; ny?: number
         const Psync = synchrotronTotal({ R: g.R, a: g.a, kappa: g.kappa, B0: cfg.B0, ne0_1e20: (ne * (1 + aN)) / 1e20, Te0_keV: T0, alpha_n: aN, alpha_T: aT, wallReflectivity: im.wallReflectivity });
         Prad = Pbr + Pline + Psync;
         const PradCore = ne * ne * pk * (Ibr0.inner + Zmain * Ibr1c + im.concentration * Iline.inner + cs * Iseed.inner) * V + Psync;
-        // enerji ve τ_E: P_L = W/τ_E(P_L) + P_rad,manto
+        // energy and τ_E: P_L = W/τ_E(P_L) + P_rad,mantle
         W = 1.5 * (ne + ni) * T[j] * E_KEV * V * Wprof;
         for (let k = 0; k < 40; k++) { P_tr = W / Math.max(tauOf(ne, P_loss), 1e-4); P_loss = P_tr + Prad - PradCore; }
         // He külü kararlı durumu

@@ -5,12 +5,12 @@
 import { ImpuritySpecies, IMPURITIES } from './constants';
 
 /**
- * Çekirdek radyasyonu bölgesi ρ < RHO_CORE (normalize küçük yarıçap). τ_E ölçeklemelerinin ve L-H
- * eşiğinin kayıp gücü P_L = P_heat − P_rad,core − dW/dt yalnız bu bölgenin radyasyonunu düşer
- * (sistem-kodu kuralı: PROCESS 'coreradius' = 0.6; M. Kovari et al., Fusion Eng. Des. 89 (2014) 3054).
- * Dış manto radyasyonu, τ_E veritabanlarının kayıp gücünde olduğu gibi P_L'nin içinde kalır; 0D güç
- * dengesi ise tüm radyasyonu açıkça düşer. APPROXIMATION: 0D profillerde pedestal yok; soğuk kenarın
- * çizgi radyasyonu mantoya yazılır. Senkrotron sıcak çekirdekten yayılır ve tamamen çekirdek sayılır.
+ * Core-radiation region ρ < RHO_CORE (normalised minor radius). The loss power P_L = P_heat − P_rad,core − dW/dt of the τ_E scalings and of the L-H
+ * threshold subtracts only the radiation of this region
+ * (system-code convention: PROCESS 'coreradius' = 0.6; M. Kovari et al., Fusion Eng. Des. 89 (2014) 3054).
+ * The radiation of the outer mantle stays inside P_L, as in the loss power of the τ_E databases; the 0D power
+ * balance, however, subtracts all of the radiation explicitly. APPROXIMATION: no pedestal in the 0D profiles; the line radiation
+ * of the cold edge is assigned to the mantle. Synchrotron is emitted from the hot core and counts entirely as core.
  */
 export const RHO_CORE = 0.6;
 

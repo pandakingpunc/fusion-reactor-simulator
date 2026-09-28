@@ -51,12 +51,15 @@ export function q95(g: Geometry, B0: number, Ip_MA: number): number {
 }
 
 /**
- * q95 — düşük en-boy oranında da geçerli fit: O. Sauter, "Geometric formulas for system codes
+ * q95 — a fit that is also valid at low aspect ratio: O. Sauter, "Geometric formulas for system codes
  * including the effect of negative triangularity", Fusion Eng. Des. 112 (2016) 633:
  *  q95 = (4.1 a² B / (R I_p[MA])) · [1 + 1.2(κ−1) + 0.56(κ−1)²] · (1 + 0.09δ + 0.16δ²)
- *        · (1 + 0.45 δ ε) / (1 − 0.74 ε) · [1 + 0.55 (w07 − 1)],   w07 = 1 (karelik yok)
- * Uckan formülündeki (1 − ε²)⁻² çarpanı ε → 1'de ıraksar (MAST-U, ε = 0.76: q95 = 34); bu fit
- * (1 − 0.74 ε)⁻¹ ile sınırlı kalır. PROCESS'teki 'Sauter' akım ölçeklemesiyle aynı biçim.
+ *        · (1 + 0.45 δ ε) / (1 − 0.74 ε) · [1 + 0.55 (w07 − 1)],   w07 = 1 (no squareness)
+ * The (1 − ε²)⁻² factor of the Uckan formula diverges as ε → 1 (MAST-U, ε = 0.76: q95 = 34); this fit
+ * stays bounded through (1 − 0.74 ε)⁻¹. It has the same form as the 'Sauter' current scaling of PROCESS.
+ * The constants (4.1, 1.2, 0.56, 0.09, 0.16, 0.45, 0.74, w07 = 1) agree with the UKAEA PROCESS documentation
+ * (plasma current, i_plasma_current = 8, which cites Sauter) and with arXiv:2407.06439 App. A (eq. 8), which quotes
+ * the fit; PROCESS evaluates it with the separatrix κ and δ, and the model's κ, δ are used as given.
  */
 export function q95Sauter(g: Geometry, B0: number, Ip_MA: number): number {
   if (Ip_MA <= 0) return Infinity;
@@ -67,7 +70,7 @@ export function q95Sauter(g: Geometry, B0: number, Ip_MA: number): number {
   return ((4.1 * g.a * g.a * B0) / (g.R * Ip_MA)) * fk * fd * fe;
 }
 
-/** Yönteme göre q95: sferik tokamak → Sauter (2016) düşük en-boy fiti; diğerleri → ITER (Uckan) formülü */
+/** q95 by method: spherical tokamak → Sauter (2016) low-aspect-ratio fit; others → ITER (Uckan) formula */
 export function q95ForMethod(method: string, g: Geometry, B0: number, Ip_MA: number): number {
   return method === 'spherical_tokamak' ? q95Sauter(g, B0, Ip_MA) : q95(g, B0, Ip_MA);
 }
@@ -91,8 +94,8 @@ export function profileIntegral(fn: (rho: number) => number, N = 40): number {
 }
 
 /**
- * profileIntegral ile aynı integral (bit bit aynı toplam) ve ρ < rhoSplit iç bölgenin payı
- * (orta noktası rhoSplit'in altında kalan hücreler).
+ * The same integral as profileIntegral (bit-for-bit the same sum) and the share of the inner region ρ < rhoSplit
+ * (the cells whose midpoint lies below rhoSplit).
  */
 export function profileIntegralSplit(fn: (rho: number) => number, rhoSplit: number, N = 40): { total: number; inner: number } {
   let s = 0, si = 0;

@@ -42,7 +42,7 @@ export class FRCModel extends PulsedBase {
   private na: number;
   private nb: number;
   private ne: number;
-  /** iyon yoğunluğu n_a + n_b (D-³He, p-¹¹B'de n_e'den farklı) */
+  /** ion density n_a + n_b (differs from n_e for D-³He and p-¹¹B) */
   private ni: number;
   private Zeff: number;
   private lastTauE = 1e-3;

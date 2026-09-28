@@ -13,8 +13,8 @@ import { HistoryFrame, MagneticConfig, Method, ShotReport, SimEvent, Termination
 /** Lawson ateşleme referansı: D-T için nTτ_E ≈ 3e21 keV s m^-3 (Wesson; T≈15 keV, profil düz) */
 export const LAWSON_DT = 3e21;
 /**
- * Battaniyenin nötron enerjisi çoğalma katsayısı (14 MeV nötronlar için tipik 1.15–1.3; EU DEMO
- * battaniye tasarımları ~1.2). APPROXIMATION: D-D'nin 2.45 MeV nötronları için de aynı değer.
+ * Energy-multiplication factor of the blanket for neutron energy (typically 1.15–1.3 for 14 MeV neutrons; EU DEMO
+ * blanket designs ~1.2). APPROXIMATION: the same value for the 2.45 MeV neutrons of D-D.
  */
 export const BLANKET_NEUTRON_MULT = 1.18;
 
@@ -38,14 +38,14 @@ export function buildMagneticReport(ctx: MagneticReportContext, hist: HistoryFra
   const d = (k: string) => hist.map((h) => h.d[k] ?? 0);
   const max = (arr: number[]) => arr.reduce((m, v) => (v > m ? v : m), -Infinity);
   const Q = d('Q'), Pf = d('P_fus');
-  // Başlangıç geçişi (yoğunluk ve ısıtma rampası: düşük yoğunlukta tam güç → T aşımı) T_max'a ve
-  // tasarım skoruna girmez: pencere t ≥ max(n_rampTime, heating.rampTime), en fazla atışın ikinci yarısı.
+  // The start-up transient (density and heating ramp: full power at low density → T overshoot) does not enter T_max or
+  // the design score: the window is t ≥ max(n_rampTime, heating.rampTime), at most the second half of the shot.
   const tStartup = Math.min(Math.max(c.n_rampTime, c.heating.rampTime), 0.5 * last.t);
   const post = hist.filter((h) => h.t >= tStartup);
   const dp = (k: string) => post.map((h) => h.d[k] ?? 0);
   const Tmax = max(dp('Ti0'));
-  // süreler. Ateşleme süresi: model kendi ateşleme durumunu ('ignited', histerezisli; 0D) veriyorsa
-  // o — olay günlüğüyle aynı ölçüt; vermiyorsa (1.5D) çerçeve ölçütü P_α ≥ P_rad + P_cond.
+  // durations. Ignition time: if the model reports its own ignition state ('ignited', with hysteresis; 0D) that is used —
+  // the same criterion as the event log; if it does not (1.5D) the frame criterion P_α ≥ P_rad + P_cond applies.
   const hasIgnFlag = hist.some((h) => h.d.ignited !== undefined);
   let burnTime = 0, ignTime = 0;
   for (let i = 1; i < hist.length; i++) {
@@ -73,7 +73,7 @@ export function buildMagneticReport(ctx: MagneticReportContext, hist: HistoryFra
     V_core_m3: ctx.V, magnetCostRel: MAGNET_TECH[c.magnet.tech].cost_rel, P_fus_MW: Pfus_avg, P_aux_MW: Paux_avg, P_recirc_MW: P_recirc_other,
     thermalEff: c.economics.thermalEff, wallPlugEff: c.economics.wallPlugEff, availability: c.economics.availability,
     discountRate: c.economics.discountRate, lifetime_yr: c.economics.lifetime_yr,
-    // enerji çoğalması yalnız nötron payına ve yalnız battaniye varsa
+    // energy multiplication only on the neutron share, and only if a blanket exists
     P_neutron_MW: Pn_avg, neutronMult: c.blanket.type !== 'none' ? BLANKET_NEUTRON_MULT : 1, blanketCoverage: c.blanket.type !== 'none' ? c.blanket.coverage : 0,
     capitalOverride_MUSD: c.economics.capital_MUSD_override,
   });

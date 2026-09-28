@@ -18,7 +18,7 @@ import { DiagSpec, HistoryFrame, Method, ScoreEntry, ShotReport, SimEvent, SimMo
 /** Lawson ateşleme referansı nTτ_E (yakıta göre) [keV s m^-3] */
 export const LAWSON_REF: Record<FuelType, number> = { DT: 3e21, DHe3: 4e22, DD: 1e23, pB11: 1e24 };
 
-/** Hacimsel füzyon güçleri [W/m³] ve reaksiyon hızı yoğunluğu [1/m³/s] (düz profil; a+a kanalları için bkz. pairDensity). */
+/** Volumetric fusion powers [W/m³] and reaction-rate density [1/m³/s] (flat profile; see pairDensity for the a+a channels). */
 export function fusionRates(fuel: FuelType, na: number, nb: number, T_keV: number) {
   let rate = 0, P_total = 0, P_charged = 0, P_neutron = 0, neutrons = 0;
   const T = Math.max(T_keV, 0.01);

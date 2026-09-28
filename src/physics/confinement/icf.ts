@@ -7,8 +7,8 @@
  * modellenir. Yanma zaman içinde bang-time çevresinde Gauss darbesi olarak verilir.
  *
  * Kalibrasyon: NIF N221204 preset'i G ≈ 1.5 verir (Abu-Shawareb 2024).
- * Yakıt: reaksiyon başına enerji, nötron sayısı, H_B ve ateşleme eşiği seçili yakıttan (icfFuelData);
- * D-T değerleri kalibrasyonu birebir korur.
+ * Fuel: the energy and the neutron number per reaction, H_B and the ignition threshold come from the selected fuel (icfFuelData);
+ * the D-T values keep the calibration exactly.
  * Durum y: [0] E_fus [J]  [1] E_in [J]  [2] N_n
  * APPROXIMATION: 0D, tek noktalı hotspot; hidrodinamik ayrıntı yok.
  */
@@ -21,39 +21,39 @@ import { PulsedBase } from './common';
 
 const IDX = { Efus: 0, Ein: 1, Nn: 2 } as const;
 const NSTATE = 3;
-const H_B_DT = 7.0; // g/cm², D-T burn parametresi (Atzeni & Meyer-ter-Vehn 2004; kalibrasyon noktası)
+const H_B_DT = 7.0; // g/cm², D-T burn parameter (Atzeni & Meyer-ter-Vehn 2004; calibration point)
 const ICF_CAL = 0.07; // geometrik ρR → gerçekçi ρR kalibrasyonu (NIF'e ayarlı)
-/** Varsayılan sürücü (lazer) duvar-fişi verimi ve termal dönüşüm verimi (ICFConfig'te verilmezse) */
+/** Default driver (laser) wall-plug efficiency and thermal conversion efficiency (used when ICFConfig gives none) */
 const DRIVER_EFF_DEFAULT = 0.1;
 const THERMAL_EFF_DEFAULT = 0.4;
 
 export interface ICFFuelData {
-  /** yakıt iyonu ortalama kütlesi [amu] ve ortalama yük (x_a, x_b = FUEL_SPECIES.fracA) */
+  /** mean fuel-ion mass [amu] and mean charge (x_a, x_b = FUEL_SPECIES.fracA) */
   m_f_amu: number;
   Zbar: number;
   /** burn-up parametresi H_B [g/cm²]: Φ = ρR/(ρR + H_B) */
   H_B: number;
-  /** H_B'nin minimum olduğu (en iyi) yanma sıcaklığı [keV] */
+  /** burn temperature at which H_B is minimal (the optimum) [keV] */
   T_burn_keV: number;
-  /** o sıcaklıkta reaksiyon başına ortalama enerji [MeV] ve nötron sayısı (dallanma oranlarıyla) */
+  /** mean energy per reaction [MeV] and neutrons per reaction at that temperature (with the branching ratios) */
   E_rx_MeV: number;
   neutronsPerReaction: number;
-  /** ateşleme parametresi çarpanı: öz-ısıtma liyakati max_T ⟨σv E_ch⟩/((1+Z̄)² T²), D-T'ye göre (D-T = 1) */
+  /** ignition-parameter factor: self-heating figure of merit max_T ⟨σv E_ch⟩/((1+Z̄)² T²) relative to D-T (D-T = 1) */
   ignitionScale: number;
 }
 
 /**
- * Yakıta özgü ICF yanma verileri.
- * Burn-up (Atzeni & Meyer-ter-Vehn, "The Physics of Inertial Fusion", OUP 2004, yanma kesri modeli):
- * eşmolar D-T için Φ = ρR/(ρR + H_B), H_B = 8 m_f c_s/⟨σv⟩. Genel karışım için yakıt iyonlarının
- * yanma hızı dn/dt = −n² K, K = Σ_ch 2 x_ch ⟨σv⟩_ch (x_ch = x_a x_b ya da x_a²/2; her reaksiyon iki
- * iyon tüketir) ile aynı türetme H(T) = 4 m_f c_s/K verir (D-T: K = ⟨σv⟩/2 → 8 m_f c_s/⟨σv⟩);
- * c_s = √((1+Z̄)T/m_f) izotermal ses hızı. H(T)'nin minimumu D-T için ≈ 7.3 g/cm² (T ≈ 39 keV);
- * modelin kalibre D-T değeri 7 g/cm² korunur ve diğer yakıtlar oranla ölçeklenir:
- *   H_B,yakıt = 7 · min_T H_yakıt / min_T H_DT.
- * Reaksiyon başına enerji ve nötron sayısı bu en iyi yanma sıcaklığındaki dallanma oranlarıyla.
- * Ateşleme eşiği (sabit basınçta Lawson tipi liyakat, öz-ısıtma ∝ p² ⟨σv⟩E_ch/((1+Z̄)²T²)) D-T'ye
- * göre ölçeklenir. APPROXIMATION: ⟨σv⟩ Maxwell (Bosch-Hale / p-¹¹B tablosu), T_e = T_i.
+ * Fuel-specific ICF burn data.
+ * Burn-up (Atzeni & Meyer-ter-Vehn, "The Physics of Inertial Fusion", OUP 2004, burn-fraction model):
+ * for equimolar D-T Φ = ρR/(ρR + H_B), H_B = 8 m_f c_s/⟨σv⟩. For a general mixture the burn rate of the fuel ions
+ * is dn/dt = −n² K, K = Σ_ch 2 x_ch ⟨σv⟩_ch (x_ch = x_a x_b or x_a²/2; each reaction consumes two
+ * ions) and the same derivation gives H(T) = 4 m_f c_s/K (D-T: K = ⟨σv⟩/2 → 8 m_f c_s/⟨σv⟩);
+ * c_s = √((1+Z̄)T/m_f) is the isothermal sound speed. The minimum of H(T) is ≈ 7.3 g/cm² for D-T (T ≈ 39 keV);
+ * the calibrated D-T value of the model, 7 g/cm², is kept and the other fuels are scaled by the ratio:
+ *   H_B,fuel = 7 · min_T H_fuel / min_T H_DT.
+ * The energy and neutron number per reaction use the branching ratios at this optimal burn temperature.
+ * The ignition threshold (Lawson-type figure of merit at constant pressure, self-heating ∝ p² ⟨σv⟩E_ch/((1+Z̄)²T²)) is scaled
+ * relative to D-T. APPROXIMATION: Maxwellian ⟨σv⟩ (Bosch-Hale / p-¹¹B table), T_e = T_i.
  */
 export function icfFuelData(fuel: FuelType): ICFFuelData {
   const cached = FUEL_DATA_CACHE.get(fuel);
@@ -113,7 +113,7 @@ export class ICFModel extends PulsedBase {
   private E_laser_J: number;
   private E_fus_total: number; // toplam füzyon enerjisi [J]
   private N_fus_total: number; // toplam füzyon reaksiyonu
-  private N_n_total: number; // toplam nötron
+  private N_n_total: number; // total number of neutrons
   private rhoR_eff: number; // g/cm²
   private chi_ig: number; // ateşleme parametresi
   private T_hs: number; // hotspot sıcaklığı [keV]
@@ -135,7 +135,7 @@ export class ICFModel extends PulsedBase {
     const fd = icfFuelData(cfg.fuel);
     this.fuelData = fd;
     const m_fuel = cfg.fuelMass_ug * 1e-9; // kg
-    const m_i = fd.m_f_amu * C.amu; // ort. yakıt iyonu kütlesi
+    const m_i = fd.m_f_amu * C.amu; // mean fuel-ion mass
     const N_ions = m_fuel / m_i;
 
     // durgunluk geometrisi
@@ -145,7 +145,7 @@ export class ICFModel extends PulsedBase {
     const rhoR_geo = rhoR_kg / 10; // g/cm²
     this.rhoR_eff = ICF_CAL * rhoR_geo * Math.sqrt(2.8 / Math.max(cfg.adiabat, 0.5));
 
-    // ateşleme cliff: hız, ρR, asimetri, pürüzlülük (D-T'ye kalibre), yakıtın öz-ısıtma liyakatiyle ölçekli
+    // ignition cliff: rate, ρR, asymmetry, roughness (calibrated to D-T), scaled by the self-heating figure of merit of the fuel
     const v = cfg.implosionVelocity_kms;
     const f_asym = Math.exp(-Math.pow(cfg.asymmetry_rms / 6, 2));
     const f_rough = Math.exp(-Math.pow(cfg.surfaceRoughness_nm / 200, 2));
@@ -153,8 +153,8 @@ export class ICFModel extends PulsedBase {
     this.ignited = this.chi_ig >= 1;
     const burnMult = this.ignited ? 1 : Math.pow(Math.max(this.chi_ig, 0), 3);
 
-    const Phi = this.rhoR_eff / (this.rhoR_eff + fd.H_B); // burn-up kesri (yakıt iyonları)
-    this.N_fus_total = Phi * (N_ions / 2) * burnMult; // reaksiyon başına iki iyon
+    const Phi = this.rhoR_eff / (this.rhoR_eff + fd.H_B); // burn-up fraction (fuel ions)
+    this.N_fus_total = Phi * (N_ions / 2) * burnMult; // two ions per reaction
     this.E_fus_total = this.N_fus_total * U.MeV_to_J(fd.E_rx_MeV);
     this.N_n_total = this.N_fus_total * fd.neutronsPerReaction;
 
@@ -214,8 +214,8 @@ export class ICFModel extends PulsedBase {
 
   report(hist: HistoryFrame[], events: SimEvent[]): ShotReport {
     const G = this.E_fus_total / Math.max(this.E_laser_J, 1);
-    // Q_eng = P_el,brüt / P_dolaşan = (η_th E_fus) / (E_lazer / η_sürücü) = G η_sürücü η_th. Hohlraum /
-    // soğurma verimi G'nin içindedir (G = E_fus / E_lazer): ikinci kez çarpılmaz.
+    // Q_eng = P_el,gross / P_recirculating = (η_th E_fus) / (E_laser / η_driver) = G η_driver η_th. The hohlraum /
+    // absorption efficiency is already inside G (G = E_fus / E_laser): it is not multiplied in a second time.
     const etaDriver = this.cfg.driverEff ?? DRIVER_EFF_DEFAULT, etaTh = this.cfg.thermalEff ?? THERMAL_EFF_DEFAULT;
     const warnings: string[] = [];
     if (!this.ignited) warnings.push(`Below the ignition threshold (χ_ig = ${this.chi_ig.toFixed(2)} < 1): inadequate velocity, ρR, asymmetry, or roughness — low burn efficiency.`);

@@ -1,13 +1,13 @@
 /**
- * MANYETİK AYNA — 0D güç dengesi (tek sıcaklık), kayıp konisi hapsetmesi.
+ * MAGNETIC MIRROR — 0D power balance (single temperature), loss-cone confinement.
  *
- * Durum y: [0] W [J]  [1] E_fus [J]  [2] E_in [J]  [3] N_n
- * Hapsetme: basit ayna τ_E ≈ κ · R_m · L / v_th (uç kaybı, bkz. tauE). Tandem: uç tıkaçlarının
- * ambipolar potansiyel bariyeri eφ_c iyonları ayrıca tutar; Pastukhov çözümünün asimptotik
- * biçimiyle τ_tandem = τ_basit · (1 + F(x)), F(x) = x e^x / (1 + 1/(2x)), x = eφ_c/T_i
+ * State y: [0] W [J]  [1] E_fus [J]  [2] E_in [J]  [3] N_n
+ * Confinement: simple mirror τ_E ≈ κ · R_m · L / v_th (end loss, see tauE). Tandem: the ambipolar potential
+ * barrier eφ_c of the end plugs confines the ions additionally; with the asymptotic form of the
+ * Pastukhov solution τ_tandem = τ_simple · (1 + F(x)), F(x) = x e^x / (1 + 1/(2x)), x = eφ_c/T_i
  * (V.P. Pastukhov, Nucl. Fusion 14 (1974) 3; R.H. Cohen et al., Nucl. Fusion 18 (1978) 1229).
- * x = MirrorConfig.plugPotential (varsayılan 1). x → 0'da tandem basit aynaya indirgenir.
- * APPROXIMATION: 0D, sabit yoğunluk, izotropik dağılım; tıkaç gücü ve tıkaç plazması modellenmez.
+ * x = MirrorConfig.plugPotential (default 1). For x → 0 the tandem reduces to the simple mirror.
+ * APPROXIMATION: 0D, constant density, isotropic distribution; the plug power and the plug plasma are not modelled.
  */
 import { MirrorConfig } from '../types';
 import { FUEL_SPECIES } from '../reactivity';
@@ -19,10 +19,10 @@ import { PulsedBase, fusionRates } from './common';
 
 const IDX = { W: 0, Efus: 1, Ein: 2, Nn: 3 } as const;
 const NSTATE = 4;
-/** Varsayılan tıkaç potansiyeli eφ_c/T_i (MirrorConfig.plugPotential verilmezse) */
+/** Default plug potential eφ_c/T_i (when MirrorConfig.plugPotential is not given) */
 const PLUG_POTENTIAL_DEFAULT = 1;
 
-/** Pastukhov potansiyel-kuyusu çarpanı F(x) = x e^x / (1 + 1/(2x)), x = eφ/T (x ≤ 0 → 0) */
+/** Pastukhov potential-well factor F(x) = x e^x / (1 + 1/(2x)), x = eφ/T (x ≤ 0 → 0) */
 export function pastukhovFactor(x: number): number {
   if (!(x > 0)) return 0;
   return (x * Math.exp(x)) / (1 + 1 / (2 * x));
@@ -53,7 +53,7 @@ export class MirrorModel extends PulsedBase {
   private na: number;
   private nb: number;
   private ne: number;
-  /** iyon yoğunluğu n_a + n_b (D-³He, p-¹¹B'de n_e'den farklı) */
+  /** ion density n_a + n_b (differs from n_e for D-³He and p-¹¹B) */
   private ni: number;
   private Zeff: number;
   private Aavg: number;

@@ -260,14 +260,54 @@ describe('reaction energy bookkeeping', () => {
     for (const ch of all) expect(rel(ch.Etot_MeV, Q[ch.name]), ch.name).toBeLessThan(1e-3);
   });
 
-  it('neutron energy follows two-body kinematics, E_n = Q m_X/(m_n + m_X), within 0.5 %', () => {
-    expect(rel(FUEL_CHANNELS.DT[0].Eneutron_MeV, (Q['D+T'] * M.He4) / (M.n + M.He4))).toBeLessThan(0.005);
-    expect(rel(FUEL_CHANNELS.DD[1].Eneutron_MeV, (Q['D+D→n+He3'] * M.He3) / (M.n + M.He3))).toBeLessThan(0.005);
+  /**
+   * Kinetic energies [MeV] of the neutron and the charged product X of A + B → n + X for reactants at
+   * rest, exact relativistic two-body kinematics: with the rest energies m_n, m_X [MeV] and
+   * M = m_n + m_X + Q, T_n = ((M − m_n)² − m_X²)/(2M) = Q (Q + 2 m_X)/(2M) and T_X = Q − T_n
+   * (e.g. PDG Review of Particle Physics, "Kinematics", two-body decay in the rest frame).
+   * Nuclear masses: atomic masses minus Z electron masses (binding of the electrons ≪ 0.1 keV).
+   */
+  const nuclear = (atomic: number, Z: number) => (atomic - Z * 0.000548579909) * uc2;
+  const splitAtRest = (Qv: number, mX: number) => {
+    const mn = M.n * uc2, T_n = (Qv * (Qv + 2 * mX)) / (2 * (mn + mX + Qv));
+    return { neutron: T_n, charged: Qv - T_n };
+  };
+  const channel = (name: string) => {
+    const ch = all.find((c) => c.name === name);
+    if (!ch) throw new Error(`no channel ${name}`);
+    return ch;
+  };
+
+  it('at-rest two-body kinematics with AME2020 masses: D-T gives a 3.561 MeV alpha and a 14.028 MeV neutron', () => {
+    const dt = splitAtRest(Q['D+T'], nuclear(M.He4, 2));
+    expect(dt.charged).toBeCloseTo(3.5609, 4);
+    expect(dt.neutron).toBeCloseTo(14.0284, 4);
+    // the non-relativistic limit E_n = Q m_α/(m_n + m_α) is 20 keV higher for the neutron;
+    // the often quoted 3.52 + 14.07 MeV is Q/5 : 4Q/5, i.e. integer mass numbers
+    const mn = M.n * uc2, ma = nuclear(M.He4, 2);
+    expect((Q['D+T'] * ma) / (mn + ma) - dt.neutron).toBeCloseTo(0.0197, 3);
+  });
+
+  it('D-D → n + ³He: neutron and helion energies follow two-body kinematics within 0.1 %', () => {
+    const ch = channel('D+D→n+He3'), k = splitAtRest(Q['D+D→n+He3'], nuclear(M.He3, 2));
+    expect(rel(ch.Eneutron_MeV, k.neutron)).toBeLessThan(1e-3);
+    expect(rel(ch.Echarged_MeV, k.charged)).toBeLessThan(1e-3);
+  });
+
+  // BUG(ws2a): FUEL_CHANNELS D-T has E_charged = 3.5 MeV (1.7 % below the 3.561 MeV kinematic value)
+  // and E_neutron = 14.1 MeV (0.5 % above 14.028 MeV), so the alpha heating per reaction is 1.7 % low.
+  // A 0.1 % tolerance separates the exact split from the non-relativistic one (α 0.56 % off) and
+  // from 3.52 + 14.07 (α 1.1 % off). Consistent values: 3.561 + 14.028 = 17.589 MeV = E_tot.
+  it.fails('D-T: neutron and alpha energies follow two-body kinematics within 0.1 % (BUG(ws2a): 3.5 + 14.1 MeV)', () => {
+    const ch = channel('D+T'), k = splitAtRest(Q['D+T'], nuclear(M.He4, 2));
+    expect(rel(ch.Eneutron_MeV, k.neutron), 'E_neutron').toBeLessThan(1e-3);
+    expect(rel(ch.Echarged_MeV, k.charged), 'E_charged').toBeLessThan(1e-3);
   });
 
   // BUG(ws2a): D-T lists E_tot = 17.589 MeV but E_charged + E_neutron = 3.5 + 14.1 = 17.6 MeV, so the
-  // models create P_charged + P_neutron = 1.000625 P_fus (0.3 MW extra at ITER's 500 MW). The
-  // kinematic split of 17.589 MeV is 3.52 + 14.07 MeV (constants.ts FUSION.DT has the same pair).
+  // models create P_charged + P_neutron = 1.000625 P_fus (0.3 MW extra at ITER's 500 MW); constants.ts
+  // FUSION.DT has the same pair. The at-rest kinematic split of 17.589 MeV is 3.561 + 14.028 MeV
+  // (test above), which also closes this sum.
   it.fails('E_charged + E_neutron = E_tot for every channel (BUG(ws2a): D-T sums to 17.6 MeV)', () => {
     for (const ch of all) expect(ch.Echarged_MeV + ch.Eneutron_MeV, ch.name).toBeCloseTo(ch.Etot_MeV, 9);
   });

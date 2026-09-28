@@ -6,9 +6,12 @@ import { describe, expect, it } from 'vitest';
 import { Simulation } from '../../simulation';
 import { ITER_15D } from '../../presets';
 import { ProfileModel } from '../model';
+import { runAllYielding } from '../../../testing/yielding';
 
 describe("'cgm' transport smoke test", () => {
-  it('ITER15 ramp-up to 10 s: completes, stays finite and reports the actual τ_E = W/P_loss', () => {
+  // The run takes ~30 s of wall time (≈ 2 s per simulated second, uncalibrated model): it advances in chunks and yields to the event loop
+  // in between (runAllYielding), or the Vitest worker cannot answer the runner and coverage runs fail on "Timeout calling onTaskUpdate".
+  it('ITER15 ramp-up to 10 s: completes, stays finite and reports the actual τ_E = W/P_loss', async () => {
     const sim = new Simulation({ ...ITER_15D, t_end: 10, profiles: { ...ITER_15D.profiles, transportModel: 'cgm' } });
     const m = sim.model as ProfileModel;
     expect(m.physics.transport.id).toBe('cgm');
@@ -21,7 +24,7 @@ describe("'cgm' transport smoke test", () => {
       }
       return post(t, dt, y);
     };
-    const r = sim.runAll();
+    const r = await runAllYielding(sim);
     // completes on schedule without numerical trouble
     expect(r.termination.natural).toBe(true);
     expect(r.termination.reason).toBe('Scheduled end');

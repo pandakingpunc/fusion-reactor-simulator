@@ -9,6 +9,7 @@ import { MagneticConfig } from '../types';
 import { EquilibriumOptions, GSFailure, GSSolver } from '../equilibrium/gs';
 import { CURRENT_SCALE_LIMIT } from './coupling/equilibrium';
 import { ProfileModel } from './model';
+import { runAllYielding } from '../../testing/yielding';
 import { EquilibriumInitFailure, LinearAlgebraFailure, NumericalFailure, StepFailure } from './failures';
 import { defaultSources } from './sources';
 import type { SourceModel } from './sources';
@@ -20,7 +21,7 @@ describe('work arrays after an equilibrium swap', () => {
   it.each([
     ['ITER15', ITER_15D, 400, 10],
     ['DEMO15', DEMO_15D, 500, 0],
-  ] as [string, MagneticConfig, number, number][])('%s: no postStep sees n_i = 0 and every sawtooth flattens T_i', (_id, cfg, tEnd, minSawteeth) => {
+  ] as [string, MagneticConfig, number, number][])('%s: no postStep sees n_i = 0 and every sawtooth flattens T_i', async (_id, cfg, tEnd, minSawteeth) => {
     const sim = new Simulation({ ...cfg, t_end: tEnd });
     const m = sim.model as ProfileModel;
     const post = m.postStep.bind(m);
@@ -32,7 +33,7 @@ describe('work arrays after an equilibrium swap', () => {
     };
     const tiFlattened: boolean[] = [];
     m.crashHook = (kind, _t, before, after) => { if (kind === 'sawtooth') tiFlattened.push(after.Ti[0] < before.Ti[0]); };
-    sim.runAll();
+    await runAllYielding(sim); // 8–12 s of wall time: yield to the event loop (src/testing/yielding.ts)
     expect(m.eqUpdates).toBeGreaterThan(10); // the shot crosses many equilibrium swaps
     expect(calls).toBeGreaterThan(1000);
     expect(zero).toBe(0);
@@ -393,9 +394,9 @@ describe('implicit step failures', () => {
 describe('reported confinement time', () => {
   const rel = (a: number, b: number) => Math.abs(a - b) / Math.abs(b);
 
-  it("'cgm' transport: τ_E is the actual W/P_loss, the scaling law is reported beside it", () => {
+  it("'cgm' transport: τ_E is the actual W/P_loss, the scaling law is reported beside it", async () => {
     const sim = new Simulation({ ...JET_15D, t_end: 0.3, profiles: { transportModel: 'cgm' } });
-    const r = sim.runAll();
+    const r = await runAllYielding(sim); // ~10 s of wall time (the model is slow on JET-size machines)
     expect(r.termination.natural).toBe(true);
     const frames = sim.history.filter((h) => h.t > 0);
     expect(frames.length).toBeGreaterThan(100);

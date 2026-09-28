@@ -147,6 +147,8 @@ export class MagneticModel implements SimModel {
 
   // canlı kontroller
   private ctrl: Record<string, number>;
+  /** state components that cannot be negative (all but the signed, smoothed dW/dt) */
+  private readonly nonNeg: number[];
 
   constructor(cfg: MagneticConfig) {
     this.cfg = cfg;
@@ -180,6 +182,7 @@ export class MagneticModel implements SimModel {
     atol.set([1e2, 1e2, 1e13, 1e13, 1e12, 1e11, 1e2, 1e2, 1e3, 1e3, 1e12, 1e12, 1e12, 1e14, 1e2, 1e3]);
     // dW/dt işaretlidir: kenetlenmez
     const nonNeg = Array.from({ length: NSTATE }, (_, i) => i).filter((i) => i !== IDX.dWs);
+    this.nonNeg = nonNeg;
     this.integratorOpts = { rtol: 2e-5, atol, dtMin: 1e-6, dtMax: Math.min(0.05, cfg.t_end / 400), nonNegative: nonNeg };
     this.magnetInfo = checkMagnet(this.g, cfg.B0, cfg.magnet.tech, cfg.magnet.gap_m, cfg.magnet.coilThickness_m);
     if (this.magnetInfo.quench) {
@@ -619,6 +622,10 @@ export class MagneticModel implements SimModel {
   postStep(t: number, dt: number, y: Float64Array): SimEvent[] {
     const ev: SimEvent[] = [];
     if (this.terminated) return ev;
+    // Clamp the non-negative components here as well: integratorOpts.nonNegative is an index array
+    // (dW/dt is signed), and the Dormand–Prince integrator of 3d04e96 clamps only for `true` (fixed in
+    // the v4 kernel, commit dafd2bf). With a clamping integrator this is a no-op.
+    for (const i of this.nonNeg) if (y[i] < 0) y[i] = 0;
     const c = this.cfg;
     const dg = this.diagnostics(t, y);
     const W = y[IDX.We] + y[IDX.Wi];

@@ -83,12 +83,38 @@ describe('validate CLI exit codes', { timeout: 60_000 }, () => {
   });
 
   it('a selection without literature checks → exit 1 (zero checks executed)', () => {
-    const r = validate('--threads', '2', '--only', 'TAE');
+    const r = validate('--threads', '2', '--only', 'TAE', '--kind', 'benchmark');
     expect(r.code).toBe(1);
     expect(r.stdout).toMatch(/NO CHECKS EXECUTED/);
-    const j = validate('--threads', '2', '--only', 'TAE', '--json');
+    const j = validate('--threads', '2', '--only', 'TAE', '--kind', 'benchmark', '--json');
     expect(j.code).toBe(1);
     expect(JSON.parse(j.stdout)).toMatchObject({ checksExecuted: 0, passed: false });
+  });
+
+  it('a documented known failure is reported as KNOWN-FAIL and listed, but exits 0', () => {
+    const r = validate('--threads', '2', '--only', 'MIRROR');
+    expect(r.code).toBe(0);
+    expect(r.stdout).toMatch(/^\s+KNOWN-FAIL\s+MIRROR\s+T_e \(flat-top\) = /m);
+    expect(r.stdout).toMatch(/=== KNOWN FAILURES .*===\n\s+MIRROR\.Te: .* — the single-temperature mirror model/);
+    expect(r.stdout).toMatch(/✓ NO UNEXPECTED FAILURES: 0 passed, 1 known failures/);
+    const j = JSON.parse(validate('--threads', '2', '--only', 'MIRROR', '--json').stdout);
+    expect(j).toMatchObject({ schema: 2, checksExecuted: 1, failures: 0, knownFailures: 1, passed: true });
+    expect(j.checks[0]).toMatchObject({ id: 'MIRROR.Te', kind: 'sanity', status: 'known-fail', pass: false, reference: { value: 0.66, uncertainty: 0.05 } });
+    expect(j.checks[0].knownFailure).toMatch(/single-temperature/);
+  });
+
+  it('--markdown prints a table with model values; --list prints the checks without running', () => {
+    const md = validate('--threads', '2', '--only', 'NIF', '--markdown');
+    expect(md.code).toBe(0);
+    expect(md.stdout).toMatch(/^\| Check \| Kind \| Metric \| Reference \| Accepted \| Model \| Status \| Source \|$/m);
+    expect(md.stdout).toMatch(/^\| `NIF\.G` \| validation \| Gain G \| 1\.5 \| 1–3 \| 1\.49 \| PASS \| Abu-Shawareb 2024 \[doi:/m);
+    const list = validate('--list', '--markdown');
+    expect(list.code).toBe(0);
+    expect(list.stdout).not.toMatch(/SUMMARY/);
+    expect(list.stdout.match(/^\| `[A-Za-z0-9]+\.[A-Za-z0-9_]+` \|/gm)!.length).toBeGreaterThanOrEqual(30);
+    const plain = validate('--list', '--only', 'Z');
+    expect(plain.stdout).toMatch(/Z\.yield\s+validation D-D neutron yield = 1\.10e\+13, accepted .*\(known failure\)/);
+    expect(validate('--json', '--markdown', '--only', 'NIF').code).toBe(2);
   });
 });
 

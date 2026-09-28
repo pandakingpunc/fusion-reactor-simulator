@@ -17,6 +17,93 @@
     "triple": 1227340303569149700
   },
   "frames": 1001,
+  "geometry": {
+    "CR": 10,
+    "CR_eff": 9.942583927412342,
+    "L": 0.3,
+    "V0": 0.002356194490192345,
+    "current_MA": 12,
+    "r0": 0.05
+  },
+  "history": {
+    "B": {
+      "max": 494.2748757681911,
+      "mean": 144.76217218060253,
+      "min": 5.351689032248302,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "C": {
+      "max": 9.942583927412342,
+      "mean": 4.356153037689662,
+      "min": 1.0345713153039091,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Efus_MJ": {
+      "max": 0.00018289207767993056,
+      "mean": 0.0000914460388399651,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Ein_MJ": {
+      "max": 12.002187499999895,
+      "mean": 8.998095654345708,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Nn": {
+      "max": 64899798879201.1,
+      "mean": 32449899439600.53,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "P_fus": {
+      "max": 22.00499523249138,
+      "mean": 3.6541873702386467,
+      "min": 0.000004014389133732847,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Q": {
+      "max": 0.000015238228671226154,
+      "mean": 0.000007658599352960512,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Te": {
+      "max": 1.430278977531235,
+      "mean": 0.76782019134913,
+      "min": 0.3070141195545604,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Ti": {
+      "max": 1.430278977531235,
+      "mean": 0.76782019134913,
+      "min": 0.3070141195545604,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "ne": {
+      "max": 49427.487576819105,
+      "mean": 14476.217218060221,
+      "min": 535.1689032248303,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "triple": {
+      "max": 53021322294982980000,
+      "mean": 13182308372366529000,
+      "min": 123228307227413250,
+      "missing": 0,
+      "nonFinite": 0
+    }
+  },
   "labels": {
     "method": "mtf_liner",
     "termination.reason": "Scheduled end",
@@ -25,10 +112,11 @@
   "meta": {
     "case": "FRXL",
     "fidelity": "0D",
+    "fuel": "DT",
     "method": "mtf_liner",
     "node": "v24.19.0",
     "preset": "FRXL",
-    "schema": 1,
+    "schema": 2,
     "tEnd": 50,
     "tEndShortened": false,
     "timeUnit": "µs",

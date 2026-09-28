@@ -3,14 +3,22 @@
  * Golden regression harness: deterministic snapshots of preset runs and a tolerant comparator.
  *
  * A snapshot captures, per case (a preset, optionally with a shortened t_end):
- *   scalars  every finite number of the ShotReport, nested fields flattened to dotted paths
- *            (array items as path[i]; booleans as 0/1) plus warnings.length
- *   labels   method, time unit and termination reason
- *   flatTop  frame-weighted flat-top averages of every diagnostic (src/physics/analysis/flatTop)
- *   events   event counts by kind
- *   frames   number of history frames; steps: accepted time steps
- *   traces   ~20 samples, evenly spaced in time, of 5–8 key time traces
- * Non-finite numbers inside flatTop/traces are stored as the strings "NaN", "Infinity", "-Infinity".
+ *   scalars      every finite number of the ShotReport, nested fields flattened to dotted paths
+ *                (array items as path[i]; booleans as 0/1) plus warnings.length
+ *   labels       method, time unit and termination reason
+ *   flatTop      frame-weighted flat-top averages of every diagnostic (src/physics/analysis/flatTop;
+ *                the published definition, which skips missing and non-finite samples)
+ *   history      for every diagnostic key of any frame, over the whole run: min, max and frame mean
+ *                of the finite samples, and how many frames lack the key or hold NaN/±Infinity —
+ *                so a NaN, a dropped key or a changed value anywhere in the run is caught
+ *   events       event counts by kind
+ *   frames       number of history frames; steps: accepted time steps
+ *   traces       ~20 samples, evenly spaced in time, of 5–8 key time traces
+ *   geometry     the model's geometryInfo() after the run (1.5D: final equilibrium, e.g. Shafranov shift)
+ *   profiles     1.5D only: every radial profile on the full ρ grid, at mid-run and in the last frame
+ *   equilibrium  1.5D only: number of equilibrium updates and a digest of the last one (axis, q95,
+ *                ℓ_i, β_p and the extent of each plotted flux surface)
+ * Non-finite numbers are stored as the strings "NaN", "Infinity", "-Infinity".
  *
  * Files are canonical JSON (sorted keys, shortest round-trip number representation, i.e. full
  * double precision). Comparison is by key path, so key order never matters. Numbers match when
@@ -23,9 +31,10 @@ import { PRESETS } from '../physics/presets';
 import { Simulation } from '../physics/simulation';
 import { ProfileModel } from '../physics/profiles/model';
 import { flatTopAverages } from '../physics/analysis/flatTop';
-import type { HistoryFrame, ReactorConfig, ShotReport } from '../physics/types';
+import type { EqSnapshot, HistoryFrame, ReactorConfig, ShotReport } from '../physics/types';
 
-export const GOLDEN_SCHEMA = 1;
+/** 2: + meta.fuel, history, geometry, profiles, equilibrium (a format change: schema-1 values are unchanged) */
+export const GOLDEN_SCHEMA = 2;
 /** samples per trace */
 export const TRACE_SAMPLES = 20;
 export const REL_TOL_SAME_NODE = 1e-9;
@@ -92,6 +101,35 @@ export function caseConfig(c: GoldenCase): ReactorConfig {
 
 type Num = number | string; // non-finite numbers are stored as strings
 
+/** Statistics of one diagnostic over every history frame. */
+export interface DiagStats {
+  /** smallest, largest and frame-mean value of the finite samples ("NaN" if there are none) */
+  min: Num;
+  max: Num;
+  mean: Num;
+  /** frames without the key (another frame has it) */
+  missing: number;
+  /** frames where it is NaN or ±Infinity */
+  nonFinite: number;
+}
+
+/** Radial profiles (1.5D) of one history frame; every array is on the model's ρ grid. */
+export interface ProfileSample {
+  t: Num;
+  prof: Record<string, Num[]>;
+}
+
+/** Digest of an equilibrium snapshot: scalars and, per plotted flux surface, its ρ_tor, point count and extent. */
+export interface EqDigest {
+  t: Num;
+  Raxis: Num;
+  Zaxis: Num;
+  q95: Num;
+  li: Num;
+  betaP: Num;
+  surfaces: { rho: Num[]; points: number[]; Rmin: Num[]; Rmax: Num[]; Zmin: Num[]; Zmax: Num[]; RatZmax: Num[] };
+}
+
 export interface GoldenSnapshot {
   meta: {
     schema: number;
@@ -99,6 +137,8 @@ export interface GoldenSnapshot {
     preset: string;
     method: string;
     fidelity: '0D' | '1.5D';
+    /** fuel of the run (muon-catalyzed fusion is d-t) */
+    fuel: string;
     /** simulated duration actually used, in timeUnit */
     tEnd: number;
     /** true if tEnd was shortened from the preset's nominal value */
@@ -111,10 +151,16 @@ export interface GoldenSnapshot {
   scalars: Record<string, number>;
   labels: Record<string, string>;
   flatTop: Record<string, Num>;
+  history: Record<string, DiagStats>;
   events: Record<string, number>;
   frames: number;
   steps: number;
   traces: Record<string, Num[]>;
+  geometry: Record<string, Num>;
+  /** 1.5D only */
+  profiles?: { frames: number; mid: ProfileSample; last: ProfileSample };
+  /** only if the model reports equilibrium snapshots (1.5D) */
+  equilibrium?: { frames: number; last: EqDigest };
 }
 
 const TRACE_KEYS_15D = ['Q', 'P_fus', 'Ti0', 'Te0', 'ne', 'W', 'f_bs', 'li'];
@@ -150,8 +196,75 @@ export function sampleIndices(hist: readonly Pick<HistoryFrame, 't'>[], m = TRAC
   return idx;
 }
 
+/**
+ * Whole-history statistics of every diagnostic key that appears in any frame. Unlike the flat-top
+ * averages, which skip them, missing and non-finite samples are counted, over the whole run.
+ */
+export function historyStats(hist: readonly Pick<HistoryFrame, 'd'>[]): Record<string, DiagStats> {
+  const acc = new Map<string, { present: number; nonFinite: number; n: number; sum: number; min: number; max: number }>();
+  for (const f of hist) {
+    for (const [k, v] of Object.entries(f.d)) {
+      let a = acc.get(k);
+      if (!a) acc.set(k, (a = { present: 0, nonFinite: 0, n: 0, sum: 0, min: Infinity, max: -Infinity }));
+      if (typeof v !== 'number') continue; // counts as missing
+      a.present++;
+      if (!Number.isFinite(v)) { a.nonFinite++; continue; }
+      a.n++; a.sum += v;
+      if (v < a.min) a.min = v;
+      if (v > a.max) a.max = v;
+    }
+  }
+  const out: Record<string, DiagStats> = {};
+  for (const [k, a] of acc) {
+    out[k] = {
+      min: enc(a.n ? a.min : NaN), max: enc(a.n ? a.max : NaN), mean: enc(a.n ? a.sum / a.n : NaN),
+      missing: hist.length - a.present, nonFinite: a.nonFinite,
+    };
+  }
+  return out;
+}
+
+export function profileSample(f: Pick<HistoryFrame, 't' | 'prof'>): ProfileSample {
+  const prof: Record<string, Num[]> = {};
+  for (const [k, a] of Object.entries(f.prof ?? {})) prof[k] = Array.from(a, enc);
+  return { t: enc(f.t), prof };
+}
+
+export function eqDigest(t: number, eq: EqSnapshot): EqDigest {
+  const S: EqDigest['surfaces'] = { rho: [], points: [], Rmin: [], Rmax: [], Zmin: [], Zmax: [], RatZmax: [] };
+  eq.R.forEach((R, s) => {
+    const Z = eq.Z[s];
+    let jTop = 0;
+    for (let j = 1; j < Z.length; j++) if (Z[j] > Z[jTop]) jTop = j;
+    S.rho.push(enc(eq.rho[s])); S.points.push(R.length);
+    S.Rmin.push(enc(Math.min(...R))); S.Rmax.push(enc(Math.max(...R)));
+    S.Zmin.push(enc(Math.min(...Z))); S.Zmax.push(enc(Math.max(...Z))); S.RatZmax.push(enc(R[jTop] ?? NaN));
+  });
+  return { t: enc(t), Raxis: enc(eq.Raxis), Zaxis: enc(eq.Zaxis), q95: enc(eq.q95), li: enc(eq.li), betaP: enc(eq.betaP), surfaces: S };
+}
+
+/** Profiles of a 1.5D run: the last frame with profiles at or before mid-run, and the last such frame. */
+function profilesSection(hist: readonly HistoryFrame[]): GoldenSnapshot['profiles'] {
+  const withProf = hist.filter((f) => f.prof);
+  if (!withProf.length) return undefined;
+  const tMid = hist[0].t + 0.5 * (hist[hist.length - 1].t - hist[0].t);
+  let mid = withProf[0];
+  for (const f of withProf) if (f.t <= tMid) mid = f;
+  return { frames: withProf.length, mid: profileSample(mid), last: profileSample(withProf[withProf.length - 1]) };
+}
+
+function equilibriumSection(hist: readonly HistoryFrame[]): GoldenSnapshot['equilibrium'] {
+  const withEq = hist.filter((f) => f.eq);
+  if (!withEq.length) return undefined;
+  const last = withEq[withEq.length - 1];
+  return { frames: withEq.length, last: eqDigest(last.t, last.eq!) };
+}
+
+/** What a snapshot reads from a finished run (a Simulation, or a copy of its history in tests). */
+export type RunData = Pick<Simulation, 'history' | 'events' | 'model' | 'nSteps'>;
+
 /** Builds the snapshot of a finished run. */
-export function snapshotFromRun(c: GoldenCase, sim: Simulation, report: ShotReport, node: string): GoldenSnapshot {
+export function snapshotFromRun(c: GoldenCase, sim: RunData, report: ShotReport, node: string): GoldenSnapshot {
   const hist = sim.history;
   const last = hist[hist.length - 1].d;
   const is15 = sim.model instanceof ProfileModel;
@@ -167,16 +280,24 @@ export function snapshotFromRun(c: GoldenCase, sim: Simulation, report: ShotRepo
   const scalars = flattenScalars(report);
   scalars['warnings.length'] = report.warnings.length;
   const nominalTEnd = (caseConfig({ id: c.id, preset: c.preset }) as { t_end?: number }).t_end;
-  return {
+  const geometry: Record<string, Num> = {};
+  for (const [k, v] of Object.entries(sim.model.geometryInfo())) geometry[k] = enc(v);
+  const snap: GoldenSnapshot = {
     meta: {
       schema: GOLDEN_SCHEMA, case: c.id, preset: c.preset, method: report.method, fidelity: is15 ? '1.5D' : '0D',
+      fuel: (caseConfig(c) as { fuel?: string }).fuel ?? 'DT',
       tEnd: sim.model.tEnd, tEndShortened: c.tEnd !== undefined && c.tEnd !== nominalTEnd,
       timeUnit: sim.model.timeUnit, node, traceSamples: TRACE_SAMPLES,
     },
     scalars,
     labels: { method: report.method, timeUnit: report.timeUnit, 'termination.reason': report.termination.reason },
-    flatTop, events, frames: hist.length, steps: sim.nSteps, traces,
+    flatTop, history: historyStats(hist), events, frames: hist.length, steps: sim.nSteps, traces, geometry,
   };
+  const profiles = profilesSection(hist);
+  if (profiles) snap.profiles = profiles;
+  const equilibrium = equilibriumSection(hist);
+  if (equilibrium) snap.equilibrium = equilibrium;
+  return snap;
 }
 
 /** Runs one case in-process. */

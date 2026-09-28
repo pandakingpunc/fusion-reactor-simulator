@@ -14,6 +14,77 @@
     "triple": 0
   },
   "frames": 801,
+  "geometry": {
+    "Yf": 106.46167961027047,
+    "density_LHD": 1.2,
+    "muonCost_GeV": 5,
+    "stickingProb": 0.0056
+  },
+  "history": {
+    "Efus_MJ": {
+      "max": 0.030001630380178806,
+      "mean": 0.01500081519008934,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Ein_MJ": {
+      "max": 0.08010883169999727,
+      "mean": 0.0400544158499991,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Nn": {
+      "max": 10646167961027094,
+      "mean": 5323083980513523,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "P_fus": {
+      "max": 0.030001630380178966,
+      "mean": 0.030001630380179323,
+      "min": 0.030001630380178966,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "P_in": {
+      "max": 0.0801088317,
+      "mean": 0.08010883170000085,
+      "min": 0.0801088317,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Q": {
+      "max": 0.37451089653300945,
+      "mean": 0.37451089653300634,
+      "min": 0.37451089653300945,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Ti": {
+      "max": 0.0000775559993696662,
+      "mean": 0.00007755599936966504,
+      "min": 0.0000775559993696662,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Yf": {
+      "max": 106.46167961027047,
+      "mean": 106.4616796102692,
+      "min": 106.46167961027047,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "triple": {
+      "max": 0,
+      "mean": 0,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    }
+  },
   "labels": {
     "method": "muon",
     "termination.reason": "Scheduled end",
@@ -22,10 +93,11 @@
   "meta": {
     "case": "MUON",
     "fidelity": "0D",
+    "fuel": "DT",
     "method": "muon",
     "node": "v24.19.0",
     "preset": "MUON",
-    "schema": 1,
+    "schema": 2,
     "tEnd": 1,
     "tEndShortened": false,
     "timeUnit": "s",

@@ -7,11 +7,32 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   FAST_CASES, GOLDEN_CASES, GOLDEN_SCHEMA, GoldenSnapshot, REL_TOL_OTHER_NODE, REL_TOL_SAME_NODE, caseConfig, compareSnapshots, countBySection,
-  flattenScalars, formatDiffTable, goldenCase, parseSnapshot, relDiff, runGoldenCase, sampleIndices, serializeSnapshot, summarizeChange, toleranceFor,
+  flattenScalars, formatDiffTable, goldenCase, historyStats, parseSnapshot, relDiff, runGoldenCase, sampleIndices, serializeSnapshot,
+  snapshotFromRun, summarizeChange, toleranceFor,
 } from './golden';
 import { PRESETS } from '../physics/presets';
+import { Simulation } from '../physics/simulation';
+import type { HistoryFrame, ShotReport } from '../physics/types';
 
 const goldenFile = (id: string) => new URL(`../../test/golden/${id}.json`, import.meta.url);
+
+/** One run per case for the whole file (the fast subset and the content tests share them). */
+const runs = new Map<string, { sim: Simulation; report: ShotReport }>();
+function run(id: string) {
+  let r = runs.get(id);
+  if (!r) {
+    const sim = new Simulation(caseConfig(goldenCase(id)));
+    r = { sim, report: sim.runAll() };
+    runs.set(id, r);
+  }
+  return r;
+}
+/** Snapshot of a case's run, optionally with its history replaced (edited copies in tests). */
+function snapshot(id: string, history?: HistoryFrame[]): GoldenSnapshot {
+  const { sim, report } = run(id);
+  const data = { history: history ?? sim.history, events: sim.events, model: sim.model, nSteps: sim.nSteps };
+  return snapshotFromRun(goldenCase(id), data, report, process.version);
+}
 
 /** deep copy with every object's keys in reverse insertion order */
 function reverseKeys<T>(v: T): T {
@@ -25,7 +46,7 @@ function reverseKeys<T>(v: T): T {
 }
 
 describe('golden comparator (self-test)', () => {
-  const snap = runGoldenCase(goldenCase('NIF'));
+  const snap = snapshot('NIF');
 
   it('catches a 1e-7 relative perturbation at the same-Node tolerance, not at the cross-Node one', () => {
     const p = structuredClone(snap);
@@ -123,6 +144,86 @@ describe('golden comparator (self-test)', () => {
     const hist = [0, 1, 1, 2, 5, 9, 10].map((t) => ({ t }));
     expect(sampleIndices(hist, 6)).toEqual([0, 3, 3, 4, 4, 6]); // t_k = 0, 2, 4, 6, 8, 10 → last frame with t ≤ t_k
     expect(snap.traces.t).toHaveLength(20);
+    // a second run gives the identical snapshot
+    expect(compareSnapshots(runGoldenCase(goldenCase('NIF')), snap, 0)).toEqual([]);
+  });
+});
+
+describe('golden snapshot content', { timeout: 30_000 }, () => {
+  it('history statistics: min/max/mean of the finite samples, missing and non-finite counts', () => {
+    const frames: { d: Record<string, number> }[] = [
+      { d: { a: 1, b: 2 } },
+      { d: { a: NaN, b: 4, c: 5 } },
+      { d: { a: 3, c: Infinity } },
+      { d: { a: -1, b: 6, c: -Infinity } },
+    ];
+    expect(historyStats(frames)).toEqual({
+      a: { min: -1, max: 3, mean: 1, missing: 0, nonFinite: 1 },
+      b: { min: 2, max: 6, mean: 4, missing: 1, nonFinite: 0 },
+      c: { min: 5, max: 5, mean: 5, missing: 1, nonFinite: 2 },
+    });
+    expect(historyStats([{ d: { x: NaN } }])).toEqual({ x: { min: 'NaN', max: 'NaN', mean: 'NaN', missing: 0, nonFinite: 1 } });
+    expect(historyStats([])).toEqual({});
+  });
+
+  it('a NaN, a dropped key or a changed value anywhere in the history is a mismatch', () => {
+    const { sim } = run('JET');
+    const base = snapshot('JET');
+    const keys = new Set(sim.history.flatMap((f) => Object.keys(f.d)));
+    expect(Object.keys(base.history).sort()).toEqual([...keys].sort());
+    for (const s of Object.values(base.history)) expect([s.missing, s.nonFinite]).toEqual([0, 0]);
+    /** keys that differ after editing a copy of the history */
+    const diffAfter = (edit: (h: HistoryFrame[]) => void) => {
+      const h = sim.history.map((f) => ({ ...f, d: { ...f.d } }));
+      edit(h);
+      return compareSnapshots(base, snapshot('JET', h), REL_TOL_SAME_NODE).map((d) => d.key);
+    };
+    // q95 is neither traced nor (at frame 0) inside the flat-top window: only the history sees it
+    const nan = diffAfter((h) => { h[0].d.q95 = NaN; });
+    expect(nan).toContain('history.q95.nonFinite');
+    expect(nan.every((k) => k.startsWith('history.q95.'))).toBe(true);
+    const k = Math.floor(0.3 * sim.history.length); // before the flat-top window
+    const dropped = diffAfter((h) => { delete h[k].d.Ip; });
+    expect(dropped).toContain('history.Ip.missing');
+    expect(dropped.every((x) => x.startsWith('history.Ip.'))).toBe(true);
+    const scaled = diffAfter((h) => { for (let i = 0; i <= k; i++) h[i].d.P_LH *= 1.2; });
+    expect(scaled).toContain('history.P_LH.mean');
+    expect(scaled.every((x) => x.startsWith('history.P_LH.'))).toBe(true);
+  });
+
+  it('1.5D: every radial profile on the full grid at mid-run and at the end, and the last equilibrium', () => {
+    const { sim } = run('SPARC15-short');
+    const s = snapshot('SPARC15-short');
+    const withProf = sim.history.filter((f) => f.prof);
+    const lastProf = withProf[withProf.length - 1];
+    const tEnd = sim.history[sim.history.length - 1].t;
+    expect(s.meta).toMatchObject({ fidelity: '1.5D', fuel: 'DT' });
+    expect(s.profiles!.frames).toBe(withProf.length);
+    expect(s.profiles!.last.t).toBe(lastProf.t);
+    expect(s.profiles!.last.prof).toEqual(lastProf.prof); // all finite, so stored as numbers
+    expect(Object.keys(s.profiles!.last.prof)).toEqual(expect.arrayContaining(['rho', 'q', 'j', 'johm', 'shear']));
+    for (const a of Object.values(s.profiles!.last.prof)) expect(a).toHaveLength(s.profiles!.last.prof.rho.length);
+    expect(s.profiles!.mid.t as number).toBeLessThanOrEqual(tEnd / 2);
+    expect(s.profiles!.mid.t as number).toBeGreaterThan(tEnd / 2 - 0.01);
+    const eqFrames = sim.history.filter((f) => f.eq);
+    expect(s.equilibrium!.frames).toBe(eqFrames.length);
+    const e = s.equilibrium!.last;
+    expect(e.q95).toBe(eqFrames[eqFrames.length - 1].eq!.q95);
+    expect(e.surfaces.rho).toHaveLength(10);
+    const Rmin = e.surfaces.Rmin as number[], Rmax = e.surfaces.Rmax as number[];
+    expect(Rmin[0]).toBeLessThan(e.Raxis as number);
+    expect(Rmax[0]).toBeGreaterThan(e.Raxis as number);
+    for (let i = 1; i < 10; i++) { expect(Rmin[i]).toBeLessThan(Rmin[i - 1]); expect(Rmax[i]).toBeGreaterThan(Rmax[i - 1]); }
+    expect(s.geometry).toMatchObject({ profiles: 1, nRho: s.profiles!.last.prof.rho.length });
+    expect(typeof s.geometry.shafranov).toBe('number');
+    // a change in one profile point or in the equilibrium is a mismatch
+    const h = sim.history.map((f) => (f === lastProf ? { ...f, prof: { ...f.prof!, johm: f.prof!.johm.map((x, i) => (i === 10 ? x * (1 + 1e-6) : x)) } } : f));
+    const eqLast = eqFrames[eqFrames.length - 1];
+    h[sim.history.indexOf(eqLast)] = { ...h[sim.history.indexOf(eqLast)], eq: { ...eqLast.eq!, Raxis: eqLast.eq!.Raxis + 1e-3 } };
+    expect(compareSnapshots(s, snapshot('SPARC15-short', h), REL_TOL_SAME_NODE).map((d) => d.key)).toEqual(['equilibrium.last.Raxis', 'profiles.last.prof.johm[10]']);
+    // 0D and pulsed cases carry neither section
+    expect(snapshot('JET').profiles).toBeUndefined();
+    expect(snapshot('JET').equilibrium).toBeUndefined();
   });
 });
 
@@ -140,7 +241,7 @@ describe('golden regression (fast subset; full suite: npm run golden)', { timeou
   for (const id of FAST_CASES) {
     it(`${id} matches test/golden/${id}.json`, () => {
       const stored = parseSnapshot(readFileSync(goldenFile(id), 'utf8'));
-      const fresh = runGoldenCase(goldenCase(id));
+      const fresh = snapshot(id);
       const diffs = compareSnapshots(stored, fresh, toleranceFor(stored.meta.node));
       expect(diffs, `golden mismatch — if intended, run npm run golden:update -- --reason "…"\n${formatDiffTable([{ case: id, diffs }])}`).toEqual([]);
     });

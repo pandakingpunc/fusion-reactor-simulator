@@ -48,6 +48,316 @@
     "triple": 10004766617449376000
   },
   "frames": 1501,
+  "geometry": {
+    "B0": 2.5,
+    "B_coil": 3.1464530892448512,
+    "Ip_MA": 0,
+    "R": 5.5,
+    "S": 115.07958731670192,
+    "V": 30.49609063892601,
+    "a": 0.53,
+    "coilThickness": 0.3,
+    "delta": 0,
+    "gap": 0.6,
+    "kappa": 1,
+    "stellarator": 1
+  },
+  "history": {
+    "Efus_MJ": {
+      "max": 0.0014177064981111423,
+      "mean": 0.0006788068853761989,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Ein_MJ": {
+      "max": 223.12499999999983,
+      "mean": 110.63604263824116,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "H_mode": {
+      "max": 0,
+      "mean": 0,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Ip": {
+      "max": 0,
+      "mean": 0,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "NTM": {
+      "max": 0,
+      "mean": 0,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Nn": {
+      "max": 1201832684335763.5,
+      "mean": 575463374066246.9,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "P_LH": {
+      "max": 0,
+      "mean": 0,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "P_alpha": {
+      "max": 0.000033014185758198956,
+      "mean": 0.00003148249745382949,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "P_aux": {
+      "max": 7.5,
+      "mean": 7.435043304463691,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "P_brems": {
+      "max": 0.09294896068519319,
+      "mean": 0.08798454226525243,
+      "min": 0.006193993506641571,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "P_bt": {
+      "max": 0,
+      "mean": 0,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "P_charged": {
+      "max": 0.000033017322868399164,
+      "mean": 0.00003152155599186672,
+      "min": 5.9214298534256316e-8,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "P_cond": {
+      "max": 7.2303431589728735,
+      "mean": 7.018645837905889,
+      "min": 0.1964874995784321,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "P_fus": {
+      "max": 0.000049482755574767796,
+      "mean": 0.0000472418708724134,
+      "min": 8.850344232254112e-8,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "P_heat": {
+      "max": 7.5000330141857585,
+      "mean": 7.4350747869613105,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "P_line": {
+      "max": 0.3191475307469003,
+      "mean": 0.2984861861919874,
+      "min": 0.03202204799856396,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "P_neutron": {
+      "max": 0.000016465432706368626,
+      "mean": 0.000015720314880547033,
+      "min": 2.9289143788284798e-8,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "P_oh": {
+      "max": 0,
+      "mean": 0,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "P_rad": {
+      "max": 0.41296520346981025,
+      "mean": 0.3875301917680116,
+      "min": 0.0423614768281415,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "P_sync": {
+      "max": 0.001635763234796931,
+      "mean": 0.0010594633107549208,
+      "min": 0.00026878581681419106,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Q": {
+      "max": 0.000008850344232254113,
+      "mean": 0.000006307619341315602,
+      "min": 1.474510046956252e-7,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "S_fuel": {
+      "max": 80.85668283714253,
+      "mean": 72.45038103788272,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Te": {
+      "max": 1.6309594248083301,
+      "mean": 0.9513600782879795,
+      "min": 0.43855399716209,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Ti": {
+      "max": 0.9550822290657104,
+      "mean": 0.8535475831967891,
+      "min": 0.4000000000000001,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Ti0": {
+      "max": 2.257467086882588,
+      "mean": 2.0174761057378405,
+      "min": 0.9454545454545457,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "W": {
+      "max": 1.0297805649939764,
+      "mean": 1.0006716381720728,
+      "min": 0.1568656248625468,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Wf": {
+      "max": 0.0000017098583777905685,
+      "mean": 0.0000011720570422377829,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Zeff": {
+      "max": 1.300000024870531,
+      "mean": 1.2962656911389645,
+      "min": 1.2569075036428652,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "betaN": {
+      "max": 0,
+      "mean": 0,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "betaT": {
+      "max": 0.9052511911030986,
+      "mean": 0.8796623505549004,
+      "min": 0.13789616795766868,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "burnFrac": {
+      "max": 0,
+      "mean": 0,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "cZ": {
+      "max": 0.009999999999999985,
+      "mean": 0.009875603703879614,
+      "min": 0.008563583383016134,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "fHe": {
+      "max": 1.2435265695007737e-8,
+      "mean": 1.1653228209954713e-8,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "fuelFracA": {
+      "max": 1,
+      "mean": 1,
+      "min": 1,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "lawson": {
+      "max": 0.003334922205816481,
+      "mean": 0.003184569155252505,
+      "min": 0.0006895224011816656,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "nG_frac": {
+      "max": 0.9282099723869287,
+      "mean": 0.8953180350845984,
+      "min": 0.3739616704722666,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "n_wall": {
+      "max": 1.2441622276027523e-7,
+      "mean": 1.1878595800784876e-7,
+      "min": 2.213148420090716e-10,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "ne": {
+      "max": 0.8084079579206679,
+      "mean": 0.7784420713895992,
+      "min": 0.24626349655171506,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "q95": {
+      "max": 0,
+      "mean": 0,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "q_div": {
+      "max": 0.5544511527131474,
+      "mean": 0.5249411944862484,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "tauE": {
+      "max": 0.8092646473628534,
+      "mean": 0.1435316863538332,
+      "min": 0.08629968547205959,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "triple": {
+      "max": 10004766617449443000,
+      "mean": 9553707465757667000,
+      "min": 2068567203544996900,
+      "missing": 0,
+      "nonFinite": 0
+    }
+  },
   "labels": {
     "method": "stellarator",
     "termination.reason": "Scheduled end",
@@ -56,10 +366,11 @@
   "meta": {
     "case": "W7X",
     "fidelity": "0D",
+    "fuel": "DD",
     "method": "stellarator",
     "node": "v24.19.0",
     "preset": "W7X",
-    "schema": 1,
+    "schema": 2,
     "tEnd": 30,
     "tEndShortened": false,
     "timeUnit": "s",

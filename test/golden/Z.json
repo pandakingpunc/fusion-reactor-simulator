@@ -17,6 +17,93 @@
     "triple": 313540393995984000000
   },
   "frames": 1001,
+  "geometry": {
+    "CR": 30,
+    "CR_eff": 30,
+    "L": 0.0075,
+    "V0": 1.2736703841045992e-7,
+    "current_MA": 20,
+    "r0": 0.002325
+  },
+  "history": {
+    "B": {
+      "max": 10800,
+      "mean": 2953.6627198523074,
+      "min": 14.841508773465169,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "C": {
+      "max": 30,
+      "mean": 11.883704182484845,
+      "min": 1.1121116840447114,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Efus_MJ": {
+      "max": 0.0035127994211465873,
+      "mean": 0.0017563997105732902,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Ein_MJ": {
+      "max": 3.002547239583314,
+      "mean": 2.2510235961954317,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Nn": {
+      "max": 2999576832060473.5,
+      "mean": 1499788416030233.5,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "P_fus": {
+      "max": 97363.96581690402,
+      "mean": 17546.45065559458,
+      "min": 0.0005186814711691608,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Q": {
+      "max": 0.0011699397680864081,
+      "mean": 0.0005885285339701094,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Te": {
+      "max": 3.39578428583072,
+      "mean": 1.6456222281744126,
+      "min": 0.3613088134389126,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Ti": {
+      "max": 3.39578428583072,
+      "mean": 1.6456222281744126,
+      "min": 0.3613088134389126,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "ne": {
+      "max": 2160000000,
+      "mean": 590732543.9704605,
+      "min": 2968301.7546930336,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "triple": {
+      "max": 2.200468217218306e+22,
+      "mean": 5.17366710915952e+21,
+      "min": 3217420754750346000,
+      "missing": 0,
+      "nonFinite": 0
+    }
+  },
   "labels": {
     "method": "maglif",
     "termination.reason": "Scheduled end",
@@ -25,10 +112,11 @@
   "meta": {
     "case": "Z",
     "fidelity": "0D",
+    "fuel": "DD",
     "method": "maglif",
     "node": "v24.19.0",
     "preset": "Z",
-    "schema": 1,
+    "schema": 2,
     "tEnd": 0.2,
     "tEndShortened": false,
     "timeUnit": "µs",

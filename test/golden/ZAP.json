@@ -16,6 +16,93 @@
     "triple": 300000000000000000
   },
   "frames": 1001,
+  "geometry": {
+    "CR": 1,
+    "CR_eff": 1,
+    "L": 0.5,
+    "V0": 0.000014137166941154069,
+    "current_MA": 0.65,
+    "r0": 0.003
+  },
+  "history": {
+    "B": {
+      "max": 0,
+      "mean": 0,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "C": {
+      "max": 1,
+      "mean": 1,
+      "min": 1,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Efus_MJ": {
+      "max": 1.365874357165495e-8,
+      "mean": 6.829371785827402e-9,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Ein_MJ": {
+      "max": 0.5000911458333314,
+      "mean": 0.37492065226439697,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Nn": {
+      "max": 4846845866.633433,
+      "mean": 2423422933.3167233,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "P_fus": {
+      "max": 0.0006829371785827433,
+      "mean": 0.000682937178582737,
+      "min": 0.0006829371785827433,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Q": {
+      "max": 2.7312508300651032e-8,
+      "mean": 1.706132919645011e-8,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Te": {
+      "max": 1,
+      "mean": 1,
+      "min": 1,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Ti": {
+      "max": 1,
+      "mean": 1,
+      "min": 1,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "ne": {
+      "max": 999.9999999999999,
+      "mean": 999.9999999999999,
+      "min": 999.9999999999999,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "triple": {
+      "max": 300000000000000000,
+      "mean": 300000000000000000,
+      "min": 300000000000000000,
+      "missing": 0,
+      "nonFinite": 0
+    }
+  },
   "labels": {
     "method": "zpinch_sfs",
     "termination.reason": "Scheduled end",
@@ -24,10 +111,11 @@
   "meta": {
     "case": "ZAP",
     "fidelity": "0D",
+    "fuel": "DT",
     "method": "zpinch_sfs",
     "node": "v24.19.0",
     "preset": "ZAP",
-    "schema": 1,
+    "schema": 2,
     "tEnd": 20,
     "tEndShortened": false,
     "timeUnit": "µs",

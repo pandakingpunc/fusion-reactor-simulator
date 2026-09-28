@@ -15,6 +15,79 @@
     "triple": 0
   },
   "frames": 1001,
+  "geometry": {
+    "T_hs": 7.097836438965094,
+    "capsuleRadius_um": 1050,
+    "chi_ig": 1.7744591097412734,
+    "convergenceRatio": 30,
+    "indirect": 1,
+    "rhoR": 0.30012074983043135
+  },
+  "history": {
+    "Efus_MJ": {
+      "max": 3.0515684775243748,
+      "mean": 0.8329387938606386,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Ein_MJ": {
+      "max": 2.0494881673176937,
+      "mean": 1.3041263183593814,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Nn": {
+      "max": 1082858169526794800,
+      "mean": 295570813596654200,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "P_fus": {
+      "max": 15206800049.137875,
+      "mean": 277138177.96062595,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Q": {
+      "max": 1.4889417397896825,
+      "mean": 0.4064393058350809,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Ti": {
+      "max": 7.097836438965094,
+      "mean": 7.097836438965014,
+      "min": 7.097836438965094,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "ignited": {
+      "max": 1,
+      "mean": 0.04395604395604396,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "rhoR": {
+      "max": 0.30012074983043135,
+      "mean": 0.30012074983043224,
+      "min": 0.30012074983043135,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "triple": {
+      "max": 0,
+      "mean": 0,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    }
+  },
   "labels": {
     "method": "icf_indirect",
     "termination.reason": "Scheduled end",
@@ -23,10 +96,11 @@
   "meta": {
     "case": "NIF",
     "fidelity": "0D",
+    "fuel": "DT",
     "method": "icf_indirect",
     "node": "v24.19.0",
     "preset": "NIF",
-    "schema": 1,
+    "schema": 2,
     "tEnd": 11,
     "tEndShortened": false,
     "timeUnit": "ns",

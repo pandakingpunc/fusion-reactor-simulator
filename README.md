@@ -109,10 +109,14 @@ Two independent safety nets guard the physics:
 - **Golden regression** (`npm run golden`) catches *any* numerical drift. For 22 cases (all 21
   presets, covering every method in 0D and 1.5D, plus a 3 s SPARC 1.5D variant) it stores a
   deterministic snapshot in `test/golden/<case>.json`: every finite scalar of the shot report,
-  flat-top averages of all diagnostics, event counts by kind, frame and step counts and 20 samples
-  of 5–8 key time traces. Numbers are compared with a relative tolerance of 1e-9 when the file was
-  written by the same Node.js major version (1e-6 otherwise); a mismatch prints a table of
-  preset, key, old value, new value and relative difference and exits with code 1. Long
+  flat-top averages of all diagnostics, whole-run minimum, maximum and mean of every diagnostic
+  together with the number of frames in which it is missing or not finite (so a NaN anywhere in
+  the run fails the check), event counts by kind, frame and step counts, 20 samples of 5–8 key
+  time traces, the model geometry and, for 1.5D runs, every radial profile on the full ρ grid at
+  mid-run and at the end plus a digest of the last Grad–Shafranov equilibrium. Numbers are
+  compared with a relative tolerance of 1e-9 when the file was written by the same Node.js major
+  version (1e-6 otherwise); a mismatch prints a table of preset, key, old value, new value and
+  relative difference and exits with code 1. Long
   discharges are shortened (DEMO 600 s, DEMO15 500 s; recorded in each file) so the suite runs in
   about 10 s on 4 threads. `npm test` runs a fast subset (JET, NIF, Z, SPARC15-short).
 
@@ -125,7 +129,8 @@ npm run golden:update -- --reason "…" --only ITER15,DEMO15       # a subset
 
 This rewrites the affected files and appends a dated entry listing the moved presets and keys to
 the append-only log [`test/golden/CHANGES.md`](test/golden/CHANGES.md). It refuses to run without
-`--reason`.
+`--reason`. A change of the file format is logged the same way: files of the previous schema are
+compared too, so a format-only re-record reads "0 keys moved" plus the keys it added.
 
 ## Project layout
 

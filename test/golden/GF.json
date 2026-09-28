@@ -17,6 +17,93 @@
     "triple": 283713511211500500
   },
   "frames": 1001,
+  "geometry": {
+    "CR": 10,
+    "CR_eff": 9.753440294047135,
+    "L": 1.5,
+    "V0": 2.3090706003884978,
+    "current_MA": 0,
+    "r0": 0.7
+  },
+  "history": {
+    "B": {
+      "max": 47.56479878477113,
+      "mean": 13.960734903386548,
+      "min": 0.5344126773444178,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "C": {
+      "max": 9.753440294047135,
+      "mean": 4.285167404808695,
+      "min": 1.0338401011224296,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Efus_MJ": {
+      "max": 0.0000771220761049019,
+      "mean": 0.00003856103805245095,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Ein_MJ": {
+      "max": 99.99423106971139,
+      "mean": 74.97213762829566,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Nn": {
+      "max": 27366998570128.957,
+      "mean": 13683499285064.469,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "P_fus": {
+      "max": 0.07733965347505262,
+      "mean": 0.012840838527917791,
+      "min": 1.5644454366880658e-8,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Q": {
+      "max": 7.71265254803909e-7,
+      "mean": 3.8762592656280493e-7,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Te": {
+      "max": 1.411720037399834,
+      "mean": 0.7598277400484277,
+      "min": 0.30686654871122393,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "Ti": {
+      "max": 1.411720037399834,
+      "mean": 0.7598277400484277,
+      "min": 0.30686654871122393,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "ne": {
+      "max": 95.12959756954227,
+      "mean": 27.921469806773096,
+      "min": 1.0688253546888353,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "triple": {
+      "max": 12086672313483481000,
+      "mean": 3010334408994586000,
+      "min": 29518807299157140,
+      "missing": 0,
+      "nonFinite": 0
+    }
+  },
   "labels": {
     "method": "mtf_piston",
     "termination.reason": "Scheduled end",
@@ -25,10 +112,11 @@
   "meta": {
     "case": "GF",
     "fidelity": "0D",
+    "fuel": "DT",
     "method": "mtf_piston",
     "node": "v24.19.0",
     "preset": "GF",
-    "schema": 1,
+    "schema": 2,
     "tEnd": 6000,
     "tEndShortened": false,
     "timeUnit": "µs",

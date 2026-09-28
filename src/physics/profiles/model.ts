@@ -34,7 +34,8 @@ import { buildMagneticReport, LAWSON_DT } from '../confinement/magneticReport';
 import { flatTopMean } from '../analysis/flatTop';
 import { DiagSpec, EqSnapshot, HistoryFrame, MagneticConfig, ProfileSettings, ShotReport, SimEvent, SimModel, TerminationInfo } from '../types';
 import { TransportGeometry, geometryFromEquilibrium } from './geometry1d';
-import { GsAttempt, GsStage, acceptableEquilibrium, binomialSmooth, gridScalePasses, isUsableGeometry, solveGuarded } from './eqguard';
+import { GsAttempt, GsStage, acceptableEquilibrium, binomialSmooth, gridScalePasses, isUsableGeometry, solveGuarded, solverErrorMessage } from './eqguard';
+import { StepFailure } from './failures';
 import { DEFAULT_PROFILE_SETTINGS } from './defaults';
 import { CurrentSolver, DensitySolver, HeatInputs, HeatSolver } from './fvsolver';
 import { NbiChord, edgeDeposition, gaussianDeposition, volumeIntegral } from './sources';
@@ -54,6 +55,16 @@ export { DEFAULT_PROFILE_SETTINGS };
 // skaler durum indeksleri (y[4N + k])
 const S = { NHe: 0, cZ: 1, fA: 2, Efus: 3, Ein: 4, Nn: 5, NTburn: 6, NTfuel: 7, Cchi: 8, Sfuel: 9, Ip: 10, w32: 11, w21: 12, Pelm: 13, CI: 14 } as const;
 const NSCAL = 15;
+
+// implicit step retry policy (see ProfileModel.step)
+const STEP_SHRINK = 0.4;
+const STEP_MAX_ATTEMPTS = 12;
+const STEP_DT_FLOOR = 1e-7;
+
+function allFinite(a: ArrayLike<number>): boolean {
+  for (let i = 0; i < a.length; i++) if (!Number.isFinite(a[i])) return false;
+  return true;
+}
 
 export const PROFILE_DIAGS: DiagSpec[] = [
   { key: 'Ti', label: 'T_i (volume avg.)', unit: 'keV', group: 'Temperature' },
@@ -637,6 +648,14 @@ export class ProfileModel implements SimModel {
 
   rhs(_t: number, _y: Float64Array, d: Float64Array): void { d.fill(0); }
 
+  /**
+   * One implicit transport step with Δt control. A failed attempt (Picard not converged, change
+   * above 35 %, non-finite state, or an exception such as a zero pivot in the linear algebra) is
+   * retried with Δt × 0.4. After STEP_MAX_ATTEMPTS attempts, or once Δt would fall below
+   * STEP_DT_FLOOR, one forced attempt at that last Δt is accepted even without Picard convergence,
+   * but only if its whole state is finite; otherwise the shot ends with a StepFailure at the last
+   * accepted state. Time advances only by the Δt of the attempt whose state is committed.
+   */
   step(t: number, y: Float64Array, tMax: number): number {
     if (this.phase === 'ended') return tMax;
     if (this.phase !== 'normal') return this.disruptionStep(t, y, tMax);
@@ -645,23 +664,63 @@ export class ProfileModel implements SimModel {
     if (dt <= 0) return t;
     const truncated = dt < dtWant;
     const yOld = Float64Array.from(y);
-    let ok = false, change = 0, retried = false;
-    for (let attempt = 0; attempt < 12; attempt++) {
-      const r = this.implicitStep(t, dt, yOld, y);
-      ok = r.ok; change = r.change;
-      if (ok) break;
+    let r = this.tryImplicitStep(t, dt, yOld, y);
+    let attempts = 1, retried = false, forced = false;
+    while (!r.ok) {
       y.set(yOld);
-      dt *= 0.4; retried = true;
-      if (dt < 1e-7) { this.implicitStep(t, dt, yOld, y); ok = true; break; }
+      dt *= STEP_SHRINK; retried = true;
+      forced = dt < STEP_DT_FLOOR || attempts >= STEP_MAX_ATTEMPTS;
+      r = this.tryImplicitStep(t, dt, yOld, y);
+      attempts++;
+      if (forced) break;
+    }
+    if (forced && (r.error !== undefined || !allFinite(y))) {
+      y.set(yOld);
+      const detail = r.error !== undefined ? solverErrorMessage(r.error) : 'the forced attempt produced a non-finite state';
+      this.failStep(new StepFailure(t, dt, attempts, detail, { cause: r.error }));
+      return t;
+    }
+    if (forced) {
+      this.forcedSteps++;
+      if (!this.warned.has('forced')) {
+        this.warned.add('forced');
+        this.pending.push({ t: t + dt, kind: 'warning', msg: `Transport step at t = ${t.toFixed(4)} s did not converge in ${attempts - 1} attempts; forced at Δt = ${dt.toExponential(1)} s (Picard not converged) — accuracy is reduced here` });
+      }
     }
     this.afterStep(t, dt, yOld, y);
     // uyarlanır Δt: hedef en büyük göreli değişim %8. Çıktı zamanına kesilmiş adım, önerilen
     // Δt'yi küçültmez (aksi halde her çıktı karesinden sonra Δt sıfırdan büyümek zorunda kalır).
+    const change = r.change;
     const fac = change > 0 ? Math.min(1.5, Math.max(0.3, 0.08 / change)) : 1.5;
     const next = truncated && !retried ? Math.max(dtWant, dt * fac) : dt * fac;
     this.dt = Math.min(Math.max(next, 1e-6), 0.5);
     return t + dt;
   }
+
+  /** implicitStep with anything it throws (linear algebra, non-finite coefficients) turned into a failed attempt */
+  private tryImplicitStep(t: number, dt: number, yOld: Float64Array, y: Float64Array): { ok: boolean; change: number; error?: unknown } {
+    try {
+      return this.implicitStep(t, dt, yOld, y);
+    } catch (e) {
+      return { ok: false, change: Infinity, error: e };
+    }
+  }
+
+  /** Ends the shot on a numerical failure: explicit termination and 'end' event, state kept at the last accepted step */
+  private failStep(e: StepFailure): void {
+    this.stepFailure = e;
+    this.phase = 'ended';
+    this.terminated = {
+      t: e.t, natural: false, reason: 'Numerical failure',
+      diagnosis: `The implicit transport solver could not advance the plasma: ${e.message}. The shot was stopped at the last accepted state rather than continued with a non-converged or non-finite one.`,
+      fix: 'This is a solver failure, not a plasma limit: try a coarser radial grid (nRho) or slower heating/density ramps, or run the shot at 0D fidelity.',
+    };
+    this.pending.push({ t: e.t, kind: 'end', msg: `Numerical failure — ${e.message}` });
+  }
+  /** set when the shot was ended by a numerical failure */
+  stepFailure: StepFailure | null = null;
+  /** steps accepted by the forced last resort (Picard not converged at the smallest Δt) */
+  forcedSteps = 0;
 
   /** Örtük adım + Picard; dönüş: kabul ve en büyük göreli değişim */
   private implicitStep(t: number, dt: number, yOld: Float64Array, y: Float64Array): { ok: boolean; change: number } {
@@ -1344,6 +1403,7 @@ export class ProfileModel implements SimModel {
     if (this.eq && !this.eq.converged) warnings.push('Grad–Shafranov equilibrium did not fully converge — geometry coefficients may be inaccurate.');
     const nEq = this.eqUpdates + this.eqRejected;
     if (this.eqRejected > 0) warnings.push(`Grad–Shafranov: ${this.eqRejected} of ${nEq} equilibrium updates were rejected (no convergence in any retry stage) — the transport geometry was held at the last accepted equilibrium in between.`);
+    if (this.forcedSteps > 0) warnings.push(`${this.forcedSteps} transport step(s) exhausted the Δt retries and were forced at the smallest Δt without Picard convergence — accuracy is reduced around those times.`);
     const nElm = events.filter((e) => e.kind === 'ELM').length;
     const nSaw = events.filter((e) => e.kind === 'sawtooth').length;
     return buildMagneticReport({
@@ -1357,6 +1417,7 @@ export class ProfileModel implements SimModel {
         'q(0) / q95 (final)': `${(d.q0 ?? 0).toFixed(2)} / ${(d.q95 ?? 0).toFixed(2)}`,
         'Shafranov shift (m)': +this.eq.shafranovShift.toFixed(3),
         'GS updates accepted': this.eqUpdates, 'GS updates needing a retry': this.eqRetried, 'GS updates rejected': this.eqRejected,
+        'Forced transport steps': this.forcedSteps,
       },
       extraExtras: {
         'T_e axis (final, keV)': +(d.Te0 ?? 0).toFixed(2), 'T_ped (final, keV)': +(d.Tped ?? 0).toFixed(2), 'T_sep (final, keV)': +(d.Tsep ?? 0).toFixed(3),

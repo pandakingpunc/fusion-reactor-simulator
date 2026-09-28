@@ -8,6 +8,7 @@ import { DEMO_15D, ITER_15D, JET_15D } from '../presets';
 import { MagneticConfig } from '../types';
 import { EquilibriumOptions, GSSolver } from '../equilibrium/gs';
 import { ProfileModel } from './model';
+import { StepFailure } from './failures';
 
 /** Work arrays are private; the tests read them through this view only. */
 type Internals = { w: Record<string, Float64Array> };
@@ -83,5 +84,54 @@ describe('Grad–Shafranov updates during a shot', () => {
     expect(times[times.length - 1]).toBeGreaterThan(2 - 2 * interval);
     expect(r.warnings.some((w) => w.includes('Grad–Shafranov') && w.includes(`${rejected} of ${rejected}`))).toBe(true);
     expect(sim.events.filter((e) => e.kind === 'warning' && e.msg.includes('Grad–Shafranov')).length).toBe(1);
+  }, 60000);
+});
+
+describe('implicit step failures', () => {
+  type StepFn = (t: number, dt: number, yOld: Float64Array, y: Float64Array) => { ok: boolean; change: number };
+  const stubStep = (m: ProfileModel, f: StepFn) => { (m as unknown as { implicitStep: StepFn }).implicitStep = f; };
+  const started = () => {
+    const sim = new Simulation({ ...JET_15D, t_end: 1 });
+    sim.advance(0.3);
+    return { sim, m: sim.model as ProfileModel, t0: sim.t, y0: Array.from(sim.y) };
+  };
+
+  it('an exception in every retry (linear algebra) ends the shot explicitly without advancing time', () => {
+    const { sim, m, t0, y0 } = started();
+    stubStep(m, () => { throw new Error('solveTridiag: sıfır pivot'); });
+    expect(() => sim.advance(0.2)).not.toThrow();
+    expect(sim.t).toBe(t0);
+    expect(Array.from(sim.y)).toEqual(y0);
+    expect(m.terminated?.natural).toBe(false);
+    expect(m.terminated?.reason).toBe('Numerical failure');
+    expect(m.stepFailure).toBeInstanceOf(StepFailure);
+    expect(m.stepFailure?.message).toContain('sıfır pivot');
+    expect(sim.events.some((e) => e.kind === 'end' && e.msg.includes('Numerical failure'))).toBe(true);
+    expect(sim.report().termination.reason).toBe('Numerical failure');
+  }, 60000);
+
+  it('the last-resort forced step never commits a non-finite state', () => {
+    const { sim, m, t0, y0 } = started();
+    stubStep(m, (_t, _dt, yOld, y) => { y.set(yOld); y[0] = NaN; return { ok: false, change: 1 }; });
+    sim.advance(0.2);
+    expect(sim.t).toBe(t0);
+    expect(Array.from(sim.y)).toEqual(y0);
+    expect(m.terminated?.reason).toBe('Numerical failure');
+    expect(m.stepFailure?.message).toContain('non-finite');
+  }, 60000);
+
+  it('exhausted retries advance time only with the state of the step that took that Δt', () => {
+    const { sim, m } = started();
+    (m as unknown as { dt: number }).dt = 0.01; // twelve halvings by 0.4 stay above the Δt floor
+    const dts: number[] = [];
+    stubStep(m, (_t, dt, yOld, y) => { dts.push(dt); y.set(yOld); y[0] = yOld[0] + dt; return { ok: false, change: 1 }; });
+    const y = Float64Array.from(sim.y), Te0 = y[0], t0 = sim.t;
+    const t1 = m.step(t0, y, t0 + 1);
+    expect(dts.length).toBe(13); // 12 attempts + the forced one at the last Δt
+    expect(t1 - t0).toBeCloseTo(dts[dts.length - 1], 15);
+    expect(y[0] - Te0).toBeCloseTo(t1 - t0, 12); // afterStep does not touch T_e
+    expect(m.forcedSteps).toBe(1);
+    const ev = m.postStep(t1, t1 - t0, y);
+    expect(ev.some((e) => e.kind === 'warning' && e.msg.includes('forced'))).toBe(true);
   }, 60000);
 });

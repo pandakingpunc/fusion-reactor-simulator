@@ -26,6 +26,7 @@ export const CONTROL_DEFS: Record<string, CtrlDef> = {
   n_target_1e20: { label: 'ctrl.nTarget', unit: '10²⁰', min: 0.01, max: 15, step: 0.01, hint: 'ctrl.nTargetHint' },
   fuelRate_1e20s: { label: 'ctrl.fuelRate', unit: '10²⁰/s', min: 0, max: 3000, step: 1 },
   H98: { sym: 'H₉₈', unit: '', min: 0.3, max: 2, step: 0.01, hint: 'ctrl.h98Hint' },
+  H_ISS04: { sym: 'H_ISS04', unit: '', min: 0.3, max: 2, step: 0.01, hint: 'ctrl.h98Hint' },
   cZ: { label: 'ctrl.cZ', unit: '', min: 0, max: 0.03, step: 0.0001, hint: 'ctrl.cZHint' },
   // FRC default 10, mirror default 50: a fixed linear range cannot serve both
   kappa_conf: { label: 'ctrl.kappa', unit: '', min: 0.1, max: 5, step: 0.05, mult: 10 },

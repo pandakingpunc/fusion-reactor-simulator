@@ -278,8 +278,10 @@ describe('magnetic 0D: recorded diagnostics describe the recorded state', () => 
     compare(r, r.H.filter((f) => !ev.has(f)));
   });
 
+  // DIII-D (not ITER): ITER has no ELMs in its first 3 s and, since ws2b, sawtooth crashes no longer
+  // change the state, so only a run with an ELM at t < 3 s still has frames to compare.
   it.fails('frames recorded at ELM / sawtooth events (BUG(ws2a): pre-crash diagnostics)', () => {
-    const r = run('ITER', 3);
+    const r = run('DIIID', 3);
     const frames = eventFrames(r);
     expect(frames.length).toBeGreaterThan(0);
     compare(r, frames);

@@ -7,10 +7,14 @@
  * yakalamaktır (mertebe/tutarlılık). Bir kontrol başarısız olursa süreç sıfırdan farklı kodla çıkar.
  *   --threads N   işçi sayısı (varsayılan: çekirdek − 1)
  *   --only a,b    yalnız bu preset kimlikleri
+ *   --json        machine-readable results on stdout instead of the report
+ * Exit codes: 0 all executed checks passed; 1 a check or run failed, or no check was executed
+ * (the selected presets have none); 2 usage error (unknown flag or preset id, bad --threads).
  */
 import { PRESETS } from '../physics/presets';
 import { ShotReport } from '../physics/types';
-import { defaultThreads, runPool } from './pool';
+import { PoolConfigError, defaultThreads, runPool } from './pool';
+import { defineCli, exitUsage, parseArgsOrExit } from './args';
 import type { RunResult, RunTask } from './presetRunner.worker';
 
 interface Check {
@@ -47,14 +51,50 @@ const CHECKS: Check[] = [
   { id: 'DEMO15', label: 'Bootstrap fraction', get: (_r, a) => a.f_bs, lo: 0.2, hi: 0.6, unit: '', ref: 'EU DEMO f_bs ≈ 0.35 (Siccinio 2020)' },
 ];
 
-function arg(name: string): string | undefined {
-  const i = process.argv.indexOf(name);
-  return i >= 0 ? process.argv[i + 1] : undefined;
+const CLI = defineCli({
+  name: 'npm run validate --',
+  summary: 'Runs the presets (0D and 1.5D) on a worker-thread pool and checks selected outputs against published values.\n' +
+    'Exit codes: 0 all executed checks passed; 1 a check or run failed, or no check was executed; 2 usage error.',
+  flags: {
+    threads: { type: 'int', min: 1, help: 'worker threads (default: cores − 1)' },
+    only: { type: 'list', choices: PRESETS.map((p) => p.id), metavar: 'ID,…', help: 'only these preset ids' },
+    json: { type: 'bool', help: 'print machine-readable JSON results instead of the report' },
+  },
+});
+
+/** --json: one entry per executed check */
+interface CheckResult {
+  preset: string;
+  metric: string;
+  /** null when the run failed or the value is not finite */
+  value: number | null;
+  unit: string;
+  expected: { lo: number; hi: number };
+  pass: boolean;
+  ref: string;
+  error?: string;
+}
+/** --json: one entry per selected preset */
+interface PresetResult {
+  id: string;
+  ok: boolean;
+  error?: string;
+  Q_sci_max?: number | null;
+  E_fusion_MJ?: number | null;
+  Tmax_keV?: number | null;
+  score?: number | null;
+  steps?: number;
+  cpu_s?: number;
 }
 
+const finiteOrNull = (v: number): number | null => (Number.isFinite(v) ? v : null);
+
 async function main() {
-  const only = arg('--only')?.split(',');
-  const threads = Number(arg('--threads') ?? defaultThreads());
+  const args = parseArgsOrExit(CLI);
+  const only = args.only;
+  const threads = args.threads ?? defaultThreads();
+  const json = args.json;
+  const say = (line: string) => { if (!json) console.log(line); };
   const list = PRESETS.filter((p) => !only || only.includes(p.id));
   const tasks: RunTask[] = list.map((p) => ({ id: p.id, cfg: p.cfg }));
   const t0 = performance.now();
@@ -65,38 +105,68 @@ async function main() {
   const byId = new Map(res.map((r) => [r.id, r]));
 
   let fails = 0;
-  console.log(`\n=== SUMMARY (all presets, ${threads} worker threads, ${(wall / 1000).toFixed(1)} s wall) ===`);
+  const presetResults: PresetResult[] = [];
+  const checkResults: CheckResult[] = [];
+  say(`\n=== SUMMARY (all presets, ${threads} worker threads, ${(wall / 1000).toFixed(1)} s wall) ===`);
   let cpu = 0;
   for (const p of list) {
     const r = byId.get(p.id);
-    if (!r?.ok || !r.report) { fails++; console.log(`  ERROR ${p.id}: ${r?.error ?? 'no result'}`); continue; }
+    if (!r?.ok || !r.report) {
+      fails++; say(`  ERROR ${p.id}: ${r?.error ?? 'no result'}`);
+      presetResults.push({ id: p.id, ok: false, error: r?.error ?? 'no result' });
+      continue;
+    }
     cpu += r.ms ?? 0;
     const rep = r.report;
     const finite = isFinite(rep.Q_sci_max) && isFinite(rep.E_fusion_MJ) && isFinite(rep.Tmax_keV) && isFinite(rep.score);
-    if (!finite) { fails++; console.log(`  NAN!  ${p.id}`); continue; }
-    console.log(
+    presetResults.push({
+      id: p.id, ok: finite, ...(finite ? {} : { error: 'non-finite report' }),
+      Q_sci_max: finiteOrNull(rep.Q_sci_max), E_fusion_MJ: finiteOrNull(rep.E_fusion_MJ), Tmax_keV: finiteOrNull(rep.Tmax_keV),
+      score: finiteOrNull(rep.score), steps: r.steps, cpu_s: (r.ms ?? 0) / 1000,
+    });
+    if (!finite) { fails++; say(`  NAN!  ${p.id}`); continue; }
+    say(
       `  ${p.id.padEnd(8)} Q=${rep.Q_sci_max.toExponential(2)}  E_fus=${rep.E_fusion_MJ.toExponential(2)} MJ  T=${rep.Tmax_keV.toFixed(2)} keV  score=${rep.score}` +
       `  (${((r.ms ?? 0) / 1000).toFixed(1)} s, ${r.steps} steps)`
     );
   }
-  console.log(`  parallel speed-up ≈ ${(cpu / wall).toFixed(1)}× (Σ CPU ${(cpu / 1000).toFixed(1)} s)`);
+  say(`  parallel speed-up ≈ ${(cpu / wall).toFixed(1)}× (Σ CPU ${(cpu / 1000).toFixed(1)} s)`);
 
-  console.log('\n=== VALIDATION (against literature) ===');
+  say('\n=== VALIDATION (against literature) ===');
   for (const c of CHECKS) {
     const r = byId.get(c.id);
     if (!r) continue; // --only ile filtrelenmiş
-    if (!r.ok || !r.report || !r.avg) { fails++; console.log(`  FAIL  ${c.id} — run failed`); continue; }
+    const entry = (value: number | null, pass: boolean): CheckResult =>
+      ({ preset: c.id, metric: c.label, value, unit: c.unit, expected: { lo: c.lo, hi: c.hi }, pass, ref: c.ref });
+    if (!r.ok || !r.report || !r.avg) {
+      fails++; say(`  FAIL  ${c.id} — run failed`);
+      checkResults.push({ ...entry(null, false), error: 'run failed' });
+      continue;
+    }
     const v = c.get(r.report, r.avg);
     const pass = isFinite(v) && v >= c.lo && v <= c.hi;
     if (!pass) fails++;
-    console.log(
+    checkResults.push(entry(finiteOrNull(v), pass));
+    say(
       `  ${pass ? 'PASS' : 'FAIL'}  ${c.id.padEnd(8)} ${c.label} = ${v.toPrecision(3)} ${c.unit}` +
       ` (expected ${c.lo}–${c.hi})  [${c.ref}]`
     );
   }
 
-  console.log(`\n${fails === 0 ? '✓ ALL CHECKS PASSED' : `✗ ${fails} CHECKS FAILED`}\n`);
-  if (fails > 0) process.exitCode = 1;
+  // zero executed checks is a failure: a filter that selects nothing checkable must not look green
+  const none = checkResults.length === 0;
+  if (json) {
+    const out = {
+      schema: 1, threads, wall_s: wall / 1000, presets: presetResults, checks: checkResults,
+      checksExecuted: checkResults.length, failures: fails, passed: fails === 0 && !none,
+    };
+    process.stdout.write(JSON.stringify(out, null, 2) + '\n');
+  } else if (none && fails === 0) {
+    say('  (none — the selected presets have no literature checks)\n\n✗ NO CHECKS EXECUTED\n');
+  } else {
+    say(`\n${fails === 0 ? '✓ ALL CHECKS PASSED' : `✗ ${fails} CHECKS FAILED`}\n`);
+  }
+  if (fails > 0 || none) process.exitCode = 1;
 }
 
 /** kaba maliyet tahmini: 1.5D ve uzun atışlar önce */
@@ -105,4 +175,8 @@ function weight(t: RunTask): number {
   return (c.fidelity === '1.5D' ? 100 : 1) * (c.t_end ?? 1);
 }
 
-main().catch((e) => { console.error(e); process.exitCode = 1; });
+main().catch((e) => {
+  if (e instanceof PoolConfigError) exitUsage(CLI.name, e.message);
+  console.error(e);
+  process.exitCode = 1;
+});

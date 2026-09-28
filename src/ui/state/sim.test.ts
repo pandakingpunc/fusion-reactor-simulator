@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MIRROR, TAE } from '../../physics/presets';
 import { FakeWorker, fakeWorkerFactory, manualScheduler } from '../../worker/fakeWorker';
 import { FromWorker, PROTOCOL_VERSION } from '../../worker/protocol';
-import { SimController, completedShotKey, initialSimState, reduceSim } from './sim';
+import { SimController, completedShotKey, initialSimState, reduceSim, scheduleFrame } from './sim';
 
 /** controller wired to fake workers and a hand-cranked frame scheduler */
 function setup() {
@@ -186,5 +186,32 @@ describe('completedShotKey', () => {
     const s = { ...initialSimState, status: 'paused' as const, runId: 1, branchId: 1, cfg: TAE, meta: {} as never };
     const after = reduceSim(s, { type: 'done', id: 1, branchId: 0, report: {} as never });
     expect(after).toBe(s);
+  });
+});
+
+describe('scheduleFrame', () => {
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+  it('flushes once, on the animation frame when there is one', () => {
+    vi.useFakeTimers();
+    const frames: (() => void)[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: () => void) => { frames.push(cb); return frames.length; });
+    const flush = vi.fn();
+    scheduleFrame(flush);
+    expect(flush).not.toHaveBeenCalled();
+    frames.forEach((f) => f());
+    vi.advanceTimersByTime(1000);
+    expect(flush).toHaveBeenCalledTimes(1);
+  });
+
+  it('still flushes within 100 ms when animation frames are throttled or absent', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('requestAnimationFrame', () => 0); // a frame that never comes (occluded window)
+    const flush = vi.fn();
+    scheduleFrame(flush);
+    vi.advanceTimersByTime(99);
+    expect(flush).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(flush).toHaveBeenCalledTimes(1);
   });
 });

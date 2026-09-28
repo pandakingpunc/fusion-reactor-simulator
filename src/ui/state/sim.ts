@@ -27,11 +27,18 @@ export const initialSimState: SimState = {
   report: null, error: null, speed: 1, wallMs: 0, runId: 0, branchId: 0, autoPlay: false,
 };
 
-/** Flush on the next animation frame; in a hidden tab (no rAF) fall back to a slow timer. */
+/** upper bound on how long incoming messages may wait when animation frames are throttled */
+const MAX_FLUSH_DELAY_MS = 100;
+
+/**
+ * Flush on the next animation frame. Browsers throttle or suspend rAF in hidden or occluded
+ * windows, so a timer guarantees the flush within MAX_FLUSH_DELAY_MS; whichever fires first wins.
+ */
 export const scheduleFrame: FrameScheduler = (flush) => {
-  const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
-  if (typeof requestAnimationFrame === 'function' && !hidden) requestAnimationFrame(() => flush());
-  else setTimeout(flush, hidden ? 250 : 16);
+  let pending = true;
+  const run = () => { if (pending) { pending = false; flush(); } };
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run);
+  setTimeout(run, MAX_FLUSH_DELAY_MS);
 };
 
 const current = (s: SimState, m: { id: number; branchId: number }) => m.id === s.runId && m.branchId === s.branchId;

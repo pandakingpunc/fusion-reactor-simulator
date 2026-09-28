@@ -24,7 +24,7 @@
 import { Geometry, plasmaVolume, plasmaSurface, crossSectionArea, q95 as q95fn, profileIntegral, profileIntegralSplit } from '../geometry';
 import { FUEL_CHANNELS, FUEL_SPECIES, beamTargetReactivity, beamTargetDensity, burnPerReaction, pairDensity } from '../reactivity';
 import { bremsstrahlung, synchrotronTotal, coolingRate, meanCharge, RHO_CORE } from '../radiation';
-import { tauIPB98y2, tauITER89P, tauISS04, tauSTValovic, pLH_threshold, tauEquilibration } from '../transport';
+import { tauIPB98y2, tauITER89P, tauISS04, tauSTValovic, pLH_threshold, equilibrationRate } from '../transport';
 import { resistivity, ohmicPower, criticalEnergy, ionHeatingFraction, slowingDownTime, nbiShineThrough, fastIonEnergyTime, fastPoolMix, FastSpecies } from '../heating';
 import { greenwaldDensity, betaToroidal, betaNormalized, betaPoloidal, lineAverageFactor } from '../limits';
 import { disruptionReport, DisruptionCause, DISRUPTION_LABELS, DISRUPTION_FIXES } from '../disruption';
@@ -32,6 +32,7 @@ import { checkMagnet, MAGNET_TECH, divertorHeatFlux, divertorHeatFluxStellarator
 import { buildMagneticReport, LAWSON_DT } from './magneticReport';
 import { RNG } from '../rng';
 import { U } from '../units';
+import { IMPURITIES } from '../constants';
 import { DiagSpec, HistoryFrame, MagneticConfig, ShotReport, SimEvent, SimModel, TerminationInfo } from '../types';
 
 
@@ -60,6 +61,7 @@ export const MAGNETIC_DIAGS: DiagSpec[] = [
   { key: 'P_rad', label: 'P_rad total', unit: 'MW', group: 'Radiation' },
   { key: 'P_rad_core', label: 'P_rad core (ρ < 0.6)', unit: 'MW', group: 'Radiation' },
   { key: 'P_cond', label: 'P_conduction (W/τ_E)', unit: 'MW', group: 'Power' },
+  { key: 'P_ei', label: 'P_ei (electron → ion)', unit: 'MW', group: 'Power' },
   { key: 'Q', label: 'Scientific Q', unit: '', group: 'Performance' },
   { key: 'tauE', label: 'τ_E', unit: 's', group: 'Confinement' },
   { key: 'H_mode', label: 'Mode (1=H, 0=L)', unit: '', group: 'Confinement' },
@@ -207,6 +209,22 @@ export class MagneticModel implements SimModel {
     const Ti = Math.max(U.J_to_keV(y[IDX.Wi] / (1.5 * ni * this.V)), 0.01);
     return { Te, Ti, ne, ni };
   }
+  /**
+   * Σ_j n_j Z_j² / (n_e A_j) — tüm iyonlar: yakıt, He külü, safsızlık, tohum. Stix kritik enerjisi
+   * (Stix 1972) ve e-i eşitlenme hızı (NRL) aynı toplamı kullanır.
+   */
+  private ionSum(y: Float64Array, ne: number, Te: number): number {
+    const fs = FUEL_SPECIES[this.cfg.fuel];
+    const im = this.cfg.impurity;
+    const Zz = meanCharge(im.species, Math.max(Te, 0.1));
+    let s = (y[IDX.na] * fs.a.Z ** 2) / fs.a.A + (y[IDX.nb] * fs.b.Z ** 2) / fs.b.A + (y[IDX.nHe] * 4) / 4.001506 +
+      (y[IDX.nZ] * Zz * Zz) / IMPURITIES[im.species].A;
+    if (im.seedSpecies && im.seedConcentration) {
+      const Zs = this.seedZ(Te);
+      s += (im.seedConcentration * ne * Zs * Zs) / IMPURITIES[im.seedSpecies].A;
+    }
+    return s / ne;
+  }
   private Zeff(y: Float64Array, ne: number, Te: number): number {
     const fs = FUEL_SPECIES[this.cfg.fuel];
     const Zz = meanCharge(this.cfg.impurity.species, Math.max(Te, 0.1));
@@ -350,8 +368,8 @@ export class MagneticModel implements SimModel {
     const P_NBI = P_NBI_inj * (1 - shine);
     const P_ICRH = this.ctrl.P_ICRH_MW * 1e6 * ramp * quenchFac;
     const P_ECRH = this.ctrl.P_ECRH_MW * 1e6 * ramp * quenchFac;
-    // Stix kritik enerji: Σ n_j Z_j²/(n_e A_j)
-    const ionSum = (y[IDX.na] * fs.a.Z ** 2 / fs.a.A + y[IDX.nb] * fs.b.Z ** 2 / fs.b.A + y[IDX.nHe] * 4 / 4) / ne;
+    // Stix kritik enerji ve e-i eşitlenme: Σ n_j Z_j²/(n_e A_j), tüm iyonlar
+    const ionSum = this.ionSum(y, ne, Te);
     // NBI hızlı iyonları (tür a, E_b): kendi havuzu W_b, kendi E_c'si, G'si ve τ_W'si
     const Ec_nbi = criticalEnergy(Te, fs.a.A, ionSum);
     const fi_nbi = ionHeatingFraction(c.heating.E_NBI_keV, Ec_nbi);
@@ -412,9 +430,8 @@ export class MagneticModel implements SimModel {
     const P_cond_total = Math.max(P_transport - this.elmAvgPower, 0);
     const P_cond_e = P_cond_total * (y[IDX.We] / Math.max(W, 1));
     const P_cond_i = P_cond_total * (y[IDX.Wi] / Math.max(W, 1));
-    // ---- e-i eşitlenme ----
-    const tau_eq = tauEquilibration(ne, Te, this.M, 1) * (ne / ni); // Z_eff ağırlığı Zeff_main ile yaklaşık
-    const P_ei = (1.5 * ne * U.keV_to_J(Te - Ti) * V) / tau_eq;
+    // ---- e-i eşitlenme (NRL): ν_eq = 3.2e-9 lnΛ Σ n_j Z_j²/A_j / T_e^1.5, lnΛ(n_e, T_e) ----
+    const P_ei = 1.5 * ne * U.keV_to_J(Te - Ti) * V * equilibrationRate(ne, Te, ionSum);
 
     // ---- disruption fazları ----
     let quenchE = 0, quenchI = 0, dIp = 0;
@@ -486,7 +503,7 @@ export class MagneticModel implements SimModel {
     this.lastDiag = {
       Te, Ti, ne, ni, Zeff, P_fus: fus.P_total, P_bt: fus.P_bt, P_charged: fus.P_charged, P_neutron: fus.P_neutron, T0: fus.T0,
       P_brems: rad.P_brems, P_line: rad.P_line, P_sync: rad.P_sync, P_rad: rad.P_rad,
-      P_NBI: P_NBI_inj, P_ICRH, P_ECRH, P_oh, P_alpha, P_beam, P_heat, P_cond: P_transport, P_loss: P_loss_scaling, dWdt: dWdt_s, P_rad_core: rad.P_rad_core, tauE, P_SOL, S_fuel: y[IDX.Sfuel] * V,
+      P_NBI: P_NBI_inj, P_ICRH, P_ECRH, P_oh, P_alpha, P_beam, P_heat, P_cond: P_transport, P_loss: P_loss_scaling, dWdt: dWdt_s, P_rad_core: rad.P_rad_core, P_ei, tauE, P_SOL, S_fuel: y[IDX.Sfuel] * V,
       P_aux_abs: P_NBI + P_ICRH + P_ECRH,
     };
   }
@@ -551,7 +568,7 @@ export class MagneticModel implements SimModel {
       Ti: D.Ti, Te: D.Te, Ti0: D.T0, ne: D.ne / 1e20, nbar: nbar / 1e20, nG_frac: nbar / nG, fHe: y[IDX.nHe] / D.ne,
       P_fus: D.P_fus / 1e6, P_bt: D.P_bt / 1e6, P_alpha: D.P_alpha / 1e6, P_beam_heat: D.P_beam / 1e6, P_aux: (D.P_NBI + D.P_ICRH + D.P_ECRH) / 1e6, P_oh: D.P_oh / 1e6,
       P_brems: D.P_brems / 1e6, P_sync: D.P_sync / 1e6, P_line: D.P_line / 1e6, P_rad: D.P_rad / 1e6, P_cond: D.P_cond / 1e6,
-      Q, tauE: D.tauE, H_mode: this.hmode ? 1 : 0, P_LH: P_LH / 1e6, P_loss: D.P_loss / 1e6, dWdt: D.dWdt / 1e6, P_rad_core: D.P_rad_core / 1e6,
+      Q, tauE: D.tauE, H_mode: this.hmode ? 1 : 0, P_LH: P_LH / 1e6, P_loss: D.P_loss / 1e6, dWdt: D.dWdt / 1e6, P_rad_core: D.P_rad_core / 1e6, P_ei: D.P_ei / 1e6,
       betaN: bN, betaN_th: bN_th, betaT: bT * 100, q95: this.isStell ? 0 : q95fn(this.g, c.B0, Math.max(Ip_MA, 0.01)), NTM: this.ntm ? 1 : 0,
       W: W / 1e6, Wf: Wfast / 1e6, W_alpha: y[IDX.Wa] / 1e6, W_beam: y[IDX.Wb] / 1e6, ignited: this.ignited ? 1 : 0, triple, lawson: triple / LAWSON_DT,
       Zeff: D.Zeff, cZ: y[IDX.nZ] / D.ne, Ip: Ip_MA, S_fuel: D.S_fuel / 1e20,

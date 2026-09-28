@@ -104,6 +104,18 @@ export function tauEquilibration(ne: number, Te_keV: number, mu_amu: number, Zef
 }
 
 /**
+ * Çok türlü plazmada elektron-iyon enerji eşitlenme hızı [1/s] (NRL Plasma Formulary, sıcaklık
+ * eşitlenmesi, T_e/m_e ≫ T_i/m_i limiti):
+ *  ν_eq = 3.2e-9 · lnΛ · Σ_j n_j Z_j²/A_j [cm^-3] / T_e[eV]^1.5 ,   P_ei = (3/2) n_e (T_e − T_i) ν_eq
+ * ionSum = Σ_j n_j Z_j² / (n_e A_j) (yakıt, kül, safsızlıklar; Stix E_c ile aynı toplam).
+ * lnΛ verilmezse n_e, T_e'den hesaplanır (coulombLog).
+ */
+export function equilibrationRate(ne: number, Te_keV: number, ionSum: number, lnLambda = coulombLog(ne, Te_keV)): number {
+  const Te_eV = Math.max(Te_keV, 0.01) * 1e3;
+  return (3.2e-9 * lnLambda * ne * 1e-6 * ionSum) / Math.pow(Te_eV, 1.5);
+}
+
+/**
  * Coulomb logaritması (e-i), NRL Formulary: lnΛ = 24 − ln(n_e^0.5 / T_e) (T_e>10 eV, n cm^-3, T eV)
  */
 export function coulombLog(ne: number, Te_keV: number): number {

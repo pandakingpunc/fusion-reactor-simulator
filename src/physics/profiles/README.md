@@ -137,8 +137,6 @@ implement the hooks; other parts are listed in `ProfileModel.checkpointParts`.
   editing `defaultEvents()`. Sources and the transport model can be replaced.
 - The `accepted` hooks and the checkpoints of sources and the transport model run in the normal
   phase; during the quench phases of a disruption profiles are scaled, not transported.
-- Replaying from an irregular frame (an ELM or crash frame) after `Simulation.rewindTo` also
-  depends on the kernel's output clock, which is not part of the model checkpoint.
 - The stored energy is summed in two places (`acceptStep` as W_e + W_i, `ctx.storedEnergy` for
   frames no step produced and the quench); they agree to rounding only.
 - `ProfileModel` still carries the `rhs`/`integratorOpts` stub that `SimModel` requires, although

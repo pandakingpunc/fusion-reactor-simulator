@@ -304,13 +304,16 @@ describe('checkpoints and replays', () => {
     expect(ref.report().termination.reason).toContain('disruption');
     const nKeys = Object.keys(refFrames[refFrames.length - 1].d).length;
     expect(nKeys).toBeGreaterThan(50);
-    // regular frames (they carry profiles): replaying from an irregular frame (the disruption
-    // onset) also depends on the kernel's output clock, which is not part of the model checkpoint
-    const inPhase = (ph: number) => ref.history.findIndex((h) => h.internal.phase === ph && !!h.prof);
-    const tq = inPhase(1), cq = inPhase(2);
+    // regular frames (they carry profiles) and the irregular frame of the disruption onset: the
+    // kernel checkpoints its output clock (frame.sim.nextOut), so a replay from an irregular frame
+    // continues on the original output grid as well
+    const inPhase = (ph: number, regular: boolean) => ref.history.findIndex((h) => h.internal.phase === ph && !!h.prof === regular);
+    const tq = inPhase(1, true), cq = inPhase(2, true), onset = inPhase(1, false);
     expect(tq).toBeGreaterThan(0);
     expect(cq).toBeGreaterThan(tq);
-    for (const idx of [tq, cq]) {
+    expect(onset).toBeGreaterThan(0);
+    expect(ref.history[onset].t).toBeLessThan(ref.history[tq].t);
+    for (const idx of [onset, tq, cq]) {
       const sim = new Simulation(disrupting());
       sim.runAll();
       sim.rewindTo(idx);

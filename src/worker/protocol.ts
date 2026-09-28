@@ -5,7 +5,8 @@
  * v2 changes (v4.0):
  *  - `protocolVersion` handshake on `init`/`ready` and `runAll`/`runAllDone`;
  *  - frames cross the thread boundary as `UiFrame` (no raw state vector `y`, no
- *    internal model state) — rewinding stays inside the worker, which keeps the full history;
+ *    internal model state, no kernel checkpoint `sim`) — rewinding stays inside the worker,
+ *    which keeps the full history;
  *  - every live message carries the run `id` and the timeline `branchId`, so the UI can drop
  *    frames that belong to a previous run or to a branch abandoned by a rewind;
  *  - `progress` messages for background full runs.
@@ -26,9 +27,9 @@ export interface SimMeta {
 }
 
 /** A history frame as the UI sees it: diagnostics and optional profiles/equilibrium only. */
-export type UiFrame = Omit<HistoryFrame, 'y' | 'internal'>;
+export type UiFrame = Omit<HistoryFrame, 'y' | 'internal' | 'sim'>;
 
-/** Strip the rewind-only payload (state vector + internal model state) from a history frame. */
+/** Strip the rewind-only payload (state vector, internal model state, kernel checkpoint) from a history frame. */
 export function toUiFrame(f: HistoryFrame): UiFrame {
   const u: UiFrame = { t: f.t, d: f.d };
   if (f.prof) u.prof = f.prof;

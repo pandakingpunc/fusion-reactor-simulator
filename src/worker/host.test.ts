@@ -2,6 +2,8 @@
 import v8 from 'node:v8';
 import { describe, expect, it, vi } from 'vitest';
 import { Simulation } from '../physics/simulation';
+import { DormandPrince } from '../physics/integrator';
+import { NonFiniteStateError } from '../physics/kernel/errors';
 import { ITER, ITER_15D, MIRROR, NIF, TAE } from '../physics/presets';
 import { ReactorConfig } from '../physics/types';
 import { createSimHost } from './host';
@@ -126,6 +128,40 @@ describe('simulation worker host (protocol v2)', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+
+  it('posts the frames recorded before the integrator refuses a non-finite state, then the error', () => {
+    const step = DormandPrince.prototype.step;
+    const tCut = TAE.t_end / 10;
+    // the v4 integrator throws NonFiniteStateError instead of accepting a NaN state
+    const spy = vi.spyOn(DormandPrince.prototype, 'step').mockImplementation(function (this: DormandPrince, t: number, y: Float64Array, tMax: number) {
+      if (t >= tCut) throw new NonFiniteStateError(t, 1e-9, 0, NaN);
+      return step.call(this, t, y, tMax);
+    });
+    try {
+      const h = harness();
+      h.init(TAE);
+      h.take();
+      h.host.handle({ type: 'step', simDt: TAE.t_end / 4 });
+      const [frames, err, ...rest] = h.take();
+      if (frames.type !== 'frames' || err.type !== 'error') throw new Error(`unexpected messages ${frames.type}, ${err.type}`);
+      expect(rest).toEqual([]);
+      expect(frames.frames.length).toBeGreaterThan(0);
+      expect(frames.done).toBe(false);
+      expect(frames.t).toBe(frames.frames[frames.frames.length - 1].t);
+      expect(frames.t).toBeLessThan(tCut + 1e-9);
+      expect(err).toMatchObject({ id: 7, branchId: 0 });
+      expect(err.msg).toContain(`became non-finite (NaN or Infinity) after t = ${+frames.t.toPrecision(6)} s`);
+      expect(err.msg).not.toMatch(/\n\s+at /);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('reports a kernel error of a background run as plain text', () => {
+    const h = harness();
+    h.host.handle({ type: 'runAll', protocolVersion: PROTOCOL_VERSION, id: 12, cfg: { ...TAE, method: 'bogus' } as unknown as ReactorConfig });
+    expect(h.take()).toEqual([{ type: 'error', id: 12, branchId: undefined, msg: "unknown confinement method 'bogus'" }]);
   });
 
   it('refuses a page that speaks another protocol version', () => {

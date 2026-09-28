@@ -4,7 +4,8 @@
  * Oynatma döngüsü ~30 Hz; her tikte duvar-saati × hız kadar simülasyon zamanı ilerletilir.
  */
 import { Simulation } from '../physics/simulation';
-import { HistoryFrame, ShotReport, SimModel } from '../physics/types';
+import { NonFiniteStateError, SimulationError } from '../physics/kernel/errors';
+import { HistoryFrame, ShotReport, SimEvent, SimModel } from '../physics/types';
 import { FromWorker, PROTOCOL_VERSION, SimMeta, ToWorker, simSecondsPerWallSecond, toUiFrame } from './protocol';
 
 const TICK_MS = 33;
@@ -67,7 +68,9 @@ export function createSimHost(post: (m: FromWorker) => void): SimHost {
 
   function postError(err: unknown, id?: number, branch?: number, stop = true) {
     if (stop) stopLoop();
-    const msg = err instanceof RunError ? err.message : err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err);
+    // RunError and the kernel's typed errors (kernel/errors.ts) are raised on purpose: their message is the whole story
+    const msg = err instanceof RunError || err instanceof SimulationError ? err.message
+      : err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err);
     post({ type: 'error', msg, id, branchId: branch });
   }
 
@@ -78,12 +81,24 @@ export function createSimHost(post: (m: FromWorker) => void): SimHost {
   function advance(simDt: number): number {
     if (!sim) return 0;
     const t0 = performance.now();
-    const { frames, events } = sim.advance(simDt);
+    const startFrames = sim.history.length, startEvents = sim.events.length;
+    let frames: HistoryFrame[], events: SimEvent[];
+    let blewUp = false;
+    try {
+      ({ frames, events } = sim.advance(simDt));
+    } catch (err) {
+      // The Dormand–Prince integrator refuses a non-finite state: it throws and leaves the simulation
+      // at its last good step. The frames recorded earlier in this call are finite and still posted.
+      if (!(err instanceof NonFiniteStateError)) throw err;
+      frames = sim.history.slice(startFrames);
+      events = sim.events.slice(startEvents);
+      blewUp = true;
+    }
     const wallMs = performance.now() - t0;
     const bad = frames.findIndex((f) => !finiteFrame(f));
-    if (bad >= 0 || !Number.isFinite(sim.t)) {
+    if (blewUp || bad >= 0 || !Number.isFinite(sim.t)) {
       const good = bad >= 0 ? frames.slice(0, bad) : frames;
-      const tLast = good.length ? good[good.length - 1].t : sim.history[Math.max(0, sim.history.length - frames.length - 1)].t;
+      const tLast = good.length ? good[good.length - 1].t : sim.history[startFrames - 1].t;
       if (good.length) {
         post({
           type: 'frames', id: runId, branchId, frames: good.map(toUiFrame), events: events.filter((e) => e.t <= tLast), t: tLast, done: false,
@@ -188,8 +203,9 @@ export function createSimHost(post: (m: FromWorker) => void): SimHost {
           post({ type: 'rewound', id: runId, branchId, index, t: sim.t, controls: sim.model.getControls() });
           // Rewinding to the final frame of a finished shot leaves nothing to simulate: the new branch is
           // complete at once (otherwise play/step would do nothing and the page would wait forever).
-          // The final frame's internal state predates the end-of-shot bookkeeping that Simulation.advance()
-          // does on reaching t_end, so a zero-length advance redoes it before the report is taken.
+          // rewindTo() restores the shot's termination from the frame's checkpoint; a zero-length advance
+          // redoes the kernel's end-of-run postStep for a model that leaves its termination to that call,
+          // so the report is the one of the uninterrupted run.
           if (sim.done) {
             sim.advance(0);
             post({ type: 'done', id: runId, branchId, report: sim.report() });

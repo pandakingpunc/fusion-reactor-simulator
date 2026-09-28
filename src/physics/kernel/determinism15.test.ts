@@ -33,11 +33,9 @@ describe('1.5D: actuator log', () => {
 });
 
 describe('1.5D: exact rewind', () => {
-  // Expected to fail until the 1.5D model checkpoints its own state (equilibrium and transport
-  // geometry, solver state, warning flags, ELM history, …) in saveInternal()/saveCheckpoint():
-  // the kernel restores its part exactly (frame.sim), but ProfileModel.restoreInternal() does not
-  // bring back the equilibrium the run had at the frame (lane ws3). Remove `.fails` then.
-  it.fails('ITER 1.5D (1 s): rewind at 25/50/75 % and replay equals the uninterrupted run bitwise', () => {
+  // The kernel restores its part (frame.sim) and ProfileModel checkpoints the rest (equilibrium and
+  // transport geometry, solver and controller state, warning flags, ELM history; profiles/checkpoint.ts).
+  it('ITER 1.5D (1 s): rewind at 25/50/75 % and replay equals the uninterrupted run bitwise', () => {
     const cfg = presetCfg('ITER15', 1);
     const ref = normalizeRng(referenceRun(cfg));
     for (const p of [0.25, 0.5, 0.75]) {
@@ -61,10 +59,10 @@ describe('1.5D: exact rewind', () => {
     expectSameRun(normalizeRng(sim), normalizeRng(ref), 'JET15 rewound to its final frame');
   }, 180000);
 
-  // Expected to fail until ProfileModel checkpoints its ELM history: restoreInternal() empties
-  // elmTimes, from which report() computes 'ELM frequency (Hz)' (37.11 Hz before the rewind, 0
-  // after it); lane ws3. The kernel part (termination, frames, events) is asserted above.
-  it.fails('JET 1.5D (1.2 s): a rewind to the final frame leaves report() unchanged (needs the model to checkpoint its ELM history)', () => {
+  // report() computes 'ELM frequency (Hz)' from the ELM times, which the model checkpoints (37.11 Hz
+  // before the rewind; restoreInternal() used to empty them and report 0). The kernel part
+  // (termination, frames, events) is asserted above.
+  it('JET 1.5D (1.2 s): a rewind to the final frame leaves report() unchanged', () => {
     const cfg = presetCfg('JET15', 1.2);
     const sim = new Simulation(cfg);
     const before = canonicalString(sim.runAll());

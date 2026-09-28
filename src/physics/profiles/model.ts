@@ -143,6 +143,8 @@ export class ProfileModel implements SimModel {
 
   // ------------------------------------------------------------------ state exposed to callers
   get terminated(): TerminationInfo | null { return this.ctx.terminated; }
+  /** SimModel.terminated must stay writable: Simulation.rewindTo restores the termination of the frame (types.ts) */
+  set terminated(v: TerminationInfo | null) { this.ctx.terminated = v; }
   get ps(): ProfileSettings { return this.ctx.ps; }
   get cfg(): MagneticConfig { return this.ctx.cfg; }
   /** Grad–Shafranov boundary shape (LCFS) */

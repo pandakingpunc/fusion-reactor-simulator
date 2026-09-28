@@ -45,7 +45,11 @@ export class CheckpointStore {
   restore(rec: Readonly<CheckpointRecord>, parts: readonly Partial<Checkpointable>[]): void {
     const aux = this.store.get(rec.ck);
     for (const p of parts) p.restore?.(rec, aux);
-    if (aux) for (const k of this.store.keys()) if (k > rec.ck) this.store.delete(k);
+    if (aux) {
+      for (const k of this.store.keys()) if (k > rec.ck) this.store.delete(k);
+      // the frames after this one are discarded: the replay numbers its checkpoints like the original run
+      this.next = rec.ck + 1;
+    }
   }
 }
 
@@ -94,6 +98,9 @@ export function contextCheckpoint(ctx: ProfileContext): Checkpointable {
       if (aux) {
         const geo = aux.geo as ProfileContext['geo'];
         if (geo !== ctx.geo) ctx.adoptGeometry(geo);
+        // the kernel hands out the flux-surface snapshot of a frame right after saving it, so the restored
+        // equilibrium has been snapshotted already (adoptGeometry raised the flag for a swap during the replay)
+        ctx.eqDirty = false;
         ctx.warned = new Set(aux.warned as string[]);
         D.cause = aux.disruptCause as DisruptionCause; D.text = aux.diagText as string;
         ctx.lastDiag = { ...(aux.lastDiag as Record<string, number>) };

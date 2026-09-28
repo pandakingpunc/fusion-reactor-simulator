@@ -1,0 +1,16 @@
+{
+  "comment": "Median wall times of `npm run bench:perf` [ms]; re-record with `npm run bench:perf -- --update` on the reference machine.",
+  "node": "v24.19.0",
+  "cpu": "AMD Ryzen 5 5600 6-Core Processor",
+  "platform": "win32 x64",
+  "date": "2026-09-28T13:44:57.273Z",
+  "repeat": 3,
+  "medianMs": {
+    "ITER": 4130,
+    "JET": 469,
+    "ITER15": 8882,
+    "JET15": 6090,
+    "DEMO15": 62699,
+    "NIF": 8
+  }
+}

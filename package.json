@@ -3,16 +3,24 @@
   "private": true,
   "version": "3.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "coverage": "vitest run --coverage --testTimeout=30000",
+    "typecheck:strict": "node scripts/typecheck-strict.mjs",
     "validate": "tsx src/cli/validate.cli.ts",
     "golden": "tsx src/cli/golden.cli.ts",
     "golden:update": "tsx src/cli/golden.cli.ts --update",
     "ci:local": "node scripts/ci-local.mjs",
-    "figures": "tsx src/cli/figures.cli.ts"
+    "release:check": "node scripts/release-check.mjs",
+    "figures": "tsx src/cli/figures.cli.ts",
+    "bench:convergence": "tsx bench/convergence.ts",
+    "bench:perf": "tsx bench/perf.ts"
   },
   "dependencies": {
     "react": "^18.3.1",

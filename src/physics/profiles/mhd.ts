@@ -79,8 +79,10 @@ export function kadomtsevMixingRadius(g: TransportGeometry, qF: Float64Array): n
 /**
  * Profili [0, ρ_mix] içinde düzleştir: [0, ρ₁] sabit X_c, [ρ₁, ρ_mix] doğrusal geçiş X(ρ_mix)'e;
  * X_c, Σ w_i X_i ΔV_i korunumundan (w: ağırlık, ör. n T için n). Dönüş: değişim var mı.
+ * wBefore: the weights of the profile before the crash when they changed with it (T flattened
+ * after n: Σ n_after T_after ΔV = Σ n_before T_before ΔV).
  */
-export function flattenConserving(g: TransportGeometry, X: Float64Array, w: Float64Array | null, rho1: number, rhoMix: number): void {
+export function flattenConserving(g: TransportGeometry, X: Float64Array, w: Float64Array | null, rho1: number, rhoMix: number, wBefore: Float64Array | null = w): void {
   const N = g.N;
   const iMix = Math.min(N - 1, Math.floor(rhoMix / g.dRho));
   if (iMix < 1) return;
@@ -88,7 +90,7 @@ export function flattenConserving(g: TransportGeometry, X: Float64Array, w: Floa
   let target = 0, base = 0, coef = 0;
   for (let i = 0; i < iMix; i++) {
     const wi = w ? w[i] : 1;
-    target += wi * X[i] * g.dV[i];
+    target += (wBefore ? wBefore[i] : 1) * X[i] * g.dV[i];
     const r = g.rhoC[i];
     // X_new = X_c·φ + Xmix·(1−φ);  φ = 1 (ρ<ρ₁), doğrusal azalan (ρ₁<ρ<ρ_mix)
     const phi = r <= rho1 ? 1 : Math.max(0, (rhoMix - r) / Math.max(rhoMix - rho1, 1e-9));

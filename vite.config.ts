@@ -1,6 +1,19 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+// Modules that contain only types (interfaces, type aliases): they compile to an empty file, so there is nothing to
+// cover. They are excluded from coverage BY NAME because V8 coverage counts them differently depending on the
+// checkout path: in a path with a space or a non-ASCII letter (this repository's own checkout is one) the
+// untested-file pass reads each of them as 28 to 63 uncovered lines, in a plain path as an empty file at 100 %.
+// A ratchet measured in the first environment sat about 2.6 points below what a clean path (CI) measures, and the
+// levels would have failed the gate the other way round. src/coverageConfig.test.ts keeps the list exact.
+export const TYPE_ONLY_MODULES = [
+  'src/physics/profiles/events/EventModel.ts',
+  'src/physics/profiles/sources/SourceModel.ts',
+  'src/physics/profiles/transport/TransportModel.ts',
+  'src/ui/state/types.ts',
+];
+
 export default defineConfig({
   plugins: [react()],
   base: './',
@@ -24,6 +37,7 @@ export default defineConfig({
         'src/**/*.test.ts', 'src/**/*.test.tsx', 'src/**/testdata/**',
         'src/main.tsx', 'src/App.tsx', 'src/**/*.d.ts', 'src/vitest.setup.ts',
         'src/**/*.cli.ts', 'src/**/*.worker.ts',
+        ...TYPE_ONLY_MODULES,
       ],
       reporter: ['text-summary', 'json-summary', 'html'],
       reportsDirectory: 'coverage',

@@ -37,8 +37,13 @@ export function buildMagneticReport(ctx: MagneticReportContext, hist: HistoryFra
   const last = hist[hist.length - 1];
   const d = (k: string) => hist.map((h) => h.d[k] ?? 0);
   const max = (arr: number[]) => arr.reduce((m, v) => (v > m ? v : m), -Infinity);
-  const Ti0 = d('Ti0'), Ti = d('Ti'), Te = d('Te'), Q = d('Q'), Pf = d('P_fus');
-  const Tmax = max(Ti0);
+  const Q = d('Q'), Pf = d('P_fus');
+  // Başlangıç geçişi (yoğunluk ve ısıtma rampası: düşük yoğunlukta tam güç → T aşımı) T_max'a ve
+  // tasarım skoruna girmez: pencere t ≥ max(n_rampTime, heating.rampTime), en fazla atışın ikinci yarısı.
+  const tStartup = Math.min(Math.max(c.n_rampTime, c.heating.rampTime), 0.5 * last.t);
+  const post = hist.filter((h) => h.t >= tStartup);
+  const dp = (k: string) => post.map((h) => h.d[k] ?? 0);
+  const Tmax = max(dp('Ti0'));
   // süreler. Ateşleme süresi: model kendi ateşleme durumunu ('ignited', histerezisli; 0D) veriyorsa
   // o — olay günlüğüyle aynı ölçüt; vermiyorsa (1.5D) çerçeve ölçütü P_α ≥ P_rad + P_cond.
   const hasIgnFlag = hist.some((h) => h.d.ignited !== undefined);
@@ -81,11 +86,11 @@ export function buildMagneticReport(ctx: MagneticReportContext, hist: HistoryFra
   if (ctx.extraWarnings) warnings.push(...ctx.extraWarnings);
   // skor
   const scoreBreakdown = [
-    { label: 'Q_scientific (max)', value: max(Q), ref: 10, unit: '', note: 'ITER target Q=10' },
+    { label: 'Q_scientific (max)', value: max(dp('Q')), ref: 10, unit: '', note: 'ITER target Q=10 (after start-up)' },
     { label: 'Fusion energy', value: Efus, ref: 59, unit: 'MJ', note: 'JET DTE2 record 59 MJ (2021)' },
-    { label: 'Triple product', value: triple, ref: lawsonRef, unit: 'keV s m⁻³', note: 'Ignition ≈ 3e21' },
+    { label: 'Triple product', value: max(dp('triple')), ref: lawsonRef, unit: 'keV s m⁻³', note: 'Ignition ≈ 3e21 (after start-up)' },
     { label: 'Stable time', value: stableTime, ref: c.t_end, unit: 's', note: 'Scheduled duration' },
-    { label: 'Temperature', value: Tmax, ref: 20, unit: 'keV', note: 'ITER axis ~20 keV' },
+    { label: 'Temperature', value: Tmax, ref: 20, unit: 'keV', note: 'ITER axis ~20 keV (after start-up)' },
   ];
   let score = 0;
   for (const s of scoreBreakdown) score += 20 * Math.min(1, s.value / s.ref);
@@ -99,7 +104,7 @@ export function buildMagneticReport(ctx: MagneticReportContext, hist: HistoryFra
   ];
   return {
     method: ctx.method, duration: last.t, timeUnit: 's',
-    Tmax_keV: Tmax, Tmax_MC: U.keV_to_MC(Tmax), Timax_keV: max(Ti), Temax_keV: max(Te),
+    Tmax_keV: Tmax, Tmax_MC: U.keV_to_MC(Tmax), Timax_keV: max(dp('Ti')), Temax_keV: max(dp('Te')),
     stableTime_s: stableTime, burnTime_s: burnTime, ignitionTime_s: ignTime,
     stableDefinition: 'Stable time = duration for which the plasma is sustained without disruption/extinction. Burn time = duration with Q ≥ 1 (P_fusion ≥ P_auxiliary+P_ohmic). Ignition time = duration with P_alpha ≥ P_rad + P_conduction, where P_alpha is the heating by charged fusion products only (beam ions excluded): self-sustaining without external heating.',
     Q_sci_max: max(Q), Q_sci_avg: Qavg, Q_eng: eco.Q_eng,

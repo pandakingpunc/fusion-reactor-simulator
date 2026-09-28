@@ -5,7 +5,8 @@
  * the physics) and the golden check of an empty folder in fresh child processes and tallies their exit
  * codes. Exit 0 when every run ended with the code its inputs define (0 or 1); exit 1 when any run crashed
  * or was killed by a signal (on Windows a crash of the process shows up as an exit code such as
- * 3221225477 = 0xC0000005), listing the tally.
+ * 3221225477 = 0xC0000005), listing the tally. It is a tripwire for the one unexplained 0xC0000005 crash of a
+ * `validate` run (not reproduced since, cause unknown); it cannot prove that the crash is gone.
  *
  * src/cli/exitStress.test.ts is the small version of this that runs in `npm test`.
  */

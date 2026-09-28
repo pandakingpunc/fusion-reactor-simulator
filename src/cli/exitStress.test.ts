@@ -1,11 +1,13 @@
 /// <reference types="node" />
 /**
- * Exit-status stress test of the worker-pool CLIs. One `validate` run once ended with exit code
- * 3221225477 (0xC0000005, a Windows access violation) instead of 0 or 1 while Node was tearing down its
- * worker threads at process exit; runPool now waits for every worker to stop before it settles
- * (pool.shutdown.test.ts checks that directly, this test checks the symptom). Each run below is a fresh
- * child process, and the exit code must be exactly the one its inputs define — never a crash code, never a
- * signal — over many runs, several at a time so that the machine is loaded like it is under `npm test`.
+ * Exit-status stress test of the worker-pool CLIs, a tripwire for a crash that is not understood. One
+ * `validate` run once ended with exit code 3221225477 (0xC0000005, a Windows access violation) instead of 0
+ * or 1. The cause is unknown and the crash has not been reproduced since; runPool now waits for every worker
+ * to stop before it settles, which removes one suspect but is not a demonstrated fix (see the "Shutdown"
+ * paragraph of pool.ts; pool.shutdown.test.ts checks that invariant directly, this test checks the symptom).
+ * Each run below is a fresh child process, and the exit code must be exactly the one its inputs define —
+ * never a crash code, never a signal — over many runs, several at a time so that the machine is loaded like
+ * it is under `npm test`.
  *
  * Cost: 16 runs of about one second each, four at a time, a few seconds. For a real soak test use
  * `npm run stress:exit -- 300 8` (scripts/stress-exit.mjs) or set STRESS_EXIT_RUNS=300 for this test.

@@ -119,4 +119,20 @@ describe('worker pool shutdown: no worker thread is left running when the promis
     const out = JSON.parse(r.stdout.trim().split('\n').pop()!);
     expect(out).toMatchObject({ settled: 'rejected', abort: true, reason: 'SIGINT', terminated: 2, alive: 0 });
   });
+
+  // The consequence a caller can rely on: it may end the process with process.exit() the moment the pool
+  // settles (a process that ends by itself waits for terminated workers anyway, so this is the only way a
+  // pool that settles early could matter). No CLI does it today; the exit status and the count of live
+  // workers are exact, whichever way the pool ended.
+  it.each(['success', 'error', 'timeout', 'abort'] as const)('process.exit() right after the pool settled (%s): no worker left running, exact exit status', (how) => {
+    const root = fileURLToPath(new URL('../../', import.meta.url));
+    const r = spawnSync(process.execPath, ['--import', 'tsx', 'src/cli/testdata/pool-exit.mts', how], { cwd: root, encoding: 'utf8', timeout: 20_000 });
+    if (r.error) throw r.error;
+    expect(r.signal).toBeNull();
+    expect(r.status).toBe(3);
+    const out = JSON.parse(r.stdout.trim().split('\n').pop()!);
+    expect(out).toMatchObject({ how, outcome: how === 'success' ? 'resolved' : 'rejected' });
+    expect(out.terminated).toBeGreaterThanOrEqual(3);
+    expect(out.alive).toBe(0);
+  });
 });

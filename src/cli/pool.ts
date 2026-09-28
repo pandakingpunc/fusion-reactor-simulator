@@ -22,11 +22,20 @@
  *
  * Shutdown: the returned promise settles only after every worker thread the pool ever started has
  * stopped (its 'exit' event has fired), whatever the outcome: success, task error, timeout, abort,
- * SIGINT/SIGTERM or a callback that throws. A caller may therefore end the process right after the
- * promise settles without tearing down threads that are still shutting down (on Windows that race
- * crashed a spawned `validate` process once with exit code 0xC0000005, an access violation, while
- * Node was exiting). Workers that do not stop within {@link SHUTDOWN_GRACE_MS} are given up on so a
- * wedged thread cannot make the pool hang.
+ * SIGINT/SIGTERM or a callback that throws. That is a sound invariant for the caller: when the promise
+ * settles no worker thread of the pool is left running, so even a `process.exit()` right after it cannot
+ * cut a thread short, and the order of events at the end of a run does not depend on how long Node takes to
+ * stop a busy or a loading thread. Workers that do not stop within {@link SHUTDOWN_GRACE_MS} are given up
+ * on so a wedged thread cannot make the pool hang.
+ *
+ * What this does NOT establish: an earlier pool that fired `void worker.terminate()` and settled at once
+ * did not, as far as anyone has shown, make a process end early: a process that ends by itself (the CLIs set
+ * `process.exitCode` and return) stays alive until every terminated worker has emitted 'exit', and no CLI
+ * calls `process.exit()` after the pool. So this change is not a demonstrated fix for the one spawned
+ * `validate` run that once ended with exit code 0xC0000005 (a Windows access violation), a crash that has not
+ * been reproduced since (more than a thousand runs, with and without `process.exit()` right after the
+ * pool); at most it removes one suspect. Other suspects, such as the tsx loader thread at process exit, are
+ * outside the pool. src/cli/exitStress.test.ts and `npm run stress:exit` are the tripwire for a recurrence.
  *
  * Cancellation: aborting `options.signal`, or SIGINT/SIGTERM while the pool runs, terminates every
  * worker and rejects with a {@link PoolAbortError}; a CLI maps the error to exit code 130. Process

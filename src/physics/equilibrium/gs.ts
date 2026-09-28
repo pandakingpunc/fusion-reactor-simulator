@@ -251,8 +251,8 @@ export class GSGrid {
 
   /**
    * Shared (per worker) grid for these parameters: an LRU cache keyed by (R, a, κ, δ, NR, margin)
-   * holding at most 8 grids / 64 MB of LU storage (one NR = 129 ITER grid is ~38 MB). Grids are immutable after construction, so a
-   * cached grid gives bitwise the same results as a fresh one.
+   * holding at most 8 grids / 64 MB of LU storage (one NR = 129 ITER grid is ~38 MB). Grids are
+   * immutable after construction, so a cached grid gives bitwise the same results as a fresh one.
    */
   static shared(geom: Geometry, opts: GSGridOptions = {}): GSGrid {
     if (opts.boundary || opts.cache === false) return new GSGrid(geom, opts);

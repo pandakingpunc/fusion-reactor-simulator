@@ -17,7 +17,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, write
 import { join, relative, resolve } from 'node:path';
 import { GOLDEN_CASES, GoldenDiff, SnapshotChange, caseConfig, compareSnapshots, countBySection, formatDiffTable, parseSnapshot, serializeSnapshot, summarizeChange, toleranceFor } from '../regression/golden';
 import type { GoldenResult, GoldenTask } from '../regression/golden.worker';
-import { PoolConfigError, defaultThreads, runPool } from './pool';
+import { PoolAbortError, PoolConfigError, defaultThreads, runPool } from './pool';
 import { defineCli, exitUsage, parseArgsOrExit } from './args';
 
 const CLI = defineCli({
@@ -31,7 +31,10 @@ const CLI = defineCli({
     threads: { type: 'int', min: 1, help: 'worker threads (default: cores − 1)' },
     dir: { type: 'string', default: 'test/golden', metavar: 'DIR', help: 'golden file folder' },
     'max-rows': { type: 'int', default: 25, min: 1, help: 'mismatching keys listed per case' },
+    timeout: { type: 'number', min: 1, metavar: 'S', help: 'fail a case that runs longer than S seconds (default: no limit)' },
   },
+  epilog: 'A case whose worker crashes, hangs past --timeout or fails to load is reported as a RUN ERROR; the other\n' +
+    'cases still run. Ctrl-C terminates the workers and exits with code 130.',
 });
 
 const CHANGES_HEADER = `# Golden regression log
@@ -62,7 +65,12 @@ async function main() {
 
   console.log(`Golden ${args.update ? 'update' : 'check'}: ${cases.length} cases on ${Math.min(threads, cases.length)} worker threads (${relative(process.cwd(), dir) || '.'})`);
   const t0 = performance.now();
-  const res = await runPool<GoldenTask, GoldenResult>(tasks, new URL('../regression/golden.worker.ts', import.meta.url), threads);
+  const res = await runPool<GoldenTask, GoldenResult>(tasks, new URL('../regression/golden.worker.ts', import.meta.url), {
+    threads,
+    timeoutMs: args.timeout === undefined ? undefined : args.timeout * 1000,
+    // a crashed or hung worker fails its case only; the pool replaces the worker and carries on
+    onTaskError: (e, t) => ({ id: t.id, ok: false, error: e.message, ms: 0 }),
+  });
   const wall = performance.now() - t0;
   const byId = new Map(res.map((r) => [r.id, r]));
   const ordered = cases.map((c) => byId.get(c.id)!);
@@ -188,6 +196,11 @@ function changesEntry(reason: string, added: string[], changed: Changed[], uncha
 
 main().catch((e) => {
   if (e instanceof PoolConfigError) exitUsage(CLI.name, e.message);
+  if (e instanceof PoolAbortError) {
+    console.error(`\n✗ golden: ${e.message}; nothing was written`);
+    process.exitCode = 130;
+    return;
+  }
   console.error(e);
   process.exitCode = 1;
 });

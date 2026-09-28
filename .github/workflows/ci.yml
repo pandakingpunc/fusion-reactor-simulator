@@ -1,0 +1,58 @@
+# Continuous integration: type check, unit tests, literature validation, golden regression and build
+# on Linux and Windows for every supported Node.js major (package.json engines.node).
+# Actions are pinned by full commit SHA (the tag is in the comment); Dependabot keeps them current.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }} · Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: Unit tests
+        run: npx vitest run
+
+      - name: Literature validation
+        run: npm run validate -- --threads 2
+
+      # The golden snapshots (test/golden/*.json) are recorded on Node 24 and compared at a relative
+      # tolerance of 1e-9. V8's Math.exp/pow/log/… are not correctly rounded and their last bits change
+      # between V8 releases, so bit-level agreement is only expected on the Node major the goldens
+      # were recorded with. Other majors still run the unit tests, validation and build.
+      - name: Golden regression (Node 24 only)
+        if: matrix.node == 24
+        run: npm run golden -- --threads 2
+
+      - name: Build
+        run: npm run build

@@ -2,10 +2,12 @@
 /**
  * İşçi: bir yapılandırmayı sonuna kadar koşturur; rapor + son %30 ortalamaları + zamanlama döner.
  * (Geçmiş karelerinin tamamı gönderilmez — bellek ve IPC dostu.)
+ * Also returns fusion-power-weighted ("burn") averages of T_i and T_e for the literature checks.
  */
 import { parentPort } from 'node:worker_threads';
 import { Simulation } from '../physics/simulation';
 import { flatTopAverages } from '../physics/analysis/flatTop';
+import { burnAverages } from '../physics/validation/metrics';
 import { ReactorConfig, ShotReport } from '../physics/types';
 
 export interface RunTask { id: string; cfg: ReactorConfig; keepSeries?: string[] }
@@ -15,6 +17,8 @@ export interface RunResult {
   error?: string;
   report?: ShotReport;
   avg?: Record<string, number>;
+  /** fusion-power-weighted averages over the whole run (burnAverages: Ti, Te) */
+  burn?: Record<string, number>;
   series?: Record<string, number[]>;
   ms?: number;
   steps?: number;
@@ -28,6 +32,7 @@ parentPort!.on('message', (task: RunTask) => {
     const report = sim.runAll();
     const hist = sim.history;
     const avg = flatTopAverages(hist);
+    const burn = burnAverages(hist);
     const events: Record<string, number> = {};
     for (const e of sim.events) events[e.kind] = (events[e.kind] ?? 0) + 1;
     let series: Record<string, number[]> | undefined;
@@ -35,7 +40,7 @@ parentPort!.on('message', (task: RunTask) => {
       series = { t: hist.map((h) => h.t) };
       for (const k of task.keepSeries) series[k] = hist.map((h) => h.d[k] ?? NaN);
     }
-    const out: RunResult = { id: task.id, ok: true, report, avg, series, ms: performance.now() - t0, steps: sim.nSteps, events };
+    const out: RunResult = { id: task.id, ok: true, report, avg, burn, series, ms: performance.now() - t0, steps: sim.nSteps, events };
     parentPort!.postMessage(out);
   } catch (e) {
     parentPort!.postMessage({ id: task.id, ok: false, error: e instanceof Error ? `${e.message}\n${e.stack}` : String(e) } satisfies RunResult);

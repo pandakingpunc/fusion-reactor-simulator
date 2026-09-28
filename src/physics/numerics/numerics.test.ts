@@ -63,6 +63,26 @@ describe('linalg', () => {
     const x = L.solve(b);
     for (let k = 0; k < n; k++) expect(x[k]).toBeCloseTo(xTrue[k], 11);
   });
+
+  it('banded LU with an irregular envelope (rows narrower than the band) matches the dense solve', () => {
+    // variable-width rows: the envelope-skipping factorisation must still see every fill-in entry
+    const n = 60, ml = 9, mu = 7;
+    const L = new BandedLU(n, ml, mu);
+    const dense = new Float64Array(n * n);
+    let s = 7;
+    const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+    for (let r = 0; r < n; r++) {
+      const lo = Math.max(0, r - Math.floor(rnd() * (ml + 1))), hi = Math.min(n - 1, r + Math.floor(rnd() * (mu + 1)));
+      for (let c = lo; c <= hi; c++) {
+        const v = c === r ? 8 + 4 * rnd() : rnd() - 0.5;
+        L.set(r, c, v); dense[r * n + c] = v;
+      }
+    }
+    const b = Float64Array.from({ length: n }, (_, k) => Math.cos(0.7 * k));
+    L.factor();
+    const x = L.solve(b), ref = solveDense(dense, b, n);
+    for (let k = 0; k < n; k++) expect(x[k]).toBeCloseTo(ref[k], 12);
+  });
 });
 
 describe('quadrature', () => {

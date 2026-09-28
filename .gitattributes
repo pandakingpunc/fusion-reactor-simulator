@@ -4,3 +4,7 @@
 *.png binary
 # Golden regression files are machine-written with LF; keep them byte-identical on every OS
 test/golden/** text eol=lf
+# Figure text outputs are hashed in figures.manifest.json; keep checkouts byte-identical (not docs/figures/**: that would override *.pdf binary)
+docs/figures/*.svg text eol=lf
+docs/figures/*.md text eol=lf
+docs/figures/*.json text eol=lf

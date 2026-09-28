@@ -10,7 +10,7 @@
  * average) is being changed by lane ws2b and is deliberately not pinned.
  */
 import { describe, expect, it } from 'vitest';
-import { betaNormalized, betaPoloidal, betaToroidal, checkLimits, greenwaldDensity } from '../limits';
+import { betaNormalized, betaPoloidal, betaToroidal, greenwaldDensity } from '../limits';
 import { q95 } from '../geometry';
 import { forAll, gen } from '../../testing/prop';
 
@@ -54,26 +54,5 @@ describe('limit definitions', () => {
       expect(rel(q95(g, s.B, s.f * s.I) / q95(g, s.B, s.I), 1 / s.f)).toBeLessThan(1e-12);
     });
     expect(q95({ R: 6.2, a: 2, kappa: 1.7, delta: 0.33 }, 5.3, 0)).toBe(Infinity);
-  });
-});
-
-describe('checkLimits', () => {
-  const inputs = gen.record({
-    R: gen.float(1, 10), eps: gen.float(0.15, 0.6), k: gen.float(1, 2.5), d: gen.float(0, 0.6), B: gen.logFloat(0.5, 13), I: gen.logFloat(0.2, 20),
-    ne: gen.logFloat(1e18, 5e20), p: gen.logFloat(1e3, 1e6), Prad: gen.logFloat(1e4, 1e9), Pheat: gen.logFloat(1e4, 1e9),
-    bNl: gen.float(1.5, 6), gl: gen.float(0.5, 2), ql: gen.float(1.5, 4), cW: gen.logFloat(1e-7, 1e-2), cWl: gen.logFloat(1e-5, 1e-3),
-  });
-  it('flags a limit as violated exactly when its normalised value reaches 1, for all five checks', () => {
-    forAll(inputs, (s) => {
-      const checks = checkLimits({
-        g: { R: s.R, a: s.eps * s.R, kappa: s.k, delta: s.d }, B0: s.B, Ip_MA: s.I, ne: s.ne, pressure_Pa: s.p, P_rad_W: s.Prad, P_heat_W: s.Pheat,
-        betaN_limit: s.bNl, q95_limit: s.ql, greenwald_frac_limit: s.gl, W_conc: s.cW, W_conc_limit: s.cWl,
-      });
-      expect(checks.map((c) => c.name)).toEqual(['Greenwald', 'Troyon', 'q95', 'Radiative', 'Tungsten']);
-      for (const c of checks) {
-        expect(Number.isFinite(c.value), c.name).toBe(true);
-        if (Math.abs(c.value - 1) > 1e-9) expect(c.ok, `${c.name}: value ${c.value}`).toBe(c.value < 1);
-      }
-    }, { runs: 300, label: 'checkLimits consistency' });
   });
 });

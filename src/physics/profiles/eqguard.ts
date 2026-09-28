@@ -2,12 +2,14 @@
  * Guarded Grad–Shafranov solves for the 1.5D model.
  *
  * The model needs an equilibrium at start-up and re-solves it periodically from the transport
- * profiles. A solve can fail in two ways: it throws (today a plain Error from the solver or the
- * linear algebra; a typed solver failure later) or it returns a result that did not converge.
- * Both are handled here in one place: a solve runs through a ladder of retry stages and every
- * attempt is logged, so that the caller can count, report and warn instead of dropping failures
- * silently. solverErrorMessage is the single point that decodes what the solver threw.
+ * profiles. A solve can fail in three ways: it throws (a typed GSFailure of the solver, or a plain
+ * Error from the linear algebra), it returns a result that did not converge, or the result is
+ * rejected by the caller's own acceptance test (e.g. the current table does not match the
+ * equilibrium). All are handled here in one place: a solve runs through a ladder of retry stages
+ * and every attempt is logged, so that the caller can count, report and warn instead of dropping
+ * failures silently. solverErrorMessage is the single point that decodes what the solver threw.
  */
+import { GSFailure } from '../equilibrium/gs';
 import type { Equilibrium, EquilibriumOptions, GSSolver } from '../equilibrium/gs';
 import type { TransportGeometry } from './geometry1d';
 
@@ -25,6 +27,8 @@ export interface GsAttempt {
   converged: boolean;
   /** what the solver threw, if it threw */
   error?: string;
+  /** why a result that came back was refused by the acceptance test, if the test said so */
+  rejected?: string;
 }
 
 export interface GsOutcome {
@@ -40,8 +44,9 @@ export interface GsOutcome {
 /** Residual below which a non-converged solve is still accepted (the model's historical threshold) */
 export const GS_ACCEPT_RESIDUAL = 1e-4;
 
-/** Message of anything the Grad–Shafranov solver may throw (plain Error now, a typed failure later). */
+/** Message of anything the Grad–Shafranov solver may throw (a typed GSFailure, or a plain Error from below). */
 export function solverErrorMessage(e: unknown): string {
+  if (e instanceof GSFailure) return e.message; // already 'Grad–Shafranov (reason): …'
   if (e instanceof Error) return e.name && e.name !== 'Error' ? `${e.name}: ${e.message}` : e.message;
   return String(e);
 }
@@ -70,9 +75,12 @@ export function isUsableGeometry(tg: TransportGeometry): boolean {
 /**
  * Runs the stages in order until one gives an acceptable equilibrium. A stage that throws or does
  * not converge is logged and the next one runs from the same base options (warm start included).
+ * `accept` returns true to take the result, false to refuse it, or a string to refuse it with a
+ * reason that is logged in the attempt. Invalid input (GSFailure 'bad-input') ends the ladder: no
+ * stage changes the input.
  */
 export function solveGuarded(solver: GSSolver, base: EquilibriumOptions, stages: readonly GsStage[],
-  accept: (eq: Equilibrium) => boolean = acceptableEquilibrium): GsOutcome {
+  accept: (eq: Equilibrium) => boolean | string = acceptableEquilibrium): GsOutcome {
   const attempts: GsAttempt[] = [];
   let best: Equilibrium | null = null;
   for (let k = 0; k < stages.length; k++) {
@@ -80,10 +88,17 @@ export function solveGuarded(solver: GSSolver, base: EquilibriumOptions, stages:
     try {
       const eq = solver.solve({ ...base, ...st.opts });
       attempts.push({ stage: st.label, iterations: eq.iterations, residual: eq.residual, converged: eq.converged });
-      if (accept(eq)) return { eq, stage: k, attempts, best };
+      const verdict = accept(eq);
+      if (verdict === true) return { eq, stage: k, attempts, best };
+      if (typeof verdict === 'string') attempts[attempts.length - 1].rejected = verdict;
       if (isUsableEquilibrium(eq) && (!best || eq.residual < best.residual)) best = eq;
     } catch (e) {
-      attempts.push({ stage: st.label, iterations: 0, residual: Infinity, converged: false, error: solverErrorMessage(e) });
+      const f = e instanceof GSFailure ? e : null;
+      attempts.push({
+        stage: st.label, iterations: f?.iterations ?? 0, residual: f && Number.isFinite(f.residual) ? f.residual : Infinity,
+        converged: false, error: solverErrorMessage(e),
+      });
+      if (f?.reason === 'bad-input') break;
     }
   }
   return { eq: null, stage: -1, attempts, best };

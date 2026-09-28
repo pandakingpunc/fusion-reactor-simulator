@@ -137,6 +137,13 @@ implement the hooks; other parts are listed in `ProfileModel.checkpointParts`.
   editing `defaultEvents()`. Sources and the transport model can be replaced.
 - The `accepted` hooks and the checkpoints of sources and the transport model run in the normal
   phase; during the quench phases of a disruption profiles are scaled, not transported.
+- Grad–Shafranov updates are quasi-static: a table-mode solve whose current table had to be
+  rescaled by more than `CURRENT_SCALE_LIMIT` (0.5) to meet I_p is rejected like a solve that does
+  not converge (the geometry the table was mapped through is stale). MASTU15 (hollow current at
+  β_p ≈ 1.8) still holds back most of its updates (2 accepted, 5 rejected: the geometry stays near
+  the start-up equilibrium for most of the shot), and so do fast transients such as the JET15
+  L–H transition (one of 16 attempts rejected). A converged answer needs a table consistent with
+  the new geometry, i.e. an outer iteration between the transport tables and the solver.
 - The stored energy is summed in two places (`acceptStep` as W_e + W_i, `ctx.storedEnergy` for
   frames no step produced and the quench); they agree to rounding only.
 - `ProfileModel` still carries the `rhs`/`integratorOpts` stub that `SimModel` requires, although
@@ -156,7 +163,7 @@ implement the hooks; other parts are listed in `ProfileModel.checkpointParts`.
 | `geometry.test.ts` | transport geometry of an analytic Solov'ev equilibrium |
 | `sources/sources.test.ts` | NBI chord cache vs direct deposition, beam-target table vs the integral |
 | `transport/transport.test.ts` | 'cgm' smoke test (ITER15 ramp-up) |
-| `integrity.test.ts` | equilibrium swaps (fresh work arrays), GS failures and retry timing, step failures, reported τ_E, initial equilibrium, replays from quench frames |
+| `integrity.test.ts` | equilibrium swaps (fresh work arrays), GS failures, the current-scale gate and retry timing, step failures, reported τ_E, initial equilibrium, replays from quench frames |
 | `profiles.test.ts` | solver verification (analytic), neoclassical, MHD helpers, integration runs |
 
 A change meant to preserve behaviour should leave `npm run golden` passing; a refactor can be

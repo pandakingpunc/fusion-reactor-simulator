@@ -8,7 +8,8 @@
  *    changed by 10 % / 5 %. An accepted update replaces the transport geometry; the work arrays
  *    are then re-evaluated on it before the MHD events read them.
  *  - Guarding (eqguard.ts): every solve runs through a retry ladder, a rejected update is counted,
- *    reported and retried with a back-off; nothing fails silently.
+ *    reported and retried with a back-off; nothing fails silently. An update whose current table
+ *    had to be rescaled by more than CURRENT_SCALE_LIMIT to meet I_p is rejected as well.
  */
 import { GSSolver, Equilibrium, EquilibriumOptions } from '../../equilibrium/gs';
 import type { EqSnapshot } from '../../types';
@@ -19,6 +20,23 @@ import { GsAttempt, GsStage, acceptableEquilibrium, binomialSmooth, gridScalePas
 import { EquilibriumInitFailure } from '../failures';
 import { TransportGeometry, geometryFromEquilibrium } from '../geometry1d';
 import type { ProfileState } from '../state';
+
+/**
+ * Largest |c − 1| of a table-mode solve that is accepted, c being the factor the Grad–Shafranov
+ * solver applies to the ⟨j_φ/R⟩ table to meet I_p (Equilibrium.currentScale). A table that
+ * integrates to I_p/c over the new flux surfaces was not built on that equilibrium (typically it
+ * was mapped to ψ_N through a stale geometry, after held-back updates at a strongly changing β_p),
+ * so the solve returns a correct equilibrium of a current profile the transport does not have.
+ * Taking it swaps the geometry under the run in one step: MASTU15 with ws4's solver accepted c =
+ * 2.07 and 1.95 and ended in a β-limit disruption at 1.06 s. The solver flags it
+ * as 'table-current-rescaled' beyond `currentScaleWarn`, which is set to this limit.
+ * The value is a measurement, not a derivation. Converged table solves of the golden 1.5D cases
+ * have |c − 1| ≤ 0.08 (JET15), ≤ 0.05 (ITER15, DEMO15, DIIID15) and ≤ 0.02 (the SPARC15 cases); the
+ * one JET15 solve accepted on the residual threshold alone has 0.20; MASTU15 goes to 0.7–1.07.
+ * The solver's own default of 0.1 would hold back most JET15 updates (that 0.20 solve, then a stale
+ * geometry that keeps c away from 1); limits of 0.3 and 0.5 give the same trajectories in all nine cases.
+ */
+export const CURRENT_SCALE_LIMIT = 0.5;
 
 export class EquilibriumCoupling implements Checkpointable {
   readonly gsSolver: GSSolver;
@@ -43,7 +61,13 @@ export class EquilibriumCoupling implements Checkpointable {
   eqInitFailure: EquilibriumInitFailure | null = null;
 
   constructor(ctx: ProfileContext) {
-    this.gsSolver = new GSSolver(ctx.geomB, { NR: ctx.ps.eqNR });
+    // an impossible boundary (e.g. a > R) is refused by the solver's grid: the same typed failure as an
+    // initial solve that finds no equilibrium
+    try {
+      this.gsSolver = new GSSolver(ctx.geomB, { NR: ctx.ps.eqNR });
+    } catch (e) {
+      throw new EquilibriumInitFailure(solverErrorMessage(e), { cause: e });
+    }
   }
 
   /**
@@ -113,7 +137,7 @@ export class EquilibriumCoupling implements Checkpointable {
     this.eqRetryAt = t + 0.25 * ctx.ps.eqUpdateInterval * Math.min(2 ** (this.eqFailStreak - 1), 4);
     if (!ctx.warned.has('gs')) {
       const last = this.eqAttempts[this.eqAttempts.length - 1];
-      const why = last?.error ?? `residual ${last ? last.residual.toExponential(1) : '?'} after ${last?.iterations ?? 0} iterations`;
+      const why = last?.error ?? last?.rejected ?? `residual ${last ? last.residual.toExponential(1) : '?'} after ${last?.iterations ?? 0} iterations`;
       ctx.warnOnce('gs', t, `Grad–Shafranov update rejected (${why}; ${this.eqAttempts.length} attempts) — geometry held at the equilibrium of t = ${this.eqTime.toFixed(2)} s, retried from t = ${this.eqRetryAt.toFixed(2)} s`);
     }
   }
@@ -158,18 +182,26 @@ export class EquilibriumCoupling implements Checkpointable {
     const pT = Array.from(P.rhoTor, pAt);
     const jT = Array.from(P.rhoTor, jRAt);
     const Ip = v.s.Ip;
-    const base: EquilibriumOptions = { Ip, B0: ctx.cfg.B0, profile: { kind: 'table', psiN: P.psiN, p: pT, jR: jT }, psiInit: ctx.eq.psi, tol: 1e-5, maxIter: 40, relax: 0.9 };
+    const base: EquilibriumOptions = {
+      Ip, B0: ctx.cfg.B0, profile: { kind: 'table', psiN: P.psiN, p: pT, jR: jT }, psiInit: ctx.eq.psi, tol: 1e-5, maxIter: 40, relax: 0.9,
+      currentScaleWarn: CURRENT_SCALE_LIMIT,
+    };
     const passes = gridScalePasses(this.gsSolver.grid.dR / ctx.geomB.a, 1 / (P.psiN.length - 1));
     const stages: GsStage[] = [
       { label: 'nominal', opts: {} },
       { label: 'relaxation 0.5', opts: { relax: 0.5, maxIter: 80 } },
       { label: 'grid-scale pressure', opts: { relax: 0.3, maxIter: 120, profile: { kind: 'table', psiN: P.psiN, p: binomialSmooth(pT, passes), jR: jT } } },
     ];
-    // the transport geometry built from it must be usable as well (finite metrics, positive cell volumes)
+    // the current table must match the equilibrium (no 'table-current-rescaled' warning beyond
+    // CURRENT_SCALE_LIMIT), and the transport geometry built from it must be usable as well (finite
+    // metrics, positive cell volumes)
     const built: { tg?: TransportGeometry } = {};
-    const accept = (eq: Equilibrium) => {
+    const accept = (eq: Equilibrium): boolean | string => {
       built.tg = undefined;
       if (!acceptableEquilibrium(eq)) return false;
+      if (eq.warnings.some((w) => w.code === 'table-current-rescaled')) {
+        return `current table rescaled by ${(eq.currentScale ?? NaN).toFixed(2)} to meet I_p (limit ±${CURRENT_SCALE_LIMIT})`;
+      }
       try { built.tg = geometryFromEquilibrium(eq, N, ctx.geomB); } catch { return false; }
       return isUsableGeometry(built.tg);
     };

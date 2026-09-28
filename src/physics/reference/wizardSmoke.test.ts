@@ -95,9 +95,10 @@ describe('pinned wizard findings beyond one output step', () => {
   // BUG(ws2a): the geometry controls allow a minor radius larger than the major radius (a ∈ [0.1, 4] m,
   // R ∈ [0.3, 12] m, no cross-check). In 1.5D the kernels then throw internal, Turkish-language errors
   // ("GS: eksende ψ ≤ 0 — çözüm ıraksadı", "solveTridiag: sıfır pivot") instead of the wizard or the
-  // model rejecting the impossible torus with a clear message. On v4/integration (ws4) the 1.5D run now
-  // stops with "Grad–Shafranov (bad-input): need … R − a(1 + margin) > 0"; the wizard still offers the
-  // combination (no cross-field check), so the pin still holds there.
+  // model rejecting the impossible torus with a clear message. On v4/integration (ws4, ws3) the 1.5D
+  // model now refuses it with a typed EquilibriumInitFailure quoting "Grad–Shafranov (bad-input): need …
+  // R − a(1 + margin) > 0" (integrity.test.ts); the wizard still offers the combination (no cross-field
+  // check) and the run still throws, so the pin still holds there.
   it.fails('BUG(ws2a) 1.5D with a > R — no internal solver error (MAST-U, a = 2 m, R = 0.85 m)', () => {
     const c: WizardCase = { method: 'spherical_tokamak', preset: 'MASTU', edits: { fidelity: '1.5D', 'geometry.a': 2 } };
     expect(() => { const sim = new Simulation(buildConfig(c)); sim.advance(sim.model.outputDt); }).not.toThrow();

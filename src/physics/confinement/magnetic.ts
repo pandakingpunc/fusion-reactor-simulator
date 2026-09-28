@@ -576,7 +576,7 @@ export class MagneticModel implements SimModel {
       Ti: D.Ti, Te: D.Te, Ti0: D.T0, ne: D.ne / 1e20, nbar: nbar / 1e20, nG_frac: nbar / nG, fHe: y[IDX.nHe] / D.ne,
       P_fus: D.P_fus / 1e6, P_bt: D.P_bt / 1e6, P_alpha: D.P_alpha / 1e6, P_beam_heat: D.P_beam / 1e6, P_aux: (D.P_NBI + D.P_ICRH + D.P_ECRH) / 1e6, P_oh: D.P_oh / 1e6,
       P_brems: D.P_brems / 1e6, P_sync: D.P_sync / 1e6, P_line: D.P_line / 1e6, P_rad: D.P_rad / 1e6, P_cond: D.P_cond / 1e6,
-      Q, tauE: D.tauE, H_mode: this.hmode ? 1 : 0, P_LH: P_LH / 1e6, P_loss: D.P_loss / 1e6, dWdt: D.dWdt / 1e6, P_rad_core: D.P_rad_core / 1e6, P_ei: D.P_ei / 1e6,
+      Q, tauE: D.tauE, H_mode: this.hmode ? 1 : 0, P_ELM: this.elmAvgPower / 1e6, P_LH: P_LH / 1e6, P_loss: D.P_loss / 1e6, dWdt: D.dWdt / 1e6, P_rad_core: D.P_rad_core / 1e6, P_ei: D.P_ei / 1e6,
       betaN: bN, betaN_th: bN_th, betaT: bT * 100, q95: this.isStell ? 0 : q95ForMethod(this.method, this.g, c.B0, Math.max(Ip_MA, 0.01)), NTM: this.ntm ? 1 : 0,
       W: W / 1e6, Wf: Wfast / 1e6, W_alpha: y[IDX.Wa] / 1e6, W_beam: y[IDX.Wb] / 1e6, ignited: this.ignited ? 1 : 0, triple, lawson: triple / LAWSON_DT,
       Zeff: D.Zeff, cZ: y[IDX.nZ] / D.ne, Ip: Ip_MA, S_fuel: D.S_fuel / 1e20,
@@ -615,11 +615,15 @@ export class MagneticModel implements SimModel {
           this.tNextELM = Infinity; this.elmAvgPower = 0; this.elmPartRate = 0;
         }
       }
-      // ---- ELM'ler (Type-I): ΔW ≈ 3% W (pedestal enerjisinin ~%10'u), f_ELM = 0.3 P_heat/ΔW ----
+      // ---- ELM'ler (Type-I): ΔW ≈ 3% W (pedestal enerjisinin ~%10'u), f_ELM = 0.3 P_tr/ΔW ----
+      // ELM ortalama gücü taşınım kaybının (W/τ_E, ölçekleme ELM'leri içerir) bir kesridir:
+      // P_ELM ≈ 0.2–0.4 P_SOL (Loarte et al., Plasma Phys. Control. Fusion 45 (2003) 1549). Eskiden
+      // 0.3 P_heat idi; güçlü ışınımda W/τ_E'yi aşıp sürekli iletimi sıfıra kırpıyordu.
       if (this.hmode && c.events.elms && !this.isStell) {
         this.elmDW = 0.03 * W;
-        const f = (0.3 * dg.P_heat * 1e6) / Math.max(this.elmDW, 1e5);
-        this.elmAvgPower = 0.3 * dg.P_heat * 1e6;
+        const P_tr = dg.P_cond * 1e6; // W/τ_E
+        const f = (0.3 * P_tr) / Math.max(this.elmDW, 1e5);
+        this.elmAvgPower = 0.3 * P_tr;
         this.elmPartRate = f * 0.03 * 0.3; // ortalama kesirli parçacık atım hızı
         if (t >= this.tNextELM) {
           const frac = 0.03 * (0.7 + 0.6 * this.rng.next());

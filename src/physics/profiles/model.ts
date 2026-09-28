@@ -243,7 +243,7 @@ export class ProfileModel implements SimModel {
       ctx.diagStale = false;
       const st = ctx.view(y);
       const K = this.evaluateWorkArrays(t, st);
-      stateDiagnostics(ctx, t, st, K, this.physics.transport.predictive);
+      stateDiagnostics(ctx, st, K, this.physics.transport.predictive);
     }
     return { ...ctx.lastDiag };
   }

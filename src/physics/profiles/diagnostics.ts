@@ -109,10 +109,10 @@ export function powerTotals(ctx: ProfileContext, K: StepConstants): PowerTotals 
 }
 
 /**
- * Writes ctx.lastDiag and ctx.lastProf for state st at time t from the current work arrays and
- * the global totals X. Also updates ctx.alphaRatio (the pedestal α of these profiles).
+ * Writes ctx.lastDiag and ctx.lastProf for state st from the current work arrays and the global
+ * totals X. Also updates ctx.alphaRatio (the pedestal α of these profiles).
  */
-export function writeDiagnostics(ctx: ProfileContext, t: number, st: ProfileState, X: GlobalTotals): void {
+export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: GlobalTotals): void {
   const N = ctx.N, w = ctx.w, g = ctx.tg, c = ctx.cfg, s = st.s;
   const v = st;
   const Ip = s.Ip, Ip_MA = Ip / 1e6;
@@ -198,14 +198,14 @@ function boundaryPower(ctx: ProfileContext, st: ProfileState): number {
  * must have been evaluated on st (K: their step constants). τ_E is carried over from the last
  * frame in 'scaling' transport (the controller target), and W/P_loss in predictive transport.
  */
-export function stateDiagnostics(ctx: ProfileContext, t: number, st: ProfileState, K: StepConstants, predictive: boolean): void {
+export function stateDiagnostics(ctx: ProfileContext, st: ProfileState, K: StepConstants, predictive: boolean): void {
   const tauPrev = ctx.lastDiag.tauE ?? 0.1;
   const tauScal = ctx.lastDiag.tauE_scal ?? tauPrev;
   const W = ctx.storedEnergy(st);
   const P = powerTotals(ctx, K);
   const P_loss = lossPower(ctx, P.P_heat, P.P_rad);
   const tauE = predictive ? W / P_loss : tauPrev;
-  writeDiagnostics(ctx, t, st, { ...P, W, dWdt: 0, tauE, tauScal, P_loss, nbar: ctx.lineAvg(st.ne), P_bound: boundaryPower(ctx, st) });
+  writeDiagnostics(ctx, st, { ...P, W, dWdt: 0, tauE, tauScal, P_loss, nbar: ctx.lineAvg(st.ne), P_bound: boundaryPower(ctx, st) });
 }
 
 /** Diagnostics during the quench phases of a disruption: only the quantities the quench changes */

@@ -59,5 +59,5 @@ export function acceptStep(ctx: ProfileContext, fueling: FuelingControl, physics
   evolveIslands(ctx, dt, o, v);
   // state of plug-in modules
   physics.accepted(t, dt, o, v);
-  writeDiagnostics(ctx, t + dt, v, { ...P, W, dWdt, tauE, tauScal, P_loss, nbar, P_bound: ctx.Pbound });
+  writeDiagnostics(ctx, v, { ...P, W, dWdt, tauE, tauScal, P_loss, nbar, P_bound: ctx.Pbound });
 }

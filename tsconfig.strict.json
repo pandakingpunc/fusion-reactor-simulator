@@ -1,0 +1,11 @@
+{
+  // Stricter type check used by `npm run typecheck:strict` (scripts/typecheck-strict.mjs). Existing
+  // errors are recorded per file in scripts/strict-baseline.json; only an increase fails.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true
+  }
+}

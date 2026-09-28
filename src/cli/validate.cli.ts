@@ -21,7 +21,7 @@ import { PRESETS } from '../physics/presets';
 import { REFERENCE_CHECKS, type CheckKind } from '../physics/validation/references';
 import { readMetric } from '../physics/validation/metrics';
 import {
-  type CheckOutcome, evaluateCheck, fmt, fmtRange, formatOutcomeLine, isFailure, markdownTable, selectChecks, tally,
+  type CheckOutcome, evaluateCheck, fmt, fmtRange, formatOutcomeLine, markdownTable, selectChecks, tally,
 } from '../physics/validation/evaluate';
 import { PoolAbortError, PoolConfigError, type PoolProgress, defaultThreads, runPool } from './pool';
 import { defineCli, exitUsage, parseArgsOrExit } from './args';

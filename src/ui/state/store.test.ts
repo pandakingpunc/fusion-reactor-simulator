@@ -3,6 +3,7 @@ import React from 'react';
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MIRROR, TAE } from '../../physics/presets';
+import { ReactorConfig } from '../../physics/types';
 import { SavedShot } from './types';
 import { AppStoreContext, createAppStore, createStore, useApp, useStore } from './store';
 
@@ -33,7 +34,7 @@ describe('createStore', () => {
   });
 });
 
-const shot = (cfg = TAE): Omit<SavedShot, 'id' | 'name'> => ({ cfg, meta: {} as never, report: {} as never, frames: [], events: [] });
+const shot = (cfg: ReactorConfig = TAE): Omit<SavedShot, 'id' | 'name'> => ({ cfg, meta: {} as never, report: {} as never, frames: [], events: [] });
 
 describe('app store actions', () => {
   it('archives each completion key once, numbering shots after the configuration name', () => {

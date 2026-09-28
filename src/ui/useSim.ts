@@ -6,8 +6,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { FrameScheduler, SimController, WorkerFactory, WorkerLike } from './state/sim';
 import { useStore } from './state/store';
 
-export type { RunAllProgress, RunAllResult, SimState, SimStatus } from './state/types';
-
 export function createSimWorker(): WorkerLike {
   return new Worker(new URL('../worker/sim.worker.ts', import.meta.url), { type: 'module' }) as WorkerLike;
 }

@@ -12,6 +12,11 @@ import { HistoryFrame, MagneticConfig, Method, ShotReport, SimEvent, Termination
 
 /** Lawson ateşleme referansı: D-T için nTτ_E ≈ 3e21 keV s m^-3 (Wesson; T≈15 keV, profil düz) */
 export const LAWSON_DT = 3e21;
+/**
+ * Battaniyenin nötron enerjisi çoğalma katsayısı (14 MeV nötronlar için tipik 1.15–1.3; EU DEMO
+ * battaniye tasarımları ~1.2). APPROXIMATION: D-D'nin 2.45 MeV nötronları için de aynı değer.
+ */
+export const BLANKET_NEUTRON_MULT = 1.18;
 
 export interface MagneticReportContext {
   cfg: MagneticConfig;
@@ -62,7 +67,9 @@ export function buildMagneticReport(ctx: MagneticReportContext, hist: HistoryFra
   const eco = economics({
     V_core_m3: ctx.V, magnetCostRel: MAGNET_TECH[c.magnet.tech].cost_rel, P_fus_MW: Pfus_avg, P_aux_MW: Paux_avg, P_recirc_MW: P_recirc_other,
     thermalEff: c.economics.thermalEff, wallPlugEff: c.economics.wallPlugEff, availability: c.economics.availability,
-    discountRate: c.economics.discountRate, lifetime_yr: c.economics.lifetime_yr, blanketGain: c.fuel === 'DT' ? 1.18 : 1.0,
+    discountRate: c.economics.discountRate, lifetime_yr: c.economics.lifetime_yr,
+    // enerji çoğalması yalnız nötron payına ve yalnız battaniye varsa
+    P_neutron_MW: Pn_avg, neutronMult: c.blanket.type !== 'none' ? BLANKET_NEUTRON_MULT : 1, blanketCoverage: c.blanket.type !== 'none' ? c.blanket.coverage : 0,
     capitalOverride_MUSD: c.economics.capital_MUSD_override,
   });
   const warnings: string[] = [];

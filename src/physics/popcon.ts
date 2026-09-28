@@ -14,7 +14,7 @@
 import { MagneticConfig } from './types';
 import { plasmaSurface, plasmaVolume, profileIntegral } from './geometry';
 import { tauIPB98y2, tauISS04, tauSTValovic, pLH_Martin } from './transport';
-import { FUEL_CHANNELS, FUEL_SPECIES } from './reactivity';
+import { FUEL_CHANNELS, FUEL_SPECIES, pairDensity } from './reactivity';
 import { bremsstrahlung, coolingRate, meanCharge, synchrotronTotal } from './radiation';
 import { greenwaldDensity, betaToroidal, betaNormalized } from './limits';
 
@@ -49,7 +49,6 @@ export function computePopcon(cfg: MagneticConfig, o: { nx?: number; ny?: number
   const fA = cfg.fuelFracA;
   const M = fA * fs.a.A + (1 - fA) * fs.b.A;
   const zDen = fA * fs.a.Z + (1 - fA) * fs.b.Z; // yakıt elektronu başına iyon
-  const ashPerRx = cfg.fuel === 'pB11' ? 3 : cfg.fuel === 'DD' ? 0.5 : 1;
   const im = cfg.impurity;
   const cs = im.seedConcentration ?? 0;
   const Wprof = ((1 + aN) * (1 + aT)) / (1 + aN + aT); // ⟨nT⟩ = Wprof·⟨n⟩⟨T⟩
@@ -80,10 +79,10 @@ export function computePopcon(cfg: MagneticConfig, o: { nx?: number; ny?: number
         const na = (nfe * fA) / zDen, nb = (nfe * (1 - fA)) / zDen;
         const ni = na + nb + (fHe + im.concentration + cs) * ne;
         // füzyon (termal)
-        let rate = 0; Pf = 0; Pch = 0;
+        let ash = 0; Pf = 0; Pch = 0;
         chans.forEach((ch, k) => {
-          const R = (ch.sameSpecies ? 0.5 * na * na : na * nb) * pk * Ich[k] * V;
-          rate += R; Pf += R * ch.Etot_MeV * MEV; Pch += R * ch.Echarged_MeV * MEV;
+          const R = pairDensity(cfg.fuel, ch, na, nb) * pk * Ich[k] * V;
+          ash += R * ch.ash; Pf += R * ch.Etot_MeV * MEV; Pch += R * ch.Echarged_MeV * MEV;
         });
         // ışınım
         const Zmain = (na * fs.a.Z ** 2 + nb * fs.b.Z ** 2 + 4 * fHe * ne) / ne;
@@ -96,7 +95,7 @@ export function computePopcon(cfg: MagneticConfig, o: { nx?: number; ny?: number
         for (let k = 0; k < 40; k++) P_loss = W / Math.max(tauOf(ne, P_loss), 1e-4);
         // He külü kararlı durumu
         const tauHe = cfg.transport.tau_He_over_tau_E * tauOf(ne, P_loss);
-        fHe = Math.min((rate * ashPerRx * tauHe) / V / ne, 0.3);
+        fHe = Math.min((ash * tauHe) / V / ne, 0.3);
       }
       const Pa = P_loss + Prad - Pch;
       const k = i * NY + j;

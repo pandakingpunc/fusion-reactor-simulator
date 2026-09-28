@@ -19,7 +19,7 @@
  * türbülans ve MHD sadece τ_E ölçeklemesi + eşik olayları (ELM/sawtooth/NTM/disruption) ile.
  */
 import { Geometry, plasmaVolume, plasmaSurface, crossSectionArea, q95 as q95fn, profileIntegral } from '../geometry';
-import { FUEL_CHANNELS, FUEL_SPECIES, beamTargetReactivity } from '../reactivity';
+import { FUEL_CHANNELS, FUEL_SPECIES, beamTargetReactivity, beamTargetDensity, burnPerReaction, pairDensity } from '../reactivity';
 import { bremsstrahlung, synchrotronTotal, coolingRate, meanCharge } from '../radiation';
 import { tauIPB98y2, tauITER89P, tauISS04, tauSTValovic, pLH_Martin, tauEquilibration } from '../transport';
 import { resistivity, ohmicPower, criticalEnergy, ionHeatingFraction, slowingDownTime, nbiShineThrough } from '../heating';
@@ -119,6 +119,8 @@ export class MagneticModel implements SimModel {
   private burning = false;
   private warned = new Set<string>();
   private magnetInfo;
+  /** kanal başına reaksiyon hızı [1/s] (termal + demet-hedef), son rhs çağrısı */
+  private Rch: Float64Array;
 
   // canlı kontroller
   private ctrl: Record<string, number>;
@@ -135,6 +137,7 @@ export class MagneticModel implements SimModel {
     const fs = FUEL_SPECIES[cfg.fuel];
     this.M = cfg.fuelFracA * fs.a.A + (1 - cfg.fuelFracA) * fs.b.A;
     this.rng = new RNG(cfg.seed);
+    this.Rch = new Float64Array(FUEL_CHANNELS[cfg.fuel].length);
     this.tEnd = cfg.t_end;
     this.outputDt = Math.max(cfg.t_end / 1500, 0.002);
     this.Ip0 = this.isStell ? 0 : cfg.Ip_MA * 1e6;
@@ -205,20 +208,24 @@ export class MagneticModel implements SimModel {
     return Math.min(1, t / Math.max(this.cfg.heating.rampTime, 0.01));
   }
 
-  /** Füzyon hızı (profil-integre): reaksiyon/s, güçler */
+  /** Füzyon hızı (profil-integre): reaksiyon/s, güçler; kanal başına termal hız this.Rch'ye yazılır */
   private fusion(y: Float64Array, Ti: number) {
     const { alpha_n: an, alpha_T: aT } = this.cfg.transport;
     const T0 = this.peakT(Ti);
     const na = y[IDX.na], nb = y[IDX.nb];
-    const chans = FUEL_CHANNELS[this.cfg.fuel];
+    const fuel = this.cfg.fuel;
+    const chans = FUEL_CHANNELS[fuel];
     let rate = 0, P_charged = 0, P_neutron = 0, P_total = 0, neutrons = 0;
-    for (const ch of chans) {
+    for (let j = 0; j < chans.length; j++) {
+      const ch = chans[j];
       // ∫ n_a n_b <σv>(T(ρ)) dV = V (1+αn)² ∫ (1−ρ²)^{2αn} σv(T0 (1−ρ²)^αT) 2ρ dρ
       const I = profileIntegral((rho) => {
         const s = 1 - rho * rho;
         return Math.pow(s, 2 * an) * ch.sigmav(T0 * Math.pow(s, aT));
       });
-      let R = (ch.sameSpecies ? 0.5 * na * na : na * nb) * (1 + an) * (1 + an) * I * this.V; // reaksiyon/s
+      // a+a kanalında ½ n_D² (D-D yakıtında n_D = n_a + n_b; bkz. pairDensity)
+      const R = pairDensity(fuel, ch, na, nb) * (1 + an) * (1 + an) * I * this.V; // reaksiyon/s
+      this.Rch[j] = R;
       rate += R;
       P_total += R * U.MeV_to_J(ch.Etot_MeV);
       P_charged += R * U.MeV_to_J(ch.Echarged_MeV);
@@ -322,8 +329,9 @@ export class MagneticModel implements SimModel {
       const n_f = (P_NBI * tau_sd_nbi) / (U.keV_to_J(c.heating.E_NBI_keV) * V);
       const sv = beamTargetReactivity(c.fuel, c.heating.E_NBI_keV, Ec_nbi, Ti);
       FUEL_CHANNELS[c.fuel].forEach((ch, j) => {
-        const nTarget = ch.sameSpecies ? y[IDX.na] : y[IDX.nb];
+        const nTarget = beamTargetDensity(c.fuel, ch, y[IDX.na], y[IDX.nb]);
         const R = n_f * nTarget * sv[j] * V;
+        this.Rch[j] += R;
         fus.rate += R; fus.P_total += R * U.MeV_to_J(ch.Etot_MeV); fus.P_bt += R * U.MeV_to_J(ch.Etot_MeV); fus.P_charged += R * U.MeV_to_J(ch.Echarged_MeV);
         fus.P_neutron += R * U.MeV_to_J(ch.Eneutron_MeV); if (ch.Eneutron_MeV > 0) fus.neutrons += R;
       });
@@ -388,9 +396,13 @@ export class MagneticModel implements SimModel {
     // ELM/sawtooth parçacık atımı τ_p ve τ_He'nin (zaman-ortalamalı) PARÇASIdır: sürekli kaybı o kadar azalt
     const lossP = Math.max(1 / tau_p - this.elmPartRate, 0.3 / tau_p);
     const lossHe = Math.max(1 / tau_He - this.elmPartRate, 0.3 / tau_He);
-    // yanma: her reaksiyon 1 a + 1 b tüketir (DD: 2 D)
-    const burn_a = fus.rate * (FUEL_CHANNELS[c.fuel][0].sameSpecies ? 2 : 1) / V;
-    const burn_b = FUEL_CHANNELS[c.fuel][0].sameSpecies ? 0 : fus.rate / V;
+    // yanma: a+b kanalı 1 a + 1 b, a+a kanalı 2 a tüketir (D-D yakıtında iki yuvadan oranla);
+    // kül: reaksiyon başına ch.ash (D-T, D-³He → ⁴He; p-¹¹B → 3 ⁴He; D-D kolları → ½)
+    let burn_a = 0, burn_b = 0, ashRate = 0;
+    FUEL_CHANNELS[c.fuel].forEach((ch, j) => {
+      const [ba, bb] = burnPerReaction(c.fuel, ch, y[IDX.na], y[IDX.nb]);
+      burn_a += (this.Rch[j] * ba) / V; burn_b += (this.Rch[j] * bb) / V; ashRate += this.Rch[j] * ch.ash;
+    });
     // Besleme komutu: yoğunluk kontrolörü (P) + kayıp/yanma telafisi, sınırlı
     const nT = this.nTarget(t);
     const Smax = this.ctrl.fuelRate_1e20s * 1e20 / V; // m^-3 s^-1
@@ -410,9 +422,7 @@ export class MagneticModel implements SimModel {
     const S_b = S_eff * (1 - wA);
     d[IDX.na] = S_a - y[IDX.na] * lossP - burn_a;
     d[IDX.nb] = S_b - y[IDX.nb] * lossP - burn_b;
-    // kül: D-T → He4 ; D-D → He3+T (basitleştirme: yarısı kül gibi davranır); D-He3 → He4; pB11 → 3 He4
-    const ashPerRx = c.fuel === 'pB11' ? 3 : c.fuel === 'DD' ? 0.5 : 1;
-    d[IDX.nHe] = (fus.rate * ashPerRx) / V - y[IDX.nHe] * lossHe;
+    d[IDX.nHe] = ashRate / V - y[IDX.nHe] * lossHe;
     // safsızlık: hedef konsantrasyona gevşeme + W kaynağı (P_SOL ile sıçratma) ; W birikimi çarpanı
     const cZ_target = this.ctrl.cZ;
     const tauZ = tau_p * this.tauW_accum;

@@ -17,6 +17,7 @@
     "validate": "tsx src/cli/validate.cli.ts",
     "golden": "tsx src/cli/golden.cli.ts",
     "golden:update": "tsx src/cli/golden.cli.ts --update",
+    "stress:exit": "node scripts/stress-exit.mjs",
     "ci:local": "node scripts/ci-local.mjs",
     "release:check": "node scripts/release-check.mjs",
     "figures": "tsx src/cli/figures.cli.ts",

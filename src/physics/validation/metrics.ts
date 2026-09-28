@@ -12,15 +12,17 @@
  *   derived.H98y2      τ_E(flat top) / τ_IPB98(y,2), with the scaling evaluated independently of the
  *                      physics code at the flat-top density and heating power (see {@link tauIPB98y2Ref})
  *   derived.Ttot       T_e + T_i (flat top), the "total temperature" quoted for FRC plasmas
+ *   derived.alphaShare P_alpha / P_fus (flat top): the share of the fusion power that heats the plasma as charged
+ *                      products (0.2 in a D-T plasma whose alphas are all deposited; 0D presets only)
  *
  * A metric that is unavailable (missing key, non-numeric entry, preset without the inputs a derived
  * metric needs) reads as NaN, which the evaluation reports as a failure.
  */
 import type { HistoryFrame, MagneticConfig, ReactorConfig, ShotReport } from '../types';
 
-export type DerivedMetric = 'H98y2' | 'Ttot';
+export type DerivedMetric = 'H98y2' | 'Ttot' | 'alphaShare';
 /** every derived metric, for validating metric paths read from a file */
-export const DERIVED_METRICS: readonly DerivedMetric[] = ['H98y2', 'Ttot'];
+export const DERIVED_METRICS: readonly DerivedMetric[] = ['H98y2', 'Ttot', 'alphaShare'];
 /** the scopes a metric path can start with */
 export const METRIC_SCOPES = ['flatTop', 'report', 'engineering', 'burn', 'derived'] as const;
 
@@ -65,7 +67,14 @@ function derived(name: DerivedMetric, run: RunOutputs): number {
   switch (name) {
     case 'Ttot': return num(run.flatTop.Te) + num(run.flatTop.Ti);
     case 'H98y2': return h98FromRun(run);
+    case 'alphaShare': return alphaShareFromRun(run);
   }
+}
+
+/** P_alpha / P_fus of the flat top; NaN without fusion power or without the diagnostics (1.5D runs have no P_alpha). */
+export function alphaShareFromRun(run: RunOutputs): number {
+  const P_alpha = num(run.flatTop.P_alpha), P_fus = num(run.flatTop.P_fus);
+  return P_fus > 0 ? P_alpha / P_fus : NaN;
 }
 
 /** Engineering and plasma parameters of the IPB98(y,2) scaling. */
@@ -110,9 +119,10 @@ function hydrogenicMass(c: MagneticConfig): number | undefined {
 
 /**
  * H98 = τ_E / τ_IPB98(y,2) over the flat top of a tokamak run. Inputs: the preset's I_p, B, R, a and
- * κ (as κ_a); the flat-top density (1.5D: the line average `nbar`, 0D: the volume average `ne`, which
- * is within ~10 % of it for the 0D profiles); the flat-top heating power P_heat as the loss power,
- * since dW/dt ≈ 0 on the flat top and IPB98(y,2) does not subtract radiation.
+ * κ (as κ_a); the flat-top line-averaged density `nbar` (the 0D and the 1.5D model both report it; the
+ * volume average `ne` is the fallback for a run without it); the flat-top heating power P_heat as the loss
+ * power, since dW/dt ≈ 0 on the flat top and IPB98(y,2) does not subtract radiation (the model itself
+ * subtracts the core radiation, so its H98 reads above its input H98 by that share).
  */
 export function h98FromRun(run: RunOutputs): number {
   const c = run.cfg as MagneticConfig;

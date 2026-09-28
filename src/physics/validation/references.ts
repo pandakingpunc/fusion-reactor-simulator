@@ -95,6 +95,10 @@ const SRC = {
   gota2021: 'H. Gota et al., "Overview of C-2W: high temperature, steady-state beam-driven field-reversed configuration plasmas", Nucl. Fusion 61 (2021) 106039',
   bagryansky2015: 'P.A. Bagryansky et al., "Threefold increase of the bulk electron temperature of plasma discharges in a magnetic mirror device", Phys. Rev. Lett. 114 (2015) 205001',
   jones1986: 'S.E. Jones et al., "Observation of unexpected density effects in muon-catalyzed d-t fusion", Phys. Rev. Lett. 56 (1986) 588–591',
+  ipb1999ch1: 'ITER Physics Expert Group et al., "Chapter 1: Overview and summary" (ITER Physics Basis), Nucl. Fusion 39 (1999) 2137–2174',
+  berkery2023: 'J.W. Berkery et al., "Operational space and performance limiting events in the first physics campaign of MAST-U", Plasma Phys. Control. Fusion 65 (2023) 045001',
+  harrisonSuperX2024: 'J.R. Harrison et al., "Benefits of the Super-X divertor configuration for scenario integration on MAST Upgrade", Plasma Phys. Control. Fusion 66 (2024) 065019',
+  lazarus1997: 'E.A. Lazarus et al., "Higher fusion power gain with profile control in DIII-D tokamak plasmas", Nucl. Fusion 37 (1997) 7–12',
 } as const;
 
 const DOI = {
@@ -117,6 +121,10 @@ const DOI = {
   gota2021: '10.1088/1741-4326/ac2521',
   bagryansky2015: '10.1103/PhysRevLett.114.205001',
   jones1986: '10.1103/PhysRevLett.56.588',
+  ipb1999ch1: '10.1088/0029-5515/39/12/301',
+  berkery2023: '10.1088/1361-6587/acb464',
+  harrisonSuperX2024: '10.1088/1361-6587/ad4058',
+  lazarus1997: '10.1088/0029-5515/37/1/I11',
 } as const satisfies Record<keyof typeof SRC, string>;
 
 /** exp(2 × 0.145): 2σ of the IPB98(y,2) database fit */
@@ -150,6 +158,38 @@ export function widen(tolerance: PolicyTolerance, [lo, hi]: readonly [number, nu
   return [roundOutward(a, 'down'), roundOutward(b, 'up')];
 }
 
+/**
+ * P_alpha / P_fusion of a D-T tokamak preset. The alpha particles carry 3.52 MeV of the 17.59 MeV released by
+ * D + T → ⁴He + n, a share of 0.200, and P_alpha is the heating by the charged products alone (the injected
+ * beams are P_beam_heat, a separate diagnostic), so the share cannot exceed it. v3 booked the beam heating as
+ * P_alpha and read 0.24 for ITER.
+ */
+const ALPHA_SHARE = (preset: string): ReferenceCheck => ({
+  id: `${preset}.alphaShare`, preset, metric: 'P_alpha / P_fusion (flat-top)', path: 'derived.alphaShare', value: 0.2, unit: '',
+  ref: 'ITER Physics Basis ch. 1, 1999', source: SRC.ipb1999ch1, doi: DOI.ipb1999ch1, accept: [0, 0.21], tolerance: 'stated', kind: 'sanity',
+  basis: 'a bound from the energetics of D + T → ⁴He (3.52 MeV) + n (14.07 MeV): the alphas carry 3.52/17.59 = 0.200 of the fusion power ' +
+    'and P_alpha, the deposited heating of the charged products alone, cannot exceed it; +5 % of slack because P_alpha = W_α/τ lags a ' +
+    'P_fus that is not exactly steady on the flat top. Guards the v3 bookkeeping that counted the NBI heating in P_alpha (0.24 for ITER)',
+});
+
+/**
+ * q95 of MAST Upgrade against its first physics campaign (Berkery 2023: almost all operation between 5 < q95 < 10).
+ * `model` opens the known-failure text with the preset's value; the numbers of the rest are recomputed by
+ * mastuQ95.test.ts, so they cannot drift from the fit.
+ */
+const MASTU_Q95 = (preset: 'MASTU', model: string): ReferenceCheck => ({
+  id: `${preset}.q95`, preset, metric: 'q95 (flat-top)', path: 'flatTop.q95', value: 7.5, band: [5, 10], unit: '',
+  ref: 'Berkery 2023', source: `${SRC.berkery2023}; shape, field and current of the campaign: ${SRC.harrisonSuperX2024}`, doi: DOI.berkery2023,
+  accept: [5, 10], tolerance: 'stated', kind: 'validation',
+  basis: 'first physics campaign of MAST-U (I_p 450–1000 kA, B0 0.42–0.64 T; Harrison et al. 2024, Super-X paper): almost all operation between 5 < q95 < 10, ' +
+    'the band, whose mid-point is the value. The accepted range is the band itself, a bound on both sides: q95 follows from I_p, B0 and ' +
+    'the shape through the low-aspect-ratio fit of Sauter (2016), no reduced-model energy balance enters, so nothing is widened',
+  knownFailure: `${model}. The fit is not the cause: for the typical shape of the campaign (R ≈ 0.8 m, a ≈ 0.5 m, κ = 2.0–2.2, ` +
+    'Harrison et al. 2024, Super-X paper) at the preset\'s B0 = 0.75 T and I_p = 1 MA it gives 6.6, inside the ' +
+    'band, and 3.1–13.6 over the field, current and shape ranges of the campaign. The preset\'s larger minor radius (a = 0.65 m) and ' +
+    'elongation (κ = 2.5) raise q95 by a factor 2.7',
+});
+
 const r3 = (x: number) => Math.round(x * 1000) / 1000;
 /** lossless (adiabatic, γ = 5/3) temperature after radial compression of a cylinder by C: T0·C^(4/3) */
 const adiabaticCyl = (T0: number, C: number) => r3(T0 * C ** (4 / 3));
@@ -171,21 +211,31 @@ export const REFERENCE_CHECKS: readonly ReferenceCheck[] = [
     ref: 'ITER Physics Basis 1999', source: SRC.ipb1999, doi: DOI.ipb1999, accept: [0.748, 1.34], tolerance: 'confinement', kind: 'sanity',
     basis: 'ITER Q = 10 assumes H98 = 1 (Shimada 2007); ×/÷ exp(2·0.145) database scatter. Sanity only, not a test of ' +
       'confinement physics: the 0D model sets τ_E = H98 × τ_IPB98(y,2) with the preset\'s input H98 = 1, so this checks that ' +
-      'input together with the model\'s loss power (it feeds P_heat − P_rad into the scaling, while IPB98(y,2) and this ' +
-      'independent evaluation at the flat-top n̄ and P_heat use P_heat), its density average and NTM degradation',
+      'input together with the model\'s loss power (it feeds P_L = P_heat − P_rad,core − dW/dt into the scaling, with the radiation ' +
+      'of ρ < 0.6 only, while IPB98(y,2) and this independent evaluation at the flat-top n̄ and P_heat use P_heat, so the model is ' +
+      'expected above H98 = 1 by the core-radiation share), its line-averaged density and NTM degradation',
   },
+  {
+    id: 'ITER.nG', preset: 'ITER', metric: 'n̄/n_G (flat-top)', path: 'flatTop.nG_frac', value: 0.85, unit: '',
+    ref: 'Shimada 2007', source: SRC.shimada2007, doi: DOI.shimada2007, accept: [0.6, 1.0], tolerance: 'stated', kind: 'benchmark',
+    basis: 'inductive scenario n̄/n_G = 0.85 with n̄ the line-averaged density, which is the density of the 0D model since v4.0 (the preset\'s ' +
+      '1.0e20 m⁻³ volume-average target is 1.1e20 m⁻³ on the line); up to the Greenwald limit, down to −30 %',
+  },
+  ALPHA_SHARE('ITER'),
   // ─── JET DTE2 (0D) ───────────────────────────────────────────────────────────────────────────
   {
     id: 'JET.Efus', preset: 'JET', metric: 'E_fusion', path: 'report.E_fusion_MJ', value: 59, uncertainty: 6, unit: 'MJ',
     ref: 'Maslov 2023', source: SRC.maslov2023, doi: DOI.maslov2023, accept: [40, 80], tolerance: 'stated', kind: 'validation',
     basis: 'record pulse #99971 (2021): 59 MJ in ~5 s; ≈10 % neutron-yield calibration uncertainty, widened to −32 %/+36 % for a 0D model',
   },
+  ALPHA_SHARE('JET'),
   // ─── SPARC (0D) ──────────────────────────────────────────────────────────────────────────────
   {
     id: 'SPARC.Q', preset: 'SPARC', metric: 'Q (flat-top avg.)', path: 'flatTop.Q', value: 11, unit: '',
     ref: 'Creely 2020', source: SRC.creely2020, doi: DOI.creely2020, accept: [2, 20], tolerance: 'stated', kind: 'benchmark',
     basis: 'predicted Q ≈ 11 at H98 = 1; the mission requirement Q > 2 is the lower bound, about factor 2 above the prediction the upper one',
   },
+  ALPHA_SHARE('SPARC'),
   // ─── DIII-D (0D) ─────────────────────────────────────────────────────────────────────────────
   {
     id: 'DIIID.H98', preset: 'DIIID', metric: 'H98(y,2) (flat-top)', path: 'derived.H98y2', value: 1, unit: '',
@@ -193,7 +243,15 @@ export const REFERENCE_CHECKS: readonly ReferenceCheck[] = [
     basis: 'IPB98(y,2) reproduces the ELMy H-mode database, DIII-D included, with RMS log error 0.145: H98 = 1 within ×/÷ exp(2·0.145). ' +
       'Sanity only: the preset is a generic DIII-D H-mode, not a documented discharge, so there is no measurement to compare with, ' +
       'and the 0D model sets τ_E = H98 × τ_IPB98(y,2) with the preset\'s input H98 = 1. The check covers that input, the model\'s ' +
-      'loss power (P_heat − P_rad in the scaling; P_heat in this independent evaluation at the flat-top n̄) and NTM degradation',
+      'loss power (P_heat − P_rad,core − dW/dt in the scaling; P_heat in this independent evaluation at the flat-top n̄) and NTM degradation',
+  },
+  {
+    id: 'DIIID.Palpha', preset: 'DIIID', metric: 'P_alpha, D-D charged products (flat-top)', path: 'flatTop.P_alpha', value: 0.0225, unit: 'MW',
+    ref: 'Lazarus 1997', source: SRC.lazarus1997, doi: DOI.lazarus1997, accept: [0, 0.0225], tolerance: 'stated', kind: 'sanity',
+    basis: 'a bound, not a measurement: a D-D plasma has no alpha heating, only the charged products of D-D fusion (T, p, 3He), a part ' +
+      'of the D-D fusion power. The highest fusion power gain reached in DIII-D deuterium plasmas is Q_DD = 0.0015, so the preset\'s 15 MW ' +
+      'of heating gives at most 0.0015 × 15 MW = 0.0225 MW of fusion power, charged products included. A larger P_alpha would mean that ' +
+      'the beam heating is booked as fusion products, which v3 did (11.7 MW of NBI in P_alpha)',
   },
   // ─── JT-60SA (0D) ────────────────────────────────────────────────────────────────────────────
   {
@@ -214,6 +272,7 @@ export const REFERENCE_CHECKS: readonly ReferenceCheck[] = [
       'the preset is not one of those discharges. Not circular: the preset confines with the spherical-tokamak scaling of Valovič, ' +
       'and H98 is IPB98(y,2) evaluated independently',
   },
+  MASTU_Q95('MASTU', 'the low-aspect-ratio fit of Sauter (2016) gives q95 = 18.2 for the preset (R = 0.85 m, a = 0.65 m, κ = 2.5, δ = 0.5)'),
   // ─── Wendelstein 7-X (0D) ────────────────────────────────────────────────────────────────────
   {
     id: 'W7X.Ti0', preset: 'W7X', metric: 'T_i(0) (flat-top)', path: 'flatTop.Ti0', value: 1.5, uncertainty: 0.2, unit: 'keV',
@@ -228,6 +287,7 @@ export const REFERENCE_CHECKS: readonly ReferenceCheck[] = [
     ref: 'Federici 2019', source: SRC.federici2019, doi: DOI.federici2019, accept: [1000, 3000], tolerance: 'stated', kind: 'benchmark',
     basis: '2018 baseline top-level requirement P_fus = 2000 MW; ±50 % for a reduced model',
   },
+  ALPHA_SHARE('DEMO'),
   // ─── ITER · 1.5D ─────────────────────────────────────────────────────────────────────────────
   {
     id: 'ITER15.Q', preset: 'ITER15', metric: 'Q (flat-top avg.)', path: 'flatTop.Q', value: 10, unit: '',
@@ -315,7 +375,8 @@ export const REFERENCE_CHECKS: readonly ReferenceCheck[] = [
     id: 'Z.yield', preset: 'Z', metric: 'D-D neutron yield', path: 'report.neutronYield', value: 1.1e13, unit: '',
     ref: 'Gomez 2020', source: SRC.gomez2020, doi: DOI.gomez2020, accept: [3.66e12, 3.3e13], tolerance: 'yield', kind: 'validation',
     basis: 'best MagLIF shots at ~20 MA with enhanced B_z and preheat: primary D-D yield 1.1 × 10¹³ (2 kJ D-T equivalent); ×/÷ 3 (pulsed yield tolerance)',
-    knownFailure: 'the 0D MagLIF model over-predicts the yield by more than an order of magnitude: its ideal compression to ' +
+    knownFailure: 'the 0D MagLIF model over-predicts the yield by more than an order of magnitude (2.0 × 10¹⁴ against 1.1 × 10¹³, ' +
+      'since v4.0 with a burn of ≈ 2 ns instead of ≈ 30 ns): its ideal compression to ' +
       'CR = 30 has no liner–fuel mix, end losses, preheat losses or Be radiation, which limit the experiments',
   },
   {
@@ -360,7 +421,7 @@ export const REFERENCE_CHECKS: readonly ReferenceCheck[] = [
     ref: 'Bagryansky 2015', source: SRC.bagryansky2015, doi: DOI.bagryansky2015, accept: [0.33, 1.8], tolerance: 'stated', kind: 'sanity',
     basis: 'hottest bulk electrons measured in an open trap (GDT, 5 MW NBI + ECRH): 0.66 ± 0.05 keV on axis, peaks above 0.9 keV; ' +
       'factor 2 around that range (0.66/2 to 0.9 × 2). Sanity only: the preset is a tandem mirror of similar size and heating, not GDT',
-    knownFailure: 'the single-temperature mirror model sets T_e = T_i, several keV; mirror electrons are cooled by axial heat ' +
+    knownFailure: 'the single-temperature mirror model sets T_e = T_i ≈ 9.5 keV (with the Pastukhov plug factor of v4.0); mirror electrons are cooled by axial heat ' +
       'loss to the end walls, which limits every open trap built so far to T_e ≲ 1 keV and is not modelled',
   },
   // ─── Muon-catalysed fusion ───────────────────────────────────────────────────────────────────

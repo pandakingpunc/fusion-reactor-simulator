@@ -6,8 +6,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  FAST_CASES, GOLDEN_CASES, GoldenSnapshot, REL_TOL_OTHER_NODE, REL_TOL_SAME_NODE, caseConfig, compareSnapshots, flattenScalars,
-  formatDiffTable, goldenCase, parseSnapshot, relDiff, runGoldenCase, sampleIndices, serializeSnapshot, toleranceFor,
+  FAST_CASES, GOLDEN_CASES, GOLDEN_SCHEMA, GoldenSnapshot, REL_TOL_OTHER_NODE, REL_TOL_SAME_NODE, caseConfig, compareSnapshots, countBySection,
+  flattenScalars, formatDiffTable, goldenCase, parseSnapshot, relDiff, runGoldenCase, sampleIndices, serializeSnapshot, summarizeChange, toleranceFor,
 } from './golden';
 import { PRESETS } from '../physics/presets';
 
@@ -84,6 +84,28 @@ describe('golden comparator (self-test)', () => {
     // the producing Node version is informational only
     b.flatTop.x = 'NaN'; b.meta.node = 'v99.0.0';
     expect(compareSnapshots(a, b, 0)).toEqual([]);
+  });
+
+  it('summarizes a re-record as schema change and moved, added and removed keys (update log)', () => {
+    const old = structuredClone(snap) as GoldenSnapshot & { gone?: number };
+    old.meta.schema = GOLDEN_SCHEMA - 1;
+    old.gone = 1;
+    old.scalars.Q_sci_max *= 1 + 1e-12; // any change counts, below every tolerance too
+    delete (old.flatTop as Record<string, unknown>).Ti;
+    delete (old.events as Record<string, unknown>).end;
+    const c = summarizeChange(old, snap);
+    expect(c.schema).toEqual([GOLDEN_SCHEMA - 1, GOLDEN_SCHEMA]);
+    expect(c.moved.map((d) => d.key)).toEqual(['scalars.Q_sci_max']);
+    expect(c.added.map((d) => d.key)).toEqual(['events.end', 'flatTop.Ti']);
+    expect(c.removed.map((d) => d.key)).toEqual(['gone']);
+    expect(countBySection([...c.added, { key: 'events.x', old: undefined, new: 1, rel: Infinity }])).toBe('events 2, flatTop 1');
+    expect(countBySection([{ key: 'traces.Ti[3]', old: 1, new: 2, rel: 0.5 }])).toBe('traces 1');
+    expect(summarizeChange(snap, structuredClone(snap))).toEqual({ moved: [], added: [], removed: [] });
+    // an older schema is readable on request only
+    const text = serializeSnapshot(old as GoldenSnapshot);
+    expect(() => parseSnapshot(text)).toThrow(/unsupported golden schema/);
+    expect(parseSnapshot(text, { anySchema: true }).meta.schema).toBe(GOLDEN_SCHEMA - 1);
+    expect(() => parseSnapshot('{"a": 1}', { anySchema: true })).toThrow(/no meta object/);
   });
 
   it('tolerance: 1e-9 on the same Node major, 1e-6 otherwise; relative with a 1e-300 floor', () => {

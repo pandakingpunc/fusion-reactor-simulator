@@ -209,8 +209,16 @@ export function serializeSnapshot(s: GoldenSnapshot): string {
   return canonical(s, '') + '\n';
 }
 
-export function parseSnapshot(text: string): GoldenSnapshot {
+/**
+ * Parses a golden file. Throws unless it has the current schema; with `anySchema` (used by
+ * golden:update to describe what a re-record changes) any JSON object with a `meta` object is accepted.
+ */
+export function parseSnapshot(text: string, opts: { anySchema?: boolean } = {}): GoldenSnapshot {
   const s = JSON.parse(text) as GoldenSnapshot;
+  if (opts.anySchema) {
+    if (typeof s?.meta !== 'object' || s.meta === null) throw new Error('not a golden snapshot (no meta object)');
+    return s;
+  }
   if (s?.meta?.schema !== GOLDEN_SCHEMA) throw new Error(`unsupported golden schema ${String(s?.meta?.schema)} (expected ${GOLDEN_SCHEMA})`);
   return s;
 }
@@ -267,6 +275,37 @@ export function compareSnapshots(oldS: unknown, newS: unknown, tol: number): Gol
   }
   for (const [k, vb] of b) if (!a.has(k)) diffs.push({ key: k, old: undefined, new: vb, rel: Infinity });
   return diffs.sort((x, y) => (x.key < y.key ? -1 : x.key > y.key ? 1 : 0));
+}
+
+/** How a re-recorded snapshot differs from the stored one (for the golden:update log). */
+export interface SnapshotChange {
+  /** [old, new] meta.schema, when the file format changed */
+  schema?: [unknown, unknown];
+  /** keys present in both whose value changed by any amount */
+  moved: GoldenDiff[];
+  /** keys only in the new snapshot */
+  added: GoldenDiff[];
+  /** keys only in the old snapshot */
+  removed: GoldenDiff[];
+}
+
+/** Splits the exact (tol = 0) differences into a schema change and moved, added and removed keys. */
+export function summarizeChange(oldS: unknown, newS: unknown): SnapshotChange {
+  const out: SnapshotChange = { moved: [], added: [], removed: [] };
+  for (const d of compareSnapshots(oldS, newS, 0)) {
+    if (d.key === 'meta.schema') out.schema = [d.old, d.new];
+    else if (d.old === undefined) out.added.push(d);
+    else if (d.new === undefined) out.removed.push(d);
+    else out.moved.push(d);
+  }
+  return out;
+}
+
+/** Key counts by top-level snapshot section, largest first: "history 310, geometry 12". */
+export function countBySection(diffs: readonly GoldenDiff[]): string {
+  const n = new Map<string, number>();
+  for (const d of diffs) { const s = /^[^.[]*/.exec(d.key)![0]; n.set(s, (n.get(s) ?? 0) + 1); }
+  return [...n].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([s, c]) => `${s} ${c}`).join(', ');
 }
 
 const show = (v: unknown): string => (v === undefined ? '(missing)' : typeof v === 'string' ? JSON.stringify(v) : String(v));

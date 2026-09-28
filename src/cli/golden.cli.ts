@@ -7,12 +7,15 @@
  *       Exit 0: all match; 1: a mismatch, a missing/unreadable golden file or a failed run
  *       (a table lists preset, key, old, new, rel. diff); 2: usage error.
  *   npm run golden:update -- --reason "why the numbers moved" [--only A,B]
- *       Rewrites the golden files and appends a dated entry (reason, added/changed cases and the
- *       keys that moved) to test/golden/CHANGES.md. Refuses to run without --reason.
+ *       Rewrites the golden files and appends a dated entry to test/golden/CHANGES.md: the reason,
+ *       the added and unchanged cases and, per changed case, a schema change, how many existing keys
+ *       moved (largest relative change, first keys) and the keys added or removed, by section.
+ *       Files in an older schema are compared too, so a format-only change is logged as
+ *       "0 keys moved". Refuses to run without --reason.
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
-import { GOLDEN_CASES, GoldenDiff, caseConfig, compareSnapshots, formatDiffTable, parseSnapshot, serializeSnapshot, toleranceFor } from '../regression/golden';
+import { GOLDEN_CASES, GoldenDiff, SnapshotChange, caseConfig, compareSnapshots, countBySection, formatDiffTable, parseSnapshot, serializeSnapshot, summarizeChange, toleranceFor } from '../regression/golden';
 import type { GoldenResult, GoldenTask } from '../regression/golden.worker';
 import { PoolConfigError, defaultThreads, runPool } from './pool';
 import { defineCli, exitUsage, parseArgsOrExit } from './args';
@@ -101,7 +104,7 @@ function check(dir: string, results: GoldenResult[], maxRows: number, all: boole
 function update(dir: string, results: GoldenResult[], reason: string, only: string[] | undefined, wall: number): void {
   mkdirSync(dir, { recursive: true });
   const added: string[] = [], unchanged: string[] = [], failed: string[] = [];
-  const changed: { id: string; diffs: GoldenDiff[]; meta?: string }[] = [];
+  const changed: Changed[] = [];
   for (const r of results) {
     if (!r.ok || !r.snapshot) { failed.push(r.id); console.log(`  ${r.id.padEnd(14)} RUN ERROR  ${firstLine(r.error)}`); continue; }
     const file = join(dir, `${r.id}.json`);
@@ -111,17 +114,16 @@ function update(dir: string, results: GoldenResult[], reason: string, only: stri
     } else {
       const oldText = readFileSync(file, 'utf8').replace(/\r\n/g, '\n'); // a checkout may have CRLF
       if (oldText === text) { unchanged.push(r.id); console.log(`  ${r.id.padEnd(14)} unchanged`); continue; }
-      let diffs: GoldenDiff[];
+      let change: SnapshotChange | undefined;
       let meta: string | undefined;
       try {
-        const old = parseSnapshot(oldText);
-        diffs = compareSnapshots(old, r.snapshot, 0);
+        const old = parseSnapshot(oldText, { anySchema: true }); // an older format is described, not rejected
+        change = summarizeChange(old, r.snapshot);
         if (old.meta.node !== r.snapshot.meta.node) meta = `Node ${old.meta.node} → ${r.snapshot.meta.node}`;
       } catch (e) {
-        diffs = [];
         meta = `replaced unreadable file (${e instanceof Error ? e.message : String(e)})`;
       }
-      changed.push({ id: r.id, diffs, meta });
+      changed.push({ id: r.id, change, meta });
     }
     writeFileSync(file, text);
     console.log(`  ${r.id.padEnd(14)} ${added.includes(r.id) ? 'added' : 'updated'}`);
@@ -140,7 +142,36 @@ function update(dir: string, results: GoldenResult[], reason: string, only: stri
   }
 }
 
-function changesEntry(reason: string, added: string[], changed: { id: string; diffs: GoldenDiff[]; meta?: string }[], unchanged: string[], failed: string[], only: string[] | undefined): string {
+interface Changed {
+  id: string;
+  /** undefined if the old file could not be read */
+  change?: SnapshotChange;
+  meta?: string;
+}
+
+/**
+ * One log line per changed case: the schema change if any, how many existing keys moved (with the
+ * largest relative change and the first moved or removed keys), and added/removed keys by section.
+ * A format-only re-record therefore reads "schema 1 → 2; 0 keys moved; N keys added (…)".
+ */
+function describeChange(c: Changed): string {
+  const parts: string[] = [];
+  let keys = '';
+  if (c.change) {
+    const { schema, moved, added, removed } = c.change;
+    if (schema) parts.push(`schema ${String(schema[0])} → ${String(schema[1])}`);
+    const numeric = moved.filter((d) => Number.isFinite(d.rel));
+    parts.push(`${plural(moved.length, 'key')} moved` + (numeric.length ? `; max rel. diff ${Math.max(...numeric.map((d) => d.rel)).toExponential(2)}` : ''));
+    if (added.length) parts.push(`${plural(added.length, 'key')} added (${countBySection(added)})`);
+    if (removed.length) parts.push(`${plural(removed.length, 'key')} removed (${countBySection(removed)})`);
+    const listed = [...moved, ...removed];
+    if (listed.length) keys = ` — ${listed.slice(0, 12).map((d) => d.key).join(', ')}${listed.length > 12 ? `, … (+${listed.length - 12} more)` : ''}`;
+  }
+  if (c.meta) parts.push(c.meta);
+  return `  - ${c.id}: ${parts.join('; ')}${keys}`;
+}
+
+function changesEntry(reason: string, added: string[], changed: Changed[], unchanged: string[], failed: string[], only: string[] | undefined): string {
   const now = new Date().toISOString();
   const stamp = `${now.slice(0, 10)} ${now.slice(11, 16)} UTC`;
   const L: string[] = ['', `## ${stamp} — ${reason}`, ''];
@@ -148,15 +179,7 @@ function changesEntry(reason: string, added: string[], changed: { id: string; di
   if (added.length) L.push(`- Added (${added.length}): ${added.join(', ')}`);
   if (changed.length) {
     L.push(`- Changed (${changed.length}):`);
-    for (const c of changed) {
-      const numeric = c.diffs.filter((d) => Number.isFinite(d.rel));
-      const maxRel = numeric.length ? Math.max(...numeric.map((d) => d.rel)) : undefined;
-      const keys = c.diffs.slice(0, 12).map((d) => d.key).join(', ') + (c.diffs.length > 12 ? `, … (+${c.diffs.length - 12} more)` : '');
-      const parts = [`${plural(c.diffs.length, 'key')} moved`];
-      if (maxRel !== undefined) parts.push(`max rel. diff ${maxRel.toExponential(2)}`);
-      if (c.meta) parts.push(c.meta);
-      L.push(`  - ${c.id}: ${parts.join('; ')}${c.diffs.length ? ` — ${keys}` : ''}`);
-    }
+    for (const c of changed) L.push(describeChange(c));
   }
   if (unchanged.length) L.push(`- Unchanged (${unchanged.length}): ${unchanged.join(', ')}`);
   if (failed.length) L.push(`- Failed to run, not written (${failed.length}): ${failed.join(', ')}`);

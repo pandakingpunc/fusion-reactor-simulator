@@ -149,6 +149,23 @@ describe('golden CLI', { timeout: 60_000 }, () => {
       expect(second.startsWith(first)).toBe(true); // append-only
       expect(second).toMatch(/— restore\n\n.*\n\n- Changed \(1\):\n {2}- NIF: 1 key moved; max rel\. diff 1\.00e-7 — scalars\.Q_sci_max\n- Unchanged \(1\): Z\n$/);
       expect(golden('--only', 'NIF,Z', '--dir', dir).code).toBe(0);
+
+      // a file in an older format (previous schema, without the events section) is rejected by the
+      // check and described by the update: nothing moved, only keys were added
+      const cur = JSON.parse(readFileSync(file, 'utf8'));
+      const nEvents = Object.keys(cur.events).length;
+      const oldFormat = { ...cur, meta: { ...cur.meta, schema: cur.meta.schema - 1 } };
+      delete oldFormat.events;
+      writeFileSync(file, JSON.stringify(oldFormat));
+      const stale = golden('--only', 'NIF', '--dir', dir);
+      expect(stale.code).toBe(1);
+      expect(stale.stdout).toMatch(/NIF +BAD GOLDEN FILE +unsupported golden schema/);
+      expect(golden('--update', '--reason', 'format', '--only', 'NIF', '--dir', dir).code).toBe(0);
+      const third = readFileSync(log, 'utf8');
+      expect(third.startsWith(second)).toBe(true);
+      expect(third.slice(second.length)).toContain(
+        `- NIF: schema ${cur.meta.schema - 1} → ${cur.meta.schema}; 0 keys moved; ${nEvents} key${nEvents === 1 ? '' : 's'} added (events ${nEvents})\n`);
+      expect(golden('--only', 'NIF', '--dir', dir).code).toBe(0);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -243,10 +243,24 @@ export interface SimModel {
   readonly outputDt: number;
   readonly nState: number;
   readonly diagSpecs: DiagSpec[];
-  readonly integratorOpts: IntegratorOptions;
+  /**
+   * Dormand–Prince controller settings. Required together with rhs() unless the model provides its
+   * own step(): Simulation builds no Dormand–Prince stepper for such a model and rejects a model
+   * that has neither (ModelContractError).
+   */
+  readonly integratorOpts?: IntegratorOptions;
   readonly dt0: number;
   initialState(): Float64Array;
-  rhs(t: number, y: Float64Array, dydt: Float64Array): void;
+  /**
+   * Right-hand side of dy/dt = f(t, y) for the Dormand–Prince stepper; optional when the model
+   * provides step().
+   */
+  rhs?(t: number, y: Float64Array, dydt: Float64Array): void;
+  /**
+   * Diagnostics of the state y at time t. They must describe the y that is passed in: a model that
+   * caches the diagnostics of its last rhs() evaluation has to refresh the cache whenever postStep()
+   * changes y (Simulation records a frame right after postStep()).
+   */
   diagnostics(t: number, y: Float64Array): Record<string, number>;
   /** kabul edilen adımdan sonra; y'yi değiştirebilir (ELM vb.) ve olay üretebilir */
   postStep(t: number, dt: number, y: Float64Array): SimEvent[];
@@ -268,7 +282,9 @@ export interface SimModel {
   geometryInfo(): Record<string, number>;
   /**
    * İsteğe bağlı kendi zaman adımlayıcısı (örtük PDE çözücüleri): verilirse Simulation
-   * Dormand–Prince yerine bunu çağırır; y yerinde güncellenir, yeni t döner (≤ tMax).
+   * Dormand–Prince yerine bunu çağırır (rhs() ve integratorOpts gerekmez); y yerinde güncellenir,
+   * yeni t döner (≤ tMax). A step that ends the shot (sets `terminated`, e.g. a numerical failure)
+   * may return t unchanged; Simulation then still records the terminal frame (see HistoryFrame).
    */
   step?(t: number, y: Float64Array, tMax: number): number;
   /** son adımın önerdiği zaman adımı (UI gösterimi) */
@@ -288,6 +304,13 @@ export interface SimModel {
   restoreCheckpoint?(state: unknown): void;
 }
 
+/**
+ * One recorded frame. Frame times increase strictly with one exception: the frame that ends a shot
+ * (its `sim.terminated` is set) shares its time with the previous frame when the step that ended
+ * the shot made no progress in time (a model's own stepper gave up: 'Numerical failure'). Its state
+ * and diagnostics then equal the previous frame's; it exists to carry the termination and the
+ * final checkpoint, so that a rewind to the last frame keeps the shot ended.
+ */
 export interface HistoryFrame {
   t: number;
   y: number[]; // durum (geri sarma için)
@@ -317,8 +340,8 @@ export interface SimCheckpoint {
   nextBreak: number;
   /** number of events in Simulation.events when the frame was recorded */
   nEvents: number;
-  /** Dormand–Prince controller state (unused by models with their own stepper) */
-  integ: IntegratorSnapshot;
+  /** Dormand–Prince controller state; absent for models with their own stepper (no Dormand–Prince stepper exists then) */
+  integ?: IntegratorSnapshot;
   /** the model's live controls (getControls()) in force at the frame */
   controls: Record<string, number>;
   /**

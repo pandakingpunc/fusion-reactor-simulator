@@ -23,6 +23,14 @@
  *    is always at one) and is logged as {t, step, patch}; rewindTo() truncates the log. Replaying a
  *    log (new Simulation(cfg, { actuatorLog }) or Simulation.replay) reproduces the run bitwise,
  *    and runFingerprint() hashes the inputs that define a run.
+ *  - Set-points on rewind. rewindTo() re-applies the controls of the frame (frame.sim.controls) to
+ *    the model, for the 0D models and for the 1.5D model alike (whose restoreInternal() leaves the
+ *    set-points alone): after a rewind the controls are those in force at the frame, not the latest
+ *    ones, and the actuator log keeps exactly the entries before the frame.
+ *  - Frame times. Each recorded frame is later than the one before, except that a shot ended by a
+ *    step that made no progress in time (a model's own stepper giving up: 'Numerical failure') gets
+ *    its terminal frame at the time of the last frame, with the same state; it carries the
+ *    termination (see HistoryFrame).
  */
 import { DormandPrince } from './integrator';
 import { ActuatorEntry, HistoryFrame, MagneticConfig, ReactorConfig, ShotReport, SimCheckpoint, SimEvent, SimModel, TerminationInfo } from './types';
@@ -33,7 +41,7 @@ import { FRCModel } from './confinement/frc';
 import { MirrorModel } from './confinement/mirror';
 import { MuonModel } from './confinement/muon';
 import { ProfileModel, supportsProfiles } from './profiles/model';
-import { UnknownMethodError } from './kernel/errors';
+import { ModelContractError, UnknownMethodError } from './kernel/errors';
 import { runFingerprint } from './kernel/fingerprint';
 
 /** Builds the model of a configuration; throws UnknownMethodError for an unknown method. */
@@ -71,6 +79,8 @@ export interface SimulationOptions {
    * runFingerprint); times outside (0, t_end) are ignored.
    */
   breakpoints?: readonly number[];
+  /** Builds the model instead of createModel() (plug-in models, tests of the kernel contract); runFingerprint() does not cover it. */
+  modelFactory?: (cfg: ReactorConfig) => SimModel;
 }
 
 export class Simulation {
@@ -80,7 +90,8 @@ export class Simulation {
   y: Float64Array;
   history: HistoryFrame[] = [];
   events: SimEvent[] = [];
-  private integ: DormandPrince;
+  /** the Dormand–Prince stepper; null for a model with its own step() */
+  private integ: DormandPrince | null;
   private nextOut = 0;
   private nextSync: number;
   private readonly syncDt: number;
@@ -95,9 +106,9 @@ export class Simulation {
 
   constructor(cfg: ReactorConfig, opts: SimulationOptions = {}) {
     this.cfg = cfg;
-    this.model = createModel(cfg);
+    this.model = (opts.modelFactory ?? createModel)(cfg);
     this.y = this.model.initialState();
-    this.integ = new DormandPrince(this.model.nState, (t, y, d) => this.model.rhs(t, y, d), this.model.integratorOpts, this.model.dt0);
+    this.integ = this.makeIntegrator();
     this.syncDt = this.model.tEnd / SYNC_INTERVALS;
     this.nextSync = Math.min(this.t + this.syncDt, this.model.tEnd);
     this.breaks = (opts.breakpoints ?? []).filter((b) => b > 0 && b < this.model.tEnd).sort((a, b) => a - b);
@@ -116,8 +127,8 @@ export class Simulation {
   get done(): boolean {
     return this.model.terminated !== null || this.t >= this.model.tEnd - T_EPS;
   }
-  get dt(): number { return this.model.currentDt ?? this.integ.dt; }
-  get nSteps(): number { return this.model.step ? this.steps : this.integ.nSteps; }
+  get dt(): number { return this.model.currentDt ?? this.integ?.dt ?? this.model.dt0; }
+  get nSteps(): number { return this.integ ? this.integ.nSteps : this.steps; }
   /** Every applyControl() of the current branch of the run, in order (copies). */
   get actuatorLog(): ActuatorEntry[] { return this.log.map((e) => ({ t: e.t, step: e.step, patch: { ...e.patch } })); }
   /** The user breakpoint schedule in force (sorted, inside (0, t_end)). */
@@ -129,12 +140,26 @@ export class Simulation {
     return runFingerprint(this.cfg, seed, this.log, appVersion, this.breaks);
   }
 
+  /**
+   * The Dormand–Prince stepper of a model that integrates dy/dt = rhs(t, y); null for a model with
+   * its own step(), which needs neither rhs() nor integratorOpts.
+   */
+  private makeIntegrator(): DormandPrince | null {
+    const m = this.model;
+    if (m.step) return null;
+    if (!m.rhs || !m.integratorOpts) {
+      throw new ModelContractError(m.method, `it has no step() and lacks ${m.rhs ? 'integratorOpts' : m.integratorOpts ? 'rhs()' : 'rhs() and integratorOpts'}`);
+    }
+    return new DormandPrince(m.nState, (t, y, d) => this.model.rhs!(t, y, d), m.integratorOpts, m.dt0);
+  }
+
   private checkpoint(): SimCheckpoint {
     const cp: SimCheckpoint = {
       steps: this.steps, nextOut: this.nextOut, nextSync: this.nextSync, nextBreak: this.breakIdx,
-      nEvents: this.events.length, integ: this.integ.snapshot(), controls: this.model.getControls(),
+      nEvents: this.events.length, controls: this.model.getControls(),
       terminated: this.model.terminated ? { ...this.model.terminated } : null,
     };
+    if (this.integ) cp.integ = this.integ.snapshot();
     if (this.model.saveCheckpoint) cp.model = this.model.saveCheckpoint();
     return cp;
   }
@@ -163,7 +188,7 @@ export class Simulation {
     const t0 = this.t;
     const tBreak = this.breakIdx < this.breaks.length ? this.breaks[this.breakIdx] : Infinity;
     const tMax = Math.min(this.nextSync, this.nextOut, tBreak);
-    this.t = this.model.step ? this.model.step(t0, this.y, tMax) : this.integ.step(t0, this.y, tMax);
+    this.t = this.integ ? this.integ.step(t0, this.y, tMax) : this.model.step!(t0, this.y, tMax);
     this.steps++;
     const ev = this.model.postStep(this.t, this.t - t0, this.y);
     if (ev.length) this.events.push(...ev);
@@ -236,7 +261,7 @@ export class Simulation {
       // restoreInternal() cleared it; SimModel.terminated is writable for the kernel (see types.ts)
       (this.model as { terminated: TerminationInfo | null }).terminated = cp.terminated ? { ...cp.terminated } : null;
       this.model.applyControl(cp.controls);
-      this.integ.restore(cp.integ);
+      if (cp.integ) this.integ?.restore(cp.integ);
       this.steps = cp.steps;
       this.nextOut = cp.nextOut;
       this.nextSync = cp.nextSync;
@@ -245,7 +270,7 @@ export class Simulation {
     } else {
       // a frame without a checkpoint (recorded by an older version): best effort, as before v4
       this.events = this.events.filter((e) => e.t <= f.t);
-      this.integ = new DormandPrince(this.model.nState, (t, y, d) => this.model.rhs(t, y, d), this.model.integratorOpts, this.model.dt0);
+      this.integ = this.makeIntegrator();
       this.nextOut = this.t + this.model.outputDt;
       this.nextSync = Math.min(this.t + this.syncDt, this.model.tEnd);
       this.breakIdx = this.breaks.findIndex((b) => b > this.t + T_EPS);

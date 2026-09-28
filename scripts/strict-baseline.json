@@ -1,14 +1,14 @@
 {
   "comment": "Per-file error counts of `tsc -p tsconfig.strict.json`. Written by `npm run typecheck:strict -- --update`; a file may only go down.",
   "typescript": "5.9.3",
-  "total": 51,
+  "total": 49,
   "files": {
     "src/App.tsx": 1,
     "src/physics/analysis/flatTop.test.ts": 2,
     "src/physics/confinement/common.ts": 1,
     "src/physics/confinement/frc.ts": 2,
     "src/physics/confinement/icf.ts": 3,
-    "src/physics/confinement/magnetic.ts": 4,
+    "src/physics/confinement/magnetic.ts": 2,
     "src/physics/confinement/mirror.ts": 2,
     "src/physics/confinement/mtf.ts": 5,
     "src/physics/equilibrium/miller.ts": 1,

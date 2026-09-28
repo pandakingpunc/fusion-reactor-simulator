@@ -11,6 +11,7 @@
     "validate": "tsx src/cli/validate.cli.ts",
     "golden": "tsx src/cli/golden.cli.ts",
     "golden:update": "tsx src/cli/golden.cli.ts --update",
+    "ci:local": "node scripts/ci-local.mjs",
     "figures": "tsx src/cli/figures.cli.ts"
   },
   "dependencies": {

@@ -33,14 +33,23 @@ export function tauITER89P(g: Geometry, Ip_MA: number, B: number, n: number, P_W
 
 /**
  * ISS04 stellarator ölçeklemesi — Yamada et al., Nucl. Fusion 45 (2005) 1684:
- *  τ_E = 0.134 · a^2.28 · R^0.64 · P^-0.61 · n19^0.54 · B^0.84 · ι_{2/3}^0.41
- *  f_ren: konfigürasyon renormalizasyon faktörü (W7-X ~0.7–1.0, LHD ~0.9)
+ *  τ_E = H_ISS04 · 0.134 · a^2.28 · R^0.64 · P^-0.61 · n19^0.54 · B^0.84 · ι_{2/3}^0.41
+ *  H_ISS04: konfigürasyona özgü renormalizasyon (ISS04'teki f_ren; W7-X ~0.7–1.0, LHD ~0.9)
  */
-export function tauISS04(g: Geometry, B: number, n: number, P_W: number, iota23: number, f_ren: number): number {
+export function tauISS04(g: Geometry, B: number, n: number, P_W: number, iota23: number, H_ISS04: number): number {
   const P_MW = Math.max(P_W / 1e6, 0.1);
   const n19 = Math.max(n / 1e19, 0.01);
-  return f_ren * 0.134 * Math.pow(g.a, 2.28) * Math.pow(g.R, 0.64) * Math.pow(P_MW, -0.61) *
+  return H_ISS04 * 0.134 * Math.pow(g.a, 2.28) * Math.pow(g.R, 0.64) * Math.pow(P_MW, -0.61) *
     Math.pow(n19, 0.54) * Math.pow(B, 0.84) * Math.pow(iota23, 0.41);
+}
+
+/**
+ * Stellaratorun ISS04'e göre hapsetme çarpanı: τ_E = H_ISS04 · τ_ISS04 (tek çarpan; tokamak H98'i
+ * stellaratora uygulanmaz). stellarator.H_ISS04 verilmemişse eski yapılandırmalar aynı sonucu
+ * verir: H_ISS04 = f_ren · H98 (f_ren: kullanımdan kalkmış eş ad).
+ */
+export function stellaratorHISS04(st: { f_ren: number; H_ISS04?: number }, H98: number): number {
+  return st.H_ISS04 ?? st.f_ren * H98;
 }
 
 /**

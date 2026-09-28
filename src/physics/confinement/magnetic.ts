@@ -24,7 +24,7 @@
 import { Geometry, plasmaVolume, plasmaSurface, crossSectionArea, q95ForMethod, profileIntegral, profileIntegralSplit } from '../geometry';
 import { FUEL_CHANNELS, FUEL_SPECIES, beamTargetReactivity, beamTargetDensity, burnPerReaction, pairDensity } from '../reactivity';
 import { bremsstrahlung, synchrotronTotal, coolingRate, meanCharge, RHO_CORE } from '../radiation';
-import { tauIPB98y2, tauITER89P, tauISS04, tauSTValovic, pLH_threshold, equilibrationRate } from '../transport';
+import { tauIPB98y2, tauITER89P, tauISS04, tauSTValovic, pLH_threshold, equilibrationRate, stellaratorHISS04 } from '../transport';
 import { resistivity, ohmicPower, criticalEnergy, ionHeatingFraction, slowingDownTime, nbiShineThrough, fastIonEnergyTime, fastPoolMix, FastSpecies } from '../heating';
 import { greenwaldDensity, betaToroidal, betaNormalized, betaPoloidal, lineAverageFactor } from '../limits';
 import { disruptionReport, DisruptionCause, DISRUPTION_LABELS, DISRUPTION_FIXES } from '../disruption';
@@ -161,9 +161,11 @@ export class MagneticModel implements SimModel {
     this.tEnd = cfg.t_end;
     this.outputDt = Math.max(cfg.t_end / 1500, 0.002);
     this.Ip0 = this.isStell ? 0 : cfg.Ip_MA * 1e6;
+    // canlı hapsetme çarpanı: tokamak → H98 (IPB98/ST), stellarator → H_ISS04 (ISS04)
+    const conf: Record<string, number> = this.isStell ? { H_ISS04: stellaratorHISS04(cfg.stellarator, cfg.H98) } : { H98: cfg.H98 };
     this.ctrl = {
       P_NBI_MW: cfg.heating.P_NBI_MW, P_ICRH_MW: cfg.heating.P_ICRH_MW, P_ECRH_MW: cfg.heating.P_ECRH_MW,
-      n_target_1e20: cfg.n_target / 1e20, H98: cfg.H98, cZ: cfg.impurity.concentration,
+      n_target_1e20: cfg.n_target / 1e20, ...conf, cZ: cfg.impurity.concentration,
       fuelRate_1e20s: cfg.fueling.maxRate_1e20s,
     };
     const atol = new Float64Array(NSTATE);
@@ -318,7 +320,7 @@ export class MagneticModel implements SimModel {
 
   private tauE(ne: number, P_loss: number, hmode: boolean): number {
     const c = this.cfg;
-    if (this.isStell) return tauISS04(this.g, c.B0, ne, P_loss, c.stellarator.iota23, c.stellarator.f_ren) * this.ctrl.H98;
+    if (this.isStell) return tauISS04(this.g, c.B0, ne, P_loss, c.stellarator.iota23, this.ctrl.H_ISS04);
     const Ip = Math.max(this.Ip0 / 1e6, 0.05);
     if (hmode) {
       const base = c.scaling === 'ST_Valovic' ? tauSTValovic(this.g, Ip, c.B0, ne, P_loss, this.M) : tauIPB98y2(this.g, Ip, c.B0, ne, P_loss, this.M);

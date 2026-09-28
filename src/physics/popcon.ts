@@ -14,7 +14,7 @@
  */
 import { MagneticConfig } from './types';
 import { plasmaSurface, plasmaVolume, profileIntegral, profileIntegralSplit } from './geometry';
-import { tauIPB98y2, tauISS04, tauSTValovic, pLH_threshold } from './transport';
+import { tauIPB98y2, tauISS04, tauSTValovic, pLH_threshold, stellaratorHISS04 } from './transport';
 import { FUEL_CHANNELS, FUEL_SPECIES, pairDensity } from './reactivity';
 import { bremsstrahlung, coolingRate, meanCharge, synchrotronTotal, RHO_CORE } from './radiation';
 import { greenwaldDensity, betaToroidal, betaNormalized, lineAverageFactor } from './limits';
@@ -55,7 +55,7 @@ export function computePopcon(cfg: MagneticConfig, o: { nx?: number; ny?: number
   const cs = im.seedConcentration ?? 0;
   const Wprof = ((1 + aN) * (1 + aT)) / (1 + aN + aT); // ⟨nT⟩ = Wprof·⟨n⟩⟨T⟩
   const tauOf = (ne: number, P: number) => stell
-    ? tauISS04(g, cfg.B0, ne, P, cfg.stellarator.iota23, cfg.stellarator.f_ren) * cfg.H98
+    ? tauISS04(g, cfg.B0, ne, P, cfg.stellarator.iota23, stellaratorHISS04(cfg.stellarator, cfg.H98))
     : (cfg.scaling === 'ST_Valovic' ? tauSTValovic : tauIPB98y2)(g, cfg.Ip_MA, cfg.B0, ne, P, M) * cfg.H98;
 
   const Paux = new Float64Array(NX * NY), Pfus = new Float64Array(NX * NY), Q = new Float64Array(NX * NY);

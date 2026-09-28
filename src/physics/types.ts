@@ -119,7 +119,13 @@ export interface MagneticConfig {
   };
   H98: number; H89: number;
   scaling: 'IPB98y2' | 'ST_Valovic';
-  stellarator: { iota23: number; f_ren: number };
+  stellarator: {
+    iota23: number;
+    /** @deprecated eş ad: H_ISS04 verilmezse τ_E = f_ren · H98 · τ_ISS04 (eski davranış) */
+    f_ren: number;
+    /** ISS04'e göre hapsetme çarpanı: τ_E = H_ISS04 · τ_ISS04 (verilirse f_ren ve H98 kullanılmaz) */
+    H_ISS04?: number;
+  };
   limits: { betaN_limit: number; greenwald_limit: number; q95_limit: number; W_conc_limit: number };
   transport: { tau_p_over_tau_E: number; tau_He_over_tau_E: number; alpha_n: number; alpha_T: number };
   events: { elms: boolean; sawteeth: boolean; ntm: boolean };

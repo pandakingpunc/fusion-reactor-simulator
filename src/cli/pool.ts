@@ -4,7 +4,8 @@
  * görev sırasıyla döner. tsx altında işçiler ana sürecin execArgv'sini (TS yükleyicisi) miras alır.
  *
  * Failure handling: an invalid thread count throws {@link PoolConfigError} before any worker is
- * started. If a worker raises an uncaught error, fails to deserialize a message, or exits while it
+ * started. If a task cannot be sent to a worker (e.g. it holds a function, which structured clone
+ * rejects), or a worker raises an uncaught error, fails to deserialize a message, or exits while it
  * still owns a task (whatever the exit code), the pool rejects with a {@link PoolTaskError} naming that task (index and,
  * when the task has a string `id`, its id) and terminates the remaining workers — it never hangs.
  */
@@ -23,7 +24,7 @@ export class PoolConfigError extends Error {
   }
 }
 
-/** A task could not be completed because its worker crashed, exited or sent an unreadable message. */
+/** A task could not be completed: it could not be sent, or its worker crashed, exited or sent an unreadable message. */
 export class PoolTaskError extends Error {
   constructor(
     message: string,
@@ -79,7 +80,13 @@ export async function runPool<T, R>(tasks: T[], workerUrl: URL, threads = defaul
         if (settled) return;
         if (next >= tasks.length) { current = -1; return; }
         current = next++;
-        w.postMessage(tasks[current]);
+        try {
+          w.postMessage(tasks[current]);
+        } catch (e) {
+          // e.g. a DataCloneError for a task holding a function; fail() also stops the started workers
+          const { label, id } = describeTask(tasks[current], current);
+          fail(new PoolTaskError(`worker pool: could not send ${label} to a worker (${e instanceof Error ? e.message : String(e)})`, current, id, undefined, { cause: e }));
+        }
       };
       /** fails the pool on behalf of the task this worker owns; an idle worker owns none and is ignored */
       const taskFailure = (what: string, exitCode?: number, cause?: unknown) => {

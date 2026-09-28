@@ -55,6 +55,22 @@ describe('worker pool', () => {
     }
   });
 
+  it('a task that cannot be sent (not structured-cloneable) rejects with that task, first round or later', async () => {
+    const fnTask = { id: 'fn', action: 'double', v: 1, cb: () => 1 } as Task;
+    // first round: postMessage throws inside the promise executor, right after the worker started
+    const first = await rejection(runPool<Task, Res>([fnTask, ...doubles(2)], FIXTURE, 1));
+    expect(first).toBeInstanceOf(PoolTaskError);
+    expect((first as PoolTaskError).taskIndex).toBe(0);
+    expect((first as PoolTaskError).taskId).toBe('fn');
+    expect((first as Error).message).toMatch(/could not send task #0 \(fn\) to a worker \(.*could not be cloned/);
+    expect((first as Error).cause).toBeInstanceOf(Error);
+    // later round: postMessage throws inside the worker's 'message' handler
+    const later = await rejection(runPool<Task, Res>([...doubles(2), fnTask], FIXTURE, 1));
+    expect(later).toBeInstanceOf(PoolTaskError);
+    expect((later as PoolTaskError).taskIndex).toBe(2);
+    expect((later as Error).message).toMatch(/could not send task #2 \(fn\) to a worker/);
+  });
+
   it('a worker that fails to load rejects', async () => {
     const e = await rejection(runPool<Task, Res>(doubles(3), BROKEN, 2));
     expect(e).toBeInstanceOf(PoolTaskError);

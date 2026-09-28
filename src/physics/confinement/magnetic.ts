@@ -38,6 +38,8 @@ import { DiagSpec, HistoryFrame, MagneticConfig, ShotReport, SimEvent, SimModel,
 
 const IDX = { We: 0, Wi: 1, na: 2, nb: 3, nHe: 4, nZ: 5, Wa: 6, Ip: 7, Efus: 8, Ein: 9, Nn: 10, NTburn: 11, NTfuel: 12, Sfuel: 13, Wb: 14, dWs: 15 } as const;
 const NSTATE = 16;
+/** upper bound of the temperatures at which the rates are evaluated [keV] (see temps()) */
+const T_EVAL_MAX_KEV = 1e4;
 
 export { LAWSON_DT };
 
@@ -203,15 +205,23 @@ export class MagneticModel implements SimModel {
   private ni(y: Float64Array, ne = 0): number {
     return y[IDX.na] + y[IDX.nb] + y[IDX.nHe] + y[IDX.nZ] + this.seedC() * ne;
   }
+  /**
+   * Volume-averaged temperatures and densities of a state, with T bounded to [0.01, T_EVAL_MAX_KEV].
+   * The upper bound never binds on an accepted state; it keeps the rates finite on the trial stages
+   * of a stiff step (e.g. the first step into a thermal quench, where a stage can reach W ~ 1e100 J
+   * and P_sync ∝ T^2 overflows), so that the step-size control rejects the step instead of meeting a
+   * non-finite error norm.
+   */
   private temps(y: Float64Array): { Te: number; Ti: number; ne: number; ni: number } {
-    // ne, Te'ye zayıf bağlı (<Z>(Te)); bir iterasyon yeterli
+    const T = (W: number, n: number) => Math.min(Math.max(U.J_to_keV(W / (1.5 * n * this.V)), 0.01), T_EVAL_MAX_KEV);
+    // n_e depends weakly on T_e (<Z>(T_e)); one iteration is enough
     let Te = 1;
     let ne = this.ne(y, Te);
-    Te = Math.max(U.J_to_keV(y[IDX.We] / (1.5 * ne * this.V)), 0.01);
+    Te = T(y[IDX.We], ne);
     ne = this.ne(y, Te);
-    Te = Math.max(U.J_to_keV(y[IDX.We] / (1.5 * ne * this.V)), 0.01);
+    Te = T(y[IDX.We], ne);
     const ni = Math.max(this.ni(y, ne), 1e15);
-    const Ti = Math.max(U.J_to_keV(y[IDX.Wi] / (1.5 * ni * this.V)), 0.01);
+    const Ti = T(y[IDX.Wi], ni);
     return { Te, Ti, ne, ni };
   }
   /**

@@ -181,15 +181,30 @@ describe('sawtooth crashes', () => {
     expect(st.s.w21).toBe(0);
   });
 
-  it('seeds 3/2 and 2/1 NTM islands at high β_N', () => {
+  it('seeds 3/2 and 2/1 NTM islands at high thermal β_N', () => {
     const { ctx, st, d0 } = shot();
     peaked(st, ctx);
     setQ(ctx, st, qMono);
     composition(ctx, st.Te, st.ne, st.s);
     const lim = ctx.cfg.limits.betaN_limit, wd = 0.012 * (ctx.tg.a / 2);
-    expect(after(new SawtoothEvents(), ctx, 2, st, { ...d0, betaN: 0.8 * lim })).toHaveLength(1);
+    expect(after(new SawtoothEvents(), ctx, 2, st, { ...d0, betaN: 0.8 * lim, betaN_th: 0.8 * lim })).toHaveLength(1);
     expect(st.s.w32).toBeCloseTo(2.5 * wd, 15);
     expect(st.s.w21).toBeCloseTo(2 * wd, 15);
+  });
+
+  it('the seed follows the thermal β_N: fast-ion pressure alone (total β_N high, thermal low) seeds nothing, and the marginal levels are those of the thermal β_N', () => {
+    const lim = shot().ctx.cfg.limits.betaN_limit;
+    const seeded = (betaN: number, betaN_th: number) => {
+      const { ctx, st, d0 } = shot();
+      peaked(st, ctx);
+      setQ(ctx, st, qMono);
+      composition(ctx, st.Te, st.ne, st.s);
+      after(new SawtoothEvents(), ctx, 2, st, { ...d0, betaN, betaN_th });
+      return [st.s.w32 > 0, st.s.w21 > 0];
+    };
+    expect(seeded(0.9 * lim, 0.3 * lim)).toEqual([false, false]);
+    expect(seeded(0.9 * lim, 0.6 * lim)).toEqual([true, false]); // 3/2 above 0.5 β_lim, 2/1 above 0.75 β_lim
+    expect(seeded(0.9 * lim, 0.8 * lim)).toEqual([true, true]);
   });
 
   it('needs sawteeth enabled, q(0) < 1 with enough shear at q = 1, and 50 ms since the last crash (checkpointed)', () => {

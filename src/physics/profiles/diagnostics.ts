@@ -29,7 +29,8 @@ export const PROFILE_DIAGS: DiagSpec[] = [
   { key: 'nG_frac', label: 'n̄/n_Greenwald', unit: '', group: 'Density' },
   { key: 'fHe', label: 'He ash fraction', unit: '', group: 'Density' },
   { key: 'P_fus', label: 'P_fusion', unit: 'MW', group: 'Power' },
-  { key: 'P_alpha', label: 'P_alpha (deposited)', unit: 'MW', group: 'Power' },
+  { key: 'P_alpha', label: 'P_alpha (charged fusion products, deposited)', unit: 'MW', group: 'Power' },
+  { key: 'P_beam_heat', label: 'P_beam (NBI ions, deposited)', unit: 'MW', group: 'Power' },
   { key: 'P_bt', label: 'P_fusion beam-target', unit: 'MW', group: 'Power' },
   { key: 'P_aux', label: 'P_auxiliary', unit: 'MW', group: 'Power' },
   { key: 'P_oh', label: 'P_ohmic', unit: 'MW', group: 'Power' },
@@ -63,6 +64,7 @@ export const PROFILE_DIAGS: DiagSpec[] = [
   { key: 'V_loop', label: 'Loop voltage', unit: 'V', group: 'Current' },
   { key: 'Ip', label: 'I_p', unit: 'MA', group: 'Current' },
   { key: 'W', label: 'W_plasma', unit: 'MJ', group: 'Energy' },
+  { key: 'Wf', label: 'W_fast ions (α + beam)', unit: 'MJ', group: 'Energy' },
   { key: 'dWdt_s', label: 'dW/dt (smoothed, with ELM losses)', unit: 'MW', group: 'Energy' },
   { key: 'Zeff', label: 'Z_eff', unit: '', group: 'Impurities' },
   { key: 'cZ', label: 'c_Z (n_Z/n_e)', unit: '', group: 'Impurities', log: true },
@@ -78,6 +80,8 @@ export interface PowerTotals {
   P_fus: number; P_chg: number; P_neut: number; P_bt: number;
   /** absorbed auxiliary heating (NBI + ICRH + ECRH) */
   P_aux_abs: number;
+  /** absorbed NBI heating (part of P_aux_abs) */
+  P_beam: number;
   P_oh: number;
   /** alpha (charged-product) heating, = P_chg */
   P_alpha: number;
@@ -86,6 +90,8 @@ export interface PowerTotals {
   P_rad_core: number;
   /** P_aux_abs + P_oh + P_alpha */
   P_heat: number;
+  /** energy content of the fast charged fusion products and of the NBI fast ions [J] */
+  W_alpha: number; W_beam: number;
 }
 
 /** Global quantities a diagnostics frame is written from */
@@ -107,7 +113,8 @@ export function powerTotals(ctx: ProfileContext, K: StepConstants): PowerTotals 
   const w = ctx.w, g = ctx.tg;
   const I = (a: Float64Array) => volumeIntegral(g, a);
   const P_fus = I(w.Pfus), P_chg = I(w.Pchg), P_neut = I(w.Pneut), P_bt = I(w.Pbt);
-  const P_aux_abs = I(w.PnbiE) + I(w.PnbiI) + I(w.PicE) + I(w.PicI) + I(w.PecE);
+  const P_beam = I(w.PnbiE) + I(w.PnbiI);
+  const P_aux_abs = P_beam + I(w.PicE) + I(w.PicI) + I(w.PecE);
   const P_oh = I(w.Poh), P_alpha = P_chg;
   const P_brems = I(w.Pbr), P_line = I(w.Pline), P_sync = K.Psync, P_rad = P_brems + P_line + P_sync;
   // core radiation: bremsstrahlung and line radiation inside ρ < RHO_CORE (the cell that straddles it
@@ -116,7 +123,7 @@ export function powerTotals(ctx: ProfileContext, K: StepConstants): PowerTotals 
   for (let i = 0; i < g.N; i++) core += Math.min(1, Math.max(0, (RHO_CORE - g.rhoF[i]) / g.dRho)) * (w.Pbr[i] + w.Pline[i]) * g.dV[i];
   const P_rad_core = core + P_sync;
   const P_heat = P_aux_abs + P_oh + P_alpha;
-  return { P_fus, P_chg, P_neut, P_bt, P_aux_abs, P_oh, P_alpha, P_brems, P_line, P_sync, P_rad, P_rad_core, P_heat };
+  return { P_fus, P_chg, P_neut, P_bt, P_aux_abs, P_beam, P_oh, P_alpha, P_brems, P_line, P_sync, P_rad, P_rad_core, P_heat, W_alpha: I(w.Walpha), W_beam: I(w.Wbeam) };
 }
 
 /**
@@ -132,9 +139,16 @@ export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: Globa
   let TeA = 0, TiA = 0;
   for (let i = 0; i < N; i++) { TeA += v.Te[i] * v.ne[i] * g.dV[i]; TiA += v.Ti[i] * w.ni[i] * g.dV[i]; }
   TeA /= Math.max(volumeIntegral(g, v.ne), 1); TiA /= Math.max(volumeIntegral(g, w.ni), 1);
+  // pressure: thermal ⟨n_e T_e + n_i T_i⟩ = (2/3) W/V, plus the fast ions (2/3) (W_α + W_beam)/V (isotropic;
+  // APPROXIMATION: the anisotropy of the beam ions is neglected, as in the 0D model). β_T and β_N are
+  // total; β_N,th (the drive of the NTMs is the bootstrap current of the thermal pressure gradient)
+  // and β_p (the equilibrium's pressure table is thermal) are thermal.
   const pAvg = X.W / (1.5 * g.volume);
-  const betaT = (2 * MU0 * pAvg) / (g.B0 * g.B0);
+  const Wfast = X.W_alpha + X.W_beam;
+  const betaThermal = (2 * MU0 * pAvg) / (g.B0 * g.B0);
+  const betaT = betaThermal + (2 * MU0 * ((2 / 3) * Wfast / g.volume)) / (g.B0 * g.B0);
   const betaN = (betaT * 100 * g.a * g.B0) / Math.max(Ip_MA, 0.01);
+  const betaN_th = (betaThermal * 100 * g.a * g.B0) / Math.max(Ip_MA, 0.01);
   const Bpa = (MU0 * Ip) / g.perimeter;
   const betaP = (2 * MU0 * pAvg) / (Bpa * Bpa);
   // ℓ_i(3) = 2∫B_p² dV/(μ0² I_p² R0), B_p² ≈ g2 ψ'²
@@ -164,13 +178,13 @@ export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: Globa
   ctx.lastDiag = {
     Ti: TiA, Te: TeA, Ti0: v.Ti[0], Te0: v.Te[0], Tped: v.Te[iPed], Tsep: ctx.bc.Te,
     ne: neAvg / 1e20, nbar: X.nbar / 1e20, ne0: v.ne[0] / 1e20, nG_frac: X.nbar / nG, fHe: s.NHe / Math.max(Ne, 1),
-    P_fus: X.P_fus / 1e6, P_alpha: X.P_alpha / 1e6, P_bt: X.P_bt / 1e6, P_aux: (K.P_NBI + K.P_IC + K.P_EC) / 1e6, P_oh: X.P_oh / 1e6,
+    P_fus: X.P_fus / 1e6, P_alpha: X.P_alpha / 1e6, P_beam_heat: X.P_beam / 1e6, P_bt: X.P_bt / 1e6, P_aux: (K.P_NBI + K.P_IC + K.P_EC) / 1e6, P_oh: X.P_oh / 1e6,
     P_cond: X.W / X.tauE / 1e6, P_SOL: ctx.PSOL / 1e6, P_brems: X.P_brems / 1e6, P_sync: X.P_sync / 1e6, P_line: X.P_line / 1e6, P_rad: X.P_rad / 1e6, P_rad_core: X.P_rad_core / 1e6,
     Q, triple, lawson: triple / LAWSON_DT, tauE: X.tauE, tauE_scal: X.tauScal, H_mode: ctx.hmode ? 1 : 0, P_LH: P_LH / 1e6, chi_mult: s.Cchi,
-    betaN, betaT: betaT * 100, betaP, q95: q95v, q0: w.qF[0], qmin, li, rho_q1: rho1, alpha_ped: aMax / aCrit,
+    betaN, betaN_th, betaT: betaT * 100, betaP, q95: q95v, q0: w.qF[0], qmin, li, rho_q1: rho1, alpha_ped: aMax / aCrit,
     w32: s.w32 / g.a, w21: s.w21 / g.a, NTM: s.w32 > 0.01 * g.a || s.w21 > 0.01 * g.a ? 1 : 0,
     f_bs: Ibs / Math.max(Ip, 1), f_cd: Icd / Math.max(Ip, 1), V_loop: Vloop, Ip: Ip_MA,
-    W: X.W / 1e6, Wf: 0, ignited: ctx.ignited ? 1 : 0, Zeff: ctx.volAvg(w.Zeff), cZ: s.cZ, S_fuel: s.Sfuel / 1e20,
+    W: X.W / 1e6, Wf: Wfast / 1e6, W_alpha: X.W_alpha / 1e6, W_beam: X.W_beam / 1e6, ignited: ctx.ignited ? 1 : 0, Zeff: ctx.volAvg(w.Zeff), cZ: s.cZ, S_fuel: s.Sfuel / 1e20,
     burnFrac: s.NTfuel > 0 ? s.NTburn / s.NTfuel : 0, fuelFracA: s.fA,
     q_div: qdiv, n_wall: nw, P_heat: X.P_heat / 1e6, P_charged: X.P_chg / 1e6, P_neutron: X.P_neut / 1e6,
     Efus_MJ: s.Efus / 1e6, Ein_MJ: s.Ein / 1e6, Nn: s.Nn, P_loss: X.P_loss / 1e6, dWdt: X.dWdt / 1e6, dWdt_s: ctx.dWdtS / 1e6, P_bound: X.P_bound / 1e6,
@@ -225,7 +239,7 @@ export function quenchDiagnostics(ctx: ProfileContext, st: ProfileState): void {
   const W = ctx.storedEnergy(st);
   Object.assign(ctx.lastDiag, {
     W: W / 1e6, Te: ctx.volAvg(st.Te), Ti: ctx.volAvg(st.Ti), Te0: st.Te[0], Ti0: st.Ti[0], Ip: st.s.Ip / 1e6,
-    P_fus: 0, P_alpha: 0, P_aux: 0, P_heat: 0, Q: 0, P_bt: 0, P_neutron: 0, P_charged: 0,
+    P_fus: 0, P_alpha: 0, P_beam_heat: 0, P_aux: 0, P_heat: 0, Q: 0, P_bt: 0, P_neutron: 0, P_charged: 0, Wf: 0, W_alpha: 0, W_beam: 0,
   });
 }
 

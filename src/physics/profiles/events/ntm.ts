@@ -6,8 +6,10 @@
  *    mreRate) with a_bs = 1, which saturates at w/a ≈ 0.05–0.1 (the experimental range of JET and
  *    DIII-D 3/2 NTMs), integrated with 20 explicit substeps per transport step; islands below
  *    0.2 w_d are dropped, widths capped at 0.4 a.
- *  - Seed: a sawtooth crash seeds w = 2.5 w_d (3/2, if β_N > 0.5 β_N,lim) and 2 w_d (2/1, if
- *    β_N > 0.75 β_N,lim), w_d = 0.012 a/2.
+ *  - Seed: a sawtooth crash seeds w = 2.5 w_d (3/2, if β_N,th > 0.5 β_N,lim) and 2 w_d (2/1, if
+ *    β_N,th > 0.75 β_N,lim), w_d = 0.012 a/2. The drive is the bootstrap current of the THERMAL
+ *    pressure gradient, so the thermal β_N (fast ions carry no bootstrap current) is compared with
+ *    the Troyon limit, which is a limit on the total β_N (as in the 0D model).
  *  - Effects: χ_e and χ_i + 5 m²/s across the island (flattening, transport/coefficients.ts), and
  *    the belt-model confinement degradation ΔW/W ≈ −4 Σ ρ_s² w/a (control/confinement.ts).
  *  - Events: onset above w/a = 0.02 and decay; a 2/1 island above w/a = 0.1 locks
@@ -79,8 +81,8 @@ export function evolveIslands(ctx: ProfileContext, dt: number, o: ProfileState, 
 export function seedIslands(ctx: ProfileContext, st: ProfileState, d: Readonly<Record<string, number>>): void {
   const c = ctx.cfg, g = ctx.tg, w = ctx.w, s = st.s;
   const wd = 0.012 * (g.a / 2);
-  if (rhoOfQ(g, w.qF, 1.5) > 0 && s.w32 < 2.5 * wd && d.betaN > 0.5 * c.limits.betaN_limit) s.w32 = 2.5 * wd;
-  if (rhoOfQ(g, w.qF, 2) > 0 && s.w21 < 2 * wd && d.betaN > 0.75 * c.limits.betaN_limit) s.w21 = 2 * wd;
+  if (rhoOfQ(g, w.qF, 1.5) > 0 && s.w32 < 2.5 * wd && d.betaN_th > 0.5 * c.limits.betaN_limit) s.w32 = 2.5 * wd;
+  if (rhoOfQ(g, w.qF, 2) > 0 && s.w21 < 2 * wd && d.betaN_th > 0.75 * c.limits.betaN_limit) s.w21 = 2 * wd;
 }
 
 /** Onset and decay events of the islands */
@@ -94,7 +96,7 @@ export class NtmEvents implements EventModel {
     for (const [key, name] of [['w32', '3/2'], ['w21', '2/1']] as const) {
       const on = s[key] > 0.02 * g.a;
       const flag = key === 'w32' ? this.on32 : this.on21;
-      if (on && !flag) ev.push({ t, kind: 'NTM_onset', msg: `NTM ${name} island grew to w/a = ${(s[key] / g.a).toFixed(3)} (β_N = ${d.betaN.toFixed(2)}) — local profile flattening, τ_E degrading` });
+      if (on && !flag) ev.push({ t, kind: 'NTM_onset', msg: `NTM ${name} island grew to w/a = ${(s[key] / g.a).toFixed(3)} (thermal β_N = ${d.betaN_th.toFixed(2)}) — local profile flattening, τ_E degrading` });
       if (!on && flag) ev.push({ t, kind: 'NTM_gone', msg: `NTM ${name} island decayed` });
       if (key === 'w32') this.on32 = on; else this.on21 = on;
     }

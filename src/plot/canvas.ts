@@ -2,7 +2,8 @@
  * Görüntü listesi (display list): Figure/Axes çizimlerini arka uçtan bağımsız ilkellere çevirir.
  * Koordinatlar punto (1/72 inç), orijin sol-üst (y aşağı) — SVG kuralı; PDF arka ucu y'yi çevirir.
  */
-import { Run } from './mathtext';
+import type { Run } from './mathtext';
+import type { FontMetrics, FontSet } from './fonts';
 
 export type RGB = [number, number, number];
 
@@ -27,7 +28,8 @@ export type Prim =
 
 export class DisplayList {
   readonly prims: Prim[] = [];
-  constructor(readonly width: number, readonly height: number) {}
+  /** fonts used for text layout; the back ends render text with the same metrics (and the PDF embeds them) */
+  constructor(readonly width: number, readonly height: number, readonly fonts: FontSet) {}
   path(d: PathCmd[], s: Style): void { if (d.length) this.prims.push({ t: 'path', d, s }); }
   polyline(xs: ArrayLike<number>, ys: ArrayLike<number>, s: Style, closed = false): void {
     const d: PathCmd[] = [];
@@ -72,12 +74,27 @@ export function parseColor(s: string | RGB): RGB {
   return [((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255];
 }
 
-/** Taban çizgisi ofseti (pt, y aşağı pozitif) — metin kutusunu hizalamak için (Times metrikleri) */
-export function baselineOffset(baseline: 'alphabetic' | 'middle' | 'top' | 'bottom', size: number): number {
+/** Baseline offset (pt, y down positive) that aligns a text box: from the STIX Two Text metrics (cap height, ascender, descender) */
+export function baselineOffset(baseline: 'alphabetic' | 'middle' | 'top' | 'bottom', size: number, m: FontMetrics): number {
   switch (baseline) {
-    case 'top': return 0.72 * size;
-    case 'middle': return 0.33 * size;
-    case 'bottom': return -0.22 * size;
+    case 'top': return m.top * size;
+    case 'middle': return m.middle * size;
+    case 'bottom': return m.bottom * size;
     default: return 0;
   }
+}
+
+/** A mathtext run with its horizontal pen position (pt from the text start, after the run's own dx). */
+export interface PlacedRun { run: Run; x: number }
+
+/** Horizontal layout of runs at a base size, from the font metrics: total advance and each run's start. */
+export function layoutRuns(runs: readonly Run[], size: number, fonts: FontSet): { width: number; placed: PlacedRun[] } {
+  let x = 0;
+  const placed: PlacedRun[] = [];
+  for (const r of runs) {
+    x += (r.dx ?? 0) * size;
+    placed.push({ run: r, x });
+    x += r.rule ? r.rule.w * size : fonts.width(r.text, r.font) * size * r.scale;
+  }
+  return { width: x, placed };
 }

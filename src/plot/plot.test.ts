@@ -3,7 +3,7 @@ import { Figure } from './figure';
 import { contourLines } from './contour';
 import { linearTicks, logTicks } from './ticks';
 import { parseMath } from './mathtext';
-import { glyph } from './fonts';
+import { nodeFontSet } from './fontsNode';
 import { texify } from './figures/generic';
 import { computePopcon } from '../physics/popcon';
 import { ITER } from '../physics/presets';
@@ -25,14 +25,16 @@ describe('plot engine', () => {
     expect(lg.labels[0]).toBe('$10^{-3}$');
   });
 
-  it('mathtext: italic variables, roman subscripts, Greek and PDF-safe fallbacks', () => {
+  it('mathtext: italic variables, roman subscripts, Greek and STIX Two Math fallbacks', () => {
     const runs = parseMath('$T_{\\mathrm{e}}$ (keV)');
     expect(runs[0]).toMatchObject({ text: 'T', font: 'italic', scale: 1 });
     expect(runs[1].scale).toBeLessThan(1);
     expect(runs[1].rise).toBeLessThan(0);
-    expect(parseMath('$\\beta_N$')[0].text).toBe('β');
-    expect(glyph('ℓ', 'roman').font).toBe('italic'); // standart-14 yazı tiplerinde ℓ yok
-    expect(glyph('α', 'roman').font).toBe('symbol');
+    expect(parseMath('$\\beta_N$')[0]).toMatchObject({ text: 'β', font: 'italic' }); // TeX: lower-case Greek italic in math
+    const fonts = nodeFontSet();
+    expect(fonts.glyph('ℓ', 'roman').face).toBe('roman'); // STIX Two Text has ℓ
+    expect(fonts.glyph('α', 'italic').face).toBe('italic');
+    expect(fonts.glyph('≈', 'roman').face).toBe('math'); // only in STIX Two Math
   });
 
   it('texify converts UI labels to mathtext', () => {
@@ -45,14 +47,16 @@ describe('plot engine', () => {
     const [ax] = fig.subplots(1, 1);
     const t = Array.from({ length: 50 }, (_, i) => i / 49);
     ax.plot(t, t.map((v) => Math.sin(6 * v)), { label: '$\\sin 6x$' }).set({ xlabel: '$x$', ylabel: '$y$' }).legend();
-    const svg = fig.toSVG();
+    const fonts = nodeFontSet();
+    const svg = fig.toSVG({ fonts });
     expect(svg.startsWith('<?xml')).toBe(true);
     expect(svg).toContain('viewBox="0 0 242.64 172.8"');
     expect(svg).not.toContain('NaN');
-    const pdf = new TextDecoder('latin1').decode(fig.toPDF());
+    const pdf = new TextDecoder('latin1').decode(fig.toPDF({ fonts }));
     expect(pdf.startsWith('%PDF-1.4')).toBe(true);
     expect(pdf.trimEnd().endsWith('%%EOF')).toBe(true);
-    expect(pdf).toContain('/BaseFont /Times-Roman');
+    expect(pdf).toMatch(/\/BaseFont \/[A-Z]{6}\+STIXTwoText-Regular/);
+    expect(pdf).not.toContain('/Times-Roman');
     // xref ofsetleri gerçek nesne konumlarını göstermeli
     const xref = pdf.slice(pdf.lastIndexOf('xref'));
     const offs = [...xref.matchAll(/^(\d{10}) 00000 n/gm)].map((m) => parseInt(m[1], 10));

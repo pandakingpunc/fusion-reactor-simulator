@@ -4,7 +4,7 @@
  * ve L–H eşiği; üzerine 1.5D atışın hacim-ortalamalı yörüngesi.
  */
 import { MagneticConfig } from '../../physics/types';
-import { computePopcon } from '../../physics/popcon';
+import { PopconGrid, computePopcon } from '../../physics/popcon';
 import { Figure } from '../figure';
 import { C, COL1, contourLabel } from './common';
 
@@ -14,12 +14,15 @@ export interface PopconFigInput {
   traj?: { n: number[]; T: number[] };
   label?: string;
   res?: number;
+  /** precomputed grid (e.g. from a worker-pool task); computed here when absent */
+  grid?: PopconGrid;
 }
 
 export function figPopcon(inp: PopconFigInput): Figure {
   const { cfg } = inp;
-  const NX = inp.res ?? 110, NY = inp.res ?? 110, TMAX = 30;
-  const g = computePopcon(cfg, { nx: NX, ny: NY, Tmax: TMAX, nMaxFactor: 1.35, uniformT: true });
+  const TMAX = 30;
+  const g = inp.grid ?? computePopcon(cfg, { nx: inp.res ?? 110, ny: inp.res ?? 110, Tmax: TMAX, nMaxFactor: 1.35, uniformT: true });
+  const NX = g.nx, NY = g.ny;
   const x = g.n.map((v) => v / 1e20), y = g.T;
   // PopconGrid indeksi i·ny + j → satır-öncelikli (j·nx + i)
   const T = (src: ArrayLike<number>, f: (v: number) => number = (v) => v) => {

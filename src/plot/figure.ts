@@ -2,15 +2,16 @@
  * Yayın kalitesinde figür API'si (matplotlib benzeri, bağımlılıksız): Figure → Axes → sanatçılar.
  * Boyutlar inç/punto; varsayılanlar fizik dergisi stili: serif yazı 8 pt, içe dönük çentikler dört
  * kenarda, ince çerçeve, Okabe–Ito renk körü dostu palet. Çıktı: toSVG() / toPDF().
+ * Text is measured with the STIX Two metrics of the FontSet passed to render()/toSVG()/toPDF().
  */
 import { DisplayList, PathCmd, RGB, Style, parseColor } from './canvas';
-import { Run, parseMath, runsWidth } from './mathtext';
+import { Run, parseMath } from './mathtext';
 import { Ticks, linearTicks, logTicks } from './ticks';
 import { OKABE_ITO, colormap } from './colors';
 import { contourLines } from './contour';
-import { toSVG } from './svg';
-import { toPDF } from './pdf';
-import { Deflate } from './png';
+import { SvgOptions, toSVG } from './svg';
+import { PdfOptions, toPDF } from './pdf';
+import type { FontSet } from './fonts';
 
 export type Dash = number[] | 'solid' | 'dashed' | 'dotted' | 'dashdot';
 export type Marker = 'o' | 's' | '^' | 'v' | 'd' | 'x' | '+' | null;
@@ -118,19 +119,14 @@ export class Axes {
   }
   /** Isı haritası: Z (ny×nx) → raster (veri çözünürlüğünde; smooth: görüntüleyici interpolasyonu) */
   image(Z: ArrayLike<number>, nx: number, ny: number, extent: [number, number, number, number], o: { cmap?: string; vmin?: number; vmax?: number; log?: boolean; smooth?: boolean; mask?: (i: number, j: number) => boolean; bg?: string } = {}): Mappable {
-    let vmin = o.vmin ?? Infinity, vmax = o.vmax ?? -Infinity;
-    if (o.vmin === undefined || o.vmax === undefined) for (let k = 0; k < Z.length; k++) {
-      const v = Z[k];
-      if (!Number.isFinite(v) || (o.log && v <= 0)) continue;
-      if (o.vmin === undefined && v < vmin) vmin = v;
-      if (o.vmax === undefined && v > vmax) vmax = v;
-    }
+    const [vmin, vmax] = colorLimits(Z, o.vmin, o.vmax, !!o.log);
     const m: Mappable = { cmap: colormap(o.cmap ?? 'viridis'), vmin, vmax, log: !!o.log };
     const bg = parseColor(o.bg ?? '#ffffff');
     const rgb = new Uint8Array(nx * ny * 3);
     for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
       const v = Z[j * nx + i];
-      const c = !Number.isFinite(v) || (o.mask && !o.mask(i, j)) ? bg : this.mapColor(m, v);
+      // missing data (NaN, ±∞, non-positive on a log scale, masked) shows the background
+      const c = !Number.isFinite(v) || (o.log && v <= 0) || (o.mask && !o.mask(i, j)) ? bg : this.mapColor(m, v);
       const p = ((ny - 1 - j) * nx + i) * 3; // raster üstten aşağı
       rgb[p] = Math.round(c[0] * 255); rgb[p + 1] = Math.round(c[1] * 255); rgb[p + 2] = Math.round(c[2] * 255);
     }
@@ -183,8 +179,10 @@ export class Axes {
       const d = (hi - lo) * m; return [lo - d, hi + d];
     };
     const hasImage = this.artists.some((a) => a.k === 'image');
-    this.xl = o.xlim ?? (this.shareX ? this.shareX.xl : src !== this ? src.xl : pad(xmin, xmax, o.xmargin ?? (hasImage ? 0 : 0.02), o.xscale === 'log'));
-    this.yl = o.ylim ?? pad(ymin, ymax, o.ymargin ?? (hasImage ? 0 : 0.05), o.yscale === 'log');
+    // user limits that cannot be drawn (non-finite, empty, non-positive on a log axis — e.g. from all-NaN data) fall back to the data range
+    const usable = (l: [number, number] | undefined, log: boolean) => (l && Number.isFinite(l[0]) && Number.isFinite(l[1]) && l[0] !== l[1] && (!log || (l[0] > 0 && l[1] > 0)) ? l : undefined);
+    this.xl = usable(o.xlim, o.xscale === 'log') ?? (this.shareX ? this.shareX.xl : src !== this ? src.xl : pad(xmin, xmax, o.xmargin ?? (hasImage ? 0 : 0.02), o.xscale === 'log'));
+    this.yl = usable(o.ylim, o.yscale === 'log') ?? pad(ymin, ymax, o.ymargin ?? (hasImage ? 0 : 0.05), o.yscale === 'log');
     if (o.aspect === 'equal') {
       const dx = this.xl[1] - this.xl[0], dy = this.yl[1] - this.yl[0];
       const s = Math.max(dx / this.w, dy / this.h);
@@ -210,6 +208,8 @@ export class Axes {
   render(dl: DisplayList): void {
     const fs = this.fig.fontSize;
     const o = this.opts;
+    const fonts = dl.fonts;
+    const P = (s: string) => parseMath(s, fonts);
     const lwFrame = 0.6;
     const black: RGB = [0, 0, 0];
     // arka plan artistleri: kesme bölgesi
@@ -250,25 +250,28 @@ export class Axes {
     let maxYLabelW = 0;
     if (!o.hideYLabels) ty.major.forEach((v, k) => {
       if (!inRange(v, this.yl)) return;
-      const runs = parseMath(ty.labels[k]);
-      maxYLabelW = Math.max(maxYLabelW, runsWidth(runs, fs));
+      const runs = P(ty.labels[k]);
+      maxYLabelW = Math.max(maxYLabelW, fonts.runsWidth(runs, fs));
       dl.text(runs, yRight ? this.x0 + this.w + gap : this.x0 - gap, this.Y(v), fs, { anchor: yRight ? 'start' : 'end', baseline: 'middle' });
     });
     if (!o.hideXLabels && !this.twinOf) tx.major.forEach((v, k) => {
       if (!inRange(v, this.xl)) return;
-      dl.text(parseMath(tx.labels[k]), this.X(v), this.y0 + this.h + gap, fs, { anchor: 'middle', baseline: 'top' });
+      dl.text(P(tx.labels[k]), this.X(v), this.y0 + this.h + gap, fs, { anchor: 'middle', baseline: 'top' });
     });
-    if (o.xlabel && !o.hideXLabels && !this.twinOf) dl.text(parseMath(o.xlabel), this.x0 + this.w / 2, this.y0 + this.h + gap + fs * 1.15 + 2, fs, { anchor: 'middle', baseline: 'top' });
+    if (o.xlabel && !o.hideXLabels && !this.twinOf) dl.text(P(o.xlabel), this.x0 + this.w / 2, this.y0 + this.h + gap + fs * 1.15 + 2, fs, { anchor: 'middle', baseline: 'top' });
+    // shared multiplier / offset of the tick labels, once at the axis end (matplotlib convention)
+    if (tx.offset && !o.hideXLabels && !this.twinOf) dl.text(P(tx.offset), this.x0 + this.w, this.y0 + this.h + gap + fs * 1.15 + 2, fs, { anchor: 'end', baseline: 'top' });
+    if (ty.offset && !o.hideYLabels) dl.text(P(ty.offset), yRight ? this.x0 + this.w : this.x0, this.y0 - 2, fs, { anchor: yRight ? 'end' : 'start', baseline: 'bottom' });
     if (o.ylabel) {
       // 90° döndürülmüş (aşağıdan yukarı okunur); solda glif tabanı eksene, sağda glif tepesi eksene bakar
       const xL = yRight ? this.x0 + this.w + gap + maxYLabelW + 3 : this.x0 - gap - maxYLabelW - 3;
-      dl.text(parseMath(o.ylabel), xL, this.y0 + this.h / 2, fs, { anchor: 'middle', baseline: yRight ? 'top' : 'bottom', rotate: 90 });
+      dl.text(P(o.ylabel), xL, this.y0 + this.h / 2, fs, { anchor: 'middle', baseline: yRight ? 'top' : 'bottom', rotate: 90 });
     }
-    if (o.title) dl.text(parseMath(o.title), this.x0 + this.w / 2, this.y0 - 4, fs, { anchor: 'middle', baseline: 'bottom' });
+    if (o.title) dl.text(P(o.title), this.x0 + this.w / 2, this.y0 - 4, fs, { anchor: 'middle', baseline: 'bottom' });
     if (this.panel) {
       // yarı saydam beyaz zemin: panel etiketi veri çizgileri üzerinde de okunur kalır
       const pr: Run[] = [{ text: this.panel, font: 'bold', scale: 1, rise: 0 }];
-      dl.rect(this.x0 + 2.5, this.y0 + 2.5, runsWidth(pr, fs + 0.5) + 3, fs + 2.5, { fill: [1, 1, 1], alpha: 0.8 });
+      dl.rect(this.x0 + 2.5, this.y0 + 2.5, fonts.runsWidth(pr, fs + 0.5) + 3, fs + 2.5, { fill: [1, 1, 1], alpha: 0.8 });
       dl.text(pr, this.x0 + 4, this.y0 + 4, fs + 0.5, { anchor: 'start', baseline: 'top' });
     }
     if (this.legendOpts) this.drawLegend(dl);
@@ -290,7 +293,11 @@ export class Axes {
             const sx: number[] = [], sy: number[] = [];
             for (let i = 0; i < n; i++) { if (i > 0) { sx.push(xs[i]); sy.push(ys[i - 1]); } sx.push(xs[i]); sy.push(ys[i]); }
             dl.polyline(sx, sy, { stroke: a.color, lw, dash: dashArray(a.o.dash, lw), alpha: a.o.alpha, join: 'round' });
-          } else { const [sx, sy] = simplify(xs, ys); dl.polyline(sx, sy, { stroke: a.color, lw, dash: dashArray(a.o.dash, lw), alpha: a.o.alpha, join: 'round', cap: 'butt' }); }
+          } else {
+            const [dx, dy] = decimateMinMax(xs, ys);
+            const [sx, sy] = simplify(dx, dy);
+            dl.polyline(sx, sy, { stroke: a.color, lw, dash: dashArray(a.o.dash, lw), alpha: a.o.alpha, join: 'round', cap: 'butt' });
+          }
         }
         if (a.o.marker) for (let i = 0; i < n; i++) if (Number.isFinite(xs[i]) && Number.isFinite(ys[i])) drawMarker(dl, a.o.marker, xs[i], ys[i], a.o.ms ?? 3.2, a.color, a.o.mfc);
         break;
@@ -319,9 +326,15 @@ export class Axes {
         break;
       }
       case 'xmarks': {
+        const { ticks, bands } = aggregateMarks(a.xs.map((v) => this.X(v)), Math.max(2 * a.lw, 0.8));
+        const y1 = this.y0 + a.frac * this.h;
         const d: PathCmd[] = [];
-        for (const v of a.xs) { const px = this.X(v); d.push(['M', px, this.y0], ['L', px, this.y0 + a.frac * this.h]); }
+        for (const px of ticks) d.push(['M', px, this.y0], ['L', px, y1]);
         dl.path(d, { stroke: a.color, lw: a.lw });
+        // runs of marks closer than the separation (e.g. hundreds of ELMs) become one band
+        const b: PathCmd[] = [];
+        for (const [p0, p1] of bands) b.push(['M', p0 - a.lw / 2, this.y0], ['L', p1 + a.lw / 2, this.y0], ['L', p1 + a.lw / 2, y1], ['L', p0 - a.lw / 2, y1], ['Z']);
+        dl.path(b, { fill: a.color, alpha: 0.75 });
         break;
       }
       case 'arrow': {
@@ -336,9 +349,9 @@ export class Axes {
         const px = a.coords === 'axes' ? this.x0 + a.x * this.w : this.X(a.x);
         const py = a.coords === 'axes' ? this.y0 + (1 - a.y) * this.h : this.Y(a.y);
         const size = a.size ?? this.fig.fontSize;
-        const runs = parseMath(a.s);
+        const runs = parseMath(a.s, dl.fonts);
         if (a.box) {
-          const w = runsWidth(runs, size);
+          const w = dl.fonts.runsWidth(runs, size);
           const bx = a.anchor === 'middle' ? px - w / 2 : a.anchor === 'end' ? px - w : px;
           const by = a.baseline === 'middle' ? py - 0.55 * size : a.baseline === 'top' ? py : py - 0.85 * size;
           dl.rect(bx - 1.5, by - 1, w + 3, size * 1.15 + 1, { fill: [1, 1, 1], alpha: 0.85 });
@@ -351,6 +364,7 @@ export class Axes {
 
   private drawLegend(dl: DisplayList): void {
     const lo = this.legendOpts!;
+    const fonts = dl.fonts;
     const items: { runs: Run[]; a: Artist }[] = [];
     const owned: [Artist, Axes][] = [
       ...this.artists.map((a): [Artist, Axes] => [a, this]),
@@ -358,18 +372,14 @@ export class Axes {
     ];
     for (const [a] of owned) {
       const label = a.k === 'line' || a.k === 'hline' || a.k === 'vline' ? a.o.label : a.k === 'fill' || a.k === 'hspan' || a.k === 'vspan' || a.k === 'poly' || a.k === 'xmarks' ? a.label : undefined;
-      if (label) items.push({ runs: parseMath(label), a });
+      if (label) items.push({ runs: parseMath(label, fonts), a });
     }
     if (!items.length) return;
-    const fs = lo.size ?? this.fig.fontSize - 0.5;
-    const sampleW = 16, pad = 3, rowH = fs * 1.3, colGap = 8;
-    const ncol = Math.max(1, lo.ncol);
-    const nrow = Math.ceil(items.length / ncol);
-    const colW: number[] = new Array(ncol).fill(0);
-    items.forEach((it, k) => { const c = Math.floor(k / nrow); colW[c] = Math.max(colW[c], sampleW + 4 + runsWidth(it.runs, fs)); });
-    const W = colW.reduce((s, v) => s + v, 0) + colGap * (ncol - 1) + 2 * pad, H = nrow * rowH + 2 * pad;
+    const L = legendLayout(items.map((it) => fonts.runsWidth(it.runs, 1)), lo.ncol, lo.size ?? this.fig.fontSize - 0.5, this.w - 6, this.h - 6);
+    const { fs, nrow, colW, rowH, W, H } = L;
+    const sampleW = LEGEND_SAMPLE_W, pad = LEGEND_PAD;
     // sol üst köşede panel etiketi varsa lejantı sağına kaydır
-    const panelW = this.panel ? runsWidth([{ text: this.panel, font: 'bold', scale: 1, rise: 0 }], this.fig.fontSize + 0.5) + 6 : 0;
+    const panelW = this.panel ? fonts.runsWidth([{ text: this.panel, font: 'bold', scale: 1, rise: 0 }], this.fig.fontSize + 0.5) + 6 : 0;
     const cands: Record<string, [number, number]> = {
       'upper right': [this.x0 + this.w - W - 3, this.y0 + 3], 'upper left': [this.x0 + 3 + panelW, this.y0 + 3],
       'lower left': [this.x0 + 3, this.y0 + this.h - H - 3], 'lower right': [this.x0 + this.w - W - 3, this.y0 + this.h - H - 3],
@@ -398,7 +408,7 @@ export class Axes {
     if (lo.frame) dl.rect(bx, by, W, H, { fill: [1, 1, 1], stroke: [0.6, 0.6, 0.6], lw: 0.4, alpha: 0.9 });
     items.forEach((it, k) => {
       const c = Math.floor(k / nrow), r = k % nrow;
-      const x = bx + pad + colW.slice(0, c).reduce((s, v) => s + v + colGap, 0);
+      const x = bx + pad + colW.slice(0, c).reduce((s, v) => s + v + LEGEND_COL_GAP, 0);
       const y = by + pad + (r + 0.5) * rowH;
       const a = it.a;
       if (a.k === 'line') {
@@ -423,7 +433,7 @@ function zOf(a: Artist): number {
 }
 
 // çizgi sadeleştirme: 0.25 pt'den yakın ardışık noktaları at (dosya boyutu; görsel fark yok)
-function simplify(xs: Float64Array, ys: Float64Array): [number[], number[]] {
+function simplify(xs: ArrayLike<number>, ys: ArrayLike<number>): [number[], number[]] {
   const n = xs.length;
   const ox: number[] = [], oy: number[] = [];
   let lastX = -Infinity, lastY = -Infinity;
@@ -434,6 +444,101 @@ function simplify(xs: Float64Array, ys: Float64Array): [number[], number[]] {
     ox.push(x); oy.push(y); lastX = x; lastY = y;
   }
   return [ox, oy];
+}
+
+const LEGEND_SAMPLE_W = 16, LEGEND_PAD = 3, LEGEND_COL_GAP = 8;
+
+export interface LegendLayout { ncol: number; fs: number; nrow: number; colW: number[]; rowH: number; W: number; H: number }
+
+/**
+ * Legend box layout from the label widths (em). Overflow handling: when the box is wider than
+ * `maxW` it is re-flowed into fewer columns; when taller than `maxH`, spare width buys more columns;
+ * as a last resort the text shrinks (not below 4.5 pt).
+ */
+export function legendLayout(labelEm: number[], ncol: number, fs: number, maxW: number, maxH: number): LegendLayout {
+  const measure = (nc: number, size: number): LegendLayout => {
+    const nrow = Math.ceil(labelEm.length / nc);
+    const colW: number[] = new Array(nc).fill(0);
+    labelEm.forEach((w, k) => { const c = Math.floor(k / nrow); colW[c] = Math.max(colW[c], LEGEND_SAMPLE_W + 4 + w * size); });
+    const rowH = size * 1.3;
+    return { ncol: nc, fs: size, nrow, colW, rowH, W: colW.reduce((s, v) => s + v, 0) + LEGEND_COL_GAP * (nc - 1) + 2 * LEGEND_PAD, H: nrow * rowH + 2 * LEGEND_PAD };
+  };
+  let L = measure(Math.max(1, Math.min(ncol, labelEm.length)), fs);
+  while (L.W > maxW && L.ncol > 1) L = measure(L.ncol - 1, L.fs);
+  while (L.H > maxH && L.ncol < labelEm.length) { const m = measure(L.ncol + 1, L.fs); if (m.W > maxW) break; L = m; }
+  for (let guard = 0; (L.W > maxW || L.H > maxH) && L.fs > 4.5 && guard < 40; guard++) L = measure(L.ncol, Math.max(4.5, L.fs * 0.94));
+  return L;
+}
+
+/**
+ * Min/max ("M4") decimation of an x-monotone polyline in device space: per column of width `col`
+ * (pt) only the first, lowest, highest and last points are kept, in their original order — the
+ * drawn envelope is unchanged while a long time series shrinks to at most 4 points per column.
+ * Series that are short, not monotone in x, or would not shrink are returned unchanged.
+ * Reference: U. Jugel, Z. Jerzak, G. Hackenbroich, V. Markl, "M4: A visualization-oriented time
+ * series data aggregation", Proc. VLDB Endowment 7(10), 797–808 (2014).
+ */
+export function decimateMinMax(xs: ArrayLike<number>, ys: ArrayLike<number>, col = 0.25): [ArrayLike<number>, ArrayLike<number>] {
+  const n = xs.length;
+  if (n < 64) return [xs, ys];
+  let prev = -Infinity;
+  for (let i = 0; i < n; i++) { const x = xs[i]; if (!Number.isFinite(x) || !Number.isFinite(ys[i])) continue; if (x < prev) return [xs, ys]; prev = x; }
+  const ox: number[] = [], oy: number[] = [];
+  let c = NaN, iF = -1, iMin = -1, iMax = -1, iL = -1;
+  const flush = () => {
+    if (iF < 0) return;
+    const idx = [...new Set([iF, iMin, iMax, iL])].sort((a, b) => a - b);
+    for (const k of idx) { ox.push(xs[k]); oy.push(ys[k]); }
+    iF = -1;
+  };
+  for (let i = 0; i < n; i++) {
+    const x = xs[i], y = ys[i];
+    if (!Number.isFinite(x) || !Number.isFinite(y)) { flush(); ox.push(NaN); oy.push(NaN); c = NaN; continue; }
+    const k = Math.floor(x / col);
+    if (k !== c) { flush(); c = k; iF = iMin = iMax = iL = i; }
+    else { iL = i; if (y < ys[iMin]) iMin = i; if (y > ys[iMax]) iMax = i; }
+  }
+  flush();
+  return ox.length < 0.9 * n ? [ox, oy] : [xs, ys];
+}
+
+/** Event marks in device x: isolated marks stay ticks, runs of >= 3 marks closer than `sep` (pt) become bands [x0, x1]. */
+export function aggregateMarks(px: number[], sep: number): { ticks: number[]; bands: [number, number][] } {
+  const xs = px.filter(Number.isFinite).sort((a, b) => a - b);
+  const ticks: number[] = [], bands: [number, number][] = [];
+  for (let i = 0; i < xs.length;) {
+    let j = i;
+    while (j + 1 < xs.length && xs[j + 1] - xs[j] < sep) j++;
+    if (j - i >= 2) bands.push([xs[i], xs[j]]);
+    else for (let k = i; k <= j; k++) ticks.push(xs[k]);
+    i = j + 1;
+  }
+  return { ticks, bands };
+}
+
+/**
+ * Colour-scale limits that are always finite and increasing: the range of the finite (and, on a log
+ * scale, positive) data, overridden by valid vmin/vmax; empty or degenerate ranges are widened.
+ */
+export function colorLimits(Z: ArrayLike<number>, vmin?: number, vmax?: number, log = false): [number, number] {
+  const ok = (v: number | undefined): v is number => v !== undefined && Number.isFinite(v) && (!log || v > 0);
+  const fixLo = ok(vmin), fixHi = ok(vmax);
+  let lo = fixLo ? vmin! : Infinity, hi = fixHi ? vmax! : -Infinity;
+  if (!fixLo || !fixHi) for (let k = 0; k < Z.length; k++) {
+    const v = Z[k];
+    if (!ok(v)) continue;
+    if (!fixLo && v < lo) lo = v;
+    if (!fixHi && v > hi) hi = v;
+  }
+  if (!Number.isFinite(lo) && !Number.isFinite(hi)) return log ? [1, 10] : [0, 1];
+  if (!Number.isFinite(lo)) lo = log ? hi / 10 : hi - 1;
+  if (!Number.isFinite(hi)) hi = log ? lo * 10 : lo + 1;
+  if (lo > hi) [lo, hi] = [hi, lo];
+  if (lo === hi) {
+    if (log) { lo /= Math.sqrt(10); hi *= Math.sqrt(10); }
+    else { const d = Math.abs(lo) * 0.1 || 0.5; lo -= d; hi += d; }
+  }
+  return [lo, hi];
 }
 
 function drawMarker(dl: DisplayList, m: Exclude<Marker, null>, x: number, y: number, s: number, c: RGB, mfc?: string): void {
@@ -449,6 +554,11 @@ function drawMarker(dl: DisplayList, m: Exclude<Marker, null>, x: number, y: num
     case 'x': dl.path([['M', x - r, y - r], ['L', x + r, y + r], ['M', x - r, y + r], ['L', x + r, y - r]], { stroke: c, lw: 0.8 }); break;
     case '+': dl.path([['M', x - r, y], ['L', x + r, y], ['M', x, y - r], ['L', x, y + r]], { stroke: c, lw: 0.8 }); break;
   }
+}
+
+export interface FigureRenderOptions {
+  /** STIX Two font set used for text layout (and embedded by the PDF back end) */
+  fonts: FontSet;
 }
 
 export interface SubplotsOpts { left?: number; right?: number; top?: number; bottom?: number; wspace?: number; hspace?: number; widthRatios?: number[]; heightRatios?: number[] }
@@ -504,8 +614,10 @@ export class Figure {
     this.texts.push({ s, x, y, size: o.size ?? this.fontSize, anchor: o.anchor ?? 'start' });
   }
 
-  render(): DisplayList {
-    const dl = new DisplayList(this.W, this.H);
+  /** Lays the figure out with the given fonts (text metrics) into a back-end independent display list. */
+  render(fonts: FontSet): DisplayList {
+    const dl = new DisplayList(this.W, this.H, fonts);
+    const P = (s: string) => parseMath(s, fonts);
     // önce paylaşılan eksenlerin kaynakları
     const order = [...this.axes].sort((a, b) => Number(!!a.shareX || !!a.twinOf) - Number(!!b.shareX || !!b.twinOf));
     for (const ax of order) ax.resolveLimits();
@@ -519,24 +631,27 @@ export class Figure {
       }
       dl.image(rgb, 1, N, cb.x, cb.y, cb.w, cb.h, true);
       dl.rect(cb.x, cb.y, cb.w, cb.h, { stroke: [0, 0, 0], lw: 0.6 });
-      const t = cb.m.log ? logTicks(cb.m.vmin, cb.m.vmax) : linearTicks(cb.m.vmin, cb.m.vmax, 5);
+      const [vmin, vmax] = colorLimits([], cb.m.vmin, cb.m.vmax, cb.m.log);
+      const t = cb.m.log ? logTicks(vmin, vmax) : linearTicks(vmin, vmax, 5);
       const vals = cb.ticks ?? t.major;
       const labels = cb.ticks ? cb.ticks.map((v) => String(+v.toPrecision(4)).replace('-', '−')) : t.labels;
       let maxW = 0;
       vals.forEach((v, k) => {
-        const u = cb.m.log ? (Math.log10(v) - Math.log10(cb.m.vmin)) / (Math.log10(cb.m.vmax) - Math.log10(cb.m.vmin)) : (v - cb.m.vmin) / (cb.m.vmax - cb.m.vmin);
-        if (u < -1e-9 || u > 1 + 1e-9) return;
+        const u = cb.m.log ? (Math.log10(v) - Math.log10(vmin)) / (Math.log10(vmax) - Math.log10(vmin)) : (v - vmin) / (vmax - vmin);
+        if (!(u >= -1e-9 && u <= 1 + 1e-9)) return;
         const py = cb.y + (1 - u) * cb.h;
         dl.path([['M', cb.x + cb.w, py], ['L', cb.x + cb.w - 2.5, py]], { stroke: [0, 0, 0], lw: 0.6 });
-        const runs = parseMath(labels[k]);
-        maxW = Math.max(maxW, runsWidth(runs, this.fontSize));
+        const runs = P(labels[k]);
+        maxW = Math.max(maxW, fonts.runsWidth(runs, this.fontSize));
         dl.text(runs, cb.x + cb.w + 2.5, py, this.fontSize, { anchor: 'start', baseline: 'middle' });
       });
-      if (cb.label) dl.text(parseMath(cb.label), cb.x + cb.w + 5 + maxW, cb.y + cb.h / 2, this.fontSize, { anchor: 'middle', baseline: 'top', rotate: 90 });
+      if (t.offset && !cb.ticks) dl.text(P(t.offset), cb.x, cb.y - 2, this.fontSize, { anchor: 'start', baseline: 'bottom' });
+      if (cb.label) dl.text(P(cb.label), cb.x + cb.w + 5 + maxW, cb.y + cb.h / 2, this.fontSize, { anchor: 'middle', baseline: 'top', rotate: 90 });
     }
-    for (const t of this.texts) dl.text(parseMath(t.s), t.x * this.W, (1 - t.y) * this.H, t.size, { anchor: t.anchor, baseline: 'alphabetic' });
+    for (const t of this.texts) dl.text(P(t.s), t.x * this.W, (1 - t.y) * this.H, t.size, { anchor: t.anchor, baseline: 'alphabetic' });
     return dl;
   }
-  toSVG(o: { deflate?: Deflate; background?: string | null } = {}): string { return toSVG(this.render(), { ...o, title: this.o.title }); }
-  toPDF(o: { deflate?: Deflate } = {}): Uint8Array { return toPDF(this.render(), { ...o, title: this.o.title }); }
+  get title(): string | undefined { return this.o.title; }
+  toSVG(o: FigureRenderOptions & Omit<SvgOptions, 'title'>): string { const { fonts, ...rest } = o; return toSVG(this.render(fonts), { ...rest, title: this.o.title }); }
+  toPDF(o: FigureRenderOptions & Omit<PdfOptions, 'title'>): Uint8Array { const { fonts, ...rest } = o; return toPDF(this.render(fonts), { ...rest, title: this.o.title }); }
 }

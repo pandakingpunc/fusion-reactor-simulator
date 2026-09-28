@@ -21,8 +21,11 @@ export function figScan(s: ScanData): Figure {
   const fig = new Figure(COL1 * 1.35, 3.1, { fontSize: 8, title: 'Operating-space scan' });
   const [ax] = fig.subplots(1, 1, { left: 0.52, right: 0.85, top: 0.22, bottom: 0.45 });
   const dx = s.x[1] - s.x[0], dy = s.y[1] - s.y[0];
-  const qmax = Math.min(40, Math.max(...s.Q.filter(Number.isFinite)));
-  const map = ax.image(s.Q.map((v) => (Number.isFinite(v) ? Math.min(v, qmax) : qmax)), nx, ny, [s.x[0] - dx / 2, s.x[nx - 1] + dx / 2, s.y[0] - dy / 2, s.y[ny - 1] + dy / 2], { cmap: 'magma', vmin: 0, vmax: qmax, smooth: true });
+  // colour scale capped at Q = 40; missing runs (NaN: aborted discharges) stay blank, and an all-NaN scan still renders
+  const finite = s.Q.filter(Number.isFinite);
+  const qmax = finite.length ? Math.min(40, Math.max(...finite)) : NaN;
+  const vmax = qmax > 0 ? qmax : 1;
+  const map = ax.image(s.Q.map((v) => (Number.isFinite(v) ? Math.min(v, vmax) : NaN)), nx, ny, [s.x[0] - dx / 2, s.x[nx - 1] + dx / 2, s.y[0] - dy / 2, s.y[ny - 1] + dy / 2], { cmap: 'magma', vmin: 0, vmax, smooth: true });
   fig.colorbar(map, ax, { label: 'flat-top $Q$', width: 0.1, pad: 0.08 });
   const lv = [5, 10, 15];
   ax.contour(s.x, s.y, s.Q, lv, { colors: ['#ffffff', C.sky, '#ffffff'], lw: 0.9 });

@@ -27,6 +27,12 @@
  *    the model, for the 0D models and for the 1.5D model alike (whose restoreInternal() leaves the
  *    set-points alone): after a rewind the controls are those in force at the frame, not the latest
  *    ones, and the actuator log keeps exactly the entries before the frame.
+ *  - Stage reuse (FSAL). A Dormand–Prince step starts from the last stage of the previous step when
+ *    nothing changed in between: the step ended at t, y is the state it produced, and the model's
+ *    controls and saveInternal() record are those of right after that step (a postStep that changes
+ *    y or the state rhs reads, applyControl and a rewind all break it). This is bitwise the same as
+ *    evaluating rhs again (SimModel.rhs is a function of t, y, the controls and the saveInternal()
+ *    state) and saves one of seven evaluations; SimulationOptions.fsal switches it off.
  *  - Frame times. Each recorded frame is later than the one before, except that a shot ended by a
  *    step that made no progress in time (a model's own stepper giving up: 'Numerical failure') gets
  *    its terminal frame at the time of the last frame, with the same state; it carries the
@@ -43,6 +49,7 @@ import { MuonModel } from './confinement/muon';
 import { ProfileModel, supportsProfiles } from './profiles/model';
 import { ModelContractError, UnknownMethodError } from './kernel/errors';
 import { runFingerprint } from './kernel/fingerprint';
+import { sameRecord } from './kernel/signature';
 
 /** Builds the model of a configuration; throws UnknownMethodError for an unknown method. */
 export function createModel(cfg: ReactorConfig): SimModel {
@@ -79,8 +86,20 @@ export interface SimulationOptions {
    * runFingerprint); times outside (0, t_end) are ignored.
    */
   breakpoints?: readonly number[];
+  /**
+   * Start a Dormand–Prince step from the last stage of the previous one when the model state is
+   * unchanged in between (default true). The results are bitwise identical either way; the switch
+   * is for tests and benchmarks.
+   */
+  fsal?: boolean;
   /** Builds the model instead of createModel() (plug-in models, tests of the kernel contract); runFingerprint() does not cover it. */
   modelFactory?: (cfg: ReactorConfig) => SimModel;
+}
+
+/** What a reusable stage depends on besides (t, y): the controls and the model's saveInternal() record. */
+interface ModelSignature {
+  controls: Record<string, number>;
+  internal: Record<string, number>;
 }
 
 export class Simulation {
@@ -92,6 +111,9 @@ export class Simulation {
   events: SimEvent[] = [];
   /** the Dormand–Prince stepper; null for a model with its own step() */
   private integ: DormandPrince | null;
+  private readonly fsal: boolean;
+  /** the model's signature right after the last Dormand–Prince step (null: none yet, or FSAL off) */
+  private stageSig: ModelSignature | null = null;
   private nextOut = 0;
   private nextSync: number;
   private readonly syncDt: number;
@@ -108,6 +130,7 @@ export class Simulation {
     this.cfg = cfg;
     this.model = (opts.modelFactory ?? createModel)(cfg);
     this.y = this.model.initialState();
+    this.fsal = opts.fsal ?? true;
     this.integ = this.makeIntegrator();
     this.syncDt = this.model.tEnd / SYNC_INTERVALS;
     this.nextSync = Math.min(this.t + this.syncDt, this.model.tEnd);
@@ -150,7 +173,9 @@ export class Simulation {
     if (!m.rhs || !m.integratorOpts) {
       throw new ModelContractError(m.method, `it has no step() and lacks ${m.rhs ? 'integratorOpts' : m.integratorOpts ? 'rhs()' : 'rhs() and integratorOpts'}`);
     }
-    return new DormandPrince(m.nState, (t, y, d) => this.model.rhs!(t, y, d), m.integratorOpts, m.dt0);
+    const integ = new DormandPrince(m.nState, (t, y, d) => this.model.rhs!(t, y, d), m.integratorOpts, m.dt0);
+    integ.fsal = this.fsal;
+    return integ;
   }
 
   private checkpoint(): SimCheckpoint {
@@ -188,7 +213,7 @@ export class Simulation {
     const t0 = this.t;
     const tBreak = this.breakIdx < this.breaks.length ? this.breaks[this.breakIdx] : Infinity;
     const tMax = Math.min(this.nextSync, this.nextOut, tBreak);
-    this.t = this.integ ? this.integ.step(t0, this.y, tMax) : this.model.step!(t0, this.y, tMax);
+    this.t = this.integ ? this.integrate(this.integ, t0, tMax) : this.model.step!(t0, this.y, tMax);
     this.steps++;
     const ev = this.model.postStep(this.t, this.t - t0, this.y);
     if (ev.length) this.events.push(...ev);
@@ -197,6 +222,22 @@ export class Simulation {
     const regular = this.t >= this.nextOut - T_EPS;
     if (regular || this.model.terminated || ev.some((e) => e.kind === 'ELM' || e.kind === 'sawtooth' || e.kind === 'disruption')) this.record(regular || !!this.model.terminated);
     this.flushEnd();
+  }
+
+  /**
+   * One Dormand–Prince step. It starts from the last stage of the previous step (FSAL) only if the
+   * model's controls and saveInternal() record are what they were right after that step: any state
+   * that postStep(), applyControl() or a rewind changed breaks the reuse.
+   */
+  private integrate(integ: DormandPrince, t0: number, tMax: number): number {
+    if (!this.fsal) return integ.step(t0, this.y, tMax);
+    if (integ.canReuseStage(t0, this.y)) {
+      const s = this.stageSig;
+      if (!s || !sameRecord(s.internal, this.model.saveInternal()) || !sameRecord(s.controls, this.model.getControls())) integ.invalidate();
+    }
+    const t = integ.step(t0, this.y, tMax);
+    this.stageSig = { internal: this.model.saveInternal(), controls: this.model.getControls() };
+    return t;
   }
 
   /**
@@ -255,6 +296,7 @@ export class Simulation {
     this.model.restoreInternal(f.internal);
     this.history = this.history.slice(0, i + 1);
     this.endFlushed = false;
+    this.stageSig = null;
     const cp = f.sim;
     if (cp) {
       if (cp.model !== undefined && this.model.restoreCheckpoint) this.model.restoreCheckpoint(cp.model);
@@ -288,5 +330,6 @@ export class Simulation {
   applyControl(patch: Record<string, number>): void {
     this.log.push({ t: this.t, step: this.steps, patch: { ...patch } });
     this.model.applyControl(patch);
+    this.integ?.invalidate();
   }
 }

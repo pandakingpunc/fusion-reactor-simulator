@@ -253,7 +253,10 @@ export interface SimModel {
   initialState(): Float64Array;
   /**
    * Right-hand side of dy/dt = f(t, y) for the Dormand–Prince stepper; optional when the model
-   * provides step().
+   * provides step(). It must be a function of (t, y), the live controls and the state that
+   * saveInternal() captures, and may only write caches that it does not read back (the kernel
+   * reuses the last stage of an accepted step as the first stage of the next one when the model
+   * state is unchanged in between: Simulation option `fsal`).
    */
   rhs?(t: number, y: Float64Array, dydt: Float64Array): void;
   /**
@@ -273,7 +276,12 @@ export interface SimModel {
   /** canlı müdahale */
   applyControl(patch: Record<string, number>): void;
   getControls(): Record<string, number>;
-  /** RNG/dahili durumun kaydı (geri sarma için) */
+  /**
+   * RNG/dahili durumun kaydı (geri sarma için). Whatever rhs() and postStep() read and that can
+   * change must be in it or in getControls(): the exact rewind and the kernel's stage reuse (see
+   * rhs) depend on that. The kernel calls it twice per Dormand–Prince step, so it must be cheap
+   * and free of side effects.
+   */
   saveInternal(): Record<string, number>;
   restoreInternal(s: Record<string, number>): void;
   /** atış sonu raporu */

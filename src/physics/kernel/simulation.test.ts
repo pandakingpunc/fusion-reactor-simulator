@@ -1,6 +1,7 @@
 /**
  * The contract between Simulation and its models: which members a model must provide (rhs() and
- * integratorOpts, or its own step()) and how a shot ended by a failed step is recorded.
+ * integratorOpts, or its own step()), when the kernel may reuse the last Dormand–Prince stage (FSAL),
+ * and how a shot ended by a failed step is recorded.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { Simulation } from '../simulation';
@@ -8,7 +9,8 @@ import { JET_15D } from '../presets';
 import { ProfileModel } from '../profiles/model';
 import type { DiagSpec, ReactorConfig, ShotReport, SimEvent, SimModel, TerminationInfo } from '../types';
 import { ModelContractError } from './errors';
-import { expectSameRun, presetCfg } from './testkit';
+import { runDigest } from './fingerprint';
+import { advanceRandomly, applyRandomControls, expectSameRun, presetCfg, rewindAt, tick } from './testkit';
 
 // Counts the Dormand–Prince steppers that Simulation builds.
 const built = vi.hoisted(() => ({ n: 0 }));
@@ -58,7 +60,35 @@ class StepOnlyModel extends ToyModel {
   }
 }
 
+/**
+ * Dormand–Prince model whose rate constant k is switched by postStep() (at step ends, without an
+ * event and without changing y) — the case FSAL must notice. `reportK` says whether saveInternal()
+ * tells the kernel about k, as the SimModel contract requires.
+ */
+class SwitchingModel extends ToyModel {
+  readonly integratorOpts = { rtol: 1e-9, atol: 1e-12, dtMin: 1e-9, dtMax: 0.05 };
+  k = 1;
+  constructor(private readonly reportK: boolean) { super(); }
+  rhs(_t: number, y: Float64Array, d: Float64Array): void { d[0] = -this.k * y[0]; }
+  postStep(t: number, dt: number, y: Float64Array): SimEvent[] {
+    this.k = 1 + 2 * (Math.floor(t / 0.13) % 2);
+    return super.postStep(t, dt, y);
+  }
+  saveInternal(): Record<string, number> { return this.reportK ? { k: this.k } : {}; }
+  restoreInternal(s: Record<string, number>): void { super.restoreInternal(s); if (this.reportK) this.k = s.k; }
+}
+
 const anyCfg = (): ReactorConfig => presetCfg('NIF');
+const digest = (sim: Simulation): string => runDigest(sim.history, sim.events);
+
+/** Counts the right-hand side evaluations of a simulation that has not run yet. */
+function countRhs(sim: Simulation): () => number {
+  const model = sim.model;
+  const rhs = model.rhs!.bind(model);
+  let n = 0;
+  model.rhs = (t, y, d) => { n++; rhs(t, y, d); };
+  return () => n;
+}
 
 describe('SimModel without rhs() and integratorOpts (own step())', () => {
   it('runs, without a Dormand–Prince stepper', () => {
@@ -140,6 +170,91 @@ describe('SimModel contract check', () => {
     expect(sim.model).toBeInstanceOf(ProfileModel);
     expect(built.n).toBe(0);
     expect(sim.history[0].sim && 'integ' in sim.history[0].sim).toBe(false);
+  });
+});
+
+describe('FSAL stage reuse', () => {
+  /** short runs of every model family; [id, t_end] */
+  const CASES: [string, number?][] = [['NIF'], ['Z'], ['TAE'], ['MIRROR'], ['W7X'], ['JET', 3], ['DIIID', 3], ['ITER', 8]];
+
+  it.each(CASES)('%s: a run that reuses stages is bitwise the run that does not', async (id, tEnd) => {
+    const cfg = presetCfg(id, tEnd);
+    const on = new Simulation(cfg, { fsal: true }), off = new Simulation(cfg, { fsal: false });
+    const callsOn = countRhs(on), callsOff = countRhs(off);
+    on.runAll();
+    await tick();
+    off.runAll();
+    expectSameRun(on, off, `${id} with and without stage reuse`);
+    expect(callsOn()).toBeLessThanOrEqual(callsOff());
+    expect(on.nSteps).toBe(off.nSteps);
+  }, 120000);
+
+  it('saves one evaluation per step where nothing changes between steps (pulsed models, stellarator)', () => {
+    for (const id of ['NIF', 'MIRROR', 'W7X']) {
+      const cfg = presetCfg(id);
+      const on = new Simulation(cfg), off = new Simulation(cfg, { fsal: false });
+      const callsOn = countRhs(on), callsOff = countRhs(off);
+      on.runAll(); off.runAll();
+      expect(callsOff() - callsOn(), id).toBeGreaterThan(0.9 * on.nSteps);
+      expect(callsOn(), id).toBeLessThan(6.2 * on.nSteps);
+    }
+  });
+
+  it('a step follows a control change: interventions through applyControl() and around the kernel', async () => {
+    // through the kernel: every applyControl invalidates the reusable stage
+    const a = applyRandomControls(new Simulation(presetCfg('JET', 3), { fsal: true }), 31, 0.25);
+    expect(a.actuatorLog.length).toBeGreaterThan(3);
+    await tick();
+    expectSameRun(a, applyRandomControls(new Simulation(presetCfg('JET', 3), { fsal: false }), 31, 0.25), 'JET with random interventions');
+    await tick();
+    // straight on the model, which the kernel does not see: the model's controls are part of the stage's signature
+    const drive = (fsal: boolean, patch: boolean) => {
+      const sim = new Simulation(presetCfg('JET', 3), { fsal });
+      let n = 0;
+      while (!sim.done) {
+        sim.advance(0.05);
+        if (patch && ++n % 3 === 0) sim.model.applyControl({ P_NBI_MW: 8 + (n % 9), n_target_1e20: 0.5 + 0.02 * (n % 7) });
+      }
+      return digest(sim);
+    };
+    const direct = drive(true, true);
+    expect(direct).toBe(drive(false, true));
+    expect(direct).not.toBe(drive(true, false)); // the patches did change the run
+  });
+
+  it('a rewind starts from a fresh evaluation, also right after stages were reused', async () => {
+    const cfg = presetCfg('W7X');
+    const ref = new Simulation(cfg, { fsal: false });
+    ref.runAll();
+    for (const p of [0.3, 0.7]) {
+      const sim = rewindAt(cfg, p, 5);
+      await tick();
+      advanceRandomly(sim, 6);
+      expect(sim.history.length).toBe(ref.history.length);
+      expect(sim.y).toEqual(ref.y);
+    }
+  });
+
+  describe('model state that postStep() changes', () => {
+    const run = (reportK: boolean, fsal: boolean) => {
+      const sim = new Simulation(anyCfg(), { modelFactory: () => new SwitchingModel(reportK), fsal });
+      const calls = countRhs(sim);
+      sim.runAll();
+      return { sim, calls: calls() };
+    };
+
+    it('breaks the reuse: the run equals the run without stage reuse', () => {
+      const on = run(true, true), off = run(true, false);
+      expect(digest(on.sim)).toBe(digest(off.sim));
+      // the state is switched on some steps only, the other steps reuse
+      expect(on.calls).toBeLessThan(off.calls);
+      expect(off.calls - on.calls).toBeGreaterThan(20);
+    });
+
+    it('is a contract violation to keep it out of saveInternal(): the kernel then cannot see it and reuses a stale stage', () => {
+      const on = run(false, true), off = run(false, false);
+      expect(digest(on.sim)).not.toBe(digest(off.sim));
+    });
   });
 });
 

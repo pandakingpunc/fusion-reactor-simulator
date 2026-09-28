@@ -29,11 +29,12 @@ import { disruptionReport, DisruptionCause, DISRUPTION_LABELS, DISRUPTION_FIXES 
 import { checkMagnet, divertorHeatFlux, neutronWallLoad, MAGNET_TECH, MagnetCheck } from '../engineering';
 import { IMPURITIES, ImpuritySpecies } from '../constants';
 import { RNG } from '../rng';
-import { GSSolver, Equilibrium } from '../equilibrium/gs';
+import { GSSolver, Equilibrium, EquilibriumOptions } from '../equilibrium/gs';
 import { buildMagneticReport, LAWSON_DT } from '../confinement/magneticReport';
 import { flatTopMean } from '../analysis/flatTop';
 import { DiagSpec, EqSnapshot, HistoryFrame, MagneticConfig, ProfileSettings, ShotReport, SimEvent, SimModel, TerminationInfo } from '../types';
 import { TransportGeometry, geometryFromEquilibrium } from './geometry1d';
+import { GsAttempt, GsStage, acceptableEquilibrium, binomialSmooth, gridScalePasses, isUsableGeometry, solveGuarded } from './eqguard';
 import { DEFAULT_PROFILE_SETTINGS } from './defaults';
 import { CurrentSolver, DensitySolver, HeatInputs, HeatSolver } from './fvsolver';
 import { NbiChord, edgeDeposition, gaussianDeposition, volumeIntegral } from './sources';
@@ -984,18 +985,57 @@ export class ProfileModel implements SimModel {
     const dLi = Math.abs((d.li ?? 0) - this.eqLi) / Math.max(this.eqLi, 0.1);
     const since = t - this.eqTime;
     const due = since >= this.ps.eqUpdateInterval || ((dBp > 0.1 || dLi > 0.05) && since > 0.25 * this.ps.eqUpdateInterval);
-    if (!due || this.phase !== 'normal') return;
-    this.updateEquilibrium(t, y);
-    this.eqTime = t;
-    this.eqBetaP = d.betaP ?? this.eqBetaP; this.eqLi = d.li ?? this.eqLi;
-    this.eqUpdates++;
+    if (!due || this.phase !== 'normal' || t < this.eqRetryAt) return;
+    if (this.updateEquilibrium(t, y)) {
+      this.eqTime = t;
+      this.eqBetaP = d.betaP ?? this.eqBetaP; this.eqLi = d.li ?? this.eqLi;
+      this.eqUpdates++;
+      this.eqFailStreak = 0;
+      return;
+    }
+    // eqTime advances only on success, so the update stays due. It is retried after a quarter
+    // interval, doubling for consecutive rejections up to a full interval (a persistently failing
+    // equilibrium must not cost a full retry ladder every quarter interval).
+    this.eqRejected++;
+    this.eqFailStreak++;
+    this.eqRetryAt = t + 0.25 * this.ps.eqUpdateInterval * Math.min(2 ** (this.eqFailStreak - 1), 4);
+    if (!this.warned.has('gs')) {
+      this.warned.add('gs');
+      const last = this.eqAttempts[this.eqAttempts.length - 1];
+      const why = last?.error ?? `residual ${last ? last.residual.toExponential(1) : '?'} after ${last?.iterations ?? 0} iterations`;
+      this.pending.push({ t, kind: 'warning', msg: `Grad–Shafranov update rejected (${why}; ${this.eqAttempts.length} attempts) — geometry held at the equilibrium of t = ${this.eqTime.toFixed(2)} s, retried from t = ${this.eqRetryAt.toFixed(2)} s` });
+    }
   }
-  /** denge güncelleme sayısı ve son GS istatistiği (teşhis) */
+  /** accepted Grad–Shafranov updates after the initial solve */
   eqUpdates = 0;
+  /** accepted updates that needed a retry stage; updates for which every stage failed */
+  eqRetried = 0;
+  eqRejected = 0;
+  /** no update attempt before this time (back-off after a rejected update); consecutive rejections */
+  private eqRetryAt = 0;
+  private eqFailStreak = 0;
+  /** last GS solve statistics and the attempt log of the last update (diagnostics) */
   eqStats = { it: 0, res: 0 };
+  eqAttempts: GsAttempt[] = [];
+  /** events raised inside step() (GS rejection, numerical trouble); postStep emits them */
+  private pending: SimEvent[] = [];
 
-  /** Taşınım profillerinden (p, I) tablo modunda GS; geometriyi yenile (t: y'nin zamanı) */
-  updateEquilibrium(t: number, y: Float64Array): void {
+  /**
+   * Grad–Shafranov update from the transport profiles (table mode: p, ⟨j_φ/R⟩ on the current ψ_N
+   * nodes); on success the transport geometry is replaced. t is the time of y. Returns whether the
+   * new equilibrium was accepted.
+   *
+   * Retry ladder (each stage warm-starts from the last accepted equilibrium):
+   *  1. nominal: relaxation 0.9, 40 Picard iterations (quasi-static change converges in ~8–12);
+   *  2. relaxation 0.5, 80 iterations;
+   *  3. pressure table low-pass filtered at the GS grid scale (binomialSmooth, Gaussian σ = grid
+   *     spacing), relaxation 0.3, 120 iterations. The Dirichlet edge condition puts the drop to
+   *     p_sep within half a transport cell (Δρ = 1/(2N)), well below the GS grid spacing (≈ 0.044
+   *     in ρ for 49 nodes); the 5-point operator cannot represent that p', and Picard then cycles
+   *     as nodes move in and out of the drop (JET15: 14 of 17 updates stalled at residuals
+   *     1e-3–3e-2 with the nominal settings, and relaxation alone rescues few of them).
+   */
+  updateEquilibrium(t: number, y: Float64Array): boolean {
     const g = this.tg, w = this.w, N = this.N, v = this.views(y);
     const P = this.eq.prof;
     const niB = this.bc.n * (w.ni[N - 1] / Math.max(v.ne[N - 1], 1));
@@ -1020,19 +1060,32 @@ export class ProfileModel implements SimModel {
     const pT = Array.from(P.rhoTor, pAt);
     const jT = Array.from(P.rhoTor, jRAt);
     const Ip = v.s[S.Ip];
-    try {
-      // sıcak başlangıç + yarı-statik değişim: az gevşetmeli Picard ~8–12 iterasyonda yakınsar
-      const eq = this.gsSolver.solve({ Ip, B0: this.cfg.B0, profile: { kind: 'table', psiN: P.psiN, p: pT, jR: jT }, psiInit: this.eq.psi, tol: 1e-5, maxIter: 40, relax: 0.9 });
-      this.eqStats = { it: eq.iterations, res: eq.residual };
-      if (eq.converged || eq.residual < 1e-4) {
-        this.eq = eq;
-        this.setGeometry(geometryFromEquilibrium(eq, N, this.geomB));
-        // postStep (ELM, sawtooth) runs next and reads n_i, q, p: evaluate them on the new geometry
-        this.evaluateWorkArrays(t, y);
-      }
-    } catch {
-      /* denge yakınsamazsa önceki geometri korunur */
-    }
+    const base: EquilibriumOptions = { Ip, B0: this.cfg.B0, profile: { kind: 'table', psiN: P.psiN, p: pT, jR: jT }, psiInit: this.eq.psi, tol: 1e-5, maxIter: 40, relax: 0.9 };
+    const passes = gridScalePasses(this.gsSolver.grid.dR / this.geomB.a, 1 / (P.psiN.length - 1));
+    const stages: GsStage[] = [
+      { label: 'nominal', opts: {} },
+      { label: 'relaxation 0.5', opts: { relax: 0.5, maxIter: 80 } },
+      { label: 'grid-scale pressure', opts: { relax: 0.3, maxIter: 120, profile: { kind: 'table', psiN: P.psiN, p: binomialSmooth(pT, passes), jR: jT } } },
+    ];
+    // the transport geometry built from it must be usable as well (finite metrics, positive cell volumes)
+    const built: { tg?: TransportGeometry } = {};
+    const accept = (eq: Equilibrium) => {
+      built.tg = undefined;
+      if (!acceptableEquilibrium(eq)) return false;
+      try { built.tg = geometryFromEquilibrium(eq, N, this.geomB); } catch { return false; }
+      return isUsableGeometry(built.tg);
+    };
+    const out = solveGuarded(this.gsSolver, base, stages, accept);
+    this.eqAttempts = out.attempts;
+    const last = out.attempts[out.attempts.length - 1];
+    this.eqStats = { it: last.iterations, res: last.residual };
+    if (!out.eq || !built.tg) return false;
+    if (out.stage > 0) this.eqRetried++;
+    this.eq = out.eq;
+    this.setGeometry(built.tg);
+    // postStep (ELM, sawtooth) runs next and reads n_i, q, p: evaluate them on the new geometry
+    this.evaluateWorkArrays(t, y);
+    return true;
   }
 
   takeEqSnapshot(): EqSnapshot | null {
@@ -1061,7 +1114,7 @@ export class ProfileModel implements SimModel {
 
   // ------------------------------------------------------------------ olaylar
   postStep(t: number, _dt: number, y: Float64Array): SimEvent[] {
-    const ev: SimEvent[] = [];
+    const ev: SimEvent[] = this.pending.splice(0);
     if (this.terminated) return ev;
     const c = this.cfg, g = this.tg, w = this.w, N = this.N, ps = this.ps;
     const v = this.views(y), s = v.s;
@@ -1289,6 +1342,8 @@ export class ProfileModel implements SimModel {
     const avg = (k: string) => flatTopMean(hist, k, { samples: 'all' });
     const warnings: string[] = [];
     if (this.eq && !this.eq.converged) warnings.push('Grad–Shafranov equilibrium did not fully converge — geometry coefficients may be inaccurate.');
+    const nEq = this.eqUpdates + this.eqRejected;
+    if (this.eqRejected > 0) warnings.push(`Grad–Shafranov: ${this.eqRejected} of ${nEq} equilibrium updates were rejected (no convergence in any retry stage) — the transport geometry was held at the last accepted equilibrium in between.`);
     const nElm = events.filter((e) => e.kind === 'ELM').length;
     const nSaw = events.filter((e) => e.kind === 'sawtooth').length;
     return buildMagneticReport({
@@ -1301,6 +1356,7 @@ export class ProfileModel implements SimModel {
         'Loop voltage (avg., V)': +avg('V_loop').toFixed(3), 'ℓ_i(3) (avg.)': +avg('li').toFixed(3), 'β_p (avg.)': +avg('betaP').toFixed(3),
         'q(0) / q95 (final)': `${(d.q0 ?? 0).toFixed(2)} / ${(d.q95 ?? 0).toFixed(2)}`,
         'Shafranov shift (m)': +this.eq.shafranovShift.toFixed(3),
+        'GS updates accepted': this.eqUpdates, 'GS updates needing a retry': this.eqRetried, 'GS updates rejected': this.eqRejected,
       },
       extraExtras: {
         'T_e axis (final, keV)': +(d.Te0 ?? 0).toFixed(2), 'T_ped (final, keV)': +(d.Tped ?? 0).toFixed(2), 'T_sep (final, keV)': +(d.Tsep ?? 0).toFixed(3),

@@ -7,12 +7,14 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   FAST_CASES, GOLDEN_CASES, GOLDEN_SCHEMA, GoldenSnapshot, REL_TOL_OTHER_NODE, REL_TOL_SAME_NODE, caseConfig, compareSnapshots, countBySection,
-  flattenScalars, formatDiffTable, goldenCase, historyStats, parseSnapshot, relDiff, runGoldenCase, sampleIndices, serializeSnapshot,
-  snapshotFromRun, summarizeChange, toleranceFor,
+  flattenScalars, formatDiffTable, goldenCase, historyStats, parseSnapshot, relDiff, runGoldenCase, runsProfiles, sampleIndices,
+  serializeSnapshot, snapshotFromRun, summarizeChange, toleranceFor,
 } from './golden';
 import { PRESETS } from '../physics/presets';
 import { Simulation } from '../physics/simulation';
-import type { HistoryFrame, ShotReport } from '../physics/types';
+import { supportsProfiles } from '../physics/profiles/model';
+import { FUEL_CHANNELS } from '../physics/reactivity';
+import type { HistoryFrame, MagneticConfig, ReactorConfig, ShotReport } from '../physics/types';
 
 const goldenFile = (id: string) => new URL(`../../test/golden/${id}.json`, import.meta.url);
 
@@ -234,6 +236,36 @@ describe('golden cases', () => {
     for (const p of PRESETS) expect(GOLDEN_CASES.some((c) => c.preset === p.id)).toBe(true);
     expect(new Set(GOLDEN_CASES.map((c) => c.id)).size).toBe(GOLDEN_CASES.length);
     for (const id of FAST_CASES) expect(() => goldenCase(id)).not.toThrow();
+  });
+
+  it('cover every fuel in 0D and in 1.5D, and 1.5D for every method that has it', () => {
+    const cfgs = GOLDEN_CASES.map((c) => caseConfig(c));
+    const fuelOf = (c: ReactorConfig) => (c as { fuel?: string }).fuel;
+    const magnetic0D = (c: ReactorConfig) => ['tokamak', 'spherical_tokamak', 'stellarator'].includes(c.method) && !runsProfiles(c);
+    for (const fuel of Object.keys(FUEL_CHANNELS)) {
+      expect(cfgs.some((c) => fuelOf(c) === fuel && magnetic0D(c)), `${fuel} in a 0D magnetic case`).toBe(true);
+      expect(cfgs.some((c) => fuelOf(c) === fuel && runsProfiles(c)), `${fuel} in a 1.5D case`).toBe(true);
+      expect(cfgs.some((c) => fuelOf(c) === fuel && !['tokamak', 'spherical_tokamak', 'stellarator'].includes(c.method)), `${fuel} outside magnetic confinement`).toBe(true);
+    }
+    for (const method of ['tokamak', 'spherical_tokamak', 'stellarator'] as const) {
+      if (!supportsProfiles({ method } as MagneticConfig)) continue;
+      expect(cfgs.some((c) => c.method === method && runsProfiles(c)), `1.5D ${method}`).toBe(true);
+    }
+    // the recorded files agree with the configurations (fuel, fidelity, shortened t_end)
+    for (const [i, c] of GOLDEN_CASES.entries()) {
+      const meta = parseSnapshot(readFileSync(goldenFile(c.id), 'utf8')).meta;
+      expect(meta, c.id).toMatchObject({ case: c.id, preset: c.preset, method: cfgs[i].method, fuel: fuelOf(cfgs[i]) ?? 'DT', fidelity: runsProfiles(cfgs[i]) ? '1.5D' : '0D' });
+    }
+  });
+
+  it('applies overrides and refuses those a preset cannot take', () => {
+    const cfg = caseConfig({ id: 'x', preset: 'MASTU', tEnd: 0.5, overrides: { fuel: 'pB11', fidelity: '1.5D' } }) as MagneticConfig;
+    expect(cfg).toMatchObject({ method: 'spherical_tokamak', fuel: 'pB11', fidelity: '1.5D', t_end: 0.5 });
+    expect(caseConfig(goldenCase('MASTU'))).toBe(PRESETS.find((p) => p.id === 'MASTU')!.cfg); // presets are not copied or mutated
+    expect(() => caseConfig({ id: 'x', preset: 'MUON', overrides: { fuel: 'DD' } })).toThrow(/has no fuel setting/);
+    expect(() => caseConfig({ id: 'x', preset: 'NIF', overrides: { fidelity: '1.5D' } })).toThrow(/has no fidelity setting/);
+    expect(() => caseConfig({ id: 'x', preset: 'W7X', overrides: { fidelity: '1.5D' } })).toThrow(/stellarator has no 1\.5D model/);
+    expect(() => caseConfig({ id: 'x', preset: 'NIF', tEnd: 1 })).toThrow(/has no t_end/);
   });
 });
 

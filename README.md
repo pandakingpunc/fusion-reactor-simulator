@@ -45,7 +45,7 @@ npm install
 npm run dev        # user interface (Vite) → http://localhost:5173
 npm test           # unit, CLI and fast golden-regression tests (vitest)
 npm run validate   # 21 presets, 19 literature checks, in parallel on a worker pool (~45 s)
-npm run golden     # golden regression: 22 cases compared with test/golden (~10 s on 4 threads)
+npm run golden     # golden regression: 30 cases compared with test/golden (~12 s on 4 threads)
 npm run ci:local   # type check + tests + validate + golden, in sequence, stops at the first failure
 npm run figures    # paper figures → docs/figures/*.svg|pdf + captions.md (~1 MB, ~55 s)
 npm run build      # type check + production build
@@ -106,8 +106,9 @@ Two independent safety nets guard the physics:
 
 - **Literature validation** (`npm run validate`) checks selected outputs of every preset against
   published ranges. The ranges are wide: it catches order-of-magnitude and consistency errors.
-- **Golden regression** (`npm run golden`) catches *any* numerical drift. For 22 cases (all 21
-  presets, covering every method in 0D and 1.5D, plus a 3 s SPARC 1.5D variant) it stores a
+- **Golden regression** (`npm run golden`) catches *any* numerical drift. For 30 cases (all 21
+  presets, covering every method in 0D and 1.5D, a 3 s SPARC 1.5D variant, and 8 variants for
+  what no preset uses: every fuel in 0D and 1.5D, 1.5D D-D and 1.5D spherical tokamak) it stores a
   deterministic snapshot in `test/golden/<case>.json`: every finite scalar of the shot report,
   flat-top averages of all diagnostics, whole-run minimum, maximum and mean of every diagnostic
   together with the number of frames in which it is missing or not finite (so a NaN anywhere in
@@ -116,9 +117,9 @@ Two independent safety nets guard the physics:
   mid-run and at the end plus a digest of the last Grad–Shafranov equilibrium. Numbers are
   compared with a relative tolerance of 1e-9 when the file was written by the same Node.js major
   version (1e-6 otherwise); a mismatch prints a table of preset, key, old value, new value and
-  relative difference and exits with code 1. Long
-  discharges are shortened (DEMO 600 s, DEMO15 500 s; recorded in each file) so the suite runs in
-  about 10 s on 4 threads. `npm test` runs a fast subset (JET, NIF, Z, SPARC15-short).
+  relative difference and exits with code 1. Long discharges are shortened (e.g. DEMO 600 s,
+  DEMO15 500 s; recorded in each file) so the suite runs in about 12 s on 4 threads. `npm test`
+  runs a fast subset (JET, NIF, Z, SPARC15-short).
 
 When a change is *meant* to move the numbers, re-record them and say why:
 

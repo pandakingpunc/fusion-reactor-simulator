@@ -29,9 +29,10 @@
  */
 import { PRESETS } from '../physics/presets';
 import { Simulation } from '../physics/simulation';
-import { ProfileModel } from '../physics/profiles/model';
+import { ProfileModel, supportsProfiles } from '../physics/profiles/model';
 import { flatTopAverages } from '../physics/analysis/flatTop';
-import type { EqSnapshot, HistoryFrame, ReactorConfig, ShotReport } from '../physics/types';
+import type { FuelType } from '../physics/reactivity';
+import type { EqSnapshot, Fidelity, HistoryFrame, MagneticConfig, ReactorConfig, ShotReport } from '../physics/types';
 
 /** 2: + meta.fuel, history, geometry, profiles, equilibrium (a format change: schema-1 values are unchanged) */
 export const GOLDEN_SCHEMA = 2;
@@ -48,13 +49,19 @@ export interface GoldenCase {
   preset: string;
   /** shortened t_end [s] (magnetic, FRC, mirror presets only) */
   tEnd?: number;
+  /**
+   * Settings changed from the preset, for combinations no preset uses (the wizard offers every
+   * fuel for every method and 1.5D for both tokamak methods). Plain data: cases go to workers.
+   */
+  overrides?: { fuel?: FuelType; fidelity?: Fidelity };
 }
 
 /**
  * The golden suite: every preset (all 12 methods; 0D and 1.5D). Long discharges are shortened so
  * that the whole suite runs in well under a minute on 4 threads; DEMO/DEMO15 still reach burn.
  * SPARC15-short is a 3 s variant of SPARC15 (ramp-up, L–H transition, first ELMs) for the fast
- * vitest subset.
+ * vitest subset. The variants after MUON cover what no preset does: D-³He and p-¹¹B in 0D and
+ * 1.5D, 1.5D D-D, 1.5D spherical tokamak, and the two fuels in an FRC and a mirror.
  */
 export const GOLDEN_CASES: readonly GoldenCase[] = [
   { id: 'ITER', preset: 'ITER' },
@@ -79,6 +86,14 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
   { id: 'TAE', preset: 'TAE' },
   { id: 'MIRROR', preset: 'MIRROR' },
   { id: 'MUON', preset: 'MUON' },
+  { id: 'ITER-DHe3', preset: 'ITER', tEnd: 100, overrides: { fuel: 'DHe3' } },
+  { id: 'ITER-pB11', preset: 'ITER', tEnd: 100, overrides: { fuel: 'pB11' } },
+  { id: 'SPARC15-DHe3', preset: 'SPARC15', tEnd: 3, overrides: { fuel: 'DHe3' } },
+  { id: 'SPARC15-pB11', preset: 'SPARC15', tEnd: 3, overrides: { fuel: 'pB11' } },
+  { id: 'DIIID15', preset: 'DIIID', tEnd: 3, overrides: { fidelity: '1.5D' } },
+  { id: 'MASTU15', preset: 'MASTU', overrides: { fidelity: '1.5D' } },
+  { id: 'TAE-pB11', preset: 'TAE', overrides: { fuel: 'pB11' } },
+  { id: 'MIRROR-DHe3', preset: 'MIRROR', overrides: { fuel: 'DHe3' } },
 ];
 
 /** Quick cases compared by `npm test` (0D magnetic, two pulsed models, short 1.5D). */
@@ -90,13 +105,34 @@ export function goldenCase(id: string): GoldenCase {
   return c;
 }
 
-/** Reactor configuration of a case (preset config with the t_end override applied). */
+const MAGNETIC_METHODS: readonly string[] = ['tokamak', 'spherical_tokamak', 'stellarator'];
+
+/** True if the configuration runs the 1.5D profile model (the same test as createModel). */
+export function runsProfiles(cfg: ReactorConfig): boolean {
+  return MAGNETIC_METHODS.includes(cfg.method) && (cfg as MagneticConfig).fidelity === '1.5D' && supportsProfiles(cfg as MagneticConfig);
+}
+
+/**
+ * Reactor configuration of a case: the preset's, with the overrides and the t_end override applied.
+ * Throws for an override the preset cannot take (no fuel setting, 1.5D where it would run as 0D).
+ */
 export function caseConfig(c: GoldenCase): ReactorConfig {
   const p = PRESETS.find((x) => x.id === c.preset);
   if (!p) throw new Error(`golden case ${c.id}: unknown preset '${c.preset}'`);
-  if (c.tEnd === undefined) return p.cfg;
-  if (!('t_end' in p.cfg)) throw new Error(`golden case ${c.id}: preset ${c.preset} (${p.cfg.method}) has no t_end to shorten`);
-  return { ...p.cfg, t_end: c.tEnd } as ReactorConfig;
+  let cfg: ReactorConfig = p.cfg;
+  const o = c.overrides ?? {};
+  if (o.fuel !== undefined) {
+    if (!('fuel' in cfg)) throw new Error(`golden case ${c.id}: preset ${c.preset} (${cfg.method}) has no fuel setting`);
+    cfg = { ...cfg, fuel: o.fuel } as ReactorConfig;
+  }
+  if (o.fidelity !== undefined) {
+    if (!MAGNETIC_METHODS.includes(cfg.method)) throw new Error(`golden case ${c.id}: preset ${c.preset} (${cfg.method}) has no fidelity setting`);
+    cfg = { ...cfg, fidelity: o.fidelity } as ReactorConfig;
+    if (o.fidelity === '1.5D' && !runsProfiles(cfg)) throw new Error(`golden case ${c.id}: ${cfg.method} has no 1.5D model`);
+  }
+  if (c.tEnd === undefined) return cfg;
+  if (!('t_end' in cfg)) throw new Error(`golden case ${c.id}: preset ${c.preset} (${cfg.method}) has no t_end to shorten`);
+  return { ...cfg, t_end: c.tEnd } as ReactorConfig;
 }
 
 type Num = number | string; // non-finite numbers are stored as strings

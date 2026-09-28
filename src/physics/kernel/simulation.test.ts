@@ -259,8 +259,14 @@ describe('FSAL stage reuse', () => {
 });
 
 describe('a shot ended by a failed step of the model’s own stepper (1.5D numerical failure)', () => {
+  // The solver reports a failed attempt (StepAttempt.ok = false) at every time step, so the stepper
+  // retries down to its floor and then ends the shot with a StepFailure. The failure is injected as a
+  // failed attempt, not as a thrown Error: the stepper's contract for a THROWN error differs between
+  // versions of the profiles module (a numerical failure is retried like a failed attempt, any other
+  // exception is a programming error that propagates out of advance()), and these tests are about how
+  // the kernel records a shot ended by a StepFailure, not about that classification.
   const fail = (sim: Simulation): void => {
-    (sim.model as ProfileModel).stepper.implicitStep = () => { throw new Error('solver failure'); };
+    (sim.model as ProfileModel).stepper.implicitStep = () => ({ ok: false, change: Infinity, error: new Error('solver failure') });
   };
   const lastFrame = (sim: Simulation) => sim.history[sim.history.length - 1];
   /** a JET 1.5D shot paused where the last frame is at the current time */
@@ -300,6 +306,9 @@ describe('a shot ended by a failed step of the model’s own stepper (1.5D numer
     expect(term.sim?.nEvents).toBe(sim.events.length);
     expect(out.events.map((e) => e.kind)).toEqual(['end']);
     expect(out.events[0].msg).toContain('Numerical failure');
+    // it is the stepper's own StepFailure (the failed attempts were retried down to the floor), carrying the solver's message
+    expect(out.events[0].msg).toContain('solver failure');
+    expect(term.sim?.terminated?.diagnosis).toContain('solver failure');
     expect(sim.done).toBe(true);
     expect(sim.advance(0.1)).toEqual({ frames: [], events: [] });
     // every other pair of frames is strictly increasing in time
@@ -315,6 +324,7 @@ describe('a shot ended by a failed step of the model’s own stepper (1.5D numer
     expect(term.t).toBe(sim.t);
     expect(term.t).toBeGreaterThan(prev.t);
     expect(term.sim?.terminated?.reason).toBe('Numerical failure');
+    expect(term.sim?.terminated?.diagnosis).toContain('solver failure');
     for (let i = 1; i < sim.history.length; i++) expect(sim.history[i].t).toBeGreaterThan(sim.history[i - 1].t);
   }, 60000);
 

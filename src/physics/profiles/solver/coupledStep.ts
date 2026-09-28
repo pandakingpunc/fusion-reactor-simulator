@@ -14,7 +14,12 @@
  * at that last Δt is accepted even without Picard convergence, but only if its whole state is
  * finite; otherwise the shot ends with a StepFailure at the last accepted state. Time advances
  * only by the Δt of the attempt whose state is committed. Any other exception is a programming
- * error: it propagates, with the state restored.
+ * error: it propagates, with the state restored. That holds for an exception inside an implicit
+ * attempt and for one in the update after the accepted step (a plug-in's `accepted` hook, the
+ * equilibrium update): y and the scalars of the shared context that a step changes (StepSnapshot)
+ * are put back, so that a caller that catches the error and steps on continues exactly as if the
+ * failed step had not been tried. What a plug-in keeps in its own fields is its own business (an
+ * `accepted` hook that fails half-way must not leave itself half-updated).
  */
 import { KEV, ProfileContext, StepConstants } from '../context';
 import { composition } from '../composition';
@@ -36,6 +41,39 @@ export const STEP_DT_FLOOR = 1e-7;
 
 /** Result of one implicit attempt: accepted, largest relative change, what it threw */
 export interface StepAttempt { ok: boolean; change: number; error?: unknown }
+
+/**
+ * The scalars and references of the shared context that a step changes besides y (the boundary
+ * values and P_SOL, the loop voltage, the smoothed dW/dt and the ELM energy booked in it, the fast-ion
+ * pools, the diagnostics, the equilibrium of an update, the pending events and issued warnings). The
+ * work arrays are not part of it: every step evaluates them afresh.
+ */
+interface StepSnapshot {
+  PSOL: number; GammaB: number; lastVloop: number; dWdtS: number; crashE: number; nsepGain: number; alphaRatio: number;
+  WfAlpha: number; WfBeam: number; Pbound: number;
+  /** replaced, never mutated, by a step */
+  bc: ProfileContext['bc']; lastK: ProfileContext['lastK']; lastDiag: ProfileContext['lastDiag']; lastProf: ProfileContext['lastProf'];
+  geo: ProfileContext['geo']; pending: number; warned: ReadonlySet<string>; forcedSteps: number;
+}
+
+function snapshotStep(ctx: ProfileContext, forcedSteps: number): StepSnapshot {
+  return {
+    PSOL: ctx.PSOL, GammaB: ctx.GammaB, lastVloop: ctx.lastVloop, dWdtS: ctx.dWdtS, crashE: ctx.crashE, nsepGain: ctx.nsepGain,
+    alphaRatio: ctx.alphaRatio, WfAlpha: ctx.WfAlpha, WfBeam: ctx.WfBeam, Pbound: ctx.Pbound,
+    bc: ctx.bc, lastK: ctx.lastK, lastDiag: ctx.lastDiag, lastProf: ctx.lastProf,
+    geo: ctx.geo, pending: ctx.pending.length, warned: new Set(ctx.warned), forcedSteps,
+  };
+}
+
+/** Puts the context back; returns the number of forced steps of the snapshot */
+function restoreStep(ctx: ProfileContext, s: StepSnapshot): number {
+  const { geo, pending, warned, forcedSteps, ...scalars } = s;
+  Object.assign(ctx, scalars);
+  if (ctx.geo !== geo) ctx.adoptGeometry(geo);
+  ctx.pending.length = pending;
+  ctx.warned = new Set(warned);
+  return forcedSteps;
+}
 
 function allFinite(a: ArrayLike<number>): boolean {
   for (let i = 0; i < a.length; i++) if (!Number.isFinite(a[i])) return false;
@@ -63,10 +101,25 @@ export class CoupledStepper implements Checkpointable {
     if (ctx.phase === 'ended') return tMax;
     if (ctx.phase !== 'normal') return this.disruption.quenchStep(ctx, t, y, tMax);
     const dtWant = ctx.dt;
-    let dt = Math.min(dtWant, tMax - t);
+    const dt = Math.min(dtWant, tMax - t);
     if (dt <= 0) return t;
-    const truncated = dt < dtWant;
     const yOld = Float64Array.from(y);
+    const snap = snapshotStep(ctx, this.forcedSteps);
+    try {
+      return this.advance(t, dt, dtWant, yOld, y);
+    } catch (e) {
+      // a programming error (an exception that is no numerical failure): the step did not happen
+      y.set(yOld);
+      this.forcedSteps = restoreStep(ctx, snap);
+      throw e;
+    }
+  }
+
+  /** The step from t: implicit attempts with retries, then the update after the accepted one */
+  private advance(t: number, dt0: number, dtWant: number, yOld: Float64Array, y: Float64Array): number {
+    const ctx = this.ctx;
+    let dt = dt0;
+    const truncated = dt < dtWant;
     let r = this.tryImplicitStep(t, dt, yOld, y);
     let attempts = 1, retried = false, forced = false;
     while (!r.ok) {
@@ -106,13 +159,13 @@ export class CoupledStepper implements Checkpointable {
   /**
    * implicitStep with a numerical failure (singular linear system, Grad–Shafranov failure of a
    * module) turned into a failed attempt. Anything else it throws is a programming error of a
-   * module or plug-in: it propagates, with y put back to the state at the start of the step.
+   * module or plug-in: it propagates (step() puts the state back).
    */
   private tryImplicitStep(t: number, dt: number, yOld: Float64Array, y: Float64Array): StepAttempt {
     try {
       return this.implicitStep(t, dt, yOld, y);
     } catch (e) {
-      if (!isNumericalFailure(e)) { y.set(yOld); throw e; }
+      if (!isNumericalFailure(e)) throw e;
       return { ok: false, change: Infinity, error: e };
     }
   }

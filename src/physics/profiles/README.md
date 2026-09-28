@@ -47,7 +47,12 @@ or `GSFailure` thrown by a module) is retried with Δt × 0.4 (and runs the per-
 again); after 12 attempts one forced attempt is accepted if finite, otherwise the shot ends with a
 `StepFailure`. Any other exception thrown inside a step (a `TypeError` of a plug-in, a violated
 invariant) is a programming error: it propagates out of `Simulation.advance` with `y` put back to
-the start of the step. A module that meets a numerical problem it cannot repair (a singular system
+the start of the step. That covers the update after the accepted step too (the `accepted` hooks,
+the equilibrium update): `CoupledStepper.step` snapshots the scalars of the context that a step
+changes (P_SOL, Γ_b, the smoothed dW/dt and the ELM energy booked in it, the fast-ion pools, the
+diagnostics, the equilibrium, pending events, issued warnings) and restores them with `y`, so a
+caller that catches the error and steps on continues as if the step had not been tried. What a
+plug-in keeps in its own fields is its own business. A module that meets a numerical problem it cannot repair (a singular system
 of its own, a non-finite closure) throws a `NumericalFailure` (`failures.ts`) to have the attempt
 retried; the singular-pivot errors of the heat, density and current solves are converted to
 `LinearAlgebraFailure` in `fvsolver.ts`.

@@ -352,6 +352,84 @@ describe('implicit step failures', () => {
     expect(m.ctx.phase).toBe('normal');
   }, 60000);
 
+  // The update after the accepted step (plug-in `accepted` hooks, the equilibrium update and the re-evaluation on its
+  // geometry) is outside the implicit attempts. An error there used to leave y advanced by the step while t stayed
+  // (and dW/dt, P_SOL and the fast-ion pools half updated): y and the context scalars of the update are put back, and
+  // stepping on continues as if the step had not been tried.
+  describe('a programming error in the update after the accepted step', () => {
+    type Trap = { armed: boolean; fired: number };
+    const boom = (trap: Trap) => { if (!trap.armed) return; trap.armed = false; trap.fired++; const o = undefined as unknown as { length: number }; o.length; };
+    const hooks = (where: 'accepted' | 'geometry', trap: Trap): SourceModel =>
+      where === 'accepted' ? { id: 'buggy', accepted: () => boom(trap) } : { id: 'buggy', geometryChanged: () => boom(trap) };
+    const scalars = (m: ProfileModel) => {
+      const c = m.ctx;
+      return { PSOL: c.PSOL, GammaB: c.GammaB, lastVloop: c.lastVloop, dWdtS: c.dWdtS, crashE: c.crashE, nsepGain: c.nsepGain, alphaRatio: c.alphaRatio, WfAlpha: c.WfAlpha, WfBeam: c.WfBeam, Pbound: c.Pbound };
+    };
+
+    it.each(['accepted', 'geometry'] as const)('a bug in the %s hook of a plug-in: y, the scalars of the context and the equilibrium are as before the step, and the run goes on bit for bit like one that never failed', (where) => {
+      const trap: Trap = { armed: false, fired: 0 };
+      const cfg: MagneticConfig = { ...JET_15D, t_end: 0.6, profiles: { ...JET_15D.profiles, eqUpdateInterval: 0.1 } };
+      const m = new ProfileModel(cfg, { sources: [...defaultSources(), hooks(where, trap)] });
+      const ref = new ProfileModel(cfg);
+      const ym = m.initialState(), yr = ref.initialState();
+      m.diagnostics(0, ym); ref.diagnostics(0, yr);
+      const advance = (mod: ProfileModel, y: Float64Array, t: number) => { const t1 = mod.step(t, y, cfg.t_end); mod.postStep(t1, t1 - t, y); return t1; };
+      let tm = 0, tr = 0, failed = false;
+      for (let k = 0; k < 300 && !failed; k++) {
+        // energy that an ELM has taken out and the step books into dW/dt: it must be there again after a failed step
+        m.ctx.crashE = ref.ctx.crashE = 2e5;
+        // the accepted hook fails at a step of the start-up ramp, the geometry hook at the first equilibrium update
+        trap.armed = where === 'geometry' || k >= 8;
+        const y0 = Array.from(ym), before = scalars(m), geo = m.ctx.geo, diag = m.ctx.lastDiag, updates = m.eqUpdates, t0 = tm;
+        try {
+          tm = advance(m, ym, tm);
+        } catch (e) {
+          failed = true;
+          expect(e).toBeInstanceOf(TypeError);
+          expect(trap.fired).toBe(1);
+          expect(tm).toBe(t0);
+          expect(Array.from(ym)).toEqual(y0);
+          expect(scalars(m)).toEqual(before);
+          expect(before.crashE).toBe(2e5);
+          expect(m.ctx.geo).toBe(geo);
+          expect(m.ctx.lastDiag).toBe(diag);
+          expect(m.eqUpdates).toBe(updates);
+          expect(m.terminated).toBeNull();
+          expect(m.ctx.phase).toBe('normal');
+          break;
+        }
+        tr = advance(ref, yr, tr);
+      }
+      expect(failed).toBe(true);
+      if (where === 'geometry') expect(m.eqUpdates).toBe(0); // it failed at the first update
+      trap.armed = false;
+      // the reference now takes the step that the failed model retries; both go on together through the equilibrium update
+      for (let k = 0; k < 40 && tm < cfg.t_end - 1e-9; k++) {
+        tm = advance(m, ym, tm); tr = advance(ref, yr, tr);
+        expect(tm).toBe(tr);
+        expect(Array.from(ym)).toEqual(Array.from(yr));
+        expect(m.ctx.lastDiag).toEqual(ref.ctx.lastDiag);
+      }
+      expect(m.eqUpdates).toBe(ref.eqUpdates);
+      if (where === 'geometry') expect(m.eqUpdates).toBeGreaterThanOrEqual(1);
+    }, 120000);
+
+    it('through Simulation.advance the caller sees the error; time, state and history are those before the failed step, and the shot goes on', () => {
+      const trap: Trap = { armed: false, fired: 0 };
+      const sim = new Simulation({ ...JET_15D, t_end: 0.5 });
+      sim.advance(0.1);
+      ((sim.model as ProfileModel).physics.sources as SourceModel[]).push(hooks('accepted', trap));
+      const t0 = sim.t, y0 = Array.from(sim.y), frames = sim.history.length;
+      trap.armed = true;
+      expect(() => sim.advance(0.1)).toThrow(TypeError);
+      expect(sim.t).toBe(t0);
+      expect(Array.from(sim.y)).toEqual(y0);
+      expect(sim.history.length).toBe(frames);
+      sim.advance(0.1);
+      expect(sim.t).toBeGreaterThan(t0);
+    }, 120000);
+  });
+
   it('the same through Simulation.advance: the caller sees the error, not a terminated shot', () => {
     const buggy: SourceModel = { id: 'buggy', heat: (_c, st) => { (st as unknown as { doesNotExist: { length: number } }).doesNotExist.length; } };
     const sim = new Simulation({ ...JET_15D, t_end: 0.5 });

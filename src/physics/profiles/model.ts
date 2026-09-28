@@ -31,6 +31,7 @@ import { IMPURITIES, ImpuritySpecies } from '../constants';
 import { RNG } from '../rng';
 import { GSSolver, Equilibrium } from '../equilibrium/gs';
 import { buildMagneticReport, LAWSON_DT } from '../confinement/magneticReport';
+import { flatTopMean } from '../analysis/flatTop';
 import { DiagSpec, EqSnapshot, HistoryFrame, MagneticConfig, ProfileSettings, ShotReport, SimEvent, SimModel, TerminationInfo } from '../types';
 import { TransportGeometry, geometryFromEquilibrium } from './geometry1d';
 import { DEFAULT_PROFILE_SETTINGS } from './defaults';
@@ -1264,7 +1265,7 @@ export class ProfileModel implements SimModel {
   report(hist: HistoryFrame[], events: SimEvent[]): ShotReport {
     const last = hist[hist.length - 1];
     const d = last.d;
-    const avg = (k: string) => { const i0 = Math.floor(hist.length * 0.7); let s = 0, n = 0; for (let i = i0; i < hist.length; i++) { s += hist[i].d[k] ?? 0; n++; } return n ? s / n : 0; };
+    const avg = (k: string) => flatTopMean(hist, k, { samples: 'all' });
     const warnings: string[] = [];
     if (this.eq && !this.eq.converged) warnings.push('Grad–Shafranov equilibrium did not fully converge — geometry coefficients may be inaccurate.');
     const nElm = events.filter((e) => e.kind === 'ELM').length;

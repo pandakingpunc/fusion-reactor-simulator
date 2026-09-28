@@ -5,6 +5,7 @@
  */
 import { parentPort } from 'node:worker_threads';
 import { Simulation } from '../physics/simulation';
+import { flatTopAverages } from '../physics/analysis/flatTop';
 import { ReactorConfig, ShotReport } from '../physics/types';
 
 export interface RunTask { id: string; cfg: ReactorConfig; keepSeries?: string[] }
@@ -26,13 +27,7 @@ parentPort!.on('message', (task: RunTask) => {
     const sim = new Simulation(task.cfg);
     const report = sim.runAll();
     const hist = sim.history;
-    const i0 = Math.floor(hist.length * 0.7);
-    const avg: Record<string, number> = {};
-    for (const k of Object.keys(hist[hist.length - 1].d)) {
-      let s = 0, n = 0;
-      for (let i = i0; i < hist.length; i++) { const v = hist[i].d[k]; if (Number.isFinite(v)) { s += v; n++; } }
-      avg[k] = n ? s / n : NaN;
-    }
+    const avg = flatTopAverages(hist);
     const events: Record<string, number> = {};
     for (const e of sim.events) events[e.kind] = (events[e.kind] ?? 0) + 1;
     let series: Record<string, number[]> | undefined;

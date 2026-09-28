@@ -17,9 +17,10 @@ import { mkdirSync, writeFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { Simulation } from '../physics/simulation';
+import { flatTopAverages } from '../physics/analysis/flatTop';
 import { DEMO, DEMO_15D, ITER, ITER_15D, JET, JET_15D, NIF, SPARC, SPARC_15D } from '../physics/presets';
 import { ProfileModel } from '../physics/profiles/model';
-import { HistoryFrame, MagneticConfig, ReactorConfig, ShotReport } from '../physics/types';
+import { MagneticConfig, ReactorConfig, ShotReport } from '../physics/types';
 import { Figure } from '../plot/figure';
 import { C, profileFrame } from '../plot/figures/common';
 import { figEquilibrium } from '../plot/figures/equilibrium';
@@ -46,18 +47,6 @@ const tick = () => new Promise<void>((r) => setImmediate(r));
 /** mathtext etiketi → düz metin (markdown tablosu için) */
 const plain = (s: string) => s.replace(/\$/g, '').replace(/\\mathrm\{([^}]*)\}/g, '$1').replace(/\\beta/g, 'β').replace(/\\ell/g, 'ℓ').replace(/_\{([^}]*)\}/g, '_$1').replace(/[{}]/g, '');
 const figNo = (c: string) => parseInt(/Fig\. (\d+)/.exec(c)?.[1] ?? '99', 10);
-
-/** işçiyle aynı tanım: son %30 karelerin ortalaması */
-function flatTopAvg(hist: HistoryFrame[]): Record<string, number> {
-  const i0 = Math.floor(hist.length * 0.7);
-  const avg: Record<string, number> = {};
-  for (const k of Object.keys(hist[hist.length - 1].d)) {
-    let s = 0, n = 0;
-    for (let i = i0; i < hist.length; i++) { const v = hist[i].d[k]; if (Number.isFinite(v)) { s += v; n++; } }
-    avg[k] = n ? s / n : NaN;
-  }
-  return avg;
-}
 
 interface MainRun { sim: Simulation; model: ProfileModel; report: ShotReport; avg: Record<string, number>; saw?: CrashRecord; elm?: CrashRecord; zoom: ElmZoom; ms: number }
 
@@ -93,7 +82,7 @@ async function runIter15(): Promise<MainRun> {
   }
   model.crashHook = null;
   process.stdout.write('\n');
-  return { sim, model, report: sim.report(), avg: flatTopAvg(sim.history), saw, elm, zoom, ms: performance.now() - t0 };
+  return { sim, model, report: sim.report(), avg: flatTopAverages(sim.history), saw, elm, zoom, ms: performance.now() - t0 };
 }
 
 function save(fig: Figure, name: string, out: string, formats: string[], written: string[]): void {

@@ -7,6 +7,7 @@
 import { Geometry } from '../geometry';
 import { MAGNET_TECH, MagnetCheck, economics, neutronWallLoad, tritiumBreedingRatio } from '../engineering';
 import { U } from '../units';
+import { flatTopMean } from '../analysis/flatTop';
 import { HistoryFrame, MagneticConfig, Method, ShotReport, SimEvent, TerminationInfo } from '../types';
 
 /** Lawson ateşleme referansı: D-T için nTτ_E ≈ 3e21 keV s m^-3 (Wesson; T≈15 keV, profil düz) */
@@ -47,8 +48,7 @@ export function buildMagneticReport(ctx: MagneticReportContext, hist: HistoryFra
   const triple = max(d('triple'));
   const lawsonRef = c.fuel === 'DT' ? LAWSON_DT : c.fuel === 'DHe3' ? 4e22 : c.fuel === 'DD' ? 1e23 : 1e24;
   // mühendislik (atış ortalaması, son %30)
-  const i0 = Math.floor(hist.length * 0.7);
-  const avg = (k: string) => { let s = 0, n = 0; for (let i = i0; i < hist.length; i++) { s += hist[i].d[k] ?? 0; n++; } return n ? s / n : 0; };
+  const avg = (k: string) => flatTopMean(hist, k, { samples: 'all' });
   const Pfus_avg = avg('P_fus'), Paux_avg = avg('P_aux') + avg('P_oh');
   const Pn_avg = avg('P_neutron');
   const nwl = neutronWallLoad(ctx.g, Pn_avg * 1e6, c.economics.availability);

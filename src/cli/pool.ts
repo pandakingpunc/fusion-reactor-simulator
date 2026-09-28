@@ -6,9 +6,10 @@
  * Worker contract: a worker answers every task it receives with exactly one message (the result).
  *
  * Two call forms, both returning the results in task order:
- *   runPool(tasks, workerUrl, threads?, onResult?)   — the v3 form, fail-fast
+ *   runPool(tasks, workerUrl, threads?, onResult?)   — the v3 form, fail-fast; leaves SIGINT/SIGTERM alone
  *   runPool(tasks, workerUrl, options)                — adds per-task timeouts, cancellation through an
- *                                                        AbortSignal, progress reports and crash recovery
+ *                                                        AbortSignal or SIGINT/SIGTERM, progress reports and
+ *                                                        crash recovery
  *
  * Failure handling: an invalid thread count or timeout throws {@link PoolConfigError} before any worker
  * is started. A task fails when it cannot be sent to a worker (e.g. it holds a function, which
@@ -19,9 +20,18 @@
  * With `options.onTaskError` the failure is turned into that task's result instead: a crashed, hung or
  * broken worker is replaced by a fresh one and the remaining tasks continue.
  *
- * Cancellation: aborting `options.signal`, or SIGINT/SIGTERM while the pool runs (unless
- * `handleSignals: false`), terminates every worker and rejects with a {@link PoolAbortError}. The
- * signal listeners are removed when the pool settles; a CLI maps the error to exit code 130.
+ * Cancellation: aborting `options.signal`, or SIGINT/SIGTERM while the pool runs, terminates every
+ * worker and rejects with a {@link PoolAbortError}; a CLI maps the error to exit code 130. Process
+ * signals are handled only by the options form (`handleSignals`, default true there); the positional
+ * form keeps the v3 behaviour, where Ctrl-C ends the process through Node's default handler. While the
+ * listeners are installed (they are removed when the pool settles), Ctrl-C no longer ends the process
+ * by itself: it rejects the pool promise, and only once the main thread yields. So a caller that
+ * handles signals must await the promise, or attach a handler at once, before other long work — a
+ * PoolAbortError that nobody handles yet becomes an unhandled rejection:
+ *   const pending = runPool(tasks, url, { threads });
+ *   pending.catch(() => {});    // handled now; the rejection is still seen by the await below
+ *   await otherWork();
+ *   const results = await pending;
  */
 import { Worker } from 'node:worker_threads';
 import { availableParallelism } from 'node:os';
@@ -111,7 +121,10 @@ export interface PoolOptions<T, R> {
    * one and the remaining tasks continue. If it throws, the pool rejects with that error.
    */
   onTaskError?: (error: PoolTaskError, task: T, index: number) => R;
-  /** cancel on SIGINT/SIGTERM while the pool runs (default true) */
+  /**
+   * cancel on SIGINT/SIGTERM while the pool runs (default true in the options form; the positional
+   * form never installs signal listeners)
+   */
   handleSignals?: boolean;
 }
 
@@ -153,9 +166,10 @@ export function runPool<T, R>(tasks: readonly T[], workerUrl: URL, options: Pool
 export async function runPool<T, R>(
   tasks: readonly T[], workerUrl: URL, threadsOrOptions?: number | PoolOptions<T, R>, onResultArg?: (r: R, i: number) => void,
 ): Promise<R[]> {
+  // the positional (v3) form keeps v3 semantics: no signal listeners, Ctrl-C ends the process at once
   const opts: PoolOptions<T, R> = typeof threadsOrOptions === 'object' && threadsOrOptions !== null
     ? threadsOrOptions
-    : { threads: threadsOrOptions, onResult: onResultArg };
+    : { threads: threadsOrOptions, onResult: onResultArg, handleSignals: false };
   const threads = checkThreads(opts.threads === undefined ? defaultThreads() : opts.threads);
   const fixedTimeout = typeof opts.timeoutMs === 'function' ? undefined : checkTimeout(opts.timeoutMs, 'timeoutMs');
   const timeoutFor = (task: T, i: number): number | undefined =>

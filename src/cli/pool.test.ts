@@ -202,7 +202,7 @@ describe('worker pool options', { timeout: 30_000 }, () => {
     expect(after).toBe(0);
   });
 
-  it('removes its SIGINT/SIGTERM listeners when it settles, and handleSignals: false adds none', async () => {
+  it('removes its SIGINT/SIGTERM listeners when it settles; handleSignals: false and the positional form add none', async () => {
     const before = [process.listenerCount('SIGINT'), process.listenerCount('SIGTERM')];
     const p = runPool<Task, Res>(doubles(2), FIXTURE, { threads: 1 });
     expect(process.listenerCount('SIGINT')).toBe(before[0] + 1);
@@ -211,6 +211,10 @@ describe('worker pool options', { timeout: 30_000 }, () => {
     const q = runPool<Task, Res>(doubles(2), FIXTURE, { threads: 1, handleSignals: false });
     expect(process.listenerCount('SIGINT')).toBe(before[0]);
     await q;
+    // the positional (v3) form keeps Node's default Ctrl-C behaviour
+    const v3 = runPool<Task, Res>(doubles(2), FIXTURE, 1);
+    expect([process.listenerCount('SIGINT'), process.listenerCount('SIGTERM')]).toEqual(before);
+    await v3;
     await rejection(runPool<Task, Res>([{ id: 'x', action: 'crash' }], FIXTURE, 1));
     expect([process.listenerCount('SIGINT'), process.listenerCount('SIGTERM')]).toEqual(before);
   });
@@ -225,5 +229,26 @@ describe('worker pool options', { timeout: 30_000 }, () => {
     expect(out.message).toMatch(/interrupted by SIGINT after 0 of 6 tasks; workers terminated/);
     expect(out.listeners.during).toBe(out.listeners.before + 1);
     expect(out.listeners.after).toBe(out.listeners.before);
+  });
+
+  it('deferred await (pool started, other work awaited, pool awaited later) with SIGINT meanwhile (child process)', () => {
+    const root = fileURLToPath(new URL('../../', import.meta.url));
+    const run = (mode: string) => {
+      const r = spawnSync(process.execPath, ['--import', 'tsx', 'src/cli/testdata/pool-deferred.mts', mode], { cwd: root, encoding: 'utf8', timeout: 20_000 });
+      if (r.error) throw r.error;
+      return { status: r.status, stderr: r.stderr, out: JSON.parse(r.stdout.trim().split('\n').pop()!) };
+    };
+    // positional form: no listener, so SIGINT does not cancel the pool and nothing is left unhandled
+    const v3 = run('positional');
+    expect(v3.status).toBe(0);
+    expect(v3.out).toMatchObject({ settled: 'resolved', n: 4, unhandled: 0 });
+    expect(v3.out.listeners.during).toBe(v3.out.listeners.before);
+    // options form with a handler attached at once: cancelled, and the later await sees the abort
+    const opt = run('options');
+    expect(opt.status).toBe(130);
+    expect(opt.out).toMatchObject({ settled: 'rejected', abort: true, unhandled: 0 });
+    expect(opt.out.listeners.during).toBe(opt.out.listeners.before + 1);
+    expect(opt.out.listeners.after).toBe(opt.out.listeners.before);
+    expect(opt.stderr).not.toMatch(/PoolAbortError/);
   });
 });

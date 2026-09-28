@@ -329,8 +329,9 @@ export const REFERENCE_CHECKS: readonly ReferenceCheck[] = [
     id: 'JET15.Efus', preset: 'JET15', metric: 'E_fusion', path: 'report.E_fusion_MJ', value: 59, uncertainty: 6, unit: 'MJ',
     ref: 'Maslov 2023', source: SRC.maslov2023, doi: DOI.maslov2023, accept: [40, 80], tolerance: 'stated', kind: 'validation',
     basis: 'record pulse #99971: 59 MJ, beam-target fusion included; same range as the 0D check (≈10 % calibration uncertainty, −32 %/+36 %)',
-    knownFailure: 'the 1.5D model gives ≈ 85 MJ (+43 %, preset note "1.5D: +40 %"): beam-target fusion from the 3-component ' +
-      'NBI deposition and a T_i(0) near 10 keV together over-predict the neutron rate of the record pulse',
+    // no model value is quoted here: it moves with the 1.5D physics, and the check prints the current one
+    knownFailure: 'the 1.5D model over-predicts the record pulse by about 40 % (preset note "1.5D: +40 %"): beam-target fusion ' +
+      'from the 3-component NBI deposition and a T_i(0) near 10 keV together over-predict the neutron rate of the record pulse',
   },
   {
     id: 'JET15.Ti0', preset: 'JET15', metric: 'T_i axis', path: 'flatTop.Ti0', value: 10, unit: 'keV',

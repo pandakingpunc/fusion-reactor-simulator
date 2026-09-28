@@ -1,6 +1,6 @@
 import React from 'react';
 import { METHOD_LABELS, ShotReport } from '../../physics/types';
-import { SavedShot } from '../../App';
+import { SavedShot } from '../state/types';
 import { fmtNum } from '../format';
 
 interface Props { shots: SavedShot[]; onRemove: (id: number) => void; onLoad: (s: SavedShot) => void }

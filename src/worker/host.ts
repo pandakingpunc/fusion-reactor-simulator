@@ -1,0 +1,165 @@
+/**
+ * Simülasyon worker'ının mesaj işleyicisi (protokol v2), `self`'ten bağımsız:
+ * sim.worker.ts bunu gerçek worker'a bağlar, testler doğrudan çağırır.
+ * Oynatma döngüsü ~30 Hz; her tikte duvar-saati × hız kadar simülasyon zamanı ilerletilir.
+ */
+import { Simulation } from '../physics/simulation';
+import { ShotReport, SimModel } from '../physics/types';
+import { FromWorker, PROTOCOL_VERSION, SimMeta, ToWorker, simSecondsPerWallSecond, toUiFrame } from './protocol';
+
+const TICK_MS = 33;
+/** minimum wall time between two `progress` messages of a background full run */
+const PROGRESS_MS = 100;
+
+export interface SimHost {
+  handle(msg: ToWorker): void;
+  /** stop the playback loop (worker shutdown / tests) */
+  dispose(): void;
+}
+
+export function makeMeta(model: SimModel): SimMeta {
+  return {
+    method: model.method, kind: model.kind, timeUnit: model.timeUnit, tEnd: model.tEnd,
+    diagSpecs: model.diagSpecs, geometry: model.geometryInfo(), controls: model.getControls(),
+  };
+}
+
+function checkVersion(v: number): void {
+  if (v !== PROTOCOL_VERSION) throw new Error(`Worker protocol mismatch: page speaks v${v}, worker speaks v${PROTOCOL_VERSION}. Reload the page.`);
+}
+
+export function createSimHost(post: (m: FromWorker) => void): SimHost {
+  let sim: Simulation | null = null;
+  let meta: SimMeta | null = null;
+  let playing = false;
+  let speed = 1;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let lastWall = 0;
+  /** id of the loaded run and the current timeline branch; echoed on every live message */
+  let runId = 0;
+  let branchId = 0;
+
+  function stopLoop() {
+    playing = false;
+    if (timer) { clearTimeout(timer); timer = null; }
+  }
+
+  function postError(err: unknown, id?: number, branch?: number, stop = true) {
+    if (stop) stopLoop();
+    post({ type: 'error', msg: err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err), id, branchId: branch });
+  }
+
+  /** advance the live simulation and post the new frames (and the report when it ends) */
+  function advance(simDt: number): number {
+    if (!sim) return 0;
+    const t0 = performance.now();
+    const { frames, events } = sim.advance(simDt);
+    const wallMs = performance.now() - t0;
+    post({
+      type: 'frames', id: runId, branchId, frames: frames.map(toUiFrame), events, t: sim.t, done: sim.done,
+      dt: sim.dt, nSteps: sim.nSteps, controls: sim.model.getControls(), wallMs,
+    });
+    if (sim.done) {
+      stopLoop();
+      post({ type: 'done', id: runId, branchId, report: sim.report() });
+    }
+    return wallMs;
+  }
+
+  function startLoop() {
+    if (!sim || sim.done || playing) return;
+    playing = true;
+    lastWall = performance.now();
+    timer = setTimeout(tick, 0);
+  }
+
+  function tick() {
+    timer = null;
+    if (!sim || !meta || !playing) return;
+    try {
+      const now = performance.now();
+      const wallDt = Math.min((now - lastWall) / 1000, 0.25); // sekme arka plana düşerse sıçrama olmasın
+      lastWall = now;
+      // simülasyon zamanı: duvar × hız × birim ölçeği; tek tikte en fazla atışın %5'i (UI akıcılığı)
+      const simDt = Math.min(wallDt * speed * simSecondsPerWallSecond(meta), meta.tEnd / 20);
+      const wallMs = advance(simDt);
+      // hesap tik süresinden uzun sürdüyse bir sonraki tik hemen
+      if (playing) timer = setTimeout(tick, Math.max(0, TICK_MS - wallMs));
+    } catch (err) {
+      postError(err, runId, branchId);
+    }
+  }
+
+  function runAll(msg: Extract<ToWorker, { type: 'runAll' }>): void {
+    checkVersion(msg.protocolVersion);
+    const s = new Simulation(msg.cfg);
+    let report: ShotReport;
+    if (msg.progress) {
+      // Same chunking as Simulation.runAll(), with throttled progress messages in between.
+      let guard = 0, lastPost = -Infinity;
+      while (!s.done && guard++ < 10000) {
+        s.advance(s.model.tEnd / 100);
+        const now = performance.now();
+        if (now - lastPost >= PROGRESS_MS) { lastPost = now; post({ type: 'progress', id: msg.id, t: s.t, tEnd: s.model.tEnd, frames: s.history.length }); }
+      }
+      report = s.report();
+    } else {
+      report = s.runAll();
+    }
+    post({
+      type: 'runAllDone', protocolVersion: PROTOCOL_VERSION, id: msg.id, report, meta: makeMeta(s.model),
+      frames: msg.keepFrames ? s.history.map(toUiFrame) : undefined, events: msg.keepFrames ? s.events : undefined,
+    });
+  }
+
+  function handle(msg: ToWorker): void {
+    try {
+      switch (msg.type) {
+        case 'init': {
+          stopLoop();
+          runId = msg.id;
+          branchId = 0;
+          sim = null; meta = null;
+          checkVersion(msg.protocolVersion);
+          if (msg.speed !== undefined) speed = msg.speed;
+          sim = new Simulation(msg.cfg);
+          meta = makeMeta(sim.model);
+          post({ type: 'ready', protocolVersion: PROTOCOL_VERSION, id: runId, meta, frame: toUiFrame(sim.history[0]) });
+          // model kurulumda bitmiş olabilir (ör. mıknatıs quench → atış iptal)
+          if (sim.done) post({ type: 'done', id: runId, branchId, report: sim.report() });
+          else if (msg.autoPlay) startLoop();
+          break;
+        }
+        case 'play':
+          speed = msg.speed;
+          startLoop();
+          break;
+        case 'pause': stopLoop(); break;
+        case 'setSpeed': speed = msg.speed; break;
+        case 'step':
+          if (sim && !sim.done) advance(msg.simDt);
+          break;
+        case 'rewind': {
+          if (!sim) break;
+          stopLoop();
+          branchId = msg.branchId;
+          const index = Math.max(0, Math.min(msg.index, sim.history.length - 1));
+          sim.rewindTo(index);
+          post({ type: 'rewound', id: runId, branchId, index, t: sim.t, controls: sim.model.getControls() });
+          break;
+        }
+        case 'control':
+          if (sim) sim.applyControl(msg.patch);
+          break;
+        case 'runAll':
+          runAll(msg);
+          break;
+      }
+    } catch (err) {
+      if (msg.type === 'runAll') postError(err, msg.id, undefined, false);
+      else postError(err, msg.type === 'init' ? msg.id : runId, branchId);
+    }
+  }
+
+  return { handle, dispose: stopLoop };
+}

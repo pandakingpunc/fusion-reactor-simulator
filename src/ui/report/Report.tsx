@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { METHOD_LABELS } from '../../physics/types';
-import { SavedShot } from '../../App';
+import { HistoryFrame, METHOD_LABELS } from '../../physics/types';
+import { SavedShot } from '../state/types';
 import { fmtNum, fmtTime } from '../format';
 import { TimeChart } from '../charts/TimeChart';
 import { PALETTE } from '../format';
@@ -30,7 +30,9 @@ export function Report({ shot, onRerun, onEdit }: Props) {
     setFigBusy(true);
     try {
       const m = await import('./exportFigures');
-      m.exportFigure({ name, cfg, frames, events, diagSpecs: meta.diagSpecs, timeUnit: meta.timeUnit }, figKinds.includes(figKind) ? figKind : 'traces', format);
+      // The UI keeps frames without the worker-only rewind state; the figure code reads t, d, prof and eq only.
+      const hist: HistoryFrame[] = frames.map((f) => ({ ...f, y: [], internal: {} }));
+      m.exportFigure({ name, cfg, frames: hist, events, diagSpecs: meta.diagSpecs, timeUnit: meta.timeUnit }, figKinds.includes(figKind) ? figKind : 'traces', format);
     } finally { setFigBusy(false); }
   };
 

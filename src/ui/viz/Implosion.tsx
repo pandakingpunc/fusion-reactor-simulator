@@ -6,12 +6,12 @@
  *    yumuşak sıkışma, sonra genleşme. APPROXIMATION (yalnızca görsel).
  */
 import React, { useEffect, useMemo, useRef } from 'react';
-import { HistoryFrame } from '../../physics/types';
+import { UiFrame } from '../../worker/protocol';
 import { fmtAxis } from '../format';
 
 interface Props {
   kind: 'icf' | 'mtf';
-  frames: HistoryFrame[];
+  frames: UiFrame[];
   t: number;
   tEnd: number;
   timeUnit: string;
@@ -33,10 +33,10 @@ export function Implosion({ kind, frames, t, tEnd, timeUnit, geometry, bang_ns, 
   // yarıçap fonksiyonu
   const radiusAt = useMemo(() => {
     if (kind === 'mtf') {
-      return (fr: HistoryFrame) => (r0 / Math.max(fr.d.C ?? 1, 1)) * rScale;
+      return (fr: UiFrame) => (r0 / Math.max(fr.d.C ?? 1, 1)) * rScale;
     }
     const tb = bang_ns ?? tEnd * 0.75;
-    return (fr: HistoryFrame) => {
+    return (fr: UiFrame) => {
       const tt = fr.t;
       if (tt <= tb) return r0 * (1 - (1 - 1 / CR) * smooth((tt - 0.2 * tb) / (0.8 * tb)));
       return (r0 / CR) * (1 + 6 * (tt - tb)); // bang sonrası genleşme (şematik)

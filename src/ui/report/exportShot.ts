@@ -1,5 +1,6 @@
 /** CSV / JSON dışa aktarma (Blob indirme). */
-import { HistoryFrame, ReactorConfig, ShotReport, SimEvent } from '../../physics/types';
+import { ReactorConfig, ShotReport, SimEvent } from '../../physics/types';
+import { UiFrame } from '../../worker/protocol';
 import { DiagSpec } from '../../physics/types';
 
 function download(name: string, text: string, mime: string) {
@@ -14,7 +15,7 @@ export function exportJSON(name: string, cfg: ReactorConfig, report: ShotReport,
   download(`${safe(name)}_report.json`, JSON.stringify({ name, exportedAt: new Date().toISOString(), cfg, report, events }, null, 2), 'application/json');
 }
 
-export function exportCSV(name: string, frames: HistoryFrame[], specs: DiagSpec[], timeUnit: string) {
+export function exportCSV(name: string, frames: UiFrame[], specs: DiagSpec[], timeUnit: string) {
   const keys = specs.map((s) => s.key);
   const extra = frames.length ? Object.keys(frames[0].d).filter((k) => !keys.includes(k)) : [];
   const cols = [...keys, ...extra];

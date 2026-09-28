@@ -26,7 +26,7 @@ import { FUEL_CHANNELS, FUEL_SPECIES, beamTargetReactivity, beamTargetDensity, b
 import { bremsstrahlung, synchrotronTotal, coolingRate, meanCharge } from '../radiation';
 import { tauIPB98y2, tauITER89P, tauISS04, tauSTValovic, pLH_Martin, tauEquilibration } from '../transport';
 import { resistivity, ohmicPower, criticalEnergy, ionHeatingFraction, slowingDownTime, nbiShineThrough, fastIonEnergyTime, fastPoolMix, FastSpecies } from '../heating';
-import { greenwaldDensity, betaToroidal, betaNormalized, betaPoloidal } from '../limits';
+import { greenwaldDensity, betaToroidal, betaNormalized, betaPoloidal, lineAverageFactor } from '../limits';
 import { disruptionReport, DisruptionCause, DISRUPTION_LABELS, DISRUPTION_FIXES } from '../disruption';
 import { checkMagnet, MAGNET_TECH, divertorHeatFlux, divertorHeatFluxStellarator, neutronWallLoad } from '../engineering';
 import { buildMagneticReport, LAWSON_DT } from './magneticReport';
@@ -44,7 +44,8 @@ export const MAGNETIC_DIAGS: DiagSpec[] = [
   { key: 'Te', label: 'T_e (volume avg.)', unit: 'keV', group: 'Temperature' },
   { key: 'Ti0', label: 'T_i (axis)', unit: 'keV', group: 'Temperature' },
   { key: 'ne', label: 'n_e', unit: '1e20 m⁻³', group: 'Density' },
-  { key: 'nG_frac', label: 'n/n_Greenwald', unit: '', group: 'Density' },
+  { key: 'nbar', label: 'n̄_e (line avg.)', unit: '1e20 m⁻³', group: 'Density' },
+  { key: 'nG_frac', label: 'n̄/n_Greenwald', unit: '', group: 'Density' },
   { key: 'fHe', label: 'He ash fraction', unit: '', group: 'Density' },
   { key: 'P_fus', label: 'P_fusion', unit: 'MW', group: 'Power' },
   { key: 'P_alpha', label: 'P_alpha (charged fusion products, deposited)', unit: 'MW', group: 'Power' },
@@ -511,6 +512,8 @@ export class MagneticModel implements SimModel {
     const P_in = D.P_aux_abs + D.P_oh;
     const Q = D.P_fus / Math.max(P_in, 1e4);
     const triple = D.ne * D.Ti * D.tauE;
+    // Greenwald (ve Sudo) limitleri çizgi-ortalamalı yoğunluk içindir: n̄ = f_line(α_n) ⟨n_e⟩
+    const nbar = lineAverageFactor(c.transport.alpha_n) * D.ne;
     const nG = this.isStell ? this.sudoLimit(D) : greenwaldDensity(Math.max(Ip_MA, 0.01), this.g.a);
     const P_LH = this.isStell ? 0 : pLH_Martin(D.ne, c.B0, this.S, this.M);
     let q_div = 0;
@@ -519,7 +522,7 @@ export class MagneticModel implements SimModel {
     const nw = neutronWallLoad(this.g, D.P_neutron, 1).load_MWm2;
     const na = y[IDX.na], nb = y[IDX.nb];
     return {
-      Ti: D.Ti, Te: D.Te, Ti0: D.T0, ne: D.ne / 1e20, nG_frac: D.ne / nG, fHe: y[IDX.nHe] / D.ne,
+      Ti: D.Ti, Te: D.Te, Ti0: D.T0, ne: D.ne / 1e20, nbar: nbar / 1e20, nG_frac: nbar / nG, fHe: y[IDX.nHe] / D.ne,
       P_fus: D.P_fus / 1e6, P_bt: D.P_bt / 1e6, P_alpha: D.P_alpha / 1e6, P_beam_heat: D.P_beam / 1e6, P_aux: (D.P_NBI + D.P_ICRH + D.P_ECRH) / 1e6, P_oh: D.P_oh / 1e6,
       P_brems: D.P_brems / 1e6, P_sync: D.P_sync / 1e6, P_line: D.P_line / 1e6, P_rad: D.P_rad / 1e6, P_cond: D.P_cond / 1e6,
       Q, tauE: D.tauE, H_mode: this.hmode ? 1 : 0, P_LH: P_LH / 1e6,
@@ -617,14 +620,14 @@ export class MagneticModel implements SimModel {
 
       // ---- uyarılar ----
       if (dg.q_div > 10 && !this.warned.has('div')) { this.warned.add('div'); ev.push({ t, kind: 'warning', msg: `Divertor heat flux ${dg.q_div.toFixed(0)} MW/m² > 10 MW/m² — material lifetime at risk` }); }
-      if (dg.nG_frac > 0.85 && !this.warned.has('nG')) { this.warned.add('nG'); ev.push({ t, kind: 'warning', msg: `n/n_G = ${dg.nG_frac.toFixed(2)} — approaching the density limit` }); }
+      if (dg.nG_frac > 0.85 && !this.warned.has('nG')) { this.warned.add('nG'); ev.push({ t, kind: 'warning', msg: `n̄/n_G = ${dg.nG_frac.toFixed(2)} — approaching the density limit` }); }
       if (dg.betaN > 0.85 * c.limits.betaN_limit && !this.warned.has('bN')) { this.warned.add('bN'); ev.push({ t, kind: 'warning', msg: `β_N = ${dg.betaN.toFixed(2)} — approaching the Troyon limit` }); }
 
       // ---- LİMİT KONTROLLERİ → disruption ----
       let cause: DisruptionCause = 'none';
       let diag = '';
       if (!this.isStell) {
-        if (dg.nG_frac > c.limits.greenwald_limit) { cause = 'density_limit'; diag = `n/n_G reached ${dg.nG_frac.toFixed(2)}`; }
+        if (dg.nG_frac > c.limits.greenwald_limit) { cause = 'density_limit'; diag = `n̄/n_G reached ${dg.nG_frac.toFixed(2)}`; }
         else if (dg.betaN > c.limits.betaN_limit) { cause = 'beta_limit'; diag = `β_N ${dg.betaN.toFixed(2)} > ${c.limits.betaN_limit}`; }
         else if (dg.q95 < c.limits.q95_limit) { cause = 'q95_limit'; diag = `q95 = ${dg.q95.toFixed(2)} < ${c.limits.q95_limit}`; }
         else if (dg.cZ > c.limits.W_conc_limit && c.impurity.species === 'W') { cause = 'tungsten_accumulation'; diag = `c_W = ${dg.cZ.toExponential(1)} > ${c.limits.W_conc_limit.toExponential(1)}`; }

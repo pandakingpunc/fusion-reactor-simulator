@@ -3,9 +3,31 @@
  */
 
 /** Greenwald yoğunluk limiti — Greenwald et al., Nucl. Fusion 28 (1988) 2199:
- *  n_G [10^20 m^-3] = I_p[MA] / (π a²)  */
+ *  n_G [10^20 m^-3] = I_p[MA] / (π a²). Limit ÇİZGİ-ortalamalı yoğunluk n̄_e içindir (bkz. lineAverageFactor). */
 export function greenwaldDensity(Ip_MA: number, a: number): number {
   return (Ip_MA / (Math.PI * a * a)) * 1e20; // m^-3
+}
+
+/** ln Γ(x), x > 0 — Lanczos yaklaşımı (C. Lanczos, J. SIAM Numer. Anal. B 1 (1964) 86; g = 7, 9 terim), bağıl hata ~1e-15 */
+function lnGamma(x: number): number {
+  const c = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059,
+    12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+  const z = x - 1;
+  let s = c[0];
+  for (let i = 1; i < 9; i++) s += c[i] / (z + i);
+  const t = z + 7.5;
+  return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(s);
+}
+
+/**
+ * Çizgi-ortalama / hacim-ortalama yoğunluk oranı, n = n0 (1 − ρ²)^α_n profili için:
+ *  n̄ = n0 ∫₀¹ (1 − ρ²)^α dρ = n0 √π Γ(α+1) / (2 Γ(α+3/2))   (eksenden geçen yatay kiriş)
+ *  ⟨n⟩ = n0/(1+α)   (2ρ dρ hacim ağırlığı, geometry.profileIntegral ile aynı)
+ * Düz profil 1, parabolik (α=1) 4/3. APPROXIMATION: silindirik kesit, Shafranov kayması ihmal.
+ */
+export function lineAverageFactor(alpha_n: number): number {
+  const a = Math.max(alpha_n, 0);
+  return ((1 + a) * Math.sqrt(Math.PI) * Math.exp(lnGamma(a + 1) - lnGamma(a + 1.5))) / 2;
 }
 
 /** Toroidal beta (%): β_T = 2μ0 <p> / B² ; <p> = Σ n T (J/m³) */

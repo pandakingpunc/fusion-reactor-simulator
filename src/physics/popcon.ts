@@ -16,7 +16,7 @@ import { plasmaSurface, plasmaVolume, profileIntegral } from './geometry';
 import { tauIPB98y2, tauISS04, tauSTValovic, pLH_Martin } from './transport';
 import { FUEL_CHANNELS, FUEL_SPECIES, pairDensity } from './reactivity';
 import { bremsstrahlung, coolingRate, meanCharge, synchrotronTotal } from './radiation';
-import { greenwaldDensity, betaToroidal, betaNormalized } from './limits';
+import { greenwaldDensity, betaToroidal, betaNormalized, lineAverageFactor } from './limits';
 
 const E_KEV = 1.602176634e-16;
 const MEV = 1.602176634e-13;
@@ -31,6 +31,7 @@ export interface PopconGrid {
   betaN: Float64Array;
   PLH_ok: Uint8Array;
   fHe: Float64Array; // kararlı durum He külü oranı n_He/n_e
+  /** Greenwald limiti bu ızgaranın ⟨n_e⟩ (hacim ort.) ekseninde: n_G / f_line(α_n) (n_G çizgi ort. içindir) */
   nG: number;
 }
 
@@ -39,11 +40,11 @@ export function computePopcon(cfg: MagneticConfig, o: { nx?: number; ny?: number
   const NX = o.nx ?? 44, NY = o.ny ?? 44, TMAX = o.Tmax ?? 40;
   const g = cfg.geometry, V = plasmaVolume(g), S = plasmaSurface(g);
   const stell = cfg.method === 'stellarator';
-  const nG = greenwaldDensity(cfg.Ip_MA, g.a);
+  const aN = cfg.transport.alpha_n, aT = cfg.transport.alpha_T;
+  const nG = greenwaldDensity(cfg.Ip_MA, g.a) / lineAverageFactor(aN);
   const nMax = stell ? cfg.n_target * 2.5 : nG * (o.nMaxFactor ?? 1.6);
   const n = Array.from({ length: NX }, (_, i) => (nMax * (i + 0.5)) / NX);
   const T = Array.from({ length: NY }, (_, j) => (o.uniformT ? (TMAX * (j + 0.5)) / NY : 0.5 + (TMAX - 0.5) * ((j + 0.5) / NY) ** 1.4));
-  const aN = cfg.transport.alpha_n, aT = cfg.transport.alpha_T;
   const pk = (1 + aN) * (1 + aN);
   const chans = FUEL_CHANNELS[cfg.fuel], fs = FUEL_SPECIES[cfg.fuel];
   const fA = cfg.fuelFracA;

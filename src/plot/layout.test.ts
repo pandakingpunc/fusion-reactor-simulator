@@ -49,6 +49,57 @@ describe('ticks', () => {
     expect(linearTicks(2020, 2025, 5).offset).toBeUndefined();
   });
 
+  /** value a tick label shows, with the axis-end multiplier / offset applied */
+  const num = (s: string): number => {
+    let t = s.replace(/−/g, '-');
+    if (t.startsWith('$') && t.endsWith('$')) t = t.slice(1, -1);
+    const m = /^(-?[\d.]+)\\times10\^\{(-?\d+)\}$/.exec(t);
+    if (m) return +m[1] * 10 ** +m[2];
+    const p = /^(-?)10\^\{(-?\d+)\}$/.exec(t);
+    if (p) return (p[1] ? -1 : 1) * 10 ** +p[2];
+    return +t;
+  };
+  const shown = (t: { labels: string[]; offset?: string }): number[] => {
+    let mul = 1, add = 0;
+    for (const part of (t.offset ?? '').split(' ').filter(Boolean)) {
+      const m = /^\$\\times10\^\{(-?\d+)\}\$$/.exec(part);
+      if (m) mul = 10 ** +m[1];
+      else add = (part[0] === '−' ? -1 : 1) * num(part.slice(1));
+    }
+    return t.labels.map((l) => num(l) * mul + add);
+  };
+
+  it('fixed-point labels keep every digit of steps below 1e-5 (relative decimal tolerance)', () => {
+    const a = linearTicks(0.0046149, 0.0046271, 5);
+    expect(a.major).toEqual([0.004615, 0.0046175, 0.00462, 0.0046225, 0.004625]);
+    expect(a.labels).toEqual(['0.0046150', '0.0046175', '0.0046200', '0.0046225', '0.0046250']);
+    const b = linearTicks(-0.0023504, -0.0023433, 3);
+    expect(b.labels[b.major.indexOf(-0.0023475)]).toBe('−0.0023475');
+    for (const t of [a, b]) shown(t).forEach((v, i) => expect(v).toBeCloseTo(t.major[i], 12));
+  });
+
+  it('a linear axis always has two or more major ticks', () => {
+    // span/target just above 5×10^7: the nice step 10^8 would leave one tick in the range
+    expect(linearTicks(4.0044e7, 1.9088e8, 3)).toMatchObject({ major: [5e7, 1e8, 1.5e8], labels: ['0.5', '1.0', '1.5'], offset: '$\\times10^{8}$' });
+  });
+
+  it('every linear tick label shows its tick value (20 000 random ranges from 1e-12 to 1e12)', () => {
+    let seed = 12345;
+    const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    for (let k = 0; k < 20000; k++) {
+      const e = Math.floor(rnd() * 24) - 12;
+      const lo = (rnd() * 2 - 1) * 10 ** (e + Math.floor(rnd() * 8)), span = 10 ** (e + rnd() * 2 - 1);
+      const t = linearTicks(lo, lo + span, 3 + Math.floor(rnd() * 5));
+      if (t.major.length < 2) expect.fail(`[${lo}, ${lo + span}]: only ${t.major.length} major tick(s)`);
+      const step = t.major[1] - t.major[0];
+      const vals = shown(t);
+      t.major.forEach((v, i) => {
+        if (!(Math.abs(vals[i] - v) <= Math.abs(step) * 1e-6)) expect.fail(`[${lo}, ${lo + span}]: tick ${v} labelled '${t.labels[i]}' (offset ${t.offset ?? 'none'})`);
+      });
+      if (new Set(t.labels).size !== t.labels.length) expect.fail(`[${lo}, ${lo + span}]: duplicate labels ${t.labels.join(' ')}`);
+    }
+  });
+
   it('non-finite and degenerate ranges do not throw or produce NaN labels', () => {
     expect(linearTicks(NaN, 1).major).toEqual([]);
     expect(linearTicks(Infinity, -Infinity).major).toEqual([]);

@@ -1,6 +1,8 @@
 /**
  * Axis ticks: linear "nice" steps {1, 2, 2.5, 5}×10^k and logarithmic decade / sub-decade ticks.
  *
+ * A linear axis always gets at least two major ticks (the step drops down the sequence when a step
+ * just above span/target would leave only one in the range).
  * Linear labels use the fewest decimals the step needs and a Unicode minus. When the values are
  * very large or small (|v| ≥ 10⁵ or < 10⁻³) the labels share one power of ten, and when the span is
  * tiny compared with the values (labels would need ≥ 5 significant digits) a common offset is
@@ -24,8 +26,19 @@ function niceStep(span: number, target: number): number {
   return 10 * mag;
 }
 
+/** the next smaller step of the {1, 2, 2.5, 5}×10^k sequence */
+function smallerStep(step: number): number {
+  const mag = 10 ** Math.floor(Math.log10(step) + 1e-9);
+  const m = +(step / mag).toPrecision(6);
+  return +((m > 5 ? 5 : m > 2.5 ? 2.5 : m > 2 ? 2 : m > 1 ? 1 : 0.5) * mag).toPrecision(12);
+}
+
+/** fewest decimals that write the step exactly (relative tolerance: a step of 2.5e-6 needs 7, not 6) */
 function decimalsFor(step: number): number {
-  for (let d = 0; d < 12; d++) if (Math.abs(Math.round(step * 10 ** d) - step * 10 ** d) < 1e-6 * 10 ** d) return d;
+  for (let d = 0; d < 12; d++) {
+    const x = step * 10 ** d;
+    if (Math.abs(Math.round(x) - x) < 1e-6 * Math.max(1, Math.abs(x))) return d;
+  }
   return 12;
 }
 
@@ -103,7 +116,9 @@ export function tickLabels(major: number[], step: number): { labels: string[]; o
 export function linearTicks(lo: number, hi: number, target = 5): Ticks {
   if (!Number.isFinite(lo) || !Number.isFinite(hi)) return { major: [], minor: [], labels: [] };
   if (!(hi > lo)) return { major: [lo], minor: [], labels: [formatTick(lo, 2)] };
-  const step = niceStep(hi - lo, target);
+  let step = niceStep(hi - lo, target);
+  // at least two labelled ticks: a step just above span/target can leave a single one in the range
+  while (Math.floor(hi / step + 1e-9) - Math.ceil(lo / step - 1e-9) < 1) step = smallerStep(step);
   const major: number[] = [];
   // k·step (not a running sum) rounded to 12 significant digits: no 0.6000000000000001 residue
   const clean = (v: number) => (Math.abs(v) < step * 1e-9 ? 0 : +v.toPrecision(12));

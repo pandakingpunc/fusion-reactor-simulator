@@ -4,7 +4,7 @@
  * Oynatma döngüsü ~30 Hz; her tikte duvar-saati × hız kadar simülasyon zamanı ilerletilir.
  */
 import { Simulation } from '../physics/simulation';
-import { ShotReport, SimModel } from '../physics/types';
+import { HistoryFrame, ShotReport, SimModel } from '../physics/types';
 import { FromWorker, PROTOCOL_VERSION, SimMeta, ToWorker, simSecondsPerWallSecond, toUiFrame } from './protocol';
 
 const TICK_MS = 33;
@@ -28,6 +28,27 @@ function checkVersion(v: number): void {
   if (v !== PROTOCOL_VERSION) throw new Error(`Worker protocol mismatch: page speaks v${v}, worker speaks v${PROTOCOL_VERSION}. Reload the page.`);
 }
 
+const CHECK_CONFIG = 'Check the configuration for empty or out-of-range values.';
+
+/** a run that cannot go on for a reason the user can fix; reported without a stack trace */
+class RunError extends Error {}
+
+/** time and state vector are finite (diagnostics may legitimately be NaN or ±Infinity, e.g. Q with no heating) */
+function finiteFrame(f: HistoryFrame): boolean {
+  return Number.isFinite(f.t) && f.y.every(Number.isFinite);
+}
+
+/**
+ * Refuse a configuration that cannot be integrated: the shot duration must be a positive number and the
+ * initial state finite. A missing required parameter (undefined → NaN) otherwise gives a run whose
+ * clock never advances, or a NaN state that the drawing code cannot handle.
+ */
+function checkStart(sim: Simulation): void {
+  const tEnd = sim.model.tEnd;
+  if (!(Number.isFinite(tEnd) && tEnd > 0)) throw new RunError(`Invalid shot duration (t_end = ${tEnd}). ${CHECK_CONFIG}`);
+  if (!finiteFrame(sim.history[0])) throw new RunError(`The initial plasma state is not finite (NaN or Infinity). ${CHECK_CONFIG}`);
+}
+
 export function createSimHost(post: (m: FromWorker) => void): SimHost {
   let sim: Simulation | null = null;
   let meta: SimMeta | null = null;
@@ -46,15 +67,32 @@ export function createSimHost(post: (m: FromWorker) => void): SimHost {
 
   function postError(err: unknown, id?: number, branch?: number, stop = true) {
     if (stop) stopLoop();
-    post({ type: 'error', msg: err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err), id, branchId: branch });
+    const msg = err instanceof RunError ? err.message : err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err);
+    post({ type: 'error', msg, id, branchId: branch });
   }
 
-  /** advance the live simulation and post the new frames (and the report when it ends) */
+  /**
+   * Advance the live simulation and post the new frames (and the report when it ends). If the state
+   * turns non-finite, only the frames before that point are posted and the run stops with an error.
+   */
   function advance(simDt: number): number {
     if (!sim) return 0;
     const t0 = performance.now();
     const { frames, events } = sim.advance(simDt);
     const wallMs = performance.now() - t0;
+    const bad = frames.findIndex((f) => !finiteFrame(f));
+    if (bad >= 0 || !Number.isFinite(sim.t)) {
+      const good = bad >= 0 ? frames.slice(0, bad) : frames;
+      const tLast = good.length ? good[good.length - 1].t : sim.history[Math.max(0, sim.history.length - frames.length - 1)].t;
+      if (good.length) {
+        post({
+          type: 'frames', id: runId, branchId, frames: good.map(toUiFrame), events: events.filter((e) => e.t <= tLast), t: tLast, done: false,
+          dt: sim.dt, nSteps: sim.nSteps, controls: sim.model.getControls(), wallMs,
+        });
+      }
+      postError(new RunError(`The simulation state became non-finite (NaN or Infinity) after t = ${+tLast.toPrecision(6)} ${meta?.timeUnit ?? ''}. ${CHECK_CONFIG}`), runId, branchId);
+      return wallMs;
+    }
     post({
       type: 'frames', id: runId, branchId, frames: frames.map(toUiFrame), events, t: sim.t, done: sim.done,
       dt: sim.dt, nSteps: sim.nSteps, controls: sim.model.getControls(), wallMs,
@@ -122,7 +160,9 @@ export function createSimHost(post: (m: FromWorker) => void): SimHost {
           sim = null; meta = null;
           checkVersion(msg.protocolVersion);
           if (msg.speed !== undefined) speed = msg.speed;
-          sim = new Simulation(msg.cfg);
+          const next = new Simulation(msg.cfg);
+          checkStart(next);
+          sim = next;
           meta = makeMeta(sim.model);
           post({ type: 'ready', protocolVersion: PROTOCOL_VERSION, id: runId, meta, frame: toUiFrame(sim.history[0]) });
           // model kurulumda bitmiş olabilir (ör. mıknatıs quench → atış iptal)

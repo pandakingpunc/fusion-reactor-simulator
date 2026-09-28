@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import v8 from 'node:v8';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Simulation } from '../physics/simulation';
 import { ITER, ITER_15D, MIRROR, NIF, TAE } from '../physics/presets';
 import { ReactorConfig } from '../physics/types';
@@ -59,6 +59,61 @@ describe('simulation worker host (protocol v2)', () => {
     expect(h.take()[0]).toMatchObject({ type: 'rewound', index: 0, t: 0 });
     h.host.handle({ type: 'rewind', index: 1e9, branchId: 2 });
     expect(h.take()[0]).toMatchObject({ type: 'rewound', index: 0, branchId: 2 });
+  });
+
+  it('refuses a configuration it cannot integrate, with the reason instead of a stack trace', () => {
+    const h = harness();
+    h.init({ ...TAE, t_end: undefined as unknown as number }, 4); // a blank "Duration" field
+    const [noEnd] = h.take();
+    expect(noEnd).toMatchObject({ type: 'error', id: 4 });
+    if (noEnd.type === 'error') expect(noEnd.msg).toBe('Invalid shot duration (t_end = undefined). Check the configuration for empty or out-of-range values.');
+
+    h.init({ ...ITER, geometry: { ...ITER.geometry, R: undefined as unknown as number } }, 5); // a blank major radius
+    const ms = h.take();
+    expect(ms.map((m) => m.type)).toEqual(['error']);
+    if (ms[0].type === 'error') expect(ms[0].msg).toMatch(/^The initial plasma state is not finite/);
+    // nothing is loaded, so there is nothing to step
+    h.host.handle({ type: 'step', simDt: 1 });
+    expect(h.take()).toEqual([]);
+  });
+
+  it('stops with an error when the state turns non-finite, and a rewind recovers the finite history', () => {
+    const h = harness();
+    h.init(TAE);
+    h.host.handle({ type: 'step', simDt: TAE.t_end / 10 });
+    h.take();
+    h.host.handle({ type: 'control', patch: { kappa_conf: NaN } });
+    h.host.handle({ type: 'step', simDt: TAE.t_end / 10 });
+    const ms = h.take();
+    expect(ms.map((m) => m.type)).toEqual(['error']); // no NaN frame reaches the page
+    expect(ms[0]).toMatchObject({ id: 7, branchId: 0 });
+    if (ms[0].type === 'error') expect(ms[0].msg).toContain('became non-finite (NaN or Infinity) after t = 0.005 s');
+    h.host.handle({ type: 'rewind', index: 3, branchId: 1 });
+    expect(h.take()[0]).toMatchObject({ type: 'rewound', index: 3, branchId: 1 });
+  });
+
+  it('posts the frames computed before a non-finite state, then the error', () => {
+    const advance = Simulation.prototype.advance;
+    const spy = vi.spyOn(Simulation.prototype, 'advance').mockImplementationOnce(function (this: Simulation, simDt: number) {
+      const r = advance.call(this, simDt);
+      r.frames[3].y[0] = NaN; // e.g. an integrator blow-up in the middle of a playback tick
+      return r;
+    });
+    try {
+      const h = harness();
+      h.init(TAE);
+      h.take();
+      h.host.handle({ type: 'step', simDt: TAE.t_end / 4 });
+      const [frames, err] = h.take();
+      if (frames.type !== 'frames' || err.type !== 'error') throw new Error(`unexpected messages ${frames.type}, ${err.type}`);
+      expect(frames.frames).toHaveLength(3);
+      expect(frames.done).toBe(false);
+      expect(frames.t).toBe(frames.frames[2].t);
+      expect(frames.events.every((e) => e.t <= frames.t)).toBe(true);
+      expect(err.msg).toContain(`after t = ${+frames.t.toPrecision(6)} s`);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('refuses a page that speaks another protocol version', () => {

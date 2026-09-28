@@ -113,6 +113,15 @@ describe('SimController', () => {
     expect(h.s().error).toBe('worker script died');
   });
 
+  it('shows why the worker refused a configuration, before any frame', () => {
+    const h = setup();
+    h.ctrl.load({ ...TAE, t_end: undefined as unknown as number }, true);
+    h.roundTrip();
+    h.tick();
+    expect(h.s()).toMatchObject({ status: 'error', meta: null, frames: [] });
+    expect(h.s().error).toMatch(/^Invalid shot duration/);
+  });
+
   it('refuses a worker that speaks another protocol version', () => {
     const h = setup();
     h.ctrl.load(TAE);

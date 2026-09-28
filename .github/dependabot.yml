@@ -1,0 +1,18 @@
+# Dependency update pull requests: npm weekly, GitHub Actions (SHA-pinned in ci.yml) monthly.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # one pull request for all minor and patch updates of the dev toolchain
+      dev-minor-patch:
+        dependency-type: development
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

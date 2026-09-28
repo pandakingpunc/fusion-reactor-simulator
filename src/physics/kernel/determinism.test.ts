@@ -12,7 +12,7 @@ import { canonicalString } from './canonical';
 import { UnknownMethodError } from './errors';
 import { runFingerprint } from './fingerprint';
 import {
-  Run, advanceRandomly, applyRandomControls, digestOf, expectSameRun, normalizeRng, presetCfg, referenceRun, rewindAt, runChunked, withoutWarnings,
+  Run, advanceRandomly, applyRandomControls, digestOf, expectSameRun, normalizeRng, presetCfg, referenceRun, rewindAt, runChunked,
 } from './testkit';
 
 const SCHEDULES = 20;
@@ -62,23 +62,21 @@ describe('exact rewind', () => {
     }, 120000);
   }
 
-  // MagneticModel.restoreInternal() clears its once-only warning flags (`warned`), so a warning
-  // issued before the rewind point is issued again after it. The physics (every frame's state,
-  // diagnostics and internal state, and every other event) is bitwise the same: asserted here.
+  // MagneticModel checkpoints its once-only warning flags (`warned`) in saveInternal(), so a
+  // warning issued before the rewind point is not issued again after it: the event list is bitwise
+  // the same as well as the physics. (Regression test for the pin flipped by the ws2b merge.)
   for (const [id, tEnd] of [['ITER', 30], ['W7X']] as [string, number?][]) {
-    it(`${id}: rewind at 25/50/75 % replays the physics bitwise (warnings aside)`, () => {
+    it(`${id}: rewind at 25/50/75 % replays the run and its event list bitwise`, () => {
       const cfg = presetCfg(id, tEnd);
-      const ref = withoutWarnings(normalizeRng(referenceRun(cfg)));
+      const ref = normalizeRng(referenceRun(cfg));
       for (const p of [0.25, 0.5, 0.75]) {
         const sim = rewindAt(cfg, p, 91);
         advanceRandomly(sim, 92);
-        expectSameRun(withoutWarnings(normalizeRng(sim)), ref, `${id} rewound at ${p * 100} %`);
+        expectSameRun(normalizeRng(sim), ref, `${id} rewound at ${p * 100} %`);
       }
     }, 120000);
 
-    // Expected to fail until MagneticModel.saveInternal()/restoreInternal() keep the `warned`
-    // flags (request to lane ws2b); remove `.fails` then.
-    it.fails(`${id}: rewind at 50 % replays the event list bitwise (needs the model to checkpoint its warning flags)`, () => {
+    it(`${id}: rewind at 50 % replays the event list bitwise (the model checkpoints its warning flags)`, () => {
       const cfg = presetCfg(id, tEnd);
       const sim = rewindAt(cfg, 0.5, 93);
       advanceRandomly(sim, 94);
@@ -147,8 +145,6 @@ describe('exact rewind', () => {
     }, 60000);
   }
 
-  // Warnings aside, as for ITER and W7-X above: the density-limit warning issued just before the
-  // disruption is issued again after a rewind that precedes it (MagneticModel `warned`, lane ws2b).
   it('a disrupted shot rewound before, at and after the disruption replays the physics and the report bitwise', () => {
     const cfg = { ...presetCfg('JET'), n_target: 3e20 } as ReactorConfig;
     const ref = new Simulation(cfg);
@@ -163,7 +159,7 @@ describe('exact rewind', () => {
       expect(sim.model.terminated).toEqual(i === n - 1 ? ref.model.terminated : null);
       advanceRandomly(sim, 160 + i);
       expect(canonicalString(sim.report()), `report after a rewind to frame ${i}`).toBe(refReport);
-      expectSameRun(withoutWarnings(normalizeRng(sim)), withoutWarnings(normalizeRng(ref)), `disrupted JET rewound to frame ${i} of ${n}`);
+      expectSameRun(normalizeRng(sim), normalizeRng(ref), `disrupted JET rewound to frame ${i} of ${n}`);
     }
   }, 60000);
 

@@ -771,6 +771,8 @@ export class MagneticModel implements SimModel {
       hmode: +this.hmode, ntm: +this.ntm, tNextELM: this.tNextELM, tNextSaw: this.tNextSaw, elmPartRate: this.elmPartRate,
       tauW_accum: this.tauW_accum, ignited: +this.ignited, burning: +this.burning, tauE_last: this.tauE_last,
       tAuxOff: this.tAuxOff,
+      // once-only warning flags: a rewind must not issue an already-issued warning again
+      warnDiv: +this.warned.has('div'), warnNG: +this.warned.has('nG'), warnBN: +this.warned.has('bN'),
     };
   }
   restoreInternal(s: Record<string, number>): void {
@@ -778,7 +780,11 @@ export class MagneticModel implements SimModel {
     this.phase = (['normal', 'thermal_quench', 'current_quench', 'ended'] as Phase[])[s.phase] ?? 'normal';
     this.hmode = !!s.hmode; this.ntm = !!s.ntm; this.tNextELM = s.tNextELM; this.tNextSaw = s.tNextSaw;
     this.elmPartRate = s.elmPartRate ?? 0; this.tauW_accum = s.tauW_accum; this.ignited = !!s.ignited; this.burning = !!s.burning;
-    this.tauE_last = s.tauE_last; this.tAuxOff = s.tAuxOff ?? Infinity; this.terminated = null; this.warned.clear(); this.lastDiag = {};
+    this.tauE_last = s.tauE_last; this.tAuxOff = s.tAuxOff ?? Infinity; this.terminated = null; this.lastDiag = {};
+    this.warned.clear();
+    if (s.warnDiv) this.warned.add('div');
+    if (s.warnNG) this.warned.add('nG');
+    if (s.warnBN) this.warned.add('bN');
   }
   geometryInfo(): Record<string, number> {
     const c = this.cfg;

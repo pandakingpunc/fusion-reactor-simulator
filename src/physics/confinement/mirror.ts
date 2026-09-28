@@ -53,6 +53,8 @@ export class MirrorModel extends PulsedBase {
   private na: number;
   private nb: number;
   private ne: number;
+  /** iyon yoğunluğu n_a + n_b (D-³He, p-¹¹B'de n_e'den farklı) */
+  private ni: number;
   private Zeff: number;
   private Aavg: number;
   private lastTauE = 1e-3;
@@ -68,13 +70,15 @@ export class MirrorModel extends PulsedBase {
     this.na = cfg.n0 * fs.fracA;
     this.nb = cfg.n0 * (1 - fs.fracA);
     this.ne = this.na * fs.a.Z + this.nb * fs.b.Z;
+    this.ni = this.na + this.nb;
     this.Zeff = (this.na * fs.a.Z ** 2 + this.nb * fs.b.Z ** 2) / Math.max(this.ne, 1);
     this.Aavg = fs.fracA * fs.a.A + (1 - fs.fracA) * fs.b.A;
     this.ctrl = { P_aux_MW: cfg.P_aux_MW, kappa_conf: 50 };
   }
 
   private T(y: Float64Array): number {
-    return Math.max(y[IDX.W] / (3 * this.ne * this.V * C.keV_J), 0.01);
+    // W = 3/2 (n_e + n_i) T V (T_e = T_i)
+    return Math.max(y[IDX.W] / (1.5 * (this.ne + this.ni) * this.V * C.keV_J), 0.01);
   }
   /**
    * Uç (end-loss) hapsetme süresi [s]. Kayıp konisindeki parçacıklar bir geçiş
@@ -94,7 +98,7 @@ export class MirrorModel extends PulsedBase {
 
   initialState(): Float64Array {
     const y = new Float64Array(NSTATE);
-    y[IDX.W] = 3 * this.ne * U.keV_to_J(this.cfg.T_keV) * this.V;
+    y[IDX.W] = 1.5 * (this.ne + this.ni) * U.keV_to_J(this.cfg.T_keV) * this.V;
     return y;
   }
 

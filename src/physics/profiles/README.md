@@ -42,8 +42,15 @@ current equilibrium and transport geometry, work arrays, plasma and controller s
    `current`, ohmic) → `assembleHeatSources` → heat solve (T_e, T_i together) → current solve;
 3. P_bound from the last heat solve, final composition and q profile.
 
-A failed attempt is retried with Δt × 0.4 (and runs the per-attempt parts of 1. again); after 12
-attempts one forced attempt is accepted if finite, otherwise the shot ends with a `StepFailure`.
+A failed attempt (Picard not converged, a change above 35 %, a non-finite state, or a `NumericalFailure`
+or `GSFailure` thrown by a module) is retried with Δt × 0.4 (and runs the per-attempt parts of 1.
+again); after 12 attempts one forced attempt is accepted if finite, otherwise the shot ends with a
+`StepFailure`. Any other exception thrown inside a step (a `TypeError` of a plug-in, a violated
+invariant) is a programming error: it propagates out of `Simulation.advance` with `y` put back to
+the start of the step. A module that meets a numerical problem it cannot repair (a singular system
+of its own, a non-finite closure) throws a `NumericalFailure` (`failures.ts`) to have the attempt
+retried; the singular-pivot errors of the heat, density and current solves are converted to
+`LinearAlgebraFailure` in `fvsolver.ts`.
 Then `acceptStep` integrates the global quantities (P_SOL, τ_E and C_χ, inventories, counters, NTM
 widths), calls the `accepted` hooks of the transport model and the sources, writes the
 diagnostics, and the equilibrium coupling may adopt a new geometry (the work arrays are
@@ -163,7 +170,7 @@ implement the hooks; other parts are listed in `ProfileModel.checkpointParts`.
 | `geometry.test.ts` | transport geometry of an analytic Solov'ev equilibrium |
 | `sources/sources.test.ts` | NBI chord cache vs direct deposition, beam-target table vs the integral |
 | `transport/transport.test.ts` | 'cgm' smoke test (ITER15 ramp-up) |
-| `integrity.test.ts` | equilibrium swaps (fresh work arrays), GS failures, the current-scale gate and retry timing, step failures, reported τ_E, initial equilibrium, replays from quench frames |
+| `integrity.test.ts` | equilibrium swaps (fresh work arrays), GS failures, the current-scale gate and retry timing, step failures (numerical failures retried, programming errors propagate), reported τ_E, initial equilibrium, replays from quench frames |
 | `profiles.test.ts` | solver verification (analytic), neoclassical, MHD helpers, integration runs |
 
 A change meant to preserve behaviour should leave `npm run golden` passing; a refactor can be

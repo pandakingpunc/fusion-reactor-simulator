@@ -9,7 +9,11 @@ import { MagneticConfig } from '../types';
 import { EquilibriumOptions, GSFailure, GSSolver } from '../equilibrium/gs';
 import { CURRENT_SCALE_LIMIT } from './coupling/equilibrium';
 import { ProfileModel } from './model';
-import { EquilibriumInitFailure, StepFailure } from './failures';
+import { EquilibriumInitFailure, LinearAlgebraFailure, NumericalFailure, StepFailure } from './failures';
+import { defaultSources } from './sources';
+import type { SourceModel } from './sources';
+import type { TransportModel } from './transport';
+import { ScalingTransport } from './transport/scaling';
 
 
 describe('work arrays after an equilibrium swap', () => {
@@ -262,9 +266,9 @@ describe('implicit step failures', () => {
     return { sim, m: sim.model as ProfileModel, t0: sim.t, y0: Array.from(sim.y) };
   };
 
-  it('an exception in every retry (linear algebra) ends the shot explicitly without advancing time', () => {
+  it('a numerical failure in every retry (linear algebra) ends the shot explicitly without advancing time', () => {
     const { sim, m, t0, y0 } = started();
-    stubStep(m, () => { throw new Error('solveTridiag: sıfır pivot'); });
+    stubStep(m, () => { throw new LinearAlgebraFailure('heat', new Error('solveTridiag: sıfır pivot')); });
     expect(() => sim.advance(0.2)).not.toThrow();
     expect(sim.t).toBe(t0);
     expect(Array.from(sim.y)).toEqual(y0);
@@ -274,6 +278,90 @@ describe('implicit step failures', () => {
     expect(m.stepFailure?.message).toContain('sıfır pivot');
     expect(sim.events.some((e) => e.kind === 'end' && e.msg.includes('Numerical failure'))).toBe(true);
     expect(sim.report().termination.reason).toBe('Numerical failure');
+  }, 60000);
+
+  it('a real singular system: NaN diffusivities make the heat solve singular, the retries fail, the shot ends as a numerical failure', () => {
+    const nan: TransportModel = { id: 'nan', predictive: true, diffusivities: (_c, _s, chiE, chiI) => { chiE.fill(NaN); chiI.fill(NaN); } };
+    let armed = false;
+    const m = new ProfileModel({ ...JET_15D, t_end: 1 }, { transport: { ...nan, diffusivities: (c, s, chiE, chiI) => (armed ? nan.diffusivities(c, s, chiE, chiI) : new ScalingTransport().diffusivities(c, s, chiE, chiI)) } });
+    const y = m.initialState();
+    m.diagnostics(0, y);
+    armed = true;
+    const y0 = Array.from(y);
+    expect(m.step(0, y, 0.1)).toBe(0);
+    expect(Array.from(y)).toEqual(y0);
+    expect(m.terminated?.reason).toBe('Numerical failure');
+    expect(m.stepFailure).toBeInstanceOf(StepFailure);
+    expect(m.stepFailure?.cause).toBeInstanceOf(LinearAlgebraFailure);
+    expect((m.stepFailure?.cause as LinearAlgebraFailure).system).toBe('heat');
+    expect(m.stepFailure?.message).toContain('singular heat system');
+  }, 60000);
+
+  it('a numerical failure of a plug-in at a large Δt is retried at a smaller one and the shot goes on', () => {
+    class PlugInSingular extends NumericalFailure { override readonly name = 'PlugInSingular'; }
+    let thrown = 0;
+    const stiff: SourceModel = { id: 'stiff', particles: (_c, _t, dt) => { if (dt > 1e-3) { thrown++; throw new PlugInSingular('too stiff for this Δt'); } } };
+    const m = new ProfileModel({ ...JET_15D, t_end: 0.2 }, { sources: [...defaultSources(), stiff] });
+    const y = m.initialState();
+    m.diagnostics(0, y);
+    m.ctx.dt = 0.02;
+    const t1 = m.step(0, y, 0.1);
+    expect(thrown).toBeGreaterThan(0);
+    expect(t1).toBeGreaterThan(0);
+    expect(t1).toBeLessThanOrEqual(1e-3 + 1e-12);
+    expect(m.terminated).toBeNull();
+    expect(m.stepFailure).toBeNull();
+    expect(m.forcedSteps).toBe(0);
+  }, 60000);
+
+  it('a Grad–Shafranov failure raised inside a step is a numerical failure too', () => {
+    let armed = false;
+    const gs: SourceModel = { id: 'gs', heat: () => { if (armed) throw new GSFailure('diverged', 'the equilibrium of the plug-in diverged', 3, 1e-2); } };
+    const m = new ProfileModel({ ...JET_15D, t_end: 0.2 }, { sources: [...defaultSources(), gs] });
+    const y = m.initialState();
+    m.diagnostics(0, y);
+    armed = true;
+    expect(m.step(0, y, 0.1)).toBe(0);
+    expect(m.terminated?.reason).toBe('Numerical failure');
+    expect(m.stepFailure?.message).toContain('Grad–Shafranov (diverged)');
+  }, 60000);
+
+  // A TypeError or ReferenceError of a module is a bug, not a solver failure: it used to end the shot as
+  // 'Numerical failure — try a coarser radial grid' with the stack hidden in the cause.
+  it.each([
+    ['a source', 'source'],
+    ['a transport model', 'transport'],
+    ['a source hook that runs once per attempt', 'prepare'],
+  ] as const)('a programming error in %s propagates and leaves the state as it was', (_label, where) => {
+    // armed after the first frame: the state evaluation of t = 0 runs the same hooks outside a step
+    let armed = false;
+    const boom = () => { if (!armed) return; const o = undefined as unknown as { length: number }; o.length; };
+    const modules = where === 'transport'
+      ? { transport: { ...new ScalingTransport(), id: 'buggy', predictive: false, diffusivities: () => { boom(); } } satisfies TransportModel }
+      : { sources: [...defaultSources(), where === 'prepare' ? { id: 'buggy', prepare: () => { boom(); } } : { id: 'buggy', heat: () => { boom(); } }] as SourceModel[] };
+    const m = new ProfileModel({ ...JET_15D, t_end: 0.2 }, modules);
+    const y = m.initialState();
+    m.diagnostics(0, y);
+    armed = true;
+    const y0 = Array.from(y);
+    expect(() => m.step(0, y, 0.1)).toThrow(TypeError);
+    expect(Array.from(y)).toEqual(y0);
+    expect(m.terminated).toBeNull();
+    expect(m.stepFailure).toBeNull();
+    expect(m.ctx.phase).toBe('normal');
+  }, 60000);
+
+  it('the same through Simulation.advance: the caller sees the error, not a terminated shot', () => {
+    const buggy: SourceModel = { id: 'buggy', heat: (_c, st) => { (st as unknown as { doesNotExist: { length: number } }).doesNotExist.length; } };
+    const sim = new Simulation({ ...JET_15D, t_end: 0.5 });
+    sim.advance(0.1);
+    const m = sim.model as ProfileModel;
+    (m.physics.sources as SourceModel[]).push(buggy);
+    const t0 = sim.t, y0 = Array.from(sim.y);
+    expect(() => sim.advance(0.2)).toThrow(/doesNotExist|undefined/);
+    expect(sim.t).toBe(t0);
+    expect(Array.from(sim.y)).toEqual(y0);
+    expect(m.terminated).toBeNull();
   }, 60000);
 
   it('the last-resort forced step never commits a non-finite state', () => {

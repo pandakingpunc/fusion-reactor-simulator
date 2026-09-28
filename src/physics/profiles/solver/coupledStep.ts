@@ -8,12 +8,13 @@
  * together, e–i exchange implicit), then current diffusion.
  *
  * Δt control: the target is a largest relative profile change of 8 %; a failed attempt (Picard
- * not converged, change above 35 %, non-finite state, or an exception such as a zero pivot in the
- * linear algebra) is retried with Δt × 0.4. After STEP_MAX_ATTEMPTS attempts, or once Δt would fall
- * below STEP_DT_FLOOR, one forced attempt at that last Δt is accepted even without Picard
- * convergence, but only if its whole state is finite; otherwise the shot ends with a StepFailure
- * at the last accepted state. Time advances only by the Δt of the attempt whose state is
- * committed.
+ * not converged, change above 35 %, non-finite state, or a numerical failure thrown by a module:
+ * a singular linear system, a Grad–Shafranov failure; see failures.ts) is retried with Δt × 0.4.
+ * After STEP_MAX_ATTEMPTS attempts, or once Δt would fall below STEP_DT_FLOOR, one forced attempt
+ * at that last Δt is accepted even without Picard convergence, but only if its whole state is
+ * finite; otherwise the shot ends with a StepFailure at the last accepted state. Time advances
+ * only by the Δt of the attempt whose state is committed. Any other exception is a programming
+ * error: it propagates, with the state restored.
  */
 import { KEV, ProfileContext, StepConstants } from '../context';
 import { composition } from '../composition';
@@ -21,7 +22,7 @@ import { updateBoundary } from '../boundary/sol';
 import type { FuelingControl } from '../control/fueling';
 import type { DisruptionEvents } from '../events/disruption';
 import { solverErrorMessage } from '../eqguard';
-import { StepFailure } from '../failures';
+import { StepFailure, isNumericalFailure } from '../failures';
 import { Checkpointable, CheckpointRecord, recNum } from '../checkpoint';
 import { HEAT_CONVECTION, HeatInputs } from '../fvsolver';
 import { currentProfiles } from '../qprofile';
@@ -102,11 +103,16 @@ export class CoupledStepper implements Checkpointable {
     this.stepFailure = null;
   }
 
-  /** implicitStep with anything it throws (linear algebra, non-finite coefficients) turned into a failed attempt */
+  /**
+   * implicitStep with a numerical failure (singular linear system, Grad–Shafranov failure of a
+   * module) turned into a failed attempt. Anything else it throws is a programming error of a
+   * module or plug-in: it propagates, with y put back to the state at the start of the step.
+   */
   private tryImplicitStep(t: number, dt: number, yOld: Float64Array, y: Float64Array): StepAttempt {
     try {
       return this.implicitStep(t, dt, yOld, y);
     } catch (e) {
+      if (!isNumericalFailure(e)) { y.set(yOld); throw e; }
       return { ok: false, change: Infinity, error: e };
     }
   }

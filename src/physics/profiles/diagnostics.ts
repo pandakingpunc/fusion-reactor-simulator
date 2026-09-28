@@ -7,8 +7,9 @@ import { greenwaldDensity } from '../limits';
 import { divertorHeatFlux, neutronWallLoad } from '../engineering';
 import { LAWSON_DT } from '../confinement/magneticReport';
 import type { DiagSpec } from '../types';
-import { MU0, ProfileContext, StepConstants } from './context';
+import { KEV, MU0, ProfileContext, StepConstants } from './context';
 import { lossPower } from './control/confinement';
+import { HEAT_CONVECTION } from './fvsolver';
 import { q95 } from './qprofile';
 import { volumeIntegral } from './sources/deposition';
 import type { ProfileState } from './state';
@@ -89,6 +90,11 @@ export interface GlobalTotals extends PowerTotals {
   tauE: number; tauScal: number;
   /** loss power [W], line-averaged density [m⁻³] */
   P_loss: number; nbar: number;
+  /**
+   * power conducted and convected across the separatrix [W]; over an accepted step
+   * dW/dt = P_heat − P_rad − P_bound up to the Picard tolerance (discrete energy conservation)
+   */
+  P_bound: number;
 }
 
 export function powerTotals(ctx: ProfileContext, K: StepConstants): PowerTotals {
@@ -155,7 +161,7 @@ export function writeDiagnostics(ctx: ProfileContext, t: number, st: ProfileStat
     W: X.W / 1e6, Wf: 0, Zeff: ctx.volAvg(w.Zeff), cZ: s.cZ, S_fuel: s.Sfuel / 1e20,
     burnFrac: s.NTfuel > 0 ? s.NTburn / s.NTfuel : 0, fuelFracA: s.fA,
     q_div: qdiv, n_wall: nw, P_heat: X.P_heat / 1e6, P_charged: X.P_chg / 1e6, P_neutron: X.P_neut / 1e6,
-    Efus_MJ: s.Efus / 1e6, Ein_MJ: s.Ein / 1e6, Nn: s.Nn, P_loss: X.P_loss / 1e6, dWdt: X.dWdt / 1e6,
+    Efus_MJ: s.Efus / 1e6, Ein_MJ: s.Ein / 1e6, Nn: s.Nn, P_loss: X.P_loss / 1e6, dWdt: X.dWdt / 1e6, P_bound: X.P_bound / 1e6,
   };
   // profiles
   const mer = w.mercF, bal = w.ballF;
@@ -175,6 +181,19 @@ export function writeDiagnostics(ctx: ProfileContext, t: number, st: ProfileStat
 }
 
 /**
+ * Power conducted and convected across the separatrix by the profiles of st [W], with the χ of the
+ * evaluated work arrays and the boundary particle outflux Γ_b of the last accepted step: P_bound of
+ * a state that no step produced.
+ */
+function boundaryPower(ctx: ProfileContext, st: ProfileState): number {
+  const w = ctx.w, bc = ctx.bc;
+  const GammaF = new Float64Array(ctx.N + 1);
+  GammaF[ctx.N] = ctx.GammaB;
+  const b = ctx.heat.boundaryLoss({ ne1: st.ne, ni1: w.ni, chiE: w.chiE, chiI: w.chiI, GammaF, convCoef: HEAT_CONVECTION, TeB: bc.Te, TiB: bc.Ti, nB: bc.n }, st.Te, st.Ti);
+  return (b.e + b.i) * KEV;
+}
+
+/**
  * Diagnostics of a state that no step produced (first frame, after an MHD crash): the work arrays
  * must have been evaluated on st (K: their step constants). τ_E is carried over from the last
  * frame in 'scaling' transport (the controller target), and W/P_loss in predictive transport.
@@ -186,7 +205,7 @@ export function stateDiagnostics(ctx: ProfileContext, t: number, st: ProfileStat
   const P = powerTotals(ctx, K);
   const P_loss = lossPower(ctx, P.P_heat, P.P_rad);
   const tauE = predictive ? W / P_loss : tauPrev;
-  writeDiagnostics(ctx, t, st, { ...P, W, dWdt: 0, tauE, tauScal, P_loss, nbar: ctx.lineAvg(st.ne) });
+  writeDiagnostics(ctx, t, st, { ...P, W, dWdt: 0, tauE, tauScal, P_loss, nbar: ctx.lineAvg(st.ne), P_bound: boundaryPower(ctx, st) });
 }
 
 /** Diagnostics during the quench phases of a disruption: only the quantities the quench changes */

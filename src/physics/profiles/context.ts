@@ -126,6 +126,11 @@ export class ProfileContext {
   PSOL = 0;
   /** particle outflux through the boundary Γ_b [1/s] */
   GammaB = 0;
+  /**
+   * power conducted and convected across the separatrix by the solution of the last implicit
+   * attempt [W] (HeatSolver.boundaryLoss with that attempt's inputs; diagnostics only)
+   */
+  Pbound = 0;
   /** gas-puff gain of the separatrix density */
   nsepGain = 1;
   /** proposed next time step [s] */

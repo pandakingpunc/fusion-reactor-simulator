@@ -15,7 +15,7 @@
  * at the last accepted state. Time advances only by the Δt of the attempt whose state is
  * committed.
  */
-import type { ProfileContext, StepConstants } from '../context';
+import { KEV, ProfileContext, StepConstants } from '../context';
 import { composition } from '../composition';
 import { updateBoundary } from '../boundary/sol';
 import type { FuelingControl } from '../control/fueling';
@@ -23,7 +23,7 @@ import type { DisruptionEvents } from '../events/disruption';
 import { solverErrorMessage } from '../eqguard';
 import { StepFailure } from '../failures';
 import { Checkpointable, CheckpointRecord, recNum } from '../checkpoint';
-import type { HeatInputs } from '../fvsolver';
+import { HEAT_CONVECTION, HeatInputs } from '../fvsolver';
 import { currentProfiles } from '../qprofile';
 import { assembleHeatSources } from '../sources';
 import type { PhysicsPipeline } from './pipeline';
@@ -144,7 +144,7 @@ export class CoupledStepper implements Checkpointable {
     const heatIn: HeatInputs = {
       dt, ne0: o.ne, ne1: v.ne, ni0: w.ni0, ni1: w.ni, Te0: o.Te, Ti0: o.Ti, chiE: w.chiE, chiI: w.chiI,
       Qe: w.Qe, Qi: w.Qi, Le: w.Le, Li: w.Li, TeStar: w.TeIt, TiStar: w.TiIt, nuEq: w.nuEq, GammaF: ctx.dens.GammaF,
-      convCoef: 2.5, TeB: ctx.bc.Te, TiB: ctx.bc.Ti, nB: ctx.bc.n,
+      convCoef: HEAT_CONVECTION, TeB: ctx.bc.Te, TiB: ctx.bc.Ti, nB: ctx.bc.n,
     };
     let conv = false;
     for (let it = 0; it < 8; it++) {
@@ -175,6 +175,10 @@ export class CoupledStepper implements Checkpointable {
       }
       if (dmax < 2e-3 && it > 0) { conv = true; break; }
     }
+    // power across the separatrix with the inputs of the last heat solve (before the final
+    // composition replaces w.ni): closes the discrete energy balance of the step
+    const lb = ctx.heat.boundaryLoss(heatIn, v.Te, v.Ti);
+    ctx.Pbound = (lb.e + lb.i) * KEV;
     // final consistency
     composition(ctx, v.Te, v.ne, s);
     currentProfiles(ctx, v.psi, s.Ip);

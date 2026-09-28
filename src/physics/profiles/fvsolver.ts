@@ -44,6 +44,12 @@ export interface HeatInputs {
   nB: number; // sınır yoğunluğu (yüzey χ ağırlığı için)
 }
 
+/** Convected energy per particle of the heat flux, in units of T: q_conv = (5/2) T Γ */
+export const HEAT_CONVECTION = 2.5;
+
+/** The inputs of a heat step that the energy flux through the outer face depends on */
+export type BoundaryFluxInputs = Pick<HeatInputs, 'ne1' | 'ni1' | 'chiE' | 'chiI' | 'GammaF' | 'convCoef' | 'TeB' | 'TiB' | 'nB'>;
+
 /** Birleşik T_e/T_i örtük adımı; sonuç Te, Ti dizilerine yazılır. */
 export class HeatSolver {
   private A: Float64Array; private B: Float64Array; private C: Float64Array; private d: Float64Array; private u: Float64Array;
@@ -98,8 +104,13 @@ export class HeatSolver {
     solveBlockTridiag2(A, B, C, d, this.u, N, this.Cp, this.dp);
     for (let i = 0; i < N; i++) { Te[i] = this.u[2 * i]; Ti[i] = this.u[2 * i + 1]; }
   }
-  /** Dış yüzden kaybolan iletim+konveksiyon gücü [keV/s] (verilen çözümle) */
-  boundaryLoss(h: HeatInputs, Te: Float64Array, Ti: Float64Array): { e: number; i: number } {
+  /**
+   * Power conducted and convected through the outer face (the separatrix) by the solution Te, Ti
+   * [keV/s], discretised exactly as in solve(): with the inputs and the solution of a step,
+   * Σ (3/2)(n_e T_e + n_i T_i) ΔV changes over Δt by Δt [Σ_e,i (Q + L (T* − T)) ΔV − e − i]
+   * (the interior fluxes and the e–i exchange cancel in pairs).
+   */
+  boundaryLoss(h: BoundaryFluxInputs, Te: ArrayLike<number>, Ti: ArrayLike<number>): { e: number; i: number } {
     const g = this.g, N = g.N;
     const f = g.VpF[N] * g.g1F[N] / (0.5 * g.dRho);
     const niB = h.nB * (h.ni1[N - 1] / Math.max(h.ne1[N - 1], 1));

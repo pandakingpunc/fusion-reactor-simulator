@@ -54,5 +54,5 @@ export function acceptStep(ctx: ProfileContext, fueling: FuelingControl, predict
   if (c.fuel === 'DT') { s.NTburn = o.s.NTburn + Rfus * dt; s.NTfuel = o.s.NTfuel + Sf * (1 - wA) * dt; }
   // NTM islands (modified Rutherford equation, explicit substeps)
   evolveIslands(ctx, dt, o, v);
-  writeDiagnostics(ctx, t + dt, v, { ...P, W, dWdt, tauE, tauScal, P_loss, nbar });
+  writeDiagnostics(ctx, t + dt, v, { ...P, W, dWdt, tauE, tauScal, P_loss, nbar, P_bound: ctx.Pbound });
 }

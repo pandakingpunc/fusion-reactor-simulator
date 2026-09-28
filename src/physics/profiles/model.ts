@@ -21,9 +21,7 @@
  */
 import { Geometry } from '../geometry';
 import { FUEL_CHANNELS, FUEL_SPECIES } from '../reactivity';
-import { bremsstrahlung, coolingRate, synchrotronTotal } from '../radiation';
-import { tauIPB98y2, tauITER89P, tauSTValovic, coulombLog } from '../transport';
-import { criticalEnergy, ionHeatingFraction, slowingDownTime } from '../heating';
+import { tauIPB98y2, tauITER89P, tauSTValovic } from '../transport';
 import { disruptionReport, DisruptionCause, DISRUPTION_LABELS, DISRUPTION_FIXES } from '../disruption';
 import { checkMagnet, MAGNET_TECH, MagnetCheck } from '../engineering';
 import { GSSolver, Equilibrium, EquilibriumOptions } from '../equilibrium/gs';
@@ -35,17 +33,17 @@ import { GsAttempt, GsStage, acceptableEquilibrium, binomialSmooth, gridScalePas
 import { EquilibriumInitFailure, StepFailure } from './failures';
 import { DEFAULT_PROFILE_SETTINGS } from './defaults';
 import { HeatInputs } from './fvsolver';
-import { NbiChord, edgeDeposition, gaussianDeposition, volumeIntegral } from './sources/deposition';
-import { BeamTargetTable } from './beamtarget';
-import { chiNeoIon, nuStarE, nuStarI, sauterCoefficients, sigmaNeo, bootstrapJB } from './neoclassical';
-import { ScalarView } from './state';
+import { edgeDeposition, gaussianDeposition, volumeIntegral } from './sources/deposition';
 import { elmCrash, flattenConserving, kadomtsevMixingRadius, mreRate, rhoOfQ, shearAt } from './mhd';
-import { AMU, CrashHook, KEV, MU0, PHASES, ProfileContext, StepConstants } from './context';
-import { composition, seedSpecies } from './composition';
+import { CrashHook, KEV, MU0, PHASES, ProfileContext } from './context';
+import { composition } from './composition';
 import { currentProfiles, q95 } from './qprofile';
 import { separatrixT } from './boundary/sol';
-import { auxRamp, nTarget } from './control/actuators';
+import { nTarget } from './control/actuators';
 import { PROFILE_DIAGS, writeDiagnostics } from './diagnostics';
+import { assembleHeatSources, defaultSources } from './sources';
+import { createTransportModel } from './transport';
+import { PhysicsPipeline } from './solver/pipeline';
 
 export { DEFAULT_PROFILE_SETTINGS };
 export { PROFILE_DIAGS };
@@ -97,9 +95,9 @@ export class ProfileModel implements SimModel {
   private ntmOn21 = false;
 
   // çalışma dizileri
-  private depEC!: Float64Array; private depIC!: Float64Array; private depGas!: Float64Array; private depPel!: Float64Array;
-  private chord: NbiChord | null = null;
-  private btTables = new Map<number, BeamTargetTable>();
+  private depGas!: Float64Array; private depPel!: Float64Array;
+  /** work-array evaluation: transport model and sources */
+  readonly physics: PhysicsPipeline;
 
   get terminated(): TerminationInfo | null { return this.ctx.terminated; }
   get ps(): ProfileSettings { return this.ctx.ps; }
@@ -119,14 +117,12 @@ export class ProfileModel implements SimModel {
     this.tEnd = cfg.t_end;
     this.outputDt = Math.max(cfg.t_end / 800, 0.002);
     this.nState = ctx.layout.size;
-    // caches on the transport geometry: deposition profiles, NBI chord
+    this.physics = new PhysicsPipeline(ctx, createTransportModel(ctx.ps.transportModel), defaultSources());
+    // fueling deposition profiles on the transport geometry
     ctx.onGeometry((tg) => {
-      this.depEC = gaussianDeposition(tg, this.ps.ecrhRho, this.ps.ecrhWidth);
-      this.depIC = gaussianDeposition(tg, 0, this.ps.icrhWidth);
       this.depGas = edgeDeposition(tg, 0.04);
       const depth = Math.min(Math.max(this.cfg.fueling.pelletDepth, 0.05), 1);
       this.depPel = gaussianDeposition(tg, 1 - 0.8 * depth, 0.1);
-      this.chord = null; // new geometry: rebuild the chord map
     });
     this.magnetInfo = checkMagnet(cfg.geometry, cfg.B0, cfg.magnet.tech, cfg.magnet.gap_m, cfg.magnet.coilThickness_m);
     this.gsSolver = new GSSolver(this.geomB, { NR: this.ps.eqNR });
@@ -203,262 +199,9 @@ export class ProfileModel implements SimModel {
 
 
   // ------------------------------------------------------------------ kaynaklar ve katsayılar
-  /** Adım başına sabit tutulan (eski durumdan) büyüklükler */
-  private stepConstants(t: number, Te: Float64Array, Ti: Float64Array, ne: Float64Array, s: ScalarView): StepConstants {
-    const c = this.cfg, w = this.ctx.w, N = this.N, g = this.ctx.tg;
-    const fs = FUEL_SPECIES[c.fuel];
-    // ısıtma yalnız disruption söndürme fazlarında kesilir ('ended' planlı bitişte son kare tutarlı kalsın)
-    const on = this.ctx.phase === 'thermal_quench' || this.ctx.phase === 'current_quench' || (this.ctx.phase === 'ended' && this.ctx.disruption.cause !== 'none') ? 0 : 1;
-    const ramp = auxRamp(this.ctx, t) * on;
-    const P_NBI = this.ctx.ctrl.P_NBI_MW * 1e6 * ramp;
-    const P_IC = this.ctx.ctrl.P_ICRH_MW * 1e6 * ramp;
-    const P_EC = this.ctx.ctrl.P_ECRH_MW * 1e6 * ramp;
-    const Eb = c.heating.E_NBI_keV;
-    // NBI enerji bileşenleri: pozitif-iyon kaynakları (E_b < 250 keV; JET/DIII-D PINI) tam/yarım/
-    // üçte-bir enerji, güç kesirleri ≈ 0.75/0.15/0.10 (D⁺, D₂⁺, D₃⁺ iyon karışımı); negatif-iyon
-    // kaynaklar (ITER/DEMO ≥ 250 keV) tek bileşen. APPROXIMATION: sabit tür karışımı.
-    const comps: [number, number][] = Eb < 250 ? [[Eb, 0.75], [Eb / 2, 0.15], [Eb / 3, 0.1]] : [[Eb, 1]];
-    let shine = 0, sqrtE = 0;
-    w.nbiDep.fill(0); w.nfast.fill(0); w.nbiPart.fill(0); w.PnbiE.fill(0); w.PnbiI.fill(0); w.Pbt.fill(0);
-    const btR = new Float64Array(N);
-    const chans = FUEL_CHANNELS[c.fuel];
-    if (!this.chord) this.chord = new NbiChord(g, this.ps.nbiRtan * g.R0);
-    const svBuf: number[] = [0, 0];
-    for (const [Ek, fk] of comps) {
-      if (P_NBI <= 0) break;
-      const r = this.chord.deposit(ne, Ek, fs.a.A, w.nbiTmp);
-      let tab = this.btTables.get(Ek);
-      if (!tab && c.fuel !== 'pB11') { tab = new BeamTargetTable(c.fuel, Ek); this.btTables.set(Ek, tab); }
-      shine += fk * r.shine;
-      sqrtE += fk * Math.sqrt(Ek);
-      let maxPd = 0;
-      for (let i = 0; i < N; i++) maxPd = Math.max(maxPd, w.nbiTmp[i]);
-      for (let i = 0; i < N; i++) {
-        const dep = fk * w.nbiTmp[i];
-        if (dep <= 0) continue;
-        const Ec = criticalEnergy(Math.max(Te[i], 0.01), fs.a.A, w.ionSum[i]);
-        const fi = ionHeatingFraction(Ek, Ec);
-        const pd = P_NBI * dep;
-        w.nbiDep[i] += dep;
-        w.PnbiE[i] += pd * (1 - fi); w.PnbiI[i] += pd * fi;
-        w.nbiPart[i] += pd / (Ek * KEV);
-        // demet-hedef: n_f = S τ_th (durağan yavaşlama dağılımı), R = n_f n_hedef ⟨σv⟩_bt
-        if (tab && w.nbiTmp[i] > 1e-3 * maxPd) {
-          const tsd = slowingDownTime(Math.max(Te[i], 0.01), ne[i], fs.a.A, fs.a.Z, Ek, Ec);
-          const nf = (pd * tsd) / (Ek * KEV);
-          w.nfast[i] += nf;
-          const sv = tab.eval(Ec, Math.max(Ti[i], 0.01), svBuf);
-          chans.forEach((ch, j) => {
-            const nT = ch.sameSpecies ? w.na[i] : w.nb[i];
-            const R = nf * nT * sv[j];
-            btR[i] += R;
-            w.Pbt[i] += R * ch.Etot_MeV * 1.602176634e-13;
-          });
-        }
-      }
-    }
-    const EbEff = sqrtE > 0 ? sqrtE * sqrtE : Eb; // akım sürme için etkin demet enerjisi
-    for (let i = 0; i < N; i++) {
-      w.PicE[i] = P_IC * this.depIC[i] * (1 - c.heating.f_ICRH_ion);
-      w.PicI[i] = P_IC * this.depIC[i] * c.heating.f_ICRH_ion;
-      w.PecE[i] = P_EC * this.depEC[i];
-    }
-    // senkrotron (küresel AJG, n_e T_e ağırlıklı dağıtım)
-    const nAvg = this.ctx.volAvg(ne), TAvg = volumeIntegral(g, Te.map((v, i) => v * ne[i])) / Math.max(volumeIntegral(g, ne), 1);
-    const aN = Math.min(Math.max(ne[0] / Math.max(nAvg, 1) - 1, 0.01), 3), aT = Math.min(Math.max(Te[0] / Math.max(TAvg, 1e-3) - 1, 0.1), 4);
-    const Psync = synchrotronTotal({ R: g.R0, a: g.a, kappa: this.ctx.kappaA, B0: g.B0, ne0_1e20: ne[0] / 1e20, Te0_keV: Te[0], alpha_n: aN, alpha_T: aT, wallReflectivity: c.impurity.wallReflectivity });
-    let wsum = 0;
-    for (let i = 0; i < N; i++) wsum += ne[i] * Te[i] * g.dV[i];
-    for (let i = 0; i < N; i++) w.Psync[i] = wsum > 0 ? (Psync * ne[i] * Te[i]) / wsum : 0;
-    // neoklasik (Sauter) katsayıları — adım başına (q eski ψ'den)
-    this.ctx.sauter.length = N;
-    for (let i = 0; i < N; i++) {
-      const eps = g.epsC[i], R = g.RgeoC[i];
-      const q = Math.min(Math.max(w.q[i], 0.3), 20);
-      const Z = Math.max(w.Zeff[i], 1);
-      w.nuE[i] = nuStarE(q, R, eps, ne[i], Math.max(Te[i], 0.01) * 1e3, Z);
-      w.nuI[i] = nuStarI(q, R, eps, w.ni[i], Math.max(Ti[i], 0.01) * 1e3, Z);
-      this.ctx.sauter[i] = sauterCoefficients(g.ftC[i], w.nuE[i], w.nuI[i], Z);
-      w.chiNeo[i] = chiNeoIon(q, eps, g.B0, w.ni[i], Math.max(Ti[i], 0.01) * 1e3, this.ctx.M, Z, w.nuI[i]);
-    }
-    return { P_NBI, P_IC, P_EC, shine, btR, Eb: EbEff, Psync, S_nbi: volumeIntegral(g, w.nbiPart) };
-  }
 
-  /** Taşınım katsayıları yüzeylerde (mevcut iterasyon) */
-  private transportCoefficients(Te: Float64Array, Ti: Float64Array, ne: Float64Array, s: ScalarView): void {
-    const w = this.ctx.w, g = this.ctx.tg, N = this.N, ps = this.ps;
-    const Cchi = Math.max(s.Cchi, 1e-4);
-    const rhoPed = 1 - ps.pedestalWidth;
-    // NTM ada bölgeleri
-    const islands: [number, number][] = [];
-    const a = g.a;
-    for (const [key, qv] of [['w32', 1.5], ['w21', 2]] as const) {
-      const wi = s[key];
-      if (wi > 0.002 * a) {
-        const rs = rhoOfQ(g, w.qF, qv);
-        if (rs > 0) {
-          const i = Math.min(N - 1, Math.floor(rs / g.dRho));
-          islands.push([rs, wi * g.gradRhoC[i]]);
-        }
-      }
-    }
-    const cgm = ps.transportModel === 'cgm';
-    // yüzeyde R/L_T = −R ∂T/∂r / T  (T_e ve T_i için; dış yüzde sınır değeri)
-    const RLT = (T: Float64Array, TB: number, f: number) => {
-      if (f === 0) return 0;
-      const TL = T[f - 1], TR = f < N ? T[f] : TB;
-      const dist = f < N ? g.dRho : 0.5 * g.dRho;
-      const Tf = Math.max(0.5 * (TL + TR), 0.01);
-      return (-g.R0 * ((TR - TL) / dist) * g.gradRhoF[f]) / Tf;
-    };
-    const stiffF = (x: number) => 1 + ps.stiffness * Math.min(Math.max(x / ps.critGrad - 1, 0), 5);
-    for (let f = 0; f <= N; f++) {
-      const rho = g.rhoF[f];
-      let chiT: number, chiTi: number;
-      if (!cgm) {
-        // ölçek-normalize şekil × kritik-gradyan sertliği (Garbet 2004 yapısı; genlik C_χ ile kısıtlı)
-        const base = Cchi * (1 + ps.chiShape * rho * rho);
-        // sertlik yalnız çekirdek türbülans bölgesinde (ρ < 0.85); kenar/pedestal fiziği farklıdır
-        const core = rho < 0.85;
-        chiT = base * (core ? stiffF(RLT(Te, this.ctx.bc.Te, f)) : 1);
-        chiTi = ps.chiRatio * base * (core ? stiffF(RLT(Ti, this.ctx.bc.Ti, f)) : 1);
-      } else {
-        // kritik gradyan: χ_i = χ_s q^{3/2} χ_gB (R/L_Ti − κc)² H ; χ_e = χ_i/2
-        const iL = Math.max(0, Math.min(N - 2, f - 1));
-        const Tif = Math.max(0.5 * (Ti[iL] + Ti[iL + 1]), 0.01), Tef = Math.max(0.5 * (Te[iL] + Te[iL + 1]), 0.01);
-        const dTi = (Ti[iL + 1] - Ti[iL]) / g.dRho * g.gradRhoF[f];
-        const RLT = (-g.R0 * dTi) / Tif;
-        const mi = this.ctx.M * AMU;
-        const rhoS = Math.sqrt(mi * Tef * KEV) / (1.602176634e-19 * g.B0);
-        const chiGB = (Tif * 1e3 / g.B0) * (rhoS / g.R0);
-        const qf = Math.max(w.qF[f], 0.5);
-        const x = Math.max(RLT - 4.5, 0);
-        chiTi = Math.pow(qf, 1.5) * chiGB * x * x + 0.1 * chiGB + 0.05;
-        chiT = chiTi / 2;
-      }
-      // ETB (H-modu): pedestal içinde türbülans bastırılır, χ → etbFactor·χ. Pedestal gradyanı
-      // kinetik balonlama (KBM) sınırını aşarsa ELM'ler arası taşınım artar (EPED resmi:
-      // gradyan KBM ile kenetlenir, yükseklik peeling–balonlama sınırında ELM ile düşer).
-      if (this.ctx.hmode) {
-        const wgt = 0.5 * (1 + Math.tanh((rho - rhoPed) / 0.01));
-        const kbm = this.ctx.alphaRatio > 1 ? Math.min(Math.pow(this.ctx.alphaRatio, 6), 30) : 1;
-        const sup = 1 - wgt * (1 - ps.etbFactor * kbm);
-        chiT *= sup; chiTi *= sup;
-      }
-      let chiE = chiT, chiI = chiTi;
-      for (const [rs, dr] of islands) if (Math.abs(rho - rs) < 0.5 * dr) { chiE += 5; chiI += 5; }
-      // neoklasik taban (iyon)
-      const i0 = Math.max(0, Math.min(N - 1, f - 1)), i1 = Math.min(N - 1, f);
-      chiI += 0.5 * (w.chiNeo[i0] + w.chiNeo[i1]);
-      w.chiE[f] = chiE + 0.01;
-      w.chiI[f] = chiI + 0.01;
-      w.D[f] = ps.DoverChi * chiT + 0.02;
-      w.v[f] = f === 0 ? 0 : -w.D[f] * 2 * this.ctx.Pn * rho * (g.g1F[f] / Math.max(g.gradRhoF[f], 1e-9));
-    }
-  }
 
-  /** Füzyon, ohmik, radyasyon, eşitlenme kaynakları (mevcut iterasyon) */
-  private plasmaSources(Te: Float64Array, Ti: Float64Array, ne: Float64Array, K: { btR: Float64Array }): void {
-    const w = this.ctx.w, N = this.N, c = this.cfg;
-    const fs = FUEL_SPECIES[c.fuel];
-    const chans = FUEL_CHANNELS[c.fuel];
-    const E_ch_keV = (chans[0].Echarged_MeV * 1000) / (c.fuel === 'pB11' ? 3 : 1);
-    const im = c.impurity;
-    const seed = seedSpecies(this.ctx);
-    for (let i = 0; i < N; i++) {
-      const Tiv = Math.max(Ti[i], 0.01), Tev = Math.max(Te[i], 0.01);
-      let R = 0, P = 0, Pc = 0, Pn = 0, Nn = 0, bA = 0, bB = 0;
-      for (const ch of chans) {
-        const sv = ch.sigmav(Tiv);
-        const r = (ch.sameSpecies ? 0.5 * w.na[i] * w.na[i] : w.na[i] * w.nb[i]) * sv;
-        R += r;
-        P += r * ch.Etot_MeV * 1.602176634e-13;
-        Pc += r * ch.Echarged_MeV * 1.602176634e-13;
-        Pn += r * ch.Eneutron_MeV * 1.602176634e-13;
-        if (ch.Eneutron_MeV > 0) Nn += r;
-        if (ch.sameSpecies) bA += 2 * r; else { bA += r; bB += r; }
-      }
-      // demet-hedef katkısı
-      const rbt = K.btR[i];
-      if (rbt > 0) {
-        R += rbt; P += w.Pbt[i];
-        const fc = chans[0].Echarged_MeV / chans[0].Etot_MeV;
-        Pc += w.Pbt[i] * fc; Pn += w.Pbt[i] * (1 - fc);
-        if (chans[0].Eneutron_MeV > 0) Nn += rbt;
-        bA += rbt; if (!chans[0].sameSpecies) bB += rbt;
-      }
-      w.Rfus[i] = R; w.Pfus[i] = P; w.Pchg[i] = Pc; w.Pneut[i] = Pn; w.Nfus[i] = Nn; w.burnA[i] = bA; w.burnB[i] = bB;
-      // yüklü ürün ısıtması (anlık, yerel), Stix paylaşımı
-      const Ec = criticalEnergy(Tev, 4, w.ionSum[i]);
-      const fi = ionHeatingFraction(E_ch_keV, Ec);
-      w.PaE[i] = Pc * (1 - fi); w.PaI[i] = Pc * fi;
-      // radyasyon
-      const pbr = bremsstrahlung(ne[i], Tev, w.ZeffMain[i]);
-      let pl = ne[i] * w.nZ[i] * coolingRate(im.species, Tev);
-      let dpl = ne[i] * w.nZ[i] * (coolingRate(im.species, Tev * 1.02) - coolingRate(im.species, Tev)) / (0.02 * Tev);
-      if (seed) {
-        pl += ne[i] * w.ns[i] * coolingRate(seed, Tev);
-        dpl += ne[i] * w.ns[i] * (coolingRate(seed, Tev * 1.02) - coolingRate(seed, Tev)) / (0.02 * Tev);
-      }
-      w.Pbr[i] = pbr; w.Pline[i] = pl;
-      w.Prad[i] = pbr + pl + w.Psync[i];
-      w.dPrad[i] = Math.max(0, pbr / (2 * Tev) + dpl);
-      // e-i eşitlenme hızı: ν = 3.2e-9 lnΛ Σ n_j Z_j²/A_j [cm⁻³] / T_e[eV]^{3/2}
-      const lnL = coulombLog(ne[i], Tev);
-      w.nuEq[i] = (3.2e-9 * lnL * ne[i] * w.ionSum[i] * 1e-6) / Math.pow(Tev * 1e3, 1.5);
-    }
-  }
 
-  /** Neoklasik iletkenlik, bootstrap ve sürülen akımlar (mevcut iterasyon) */
-  private currentSources(Te: Float64Array, Ti: Float64Array, ne: Float64Array, psi: Float64Array, K: { P_NBI: number; P_EC: number; Eb: number }): void {
-    const w = this.ctx.w, g = this.ctx.tg, N = this.N;
-    const dpsiC = (i: number) => 0.5 * (w.dpsiF[i] + w.dpsiF[i + 1]);
-    for (let i = 0; i < N; i++) {
-      const Tev = Math.max(Te[i], 0.01);
-      w.sigma[i] = sigmaNeo(g.ftC[i], w.nuE[i], ne[i], Tev * 1e3, Math.max(w.Zeff[i], 1));
-      w.p[i] = (ne[i] * Tev + w.ni[i] * Math.max(Ti[i], 0.01)) * KEV;
-    }
-    // bootstrap: ρ-türevleri merkezlerde (merkezi fark; kenarda sınır değerine tek taraflı)
-    const TeB = this.ctx.bc.Te, TiB = this.ctx.bc.Ti, nB = this.ctx.bc.n;
-    const niB = nB * (w.ni[N - 1] / Math.max(ne[N - 1], 1));
-    const pB = (nB * TeB + niB * TiB) * KEV;
-    for (let i = 0; i < N; i++) {
-      const im = Math.max(i - 1, 0);
-      const h = i === 0 ? g.dRho : i === N - 1 ? 1.5 * g.dRho : 2 * g.dRho;
-      const pR = i < N - 1 ? w.p[i + 1] : pB, TeR = i < N - 1 ? Te[i + 1] : TeB, TiR = i < N - 1 ? Ti[i + 1] : TiB;
-      const pL = i === 0 ? w.p[0] : w.p[im], TeL = i === 0 ? Te[0] : Te[im], TiL = i === 0 ? Ti[0] : Ti[im];
-      const dlnp = (pR - pL) / h / Math.max(w.p[i], 1);
-      const dlnTe = (TeR - TeL) / h / Math.max(Te[i], 1e-3);
-      const dlnTi = (TiR - TiL) / h / Math.max(Ti[i], 1e-3);
-      const pe = ne[i] * Math.max(Te[i], 0.01) * KEV;
-      const Rpe = pe / Math.max(w.p[i], 1);
-      w.jbsB[i] = Math.max(0, bootstrapJB(g.FC[i], w.p[i], Rpe, this.ctx.sauter[i], dlnp, dlnTe, dlnTi, Math.max(dpsiC(i), 1e-12)));
-    }
-    // akım sürme: I_CD = γ P/(n̄20 R0) ; j ∝ birikim, ⟨j·B⟩ ≈ j B0.
-    // γ_NB ≈ γ0 (T_e/10 keV) √(E_b/1 MeV)  (Fisch/Cordey eğilimi: verim T_e ve demet hızıyla artar;
-    // ITER 1 MeV, T_e≈12 keV → ≈0.25; JET 110 keV, T_e≈7 keV → ≈0.05) — APPROXIMATION
-    w.jcdB.fill(0);
-    const nbar20 = Math.max(this.ctx.lineAvg(ne) / 1e20, 0.05);
-    const TeRef = (i: number) => Math.min(Math.max(Te[i] / 10, 0.05), 1.5);
-    if (this.ps.nbcdEff > 0 && K.P_NBI > 0) {
-      const s = volumeIntegral(g, w.nbiDep) || 1;
-      let Tw = 0; for (let i = 0; i < N; i++) Tw += w.nbiDep[i] * g.dV[i] * TeRef(i);
-      const gam = Math.min(this.ps.nbcdEff * (Tw / s) * Math.sqrt(Math.min(K.Eb / 1000, 1)), 0.5);
-      const Icd = (gam * K.P_NBI * s) / (nbar20 * g.R0);
-      for (let i = 0; i < N; i++) w.jcdB[i] += ((Icd * w.nbiDep[i]) / s) * 2 * Math.PI * g.RgeoC[i] * g.B0;
-    }
-    if (this.ps.eccdEff > 0 && K.P_EC > 0) {
-      let Tw = 0; for (let i = 0; i < N; i++) Tw += this.depEC[i] * g.dV[i] * TeRef(i);
-      const Icd = (Math.min(this.ps.eccdEff * Tw, 0.5) * K.P_EC) / (nbar20 * g.R0);
-      for (let i = 0; i < N; i++) w.jcdB[i] += Icd * this.depEC[i] * 2 * Math.PI * g.RgeoC[i] * g.B0;
-    }
-    for (let i = 0; i < N; i++) w.jniB[i] = w.jbsB[i] + w.jcdB[i];
-    // ohmik ısıtma (endüktif akım): P = (⟨j·B⟩ − ⟨j_ni·B⟩)² / (σ ⟨B²⟩)
-    for (let i = 0; i < N; i++) {
-      const jind = w.jB[i] - w.jniB[i];
-      w.Poh[i] = (jind * jind) / (Math.max(w.sigma[i], 1) * g.B2C[i]);
-    }
-  }
 
 
   // ------------------------------------------------------------------ SimModel
@@ -589,7 +332,7 @@ export class ProfileModel implements SimModel {
     // integral denetleyiciyle güncellenir)
     const nT = nTarget(this.ctx, t);
     this.ctx.bc = { Te: Tsep, Ti: Tsep, n: Math.min(this.ps.nsepFrac * nT * this.ctx.nsepGain, 0.6 * nT) };
-    const K = this.stepConstants(t, o.Te, o.Ti, o.ne, o.s);
+    const K = this.physics.stepConstants(t, o);
     // besleme denetimi (açık): S_cmd = Γ_b − S_nbi + k_p V (n_T − ⟨n⟩)
     // (füzyon yanması elektron sayısını değiştirmez: D+T → He²⁺ + n; seyrelme bileşimde)
     const tauE = Math.max(this.ctx.lastDiag.tauE ?? 1, 0.01);
@@ -628,7 +371,7 @@ export class ProfileModel implements SimModel {
     let conv = false;
     for (let it = 0; it < 8; it++) {
       w.TeIt.set(v.Te); w.TiIt.set(v.Ti); w.neIt.set(v.ne);
-      this.transportCoefficients(v.Te, v.Ti, v.ne, s);
+      this.physics.transportCoefficients(v);
       // sert (gradyana bağlı) taşınımda Picard salınımını önlemek için χ gevşetmesi
       if (it > 0) for (let f = 0; f <= N; f++) { w.chiE[f] = 0.5 * (w.chiE[f] + w.chiEp[f]); w.chiI[f] = 0.5 * (w.chiI[f] + w.chiIp[f]); }
       w.chiEp.set(w.chiE); w.chiIp.set(w.chiI);
@@ -637,17 +380,10 @@ export class ProfileModel implements SimModel {
       for (let i = 0; i < N; i++) if (!(v.ne[i] > 1e15)) v.ne[i] = 1e15;
       composition(this.ctx, v.Te, v.ne, s);
       // 2) kaynaklar
-      this.plasmaSources(v.Te, v.Ti, v.ne, K);
+      this.physics.heatSources(v, K);
       currentProfiles(this.ctx, v.psi, s.Ip);
-      this.currentSources(v.Te, v.Ti, v.ne, v.psi, K);
-      for (let i = 0; i < N; i++) {
-        const Pe = w.PnbiE[i] + w.PicE[i] + w.PecE[i] + w.PaE[i] + w.Poh[i] - w.Prad[i];
-        const Pi = w.PnbiI[i] + w.PicI[i] + w.PaI[i];
-        // radyasyon yutağı örtük doğrusallaştırılır: Q ≈ P(T*) − L (T − T*), L = ∂P_rad/∂T_e ≥ 0
-        w.Qe[i] = Pe / KEV;
-        w.Qi[i] = Pi / KEV;
-        w.Le[i] = w.dPrad[i] / KEV; w.Li[i] = 0;
-      }
+      this.physics.currentSources(v, K);
+      assembleHeatSources(this.ctx);
       // 3) ısı (T_e, T_i birlikte)
       this.ctx.heat.solve(heatIn, v.Te, v.Ti);
       for (let i = 0; i < N; i++) { if (!(v.Te[i] > 0.005)) v.Te[i] = 0.005; if (!(v.Ti[i] > 0.005)) v.Ti[i] = 0.005; }
@@ -912,7 +648,7 @@ export class ProfileModel implements SimModel {
     if (out.stage > 0) this.eqRetried++;
     this.ctx.adoptGeometry({ eq: out.eq, tg: built.tg });
     // postStep (ELM, sawtooth) runs next and reads n_i, q, p: evaluate them on the new geometry
-    this.evaluateWorkArrays(t, y);
+    this.physics.evaluateWorkArrays(t, v);
     return true;
   }
 
@@ -1100,7 +836,7 @@ export class ProfileModel implements SimModel {
       const tauPrev = this.ctx.lastDiag.tauE ?? 0.1;
       const tauScal = this.ctx.lastDiag.tauE_scal ?? tauPrev;
       const v = this.ctx.view(y);
-      const K = this.evaluateWorkArrays(t, y);
+      const K = this.physics.evaluateWorkArrays(t, v);
       const g = this.ctx.tg, I = (a: Float64Array) => volumeIntegral(g, a);
       let W = 0;
       for (let i = 0; i < this.N; i++) W += 1.5 * (v.ne[i] * v.Te[i] + this.ctx.w.ni[i] * v.Ti[i]) * KEV * g.dV[i];
@@ -1123,23 +859,6 @@ export class ProfileModel implements SimModel {
     return Math.max(P_heat - P_rad, 0.1 * P_heat, 0.5e6 * (this.ctx.tg.volume / 100));
   }
 
-  /**
-   * Evaluates every work array (composition, q and current profiles, sources, transport
-   * coefficients, pressure) from the state y without taking a step. Used for diagnostics of a
-   * state no step produced (first frame, after an MHD crash) and after an equilibrium swap, so
-   * that postStep and the MHD events never read arrays of the old geometry.
-   */
-  private evaluateWorkArrays(t: number, y: Float64Array): StepConstants {
-    const v = this.ctx.view(y);
-    composition(this.ctx, v.Te, v.ne, v.s);
-    currentProfiles(this.ctx, v.psi, v.s.Ip);
-    const K = this.stepConstants(t, v.Te, v.Ti, v.ne, v.s);
-    this.ctx.lastK = K;
-    this.transportCoefficients(v.Te, v.Ti, v.ne, v.s);
-    this.plasmaSources(v.Te, v.Ti, v.ne, K);
-    this.currentSources(v.Te, v.Ti, v.ne, v.psi, K);
-    return K;
-  }
 
   profiles(_y: Float64Array): Record<string, number[]> { return this.ctx.lastProf; }
 

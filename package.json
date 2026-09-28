@@ -8,7 +8,7 @@
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "validate": "tsx src/physics/validation.cli.ts",
+    "validate": "tsx src/cli/validate.cli.ts",
     "figures": "tsx src/cli/figures.cli.ts"
   },
   "dependencies": {

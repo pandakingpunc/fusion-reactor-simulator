@@ -8,10 +8,10 @@
  *   --threads N   işçi sayısı (varsayılan: çekirdek − 1)
  *   --only a,b    yalnız bu preset kimlikleri
  */
-import { PRESETS } from './presets';
-import { ShotReport } from './types';
-import { defaultThreads, runPool } from '../cli/pool';
-import type { RunResult, RunTask } from '../cli/presetRunner.worker';
+import { PRESETS } from '../physics/presets';
+import { ShotReport } from '../physics/types';
+import { defaultThreads, runPool } from './pool';
+import type { RunResult, RunTask } from './presetRunner.worker';
 
 interface Check {
   id: string;
@@ -60,7 +60,7 @@ async function main() {
   const t0 = performance.now();
   // uzun koşular önce (yük dengeleme)
   const order = [...tasks].sort((a, b) => weight(b) - weight(a));
-  const res = await runPool<RunTask, RunResult>(order, new URL('../cli/presetRunner.worker.ts', import.meta.url), threads);
+  const res = await runPool<RunTask, RunResult>(order, new URL('./presetRunner.worker.ts', import.meta.url), threads);
   const wall = performance.now() - t0;
   const byId = new Map(res.map((r) => [r.id, r]));
 

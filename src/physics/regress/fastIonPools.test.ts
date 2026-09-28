@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { flatTopMean } from '../analysis/flatTop';
+import { MagneticModel } from '../confinement/magnetic';
 import { fastIonEnergyTime, ionHeatingFraction, spitzerSlowingDownTime } from '../heating';
 import { DIIID, ITER } from '../presets';
 import { Simulation } from '../simulation';
@@ -89,5 +90,31 @@ describe('separate alpha and beam pools (0D magnetic model)', () => {
     const p = (2 / 3) * (f.W + f.Wf) * 1e6 / V;
     expect(f.betaT / ((2 * MU0 * p) / (B * B) * 100)).toBeCloseTo(1, 9);
     expect(f.betaN / ((f.betaT * ITER.geometry.a * B) / f.Ip)).toBeCloseTo(1, 9);
+  });
+});
+
+describe('fast-particle pressure: Troyon limit yes, NTM drive no', () => {
+  // an ITER flat-top state
+  const sim = new Simulation({ ...ITER, t_end: 120 });
+  sim.runAll();
+  const y0 = Float64Array.from(sim.history[sim.history.length - 1].y);
+  const probe = new MagneticModel(ITER);
+  const d0 = probe.diagnostics(120, y0);
+
+  it('β_N,th is the thermal part of β_N', () => {
+    expect(d0.betaN_th).toBeGreaterThan(0);
+    expect(d0.betaN_th / d0.betaN).toBeCloseTo(d0.W / (d0.W + d0.Wf), 9);
+  });
+
+  it('a sawtooth seeds an NTM only when the THERMAL β_N exceeds 0.7 β_N,limit (bootstrap drive)', () => {
+    const seeds = (limit: number) => {
+      const m = new MagneticModel({ ...ITER, limits: { ...ITER.limits, betaN_limit: limit } });
+      const y = Float64Array.from(y0);
+      m.rhs(120, y, new Float64Array(y.length));
+      return m.postStep(120, 1e-3, y).some((e) => e.kind === 'NTM_onset'); // first sawtooth is due at t = 0.3 s
+    };
+    // 0.7·limit between the thermal and the total β_N: fast ions alone do not seed the NTM
+    expect(seeds((d0.betaN_th + d0.betaN) / 2 / 0.7)).toBe(false);
+    expect(seeds((0.9 * d0.betaN_th) / 0.7)).toBe(true);
   });
 });

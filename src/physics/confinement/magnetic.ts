@@ -505,10 +505,13 @@ export class MagneticModel implements SimModel {
     // hacim ort. basınç (J/m³): termal <n_e T_e + n_i T_i> + hızlı parçacıklar (2/3)(W_α + W_b)/V
     // (izotropik kabul; demet iyonlarının anizotropisi ihmal — APPROXIMATION)
     const Wfast = y[IDX.Wa] + y[IDX.Wb];
-    const p = D.ne * U.keV_to_J(D.Te) + D.ni * U.keV_to_J(D.Ti) + (2 / 3) * Wfast / this.V;
+    const p_th = D.ne * U.keV_to_J(D.Te) + D.ni * U.keV_to_J(D.Ti);
+    const p = p_th + (2 / 3) * Wfast / this.V;
     const Ip_MA = y[IDX.Ip] / 1e6;
     const bT = betaToroidal(p, c.B0);
     const bN = this.isStell ? 0 : betaNormalized(bT, this.g.a, c.B0, Math.max(Ip_MA, 0.01));
+    // termal β_N: NTM sürücüsü (bootstrap akımı) yalnız termal basınç gradyanından gelir
+    const bN_th = this.isStell ? 0 : betaNormalized(betaToroidal(p_th, c.B0), this.g.a, c.B0, Math.max(Ip_MA, 0.01));
     const P_in = D.P_aux_abs + D.P_oh;
     const Q = D.P_fus / Math.max(P_in, 1e4);
     const triple = D.ne * D.Ti * D.tauE;
@@ -526,7 +529,7 @@ export class MagneticModel implements SimModel {
       P_fus: D.P_fus / 1e6, P_bt: D.P_bt / 1e6, P_alpha: D.P_alpha / 1e6, P_beam_heat: D.P_beam / 1e6, P_aux: (D.P_NBI + D.P_ICRH + D.P_ECRH) / 1e6, P_oh: D.P_oh / 1e6,
       P_brems: D.P_brems / 1e6, P_sync: D.P_sync / 1e6, P_line: D.P_line / 1e6, P_rad: D.P_rad / 1e6, P_cond: D.P_cond / 1e6,
       Q, tauE: D.tauE, H_mode: this.hmode ? 1 : 0, P_LH: P_LH / 1e6,
-      betaN: bN, betaT: bT * 100, q95: this.isStell ? 0 : q95fn(this.g, c.B0, Math.max(Ip_MA, 0.01)), NTM: this.ntm ? 1 : 0,
+      betaN: bN, betaN_th: bN_th, betaT: bT * 100, q95: this.isStell ? 0 : q95fn(this.g, c.B0, Math.max(Ip_MA, 0.01)), NTM: this.ntm ? 1 : 0,
       W: W / 1e6, Wf: Wfast / 1e6, W_alpha: y[IDX.Wa] / 1e6, W_beam: y[IDX.Wb] / 1e6, ignited: this.ignited ? 1 : 0, triple, lawson: triple / LAWSON_DT,
       Zeff: D.Zeff, cZ: y[IDX.nZ] / D.ne, Ip: Ip_MA, S_fuel: D.S_fuel / 1e20,
       burnFrac: y[IDX.NTfuel] > 0 ? y[IDX.NTburn] / y[IDX.NTfuel] : 0,
@@ -587,13 +590,14 @@ export class MagneticModel implements SimModel {
         y[IDX.nHe] *= 0.97; y[IDX.nZ] *= 0.97;
         ev.push({ t, kind: 'sawtooth', msg: `Sawtooth crash: ΔW ≈ ${(drop * 100).toFixed(1)}%`, value: drop });
         this.tNextSaw = t + Math.max(0.05, 0.6 * this.tauE_last * (0.8 + 0.4 * this.rng.next()));
-        // NTM tohumu: β_N > β_onset ise sawtooth NTM tetikler (Sauter 2002: β_N,onset ~ 2 ITER'de)
-        if (c.events.ntm && !this.ntm && dg.betaN > 0.7 * c.limits.betaN_limit) {
-          this.ntm = true; ev.push({ t, kind: 'NTM_onset', msg: `Sawtooth-seeded NTM (3/2) started: β_N = ${dg.betaN.toFixed(2)} — τ_E is degrading` });
+        // NTM tohumu: β_N > β_onset ise sawtooth NTM tetikler (Sauter 2002: β_N,onset ~ 2 ITER'de).
+        // Sürücü bootstrap akımıdır → termal β_N (hızlı iyonlar bootstrap akımı taşımaz); Troyon limiti toplam β_N ile.
+        if (c.events.ntm && !this.ntm && dg.betaN_th > 0.7 * c.limits.betaN_limit) {
+          this.ntm = true; ev.push({ t, kind: 'NTM_onset', msg: `Sawtooth-seeded NTM (3/2) started: thermal β_N = ${dg.betaN_th.toFixed(2)} — τ_E is degrading` });
         }
       }
-      if (this.ntm && dg.betaN < 0.5 * c.limits.betaN_limit) {
-        this.ntm = false; ev.push({ t, kind: 'NTM_gone', msg: `NTM decayed: β_N ${dg.betaN.toFixed(2)} below the marginal threshold` });
+      if (this.ntm && dg.betaN_th < 0.5 * c.limits.betaN_limit) {
+        this.ntm = false; ev.push({ t, kind: 'NTM_gone', msg: `NTM decayed: thermal β_N ${dg.betaN_th.toFixed(2)} below the marginal threshold` });
       }
       // ---- W birikimi: ELM/sawtooth yoksa merkez birikimi (neoklasik pinch) ----
       this.tauW_accum = c.impurity.species === 'W' && (!c.events.elms || !c.events.sawteeth) ? 4 : 1;

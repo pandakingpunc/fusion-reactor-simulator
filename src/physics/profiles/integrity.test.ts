@@ -135,3 +135,28 @@ describe('implicit step failures', () => {
     expect(ev.some((e) => e.kind === 'warning' && e.msg.includes('forced'))).toBe(true);
   }, 60000);
 });
+
+describe('reported confinement time', () => {
+  const rel = (a: number, b: number) => Math.abs(a - b) / Math.abs(b);
+
+  it("'cgm' transport: τ_E is the actual W/P_loss, the scaling law is reported beside it", () => {
+    const sim = new Simulation({ ...JET_15D, t_end: 0.3, profiles: { transportModel: 'cgm' } });
+    const r = sim.runAll();
+    expect(r.termination.natural).toBe(true);
+    const frames = sim.history.filter((h) => h.t > 0);
+    expect(frames.length).toBeGreaterThan(100);
+    for (const h of frames) {
+      expect(rel(h.d.tauE, h.d.W / h.d.P_loss)).toBeLessThan(1e-12);
+      expect(rel(h.d.P_cond, h.d.P_loss)).toBeLessThan(1e-12); // P_cond = W/τ_E
+      expect(h.d.tauE_scal).toBeGreaterThan(0);
+    }
+    // predictive transport is not tied to the scaling law
+    expect(frames.some((h) => rel(h.d.tauE, h.d.tauE_scal) > 0.05)).toBe(true);
+  }, 60000);
+
+  it("'scaling' transport: τ_E is the scaling-law target the C_χ controller tracks", () => {
+    const sim = new Simulation({ ...JET_15D, t_end: 0.5 });
+    sim.runAll();
+    for (const h of sim.history.filter((f) => f.t > 0)) expect(h.d.tauE).toBe(h.d.tauE_scal);
+  }, 60000);
+});

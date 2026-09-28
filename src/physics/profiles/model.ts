@@ -93,6 +93,7 @@ export const PROFILE_DIAGS: DiagSpec[] = [
   { key: 'triple', label: 'n·T·τ_E', unit: 'keV s m⁻³', group: 'Performance', log: true },
   { key: 'lawson', label: 'Lawson ratio', unit: '', group: 'Performance' },
   { key: 'tauE', label: 'τ_E', unit: 's', group: 'Confinement' },
+  { key: 'tauE_scal', label: 'τ_E scaling law (C_χ target)', unit: 's', group: 'Confinement' },
   { key: 'H_mode', label: 'Mode (1=H, 0=L)', unit: '', group: 'Confinement' },
   { key: 'P_LH', label: 'P_LH threshold', unit: 'MW', group: 'Confinement' },
   { key: 'chi_mult', label: 'Transport multiplier C_χ', unit: 'm²/s', group: 'Confinement' },
@@ -885,7 +886,7 @@ export class ProfileModel implements SimModel {
     // τ_E ölçeklemesi
     const Ip_MA = s[S.Ip] / 1e6;
     const nbar = this.lineAvg(v.ne);
-    const P_loss = Math.max(P_heat - P_rad, 0.1 * P_heat, 0.5e6 * (g.volume / 100));
+    const P_loss = this.lossPower(P_heat, P_rad);
     const gS: Geometry = { R: g.R0, a: g.a, kappa: this.kappaA, delta: this.geomB.delta };
     let tauS: number;
     if (this.hmode) tauS = this.ctrl.H98 * (c.scaling === 'ST_Valovic' ? tauSTValovic(gS, Ip_MA, g.B0, nbar, P_loss, this.M) : tauIPB98y2(gS, Ip_MA, g.B0, nbar, P_loss, this.M));
@@ -897,14 +898,22 @@ export class ProfileModel implements SimModel {
       if (rs > 0 && s[key] > 0) fNTM -= 4 * rs * rs * (s[key] / g.a);
     }
     fNTM = Math.max(fNTM, 0.5);
-    const tauT = Math.max(tauS * fNTM, 1e-3);
-    // C_χ PI denetleyici (scaling modu): W → τ_T · P_loss
-    if (ps.transportModel === 'scaling') {
-      const Wt = tauT * P_loss;
+    // scaling-law confinement time with the NTM degradation: the target of the C_χ controller
+    const tauScal = Math.max(tauS * fNTM, 1e-3);
+    // Plasma confinement time. 'scaling': the controller holds W ≈ τ_scal·P_loss, so τ_E is the
+    // scaling value. 'cgm': transport is predictive and nothing ties W to the scaling law, so τ_E is
+    // what the profiles give, W/P_loss, with the same P_loss the scaling law is evaluated at.
+    // tauT (floored) sets the particle, He-ash and impurity times, which are ratios to τ_E.
+    const cgm = ps.transportModel === 'cgm';
+    const tauE = cgm ? W / P_loss : tauScal;
+    const tauT = cgm ? Math.max(tauE, 1e-3) : tauScal;
+    // C_χ PI denetleyici (scaling modu): W → τ_scal · P_loss
+    if (!cgm) {
+      const Wt = tauScal * P_loss;
       const err = Math.log(Math.max(W, 1) / Math.max(Wt, 1));
-      const tauI = 0.3 * tauT;
+      const tauI = 0.3 * tauScal;
       // anti-windup: integral terimi difüzyon tahmini C_est = a²κ_a/(6τ(1+c/2)) çevresinde sınırlı
-      const Cest = (g.a * g.a * this.kappaA) / (6 * tauT * (1 + 0.5 * ps.chiShape));
+      const Cest = (g.a * g.a * this.kappaA) / (6 * tauScal * (1 + 0.5 * ps.chiShape));
       const CI = o.s[S.CI] * Math.exp(Math.max(-0.5, Math.min(0.5, (dt / tauI) * err)));
       s[S.CI] = Math.min(Math.max(CI, 0.1 * Cest), 10 * Cest);
       s[S.Cchi] = Math.min(Math.max(s[S.CI] * Math.exp(Math.max(-1.5, Math.min(1.5, 1.5 * err))), 1e-4), 1e4);
@@ -971,7 +980,7 @@ export class ProfileModel implements SimModel {
       s[key] = Math.min(wv, 0.4 * g.a);
     }
     // teşhis
-    this.writeDiagnostics(t + dt, y, { P_fus, P_chg, P_neut, P_bt, P_aux_abs, P_oh, P_alpha, P_brems, P_line, P_sync, P_rad, P_heat, W, dWdt, tauT, P_loss, nbar, P_bound });
+    this.writeDiagnostics(t + dt, y, { P_fus, P_chg, P_neut, P_bt, P_aux_abs, P_oh, P_alpha, P_brems, P_line, P_sync, P_rad, P_heat, W, dWdt, tauE, tauScal, P_loss, nbar, P_bound });
     this.eqCheck(t + dt, y);
   }
 
@@ -997,7 +1006,7 @@ export class ProfileModel implements SimModel {
     const Icd = volumeIntegral(g, w.jcdB.map((jb, i) => jb / (2 * Math.PI * g.RgeoC[i] * g.B0)));
     const P_in = X.P_aux_abs + X.P_oh;
     const Q = X.P_fus / Math.max(P_in, 1e4);
-    const triple = neAvg * TiA * X.tauT;
+    const triple = neAvg * TiA * X.tauE;
     const nG = greenwaldDensity(Math.max(Ip_MA, 0.01), g.a);
     const P_LH = pLH_Martin(X.nbar, g.B0, g.surface, this.M);
     const rhoPed = 1 - this.ps.pedestalWidth;
@@ -1016,8 +1025,8 @@ export class ProfileModel implements SimModel {
       Ti: TiA, Te: TeA, Ti0: v.Ti[0], Te0: v.Te[0], Tped: v.Te[iPed], Tsep: this.bc.Te,
       ne: neAvg / 1e20, nbar: X.nbar / 1e20, ne0: v.ne[0] / 1e20, nG_frac: X.nbar / nG, fHe: s[S.NHe] / Math.max(Ne, 1),
       P_fus: X.P_fus / 1e6, P_alpha: X.P_alpha / 1e6, P_bt: X.P_bt / 1e6, P_aux: (K.P_NBI + K.P_IC + K.P_EC) / 1e6, P_oh: X.P_oh / 1e6,
-      P_cond: X.W / X.tauT / 1e6, P_SOL: this.PSOL / 1e6, P_brems: X.P_brems / 1e6, P_sync: X.P_sync / 1e6, P_line: X.P_line / 1e6, P_rad: X.P_rad / 1e6,
-      Q, triple, lawson: triple / LAWSON_DT, tauE: X.tauT, H_mode: this.hmode ? 1 : 0, P_LH: P_LH / 1e6, chi_mult: s[S.Cchi],
+      P_cond: X.W / X.tauE / 1e6, P_SOL: this.PSOL / 1e6, P_brems: X.P_brems / 1e6, P_sync: X.P_sync / 1e6, P_line: X.P_line / 1e6, P_rad: X.P_rad / 1e6,
+      Q, triple, lawson: triple / LAWSON_DT, tauE: X.tauE, tauE_scal: X.tauScal, H_mode: this.hmode ? 1 : 0, P_LH: P_LH / 1e6, chi_mult: s[S.Cchi],
       betaN, betaT: betaT * 100, betaP, q95, q0: w.qF[0], qmin, li, rho_q1: rho1, alpha_ped: aMax / aCrit,
       w32: s[S.w32] / g.a, w21: s[S.w21] / g.a, NTM: s[S.w32] > 0.01 * g.a || s[S.w21] > 0.01 * g.a ? 1 : 0,
       f_bs: Ibs / Math.max(Ip, 1), f_cd: Icd / Math.max(Ip, 1), V_loop: Vloop, Ip: Ip_MA,
@@ -1340,6 +1349,7 @@ export class ProfileModel implements SimModel {
       // ilk kare veya ELM/testere dişi çöküşünden sonra: teşhisi y'den yeniden üret (adım atmadan)
       this.diagStale = false;
       const tauPrev = this.lastDiag.tauE ?? 0.1;
+      const tauScal = this.lastDiag.tauE_scal ?? tauPrev;
       const v = this.views(y);
       const K = this.evaluateWorkArrays(t, y);
       const g = this.tg, I = (a: Float64Array) => volumeIntegral(g, a);
@@ -1348,14 +1358,21 @@ export class ProfileModel implements SimModel {
       const P_aux_abs = I(this.w.PnbiE) + I(this.w.PnbiI) + I(this.w.PicE) + I(this.w.PicI) + I(this.w.PecE);
       const P_rad = I(this.w.Pbr) + I(this.w.Pline) + K.Psync;
       const P_heat = P_aux_abs + I(this.w.Poh) + I(this.w.Pchg);
+      const P_loss = this.lossPower(P_heat, P_rad);
+      const tauE = this.ps.transportModel === 'cgm' ? W / P_loss : tauPrev;
       this.writeDiagnostics(t, y, {
         P_fus: I(this.w.Pfus), P_chg: I(this.w.Pchg), P_neut: I(this.w.Pneut), P_bt: I(this.w.Pbt), P_aux_abs, P_oh: I(this.w.Poh), P_alpha: I(this.w.Pchg),
-        P_brems: I(this.w.Pbr), P_line: I(this.w.Pline), P_sync: K.Psync, P_rad, P_heat, W, dWdt: 0, tauT: tauPrev, P_loss: Math.max(P_heat - P_rad, 1e5), nbar: this.lineAvg(v.ne), P_bound: 0,
+        P_brems: I(this.w.Pbr), P_line: I(this.w.Pline), P_sync: K.Psync, P_rad, P_heat, W, dWdt: 0, tauE, tauScal, P_loss, nbar: this.lineAvg(v.ne), P_bound: 0,
       });
     }
     return { ...this.lastDiag };
   }
   private diagStale = false;
+
+  /** Loss power for τ_E [W]: heating minus radiation, floored against radiation-dominated states */
+  private lossPower(P_heat: number, P_rad: number): number {
+    return Math.max(P_heat - P_rad, 0.1 * P_heat, 0.5e6 * (this.tg.volume / 100));
+  }
 
   /**
    * Evaluates every work array (composition, q and current profiles, sources, transport

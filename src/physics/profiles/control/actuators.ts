@@ -4,9 +4,15 @@
  */
 import type { ProfileContext } from '../context';
 
-/** Linear start-up ramp of the auxiliary heating, 0 → 1 over heating.rampTime */
+/**
+ * Auxiliary-heating factor: the linear start-up ramp 0 → 1 over heating.rampTime; with
+ * heating.autoOff (ignition test) it ramps down linearly over the same time once the test has
+ * started (ctx.tAuxOff, set by events/burn.ts when Q ≥ 5), as in the 0D model.
+ */
 export function auxRamp(ctx: ProfileContext, t: number): number {
-  return Math.min(1, t / Math.max(ctx.cfg.heating.rampTime, 0.01));
+  const tr = Math.max(ctx.cfg.heating.rampTime, 0.01);
+  const up = Math.min(1, t / tr);
+  return ctx.tAuxOff === Infinity ? up : up * Math.max(0, 1 - (t - ctx.tAuxOff) / tr);
 }
 
 /**

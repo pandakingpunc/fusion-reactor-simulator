@@ -170,7 +170,7 @@ export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: Globa
     betaN, betaT: betaT * 100, betaP, q95: q95v, q0: w.qF[0], qmin, li, rho_q1: rho1, alpha_ped: aMax / aCrit,
     w32: s.w32 / g.a, w21: s.w21 / g.a, NTM: s.w32 > 0.01 * g.a || s.w21 > 0.01 * g.a ? 1 : 0,
     f_bs: Ibs / Math.max(Ip, 1), f_cd: Icd / Math.max(Ip, 1), V_loop: Vloop, Ip: Ip_MA,
-    W: X.W / 1e6, Wf: 0, Zeff: ctx.volAvg(w.Zeff), cZ: s.cZ, S_fuel: s.Sfuel / 1e20,
+    W: X.W / 1e6, Wf: 0, ignited: ctx.ignited ? 1 : 0, Zeff: ctx.volAvg(w.Zeff), cZ: s.cZ, S_fuel: s.Sfuel / 1e20,
     burnFrac: s.NTfuel > 0 ? s.NTburn / s.NTfuel : 0, fuelFracA: s.fA,
     q_div: qdiv, n_wall: nw, P_heat: X.P_heat / 1e6, P_charged: X.P_chg / 1e6, P_neutron: X.P_neut / 1e6,
     Efus_MJ: s.Efus / 1e6, Ein_MJ: s.Ein / 1e6, Nn: s.Nn, P_loss: X.P_loss / 1e6, dWdt: X.dWdt / 1e6, dWdt_s: ctx.dWdtS / 1e6, P_bound: X.P_bound / 1e6,

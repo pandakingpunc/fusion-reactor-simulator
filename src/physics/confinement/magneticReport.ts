@@ -44,15 +44,15 @@ export function buildMagneticReport(ctx: MagneticReportContext, hist: HistoryFra
   const post = hist.filter((h) => h.t >= tStartup);
   const dp = (k: string) => post.map((h) => h.d[k] ?? 0);
   const Tmax = max(dp('Ti0'));
-  // durations. Ignition time: if the model reports its own ignition state ('ignited', with hysteresis; 0D) that is used —
-  // the same criterion as the event log; if it does not (1.5D) the frame criterion P_α ≥ P_rad + P_cond applies.
+  // durations. Ignition time: the models report their own ignition state ('ignited', with hysteresis; 0D and 1.5D) and that
+  // is used — the same criterion as the event log; a history without it falls back to the frame criterion P_α ≥ P_rad + P_cond.
   const hasIgnFlag = hist.some((h) => h.d.ignited !== undefined);
   let burnTime = 0, ignTime = 0;
   for (let i = 1; i < hist.length; i++) {
     const dt = hist[i].t - hist[i - 1].t;
     if (hist[i].d.Q >= 1) burnTime += dt;
     const ign = hasIgnFlag ? (hist[i].d.ignited ?? 0) > 0
-      : hist[i].d.P_alpha >= hist[i].d.P_rad + hist[i].d.P_cond && hist[i].d.P_fus > 1 && hist[i].d.Q >= 5;
+      : hist[i].d.P_alpha >= hist[i].d.P_rad + hist[i].d.P_cond && hist[i].d.P_fus > 1;
     if (ign) ignTime += dt;
   }
   const term = ctx.terminated ?? { t: last.t, natural: true, reason: 'In progress', diagnosis: '', fix: '' };

@@ -103,7 +103,8 @@ export class CheckpointStore {
 /**
  * Checkpoint part of the shared context: RNG, phase and mode, time step, boundary and controller
  * state (P_SOL filter, Γ_b, n_sep gain), α_ped/α_crit, loop voltage, τ_E used by the fueling loop
- * of the next step, the smoothed dW/dt and the ELM energy not yet booked in it, the disruption state; the equilibrium/geometry pair, the issued warnings, the
+ * of the next step, the smoothed dW/dt and the ELM energy not yet booked in it, the ignition state
+ * and the start of the ignition test, the disruption state; the equilibrium/geometry pair, the issued warnings, the
  * disruption cause and text and the last diagnostics by reference or copy. Actuator set-points
  * (applyControl) are deliberately not part of it: after a rewind the latest controls stay in
  * force. The output state (termination, pending events, stale flag) is reset.
@@ -127,7 +128,7 @@ export function contextCheckpoint(ctx: ProfileContext): Checkpointable {
         rng: ctx.rng.getState(), phase: PHASES.indexOf(ctx.phase), hmode: +ctx.hmode,
         dt: ctx.dt, PSOL: ctx.PSOL, GammaB: ctx.GammaB, TeB: ctx.bc.Te, TiB: ctx.bc.Ti, nB: ctx.bc.n, nsepGain: ctx.nsepGain,
         tauE: ctx.lastDiag.tauE ?? NaN, alphaRatio: ctx.alphaRatio, lastVloop: ctx.lastVloop,
-        dWdtS: ctx.dWdtS, crashE: ctx.crashE,
+        dWdtS: ctx.dWdtS, crashE: ctx.crashE, ignited: +ctx.ignited, tAuxOff: ctx.tAuxOff,
         tDisrupt: ctx.disruption.t, Wd: ctx.disruption.W, IpD: ctx.disruption.Ip,
       });
     },
@@ -140,7 +141,9 @@ export function contextCheckpoint(ctx: ProfileContext): Checkpointable {
       ctx.bc = { Te: num('TeB', 0.1), Ti: num('TiB', num('TeB', 0.1)), n: num('nB', 1e19) };
       ctx.nsepGain = num('nsepGain', 1);
       ctx.alphaRatio = num('alphaRatio', 0); ctx.lastVloop = num('lastVloop', 0);
-      ctx.dWdtS = num('dWdtS', 0); ctx.crashE = num('crashE', 0);
+      ctx.dWdtS = num('dWdtS', 0); ctx.crashE = num('crashE', 0); ctx.ignited = !!st.ignited;
+      // Infinity (the external heating stays on) is a number too, but a record that went through JSON has null
+      ctx.tAuxOff = typeof st.tAuxOff === 'number' ? st.tAuxOff : Infinity;
       const D = ctx.disruption;
       D.t = num('tDisrupt', 0); D.W = num('Wd', 0); D.Ip = num('IpD', 0);
       ctx.terminated = null; ctx.pending = []; ctx.diagStale = false;

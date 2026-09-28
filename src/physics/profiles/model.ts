@@ -37,7 +37,6 @@ import { CrashHook, ProfileContext, StepConstants } from './context';
 import { CheckpointStore, Checkpointable, contextCheckpoint } from './checkpoint';
 import { composition } from './composition';
 import { FuelingControl } from './control/fueling';
-import { lossPower } from './control/confinement';
 import { EquilibriumCoupling } from './coupling/equilibrium';
 import { PROFILE_DIAGS, stateDiagnostics } from './diagnostics';
 import { defaultEvents, EventModel } from './events';
@@ -47,16 +46,32 @@ import type { EquilibriumInitFailure, StepFailure } from './failures';
 import type { TransportGeometry } from './geometry1d';
 import type { GsAttempt } from './eqguard';
 import { currentProfiles } from './qprofile';
-import { defaultSources } from './sources';
+import { defaultSources, SourceModel } from './sources';
 import { acceptStep } from './solver/acceptStep';
 import { CoupledStepper } from './solver/coupledStep';
 import { PhysicsPipeline } from './solver/pipeline';
 import type { ProfileState } from './state';
-import { createTransportModel } from './transport';
+import { createTransportModel, TransportModel } from './transport';
 
 export { DEFAULT_PROFILE_SETTINGS } from './defaults';
 export { PROFILE_DIAGS } from './diagnostics';
 export type { CrashSnapshot } from './context';
+export type { EventModel } from './events';
+export type { SourceModel } from './sources';
+export type { TransportModel } from './transport';
+
+/**
+ * Optional replacement or extension of the physics modules of a ProfileModel (plug-ins, tests).
+ * Simulation builds the model with the defaults.
+ */
+export interface ProfileModules {
+  /** transport model (default: the one named by ProfileSettings.transportModel) */
+  transport?: TransportModel;
+  /** sources in evaluation order (default: defaultSources()) */
+  sources?: SourceModel[];
+  /** additional event models, run after the standard ones and before the disruption check */
+  events?: EventModel[];
+}
 
 /** Configurations the profile model can run */
 export function supportsProfiles(cfg: MagneticConfig): boolean {
@@ -90,15 +105,15 @@ export class ProfileModel implements SimModel {
   private readonly checkpointParts: readonly Partial<Checkpointable>[];
   private readonly magnetInfo: MagnetCheck;
 
-  constructor(cfg: MagneticConfig) {
+  constructor(cfg: MagneticConfig, modules: ProfileModules = {}) {
     const ctx = (this.ctx = new ProfileContext(cfg));
     this.method = cfg.method;
     this.tEnd = cfg.t_end;
     this.outputDt = Math.max(cfg.t_end / 800, 0.002);
     this.nState = ctx.layout.size;
-    this.physics = new PhysicsPipeline(ctx, createTransportModel(ctx.ps.transportModel), defaultSources());
+    this.physics = new PhysicsPipeline(ctx, modules.transport ?? createTransportModel(ctx.ps.transportModel), modules.sources ?? defaultSources());
     this.fueling = new FuelingControl(ctx);
-    const ev = defaultEvents();
+    const ev = defaultEvents(modules.events);
     this.events = ev.list; this.elm = ev.elm; this.disruption = ev.disruption;
     this.coupling = new EquilibriumCoupling(ctx);
     this.stepper = new CoupledStepper(ctx, this.physics, this.fueling, this.disruption, (t, dt, yOld, y) => {
@@ -226,7 +241,7 @@ export class ProfileModel implements SimModel {
       ctx.diagStale = false;
       const st = ctx.view(y);
       const K = this.evaluateWorkArrays(t, st);
-      stateDiagnostics(ctx, t, st, K, this.physics.transport.predictive, (Ph, Pr) => lossPower(ctx, Ph, Pr));
+      stateDiagnostics(ctx, t, st, K, this.physics.transport.predictive);
     }
     return { ...ctx.lastDiag };
   }

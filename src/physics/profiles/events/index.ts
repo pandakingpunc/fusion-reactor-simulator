@@ -14,8 +14,12 @@ import type { EventModel } from './EventModel';
 
 export type { EventModel } from './EventModel';
 
-/** The standard event models; `elm` (report statistics) and `disruption` (quench phases) are also returned by name */
-export function defaultEvents(): { list: EventModel[]; elm: ElmEvents; disruption: DisruptionEvents } {
+/**
+ * The standard event models, with `extra` models inserted before the disruption check (which must
+ * see the state after every other event). `elm` (report statistics) and `disruption` (quench
+ * phases) are also returned by name.
+ */
+export function defaultEvents(extra: readonly EventModel[] = []): { list: EventModel[]; elm: ElmEvents; disruption: DisruptionEvents } {
   const elm = new ElmEvents(), disruption = new DisruptionEvents();
-  return { list: [new LHTransition(), elm, new SawtoothEvents(), new NtmEvents(), new BurnEvents(), new OperationalWarnings(), disruption], elm, disruption };
+  return { list: [new LHTransition(), elm, new SawtoothEvents(), new NtmEvents(), new BurnEvents(), new OperationalWarnings(), ...extra, disruption], elm, disruption };
 }

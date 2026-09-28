@@ -8,6 +8,7 @@ import { divertorHeatFlux, neutronWallLoad } from '../engineering';
 import { LAWSON_DT } from '../confinement/magneticReport';
 import type { DiagSpec } from '../types';
 import { MU0, ProfileContext, StepConstants } from './context';
+import { lossPower } from './control/confinement';
 import { q95 } from './qprofile';
 import { volumeIntegral } from './sources/deposition';
 import type { ProfileState } from './state';
@@ -178,12 +179,12 @@ export function writeDiagnostics(ctx: ProfileContext, t: number, st: ProfileStat
  * must have been evaluated on st (K: their step constants). τ_E is carried over from the last
  * frame in 'scaling' transport (the controller target), and W/P_loss in predictive transport.
  */
-export function stateDiagnostics(ctx: ProfileContext, t: number, st: ProfileState, K: StepConstants, predictive: boolean, lossPower: (P_heat: number, P_rad: number) => number): void {
+export function stateDiagnostics(ctx: ProfileContext, t: number, st: ProfileState, K: StepConstants, predictive: boolean): void {
   const tauPrev = ctx.lastDiag.tauE ?? 0.1;
   const tauScal = ctx.lastDiag.tauE_scal ?? tauPrev;
   const W = ctx.storedEnergy(st);
   const P = powerTotals(ctx, K);
-  const P_loss = lossPower(P.P_heat, P.P_rad);
+  const P_loss = lossPower(ctx, P.P_heat, P.P_rad);
   const tauE = predictive ? W / P_loss : tauPrev;
   writeDiagnostics(ctx, t, st, { ...P, W, dWdt: 0, tauE, tauScal, P_loss, nbar: ctx.lineAvg(st.ne) });
 }

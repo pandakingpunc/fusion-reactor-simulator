@@ -52,9 +52,9 @@ export class CheckpointStore {
  * Checkpoint part of the shared context: RNG, phase and mode, time step, boundary and controller
  * state (P_SOL filter, Γ_b, n_sep gain), α_ped/α_crit, loop voltage, τ_E used by the fueling loop
  * of the next step, the disruption state; the equilibrium/geometry pair, the issued warnings and
- * the disruption cause and text by reference. Actuator
- * set-points (applyControl) are deliberately not part of it: after a rewind the latest controls
- * stay in force. The output state (termination, pending events, stale flag) is reset.
+ * the disruption cause and text by reference. Actuator set-points (applyControl) are deliberately
+ * not part of it: after a rewind the latest controls stay in force. The output state
+ * (termination, pending events, stale flag) is reset.
  */
 export function contextCheckpoint(ctx: ProfileContext): Checkpointable {
   return {

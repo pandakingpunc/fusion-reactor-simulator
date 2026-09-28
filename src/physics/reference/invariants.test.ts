@@ -200,6 +200,22 @@ describe.each(MAGNETIC)('magnetic 0D: %s (t_end %s s)', (id, tEnd) => {
     }
   });
 
+  it('power diagnostics add up: P_rad = P_brems + P_line + P_sync, P_charged + P_neutron = P_fus, P_bt ≤ P_fus', () => {
+    const r = run(id, tEnd);
+    for (const f of r.H) {
+      const d = f.d;
+      const sum = d.P_brems + d.P_line + d.P_sync;
+      if (Math.abs(d.P_rad - sum) > 1e-12 * Math.max(Math.abs(sum), 1e-30)) expect.fail(`${id} t=${f.t}: P_rad ${d.P_rad} ≠ ${sum}`);
+      for (const k of ['P_brems', 'P_line', 'P_sync', 'P_fus', 'P_bt', 'P_charged', 'P_neutron', 'P_oh', 'P_aux', 'W']) {
+        if (!(d[k] >= 0)) expect.fail(`${id} t=${f.t}: ${k} = ${d[k]} < 0`);
+      }
+      if (!(fastPoolsMJ(d) >= 0)) expect.fail(`${id} t=${f.t}: fast pools ${fastPoolsMJ(d)} < 0`);
+      // 1e-3 admits the D-T 3.5 + 14.1 ≠ 17.589 MeV split (BUG(ws2a) in reactivity.test.ts, 6e-4)
+      if (d.P_fus > 0 && Math.abs((d.P_charged + d.P_neutron) / d.P_fus - 1) > 1e-3) expect.fail(`${id} t=${f.t}: P_charged + P_neutron = ${d.P_charged + d.P_neutron} vs P_fus ${d.P_fus}`);
+      if (d.P_bt > d.P_fus * (1 + 1e-12)) expect.fail(`${id} t=${f.t}: beam-target ${d.P_bt} > P_fus ${d.P_fus}`);
+    }
+  });
+
   // Tolerance: the residual comes from sampling the power traces every output step (2 ms ≪ the ≥ 50 ms
   // ramp/confinement time scales, trapezoid error O(Δt²)) and from the ELM-averaged loss that postStep
   // updates between two samples. Measured: 1e-6 of ∫P_heat without ELMs (ITER 3 s, W7-X) and ≤ 1.6e-4

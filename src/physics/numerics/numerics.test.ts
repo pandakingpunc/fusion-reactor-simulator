@@ -4,6 +4,7 @@ import { gaussLegendre, integrateGL, profileNodes } from './quadrature';
 import { Bicubic, CubicSpline, Pchip, lerpTable } from './interp';
 import { brent } from './roots';
 import { eulerFixed, rk4Fixed } from './rk4';
+import { AndersonMixer } from './anderson';
 
 describe('linalg', () => {
   it('Thomas algorithm solves a diagonally dominant tridiagonal system', () => {
@@ -63,6 +64,26 @@ describe('linalg', () => {
     const x = L.solve(b);
     for (let k = 0; k < n; k++) expect(x[k]).toBeCloseTo(xTrue[k], 11);
   });
+
+  it('banded LU with an irregular envelope (rows narrower than the band) matches the dense solve', () => {
+    // variable-width rows: the envelope-skipping factorisation must still see every fill-in entry
+    const n = 60, ml = 9, mu = 7;
+    const L = new BandedLU(n, ml, mu);
+    const dense = new Float64Array(n * n);
+    let s = 7;
+    const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+    for (let r = 0; r < n; r++) {
+      const lo = Math.max(0, r - Math.floor(rnd() * (ml + 1))), hi = Math.min(n - 1, r + Math.floor(rnd() * (mu + 1)));
+      for (let c = lo; c <= hi; c++) {
+        const v = c === r ? 8 + 4 * rnd() : rnd() - 0.5;
+        L.set(r, c, v); dense[r * n + c] = v;
+      }
+    }
+    const b = Float64Array.from({ length: n }, (_, k) => Math.cos(0.7 * k));
+    L.factor();
+    const x = L.solve(b), ref = solveDense(dense, b, n);
+    for (let k = 0; k < n; k++) expect(x[k]).toBeCloseTo(ref[k], 12);
+  });
 });
 
 describe('quadrature', () => {
@@ -117,6 +138,52 @@ describe('interpolation', () => {
   });
 });
 
+describe('bicubic spline order of accuracy', () => {
+  it('converges at fourth order in value and third order in gradient away from the natural edges', () => {
+    const F = (x: number, y: number) => Math.exp(-x * x - 2 * y * y) * (1 + 0.3 * x);
+    const Fx = (x: number, y: number) => Math.exp(-x * x - 2 * y * y) * (0.3 - 2 * x * (1 + 0.3 * x));
+    const Fy = (x: number, y: number) => -4 * y * F(x, y);
+    let s = 1;
+    const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+    // interior sample points (≥ 1 from the edges of [−2, 2] × [−3, 3], where f'' ≠ 0 breaks the natural end condition)
+    const pts = Array.from({ length: 300 }, () => [-1 + 2 * rnd(), -1.5 + 3 * rnd()]);
+    const e0: number[] = [], e1: number[] = [];
+    for (const n of [21, 41, 81]) {
+      const nx = n, ny = (3 * (n - 1)) / 2 + 1, hx = 4 / (nx - 1), hy = 6 / (ny - 1);
+      const f = new Float64Array(nx * ny);
+      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) f[j * nx + i] = F(-2 + i * hx, -3 + j * hy);
+      const bi = new Bicubic(f, nx, ny, -2, -3, hx, hy);
+      const o = new Float64Array(3);
+      let a = 0, b = 0;
+      for (const [x, y] of pts) {
+        bi.evalGrad(x, y, o);
+        a = Math.max(a, Math.abs(o[0] - F(x, y)));
+        b = Math.max(b, Math.abs(o[1] - Fx(x, y)), Math.abs(o[2] - Fy(x, y)));
+      }
+      e0.push(a); e1.push(b);
+    }
+    for (let i = 0; i < 2; i++) {
+      expect(Math.log2(e0[i] / e0[i + 1])).toBeGreaterThan(3.7);
+      expect(Math.log2(e1[i] / e1[i + 1])).toBeGreaterThan(2.7);
+    }
+    expect(e0[2]).toBeLessThan(2e-6);
+  });
+
+  it('reproduces bilinear functions exactly (zero second derivatives are natural)', () => {
+    const nx = 9, ny = 7;
+    const f = new Float64Array(nx * ny);
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) f[j * nx + i] = 1 + 2 * i * 0.5 - 3 * j * 0.25 + 0.7 * (i * 0.5) * (j * 0.25);
+    const bi = new Bicubic(f, nx, ny, 0, 0, 0.5, 0.25);
+    const o = new Float64Array(3);
+    for (const [x, y] of [[0.3, 0.2], [2.1, 1.3], [3.9, 0.05]]) {
+      bi.evalGrad(x, y, o);
+      expect(o[0]).toBeCloseTo(1 + 2 * x - 3 * y + 0.7 * x * y, 12);
+      expect(o[1]).toBeCloseTo(2 + 0.7 * y, 12);
+      expect(o[2]).toBeCloseTo(-3 + 0.7 * x, 12);
+    }
+  });
+});
+
 describe('roots', () => {
   it('Brent finds roots to machine precision', () => {
     expect(brent((x) => Math.cos(x) - x, 0, 1)).toBeCloseTo(0.7390851332151607, 14);
@@ -133,5 +200,59 @@ describe('fixed-step integrators (order of accuracy)', () => {
   });
   it('explicit Euler converges at first order', () => {
     expect(Math.log2(err(eulerFixed, 200) / err(eulerFixed, 400))).toBeCloseTo(1, 1);
+  });
+});
+
+describe('Anderson acceleration', () => {
+  // linear contraction G(x) = A x + b, A = 0.95·(symmetric tridiagonal with spectrum in (−1, 1))
+  const n = 40;
+  const G = (x: Float64Array, out: Float64Array) => {
+    for (let i = 0; i < n; i++) {
+      const l = i > 0 ? x[i - 1] : 0, r = i < n - 1 ? x[i + 1] : 0;
+      out[i] = 0.95 * (0.5 * x[i] + 0.25 * (l + r)) + Math.sin(i);
+    }
+    return out;
+  };
+  const iterate = (depth: number, beta: number, maxIt = 5000) => {
+    const acc = new AndersonMixer(n, depth);
+    const x = new Float64Array(n), g = new Float64Array(n);
+    for (let it = 1; it <= maxIt; it++) {
+      G(x, g);
+      let r = 0;
+      for (let i = 0; i < n; i++) r = Math.max(r, Math.abs(g[i] - x[i]));
+      if (r < 1e-11) return { it, x: g };
+      acc.step(x, g, beta);
+    }
+    return { it: Infinity, x };
+  };
+
+  it('depth 0 is damped Picard iteration', () => {
+    const acc = new AndersonMixer(3, 0);
+    const x = Float64Array.of(1, 2, 3), g = Float64Array.of(2, 2, 5);
+    acc.step(x, g, 0.5);
+    expect(Array.from(x)).toEqual([1.5, 2, 4]);
+  });
+
+  it('reaches the same fixed point as Picard in far fewer iterations', () => {
+    const plain = iterate(0, 1), aa = iterate(4, 1);
+    expect(plain.it).toBeGreaterThan(200);
+    expect(aa.it).toBeLessThan(plain.it / 3);
+    for (let i = 0; i < n; i++) expect(aa.x[i]).toBeCloseTo(plain.x[i], 9);
+  });
+
+  it('works with damping and after a reset', () => {
+    const ref = iterate(0, 1).x;
+    const acc = new AndersonMixer(n, 3);
+    const x = new Float64Array(n), g = new Float64Array(n);
+    let it = 0, r = Infinity;
+    while (r > 1e-11 && it++ < 2000) {
+      G(x, g);
+      r = 0;
+      for (let i = 0; i < n; i++) r = Math.max(r, Math.abs(g[i] - x[i]));
+      if (it === 10) acc.reset();
+      acc.step(x, g, 0.7);
+    }
+    expect(it).toBeLessThan(200);
+    for (let i = 0; i < n; i++) expect(x[i]).toBeCloseTo(ref[i], 9);
   });
 });

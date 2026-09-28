@@ -119,15 +119,30 @@ export function solveDense(M: ArrayLike<number>, b: ArrayLike<number>, n: number
  * Bantlı matris (alt bant ml, üst bant mu), pivotsuz Doolittle LU.
  * Yalnızca köşegen baskın / M-matris operatörler için (GS Shortley–Weller operatörü böyledir).
  * Depolama: satır r, sütun c → band[r·w + (c − r + ml)],  w = ml + mu + 1.
+ *
+ * Envelope (profile) skipping: without pivoting, fill-in stays inside the envelope of the
+ * matrix — L[i][k] ≠ 0 only if k ≥ fc(i) (first nonzero column of row i) and U[k][j] ≠ 0 only
+ * if k ≥ fr(j) (first nonzero row of column j) (George & Liu, "Computer Solution of Large Sparse
+ * Positive Definite Systems", Prentice-Hall 1981, §4.2). factor() and solve() therefore skip the
+ * structurally zero parts of the band; the arithmetic that remains is identical, so results are
+ * bitwise unchanged while rows whose envelope is narrower than the band run proportionally faster.
  */
 export class BandedLU {
   readonly w: number;
   readonly band: Float64Array;
   private factored = false;
+  /** row r: first column with a nonzero entry of L (≥ r − ml) */
+  private fc: Int32Array | null = null;
+  /** row k: last column that can hold a nonzero entry of U (≤ k + mu) */
+  private ue: Int32Array | null = null;
+  /** column k: last row that can hold a nonzero entry of L (≤ k + ml) */
+  private le: Int32Array | null = null;
   constructor(readonly n: number, readonly ml: number, readonly mu: number) {
     this.w = ml + mu + 1;
     this.band = new Float64Array(n * this.w);
   }
+  /** Bytes held by the band storage (for cache budgeting). */
+  get bytes(): number { return this.band.byteLength; }
   set(r: number, c: number, v: number): void {
     const off = c - r + this.ml;
     if (off < 0 || off >= this.w) throw new Error(`BandedLU.set: (${r},${c}) bant dışında`);
@@ -153,12 +168,40 @@ export class BandedLU {
     }
     return y;
   }
-  factor(): void {
+  /** Envelope of the (unfactored) matrix: fc, le (L part) and ue (U part), see class comment. */
+  private envelope(): void {
     const { n, ml, mu, w, band } = this;
+    const fc = new Int32Array(n), fr = new Int32Array(n).fill(n);
+    for (let r = 0; r < n; r++) {
+      const c0 = Math.max(0, r - ml), c1 = Math.min(n - 1, r + mu);
+      let first = r;
+      for (let c = c0; c <= c1; c++) {
+        if (band[r * w + (c - r + ml)] === 0) continue;
+        if (c < first) first = c;
+        if (r < fr[c]) fr[c] = r;
+      }
+      fc[r] = first;
+      if (r < fr[r]) fr[r] = r;
+    }
+    // ue[k] = max{ j : fr(j) ≤ k },  le[k] = max{ i : fc(i) ≤ k }  (running maxima → nondecreasing)
+    const ue = new Int32Array(n), le = new Int32Array(n);
+    const byFr = new Int32Array(n).fill(-1), byFc = new Int32Array(n).fill(-1);
+    for (let j = 0; j < n; j++) { if (j > byFr[fr[j]]) byFr[fr[j]] = j; if (j > byFc[fc[j]]) byFc[fc[j]] = j; }
+    let mU = -1, mL = -1;
+    for (let k = 0; k < n; k++) {
+      mU = Math.max(mU, byFr[k], k); mL = Math.max(mL, byFc[k], k);
+      ue[k] = Math.min(mU, k + mu, n - 1); le[k] = Math.min(mL, k + ml, n - 1);
+    }
+    this.fc = fc; this.ue = ue; this.le = le;
+  }
+  factor(): void {
+    this.envelope();
+    const { n, ml, w, band } = this;
+    const ue = this.ue!, le = this.le!;
     for (let k = 0; k < n; k++) {
       const pk = band[k * w + ml];
       if (pk === 0 || !isFinite(pk)) throw new Error(`BandedLU: sıfır pivot (satır ${k})`);
-      const iMax = Math.min(n - 1, k + ml), jMax = Math.min(n - 1, k + mu);
+      const iMax = le[k], jMax = ue[k];
       for (let i = k + 1; i <= iMax; i++) {
         const idx = i * w + (k - i + ml);
         const l = band[idx];
@@ -174,17 +217,18 @@ export class BandedLU {
   /** A x = b (factor() sonrası). x ile b aynı dizi olabilir. */
   solve(b: ArrayLike<number>, x: Float64Array = new Float64Array(this.n)): Float64Array {
     if (!this.factored) throw new Error('BandedLU.solve: önce factor()');
-    const { n, ml, mu, w, band } = this;
+    const { n, ml, w, band } = this;
+    const fc = this.fc!, ue = this.ue!;
     if (x !== b) for (let i = 0; i < n; i++) x[i] = b[i];
     for (let i = 1; i < n; i++) {
       let s = x[i];
-      const j0 = Math.max(0, i - ml), row = i * w - i + ml;
+      const j0 = fc[i], row = i * w - i + ml;
       for (let j = j0; j < i; j++) s -= band[row + j] * x[j];
       x[i] = s;
     }
     for (let i = n - 1; i >= 0; i--) {
       let s = x[i];
-      const j1 = Math.min(n - 1, i + mu), row = i * w - i + ml;
+      const j1 = ue[i], row = i * w - i + ml;
       for (let j = i + 1; j <= j1; j++) s -= band[row + j] * x[j];
       x[i] = s / band[row + i];
     }

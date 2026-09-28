@@ -5,29 +5,37 @@
 import { describe, expect, it } from 'vitest';
 import { Simulation } from '../simulation';
 import { canonicalString } from './canonical';
-import { advanceRandomly, applyRandomControls, digestOf, expectSameRun, normalizeRng, presetCfg, referenceRun, rewindAt, runChunked } from './testkit';
+import { advanceRandomly, applyRandomControls, digestOf, expectSameRun, normalizeRng, presetCfg, referenceRun, rewindAt, runChunked, tick } from './testkit';
 
 describe('1.5D: chunk invariance', () => {
-  it('ITER 1.5D (1 s): 20 seeded random chunk schedules equal runAll() bitwise', () => {
+  it('ITER 1.5D (1 s): 20 seeded random chunk schedules equal runAll() bitwise', async () => {
     const cfg = presetCfg('ITER15', 1);
     const ref = referenceRun(cfg);
-    for (let s = 1; s <= 20; s++) expectSameRun(runChunked(cfg, 2000 + s), ref, `ITER15 schedule ${s}`);
+    for (let s = 1; s <= 20; s++) {
+      expectSameRun(runChunked(cfg, 2000 + s), ref, `ITER15 schedule ${s}`);
+      await tick();
+    }
   }, 180000);
 
-  it('JET 1.5D (0.6 s: L–H transition and ELM frames): 6 seeded random chunk schedules equal runAll() bitwise', () => {
+  it('JET 1.5D (0.6 s: L–H transition and ELM frames): 6 seeded random chunk schedules equal runAll() bitwise', async () => {
     const cfg = presetCfg('JET15', 0.6);
     const ref = referenceRun(cfg);
     expect(ref.events.some((e) => e.kind === 'ELM')).toBe(true);
-    for (let s = 1; s <= 6; s++) expectSameRun(runChunked(cfg, 3000 + s), ref, `JET15 schedule ${s}`);
+    for (let s = 1; s <= 6; s++) {
+      expectSameRun(runChunked(cfg, 3000 + s), ref, `JET15 schedule ${s}`);
+      await tick();
+    }
   }, 180000);
 });
 
 describe('1.5D: actuator log', () => {
-  it('JET 1.5D (0.6 s): replaying the log of a run with random interventions reproduces it bitwise', () => {
+  it('JET 1.5D (0.6 s): replaying the log of a run with random interventions reproduces it bitwise', async () => {
     const cfg = presetCfg('JET15', 0.6);
     const sim = applyRandomControls(new Simulation(cfg), 41, 0.3);
     expect(sim.actuatorLog.length).toBeGreaterThan(3);
+    await tick();
     expect(digestOf(sim)).not.toBe(referenceRun(cfg).digest);
+    await tick();
     expectSameRun(Simulation.replay(cfg, sim.actuatorLog), sim, 'JET15 replay');
   }, 180000);
 });
@@ -35,19 +43,22 @@ describe('1.5D: actuator log', () => {
 describe('1.5D: exact rewind', () => {
   // The kernel restores its part (frame.sim) and ProfileModel checkpoints the rest (equilibrium and
   // transport geometry, solver and controller state, warning flags, ELM history; profiles/checkpoint.ts).
-  it('ITER 1.5D (1 s): rewind at 25/50/75 % and replay equals the uninterrupted run bitwise', () => {
+  it('ITER 1.5D (1 s): rewind at 25/50/75 % and replay equals the uninterrupted run bitwise', async () => {
     const cfg = presetCfg('ITER15', 1);
     const ref = normalizeRng(referenceRun(cfg));
     for (const p of [0.25, 0.5, 0.75]) {
       const sim = rewindAt(cfg, p, 4000 + p * 100);
+      await tick();
       advanceRandomly(sim, 4100 + p * 100);
       expectSameRun(normalizeRng(sim), ref, `ITER15 rewound at ${p * 100} %`);
+      await tick();
     }
   }, 180000);
 
-  it('JET 1.5D (1.2 s): a rewind to the final frame keeps the shot ended and the run unchanged', () => {
+  it('JET 1.5D (1.2 s): a rewind to the final frame keeps the shot ended and the run unchanged', async () => {
     const cfg = presetCfg('JET15', 1.2);
     const ref = referenceRun(cfg);
+    await tick();
     const sim = new Simulation(cfg);
     sim.runAll();
     const term = sim.model.terminated;

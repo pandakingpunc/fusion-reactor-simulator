@@ -10,6 +10,18 @@ import type { HistoryFrame, ReactorConfig, SimEvent } from '../types';
 import { canonicalString } from './canonical';
 import { runDigest } from './fingerprint';
 
+// Captured when the module loads, before any test can install fake timers (see src/vitest.setup.ts).
+const nextMacrotask: (resolve: () => void) => void = typeof setImmediate === 'function' ? setImmediate : (resolve) => setTimeout(resolve, 0);
+
+/**
+ * Lets the event loop turn. The long determinism tests run many seeded runs one after another
+ * synchronously; awaiting this between the runs keeps the worker answering Vitest's RPC (its calls
+ * time out after 60 s, which a synchronous test of that length reaches under coverage or load).
+ */
+export function tick(): Promise<void> {
+  return new Promise<void>((resolve) => nextMacrotask(resolve));
+}
+
 export interface Run {
   history: readonly HistoryFrame[];
   events: readonly SimEvent[];
@@ -113,14 +125,6 @@ export function normalizeRng(r: Run): Run {
   return {
     history: r.history.map((f) => ('rng' in f.internal ? { ...f, internal: { ...f.internal, rng: f.internal.rng >>> 0 } } : f)),
     events: r.events,
-  };
-}
-
-/** The run without 'warning' events (and without the event counts that include them). */
-export function withoutWarnings(r: Run): Run {
-  return {
-    history: r.history.map((f) => (f.sim ? { ...f, sim: { ...f.sim, nEvents: -1 } } : f)),
-    events: r.events.filter((e) => e.kind !== 'warning'),
   };
 }
 

@@ -56,7 +56,9 @@ takes `--threads N` (default: cores − 1).
 
 - `validate`: `--only ITER15,JET15`, `--json` (machine-readable results: preset, metric, value,
   expected range, pass). Exit code 0 if every executed check passes, 1 if a check or run fails or
-  no check was executed, 2 on a usage error.
+  no check was executed, 2 on a usage error. Plain `npm run` writes its `> script` banner to
+  stdout before the JSON, so capture it silently:
+  `npm run -s validate -- --json > results.json` (or `npx tsx src/cli/validate.cli.ts --json`).
 - `figures`: `--only popcon,mhd`, `--scan 7` (scan grid), `--formats pdf`, `--out DIR`.
 - `golden`: `--only NIF,ITER15`. See [Regression testing](#regression-testing).
 

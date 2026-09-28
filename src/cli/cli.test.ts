@@ -76,6 +76,12 @@ describe('validate CLI exit codes', { timeout: 60_000 }, () => {
     expect(out).toMatchObject({ failures: 0, passed: true });
   });
 
+  it('--help explains how to capture --json through npm (npm run adds a banner to stdout)', () => {
+    const r = validate('--help');
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain('npm run -s validate -- --json > results.json');
+  });
+
   it('a selection without literature checks → exit 1 (zero checks executed)', () => {
     const r = validate('--threads', '2', '--only', 'TAE');
     expect(r.code).toBe(1);

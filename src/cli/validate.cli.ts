@@ -7,7 +7,8 @@
  * yakalamaktır (mertebe/tutarlılık). Bir kontrol başarısız olursa süreç sıfırdan farklı kodla çıkar.
  *   --threads N   işçi sayısı (varsayılan: çekirdek − 1)
  *   --only a,b    yalnız bu preset kimlikleri
- *   --json        machine-readable results on stdout instead of the report
+ *   --json        machine-readable results on stdout instead of the report (use `npm run -s`: plain
+ *                 `npm run` writes its banner to stdout before the JSON)
  * Exit codes: 0 all executed checks passed; 1 a check or run failed, or no check was executed
  * (the selected presets have none); 2 usage error (unknown flag or preset id, bad --threads).
  */
@@ -60,6 +61,9 @@ const CLI = defineCli({
     only: { type: 'list', choices: PRESETS.map((p) => p.id), metavar: 'ID,…', help: 'only these preset ids' },
     json: { type: 'bool', help: 'print machine-readable JSON results instead of the report' },
   },
+  epilog: 'With --json, stdout is a single JSON document. Plain `npm run` writes its own "> script" banner to\n' +
+    'stdout first, so run it silently to capture the JSON:\n' +
+    '  npm run -s validate -- --json > results.json     (or: npx tsx src/cli/validate.cli.ts --json > results.json)',
 });
 
 /** --json: one entry per executed check */

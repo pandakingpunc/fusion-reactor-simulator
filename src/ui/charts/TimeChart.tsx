@@ -145,7 +145,10 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
   }, [frames, visible, events, width, height, x0, x1, y0, y1, logY, xToPx, yToPx, pxToX, plotW, plotH, hover, cursorT, timeUnit, title]);
 
   // etkileşim
-  const onWheel = (e: React.WheelEvent) => {
+  // Wheel zoom. React registers wheel listeners as passive, where preventDefault() is ignored and the
+  // page scrolls along with the zoom; a native non-passive listener lets the chart own the wheel.
+  const zoom = useRef<(e: WheelEvent) => void>(() => {});
+  zoom.current = (e: WheelEvent) => {
     e.preventDefault();
     const rect = canvasRef.current!.getBoundingClientRect();
     const tx = pxToX(e.clientX - rect.left);
@@ -154,6 +157,12 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
     if (nx1 - nx0 < tEnd * 1e-4) return;
     setXRange([nx0, nx1]);
   };
+  useEffect(() => {
+    const cv = canvasRef.current; if (!cv) return;
+    const onWheel = (e: WheelEvent) => zoom.current(e);
+    cv.addEventListener('wheel', onWheel, { passive: false });
+    return () => cv.removeEventListener('wheel', onWheel);
+  }, []);
   const onDown = (e: React.MouseEvent) => { drag.current = { x0: e.clientX, range: [x0, x1] }; };
   const onMove = (e: React.MouseEvent) => {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -175,7 +184,7 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
 
   return (
     <div className="chart-wrap" ref={wrapRef}>
-      <canvas ref={canvasRef} style={{ height, cursor: 'crosshair' }} onWheel={onWheel} onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}
+      <canvas ref={canvasRef} style={{ height, cursor: 'crosshair' }} onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}
         onMouseLeave={() => { drag.current = null; setHover(null); }} onDoubleClick={() => setXRange(null)} />
       <div className="chart-legend">
         {series.map((s) => (

@@ -152,6 +152,10 @@ export interface ICFConfig {
   surfaceRoughness_nm: number; // RT tohumu
   fuel: FuelType;
   seed: number;
+  /** sürücü (lazer) duvar-fişi verimi, Q_eng için (varsayılan 0.1) */
+  driverEff?: number;
+  /** termal → elektrik dönüşüm verimi, Q_eng için (varsayılan 0.4) */
+  thermalEff?: number;
 }
 
 export interface MTFConfig {

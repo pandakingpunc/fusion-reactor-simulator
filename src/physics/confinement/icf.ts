@@ -7,11 +7,13 @@
  * modellenir. Yanma zaman içinde bang-time çevresinde Gauss darbesi olarak verilir.
  *
  * Kalibrasyon: NIF N221204 preset'i G ≈ 1.5 verir (Abu-Shawareb 2024).
+ * Yakıt: reaksiyon başına enerji, nötron sayısı, H_B ve ateşleme eşiği seçili yakıttan (icfFuelData);
+ * D-T değerleri kalibrasyonu birebir korur.
  * Durum y: [0] E_fus [J]  [1] E_in [J]  [2] N_n
  * APPROXIMATION: 0D, tek noktalı hotspot; hidrodinamik ayrıntı yok.
  */
 import { ICFConfig } from '../types';
-import { FUEL_SPECIES } from '../reactivity';
+import { FUEL_CHANNELS, FUEL_SPECIES, FuelType, isSingleSpecies, pairDensity } from '../reactivity';
 import { U } from '../units';
 import { C } from '../constants';
 import { DiagSpec, HistoryFrame, ShotReport, SimEvent } from '../types';
@@ -19,9 +21,77 @@ import { PulsedBase } from './common';
 
 const IDX = { Efus: 0, Ein: 1, Nn: 2 } as const;
 const NSTATE = 3;
-const H_B = 7.0; // g/cm², DT burn parametresi (Atzeni)
+const H_B_DT = 7.0; // g/cm², D-T burn parametresi (Atzeni & Meyer-ter-Vehn 2004; kalibrasyon noktası)
 const ICF_CAL = 0.07; // geometrik ρR → gerçekçi ρR kalibrasyonu (NIF'e ayarlı)
-const E_DT_MeV = 17.589;
+/** Varsayılan sürücü (lazer) duvar-fişi verimi ve termal dönüşüm verimi (ICFConfig'te verilmezse) */
+const DRIVER_EFF_DEFAULT = 0.1;
+const THERMAL_EFF_DEFAULT = 0.4;
+
+export interface ICFFuelData {
+  /** yakıt iyonu ortalama kütlesi [amu] ve ortalama yük (x_a, x_b = FUEL_SPECIES.fracA) */
+  m_f_amu: number;
+  Zbar: number;
+  /** burn-up parametresi H_B [g/cm²]: Φ = ρR/(ρR + H_B) */
+  H_B: number;
+  /** H_B'nin minimum olduğu (en iyi) yanma sıcaklığı [keV] */
+  T_burn_keV: number;
+  /** o sıcaklıkta reaksiyon başına ortalama enerji [MeV] ve nötron sayısı (dallanma oranlarıyla) */
+  E_rx_MeV: number;
+  neutronsPerReaction: number;
+  /** ateşleme parametresi çarpanı: öz-ısıtma liyakati max_T ⟨σv E_ch⟩/((1+Z̄)² T²), D-T'ye göre (D-T = 1) */
+  ignitionScale: number;
+}
+
+/**
+ * Yakıta özgü ICF yanma verileri.
+ * Burn-up (Atzeni & Meyer-ter-Vehn, "The Physics of Inertial Fusion", OUP 2004, yanma kesri modeli):
+ * eşmolar D-T için Φ = ρR/(ρR + H_B), H_B = 8 m_f c_s/⟨σv⟩. Genel karışım için yakıt iyonlarının
+ * yanma hızı dn/dt = −n² K, K = Σ_ch 2 x_ch ⟨σv⟩_ch (x_ch = x_a x_b ya da x_a²/2; her reaksiyon iki
+ * iyon tüketir) ile aynı türetme H(T) = 4 m_f c_s/K verir (D-T: K = ⟨σv⟩/2 → 8 m_f c_s/⟨σv⟩);
+ * c_s = √((1+Z̄)T/m_f) izotermal ses hızı. H(T)'nin minimumu D-T için ≈ 7.3 g/cm² (T ≈ 39 keV);
+ * modelin kalibre D-T değeri 7 g/cm² korunur ve diğer yakıtlar oranla ölçeklenir:
+ *   H_B,yakıt = 7 · min_T H_yakıt / min_T H_DT.
+ * Reaksiyon başına enerji ve nötron sayısı bu en iyi yanma sıcaklığındaki dallanma oranlarıyla.
+ * Ateşleme eşiği (sabit basınçta Lawson tipi liyakat, öz-ısıtma ∝ p² ⟨σv⟩E_ch/((1+Z̄)²T²)) D-T'ye
+ * göre ölçeklenir. APPROXIMATION: ⟨σv⟩ Maxwell (Bosch-Hale / p-¹¹B tablosu), T_e = T_i.
+ */
+export function icfFuelData(fuel: FuelType): ICFFuelData {
+  const cached = FUEL_DATA_CACHE.get(fuel);
+  if (cached) return cached;
+  const raw = (f: FuelType) => {
+    const fs = FUEL_SPECIES[f];
+    const xa = isSingleSpecies(f) ? 1 : fs.fracA, xb = 1 - xa;
+    const m_f_amu = xa * fs.a.A + xb * fs.b.A, Zbar = xa * fs.a.Z + xb * fs.b.Z;
+    const m_f = m_f_amu * C.amu;
+    let Hmin = Infinity, Tbest = 0, Smax = 0;
+    for (let i = 0; i <= 600; i++) {
+      const T = Math.exp((Math.log(1000) * i) / 600); // 1 … 1000 keV
+      let K = 0, Pch = 0;
+      for (const ch of FUEL_CHANNELS[f]) {
+        const r = pairDensity(f, ch, xa, xb) * ch.sigmav(T);
+        K += 2 * r; Pch += r * ch.Echarged_MeV;
+      }
+      const cs = Math.sqrt(((1 + Zbar) * T * C.keV_J) / m_f);
+      const H = K > 0 ? (4 * m_f * cs) / K / 10 : Infinity; // kg/m² → g/cm²
+      if (H < Hmin) { Hmin = H; Tbest = T; }
+      Smax = Math.max(Smax, Pch / ((1 + Zbar) * (1 + Zbar) * T * T));
+    }
+    let R = 0, E = 0, Nn = 0;
+    for (const ch of FUEL_CHANNELS[f]) {
+      const r = pairDensity(f, ch, xa, xb) * ch.sigmav(Tbest);
+      R += r; E += r * ch.Etot_MeV; if (ch.Eneutron_MeV > 0) Nn += r;
+    }
+    return { m_f_amu, Zbar, Hmin, Tbest, Smax, E_rx: E / R, nPerRx: Nn / R };
+  };
+  const dt = raw('DT'), me = fuel === 'DT' ? dt : raw(fuel);
+  const d: ICFFuelData = {
+    m_f_amu: me.m_f_amu, Zbar: me.Zbar, H_B: H_B_DT * (me.Hmin / dt.Hmin), T_burn_keV: me.Tbest,
+    E_rx_MeV: me.E_rx, neutronsPerReaction: me.nPerRx, ignitionScale: me.Smax / dt.Smax,
+  };
+  FUEL_DATA_CACHE.set(fuel, d);
+  return d;
+}
+const FUEL_DATA_CACHE = new Map<FuelType, ICFFuelData>();
 
 const ICF_DIAGS: DiagSpec[] = [
   { key: 'P_fus', label: 'P_fusion (instantaneous)', unit: 'MW', group: 'Power' },
@@ -39,9 +109,11 @@ export class ICFModel extends PulsedBase {
   readonly diagSpecs = ICF_DIAGS;
 
   private cfg: ICFConfig;
+  private fuelData: ICFFuelData;
   private E_laser_J: number;
   private E_fus_total: number; // toplam füzyon enerjisi [J]
   private N_fus_total: number; // toplam füzyon reaksiyonu
+  private N_n_total: number; // toplam nötron
   private rhoR_eff: number; // g/cm²
   private chi_ig: number; // ateşleme parametresi
   private T_hs: number; // hotspot sıcaklığı [keV]
@@ -60,11 +132,11 @@ export class ICFModel extends PulsedBase {
     this.bang = cfg.pulse_ns;
     this.E_laser_J = cfg.E_laser_MJ * 1e6;
 
-    const fs = FUEL_SPECIES[cfg.fuel];
+    const fd = icfFuelData(cfg.fuel);
+    this.fuelData = fd;
     const m_fuel = cfg.fuelMass_ug * 1e-9; // kg
-    const m_pair = (fs.a.A + fs.b.A) * C.amu;
-    const N_pairs = m_fuel / m_pair;
-    const m_i = 0.5 * (fs.a.A + fs.b.A) * C.amu; // ort. iyon kütlesi
+    const m_i = fd.m_f_amu * C.amu; // ort. yakıt iyonu kütlesi
+    const N_ions = m_fuel / m_i;
 
     // durgunluk geometrisi
     const R0 = cfg.capsuleRadius_um * 1e-6;
@@ -73,17 +145,18 @@ export class ICFModel extends PulsedBase {
     const rhoR_geo = rhoR_kg / 10; // g/cm²
     this.rhoR_eff = ICF_CAL * rhoR_geo * Math.sqrt(2.8 / Math.max(cfg.adiabat, 0.5));
 
-    // ateşleme cliff: hız, ρR, asimetri, pürüzlülük
+    // ateşleme cliff: hız, ρR, asimetri, pürüzlülük (D-T'ye kalibre), yakıtın öz-ısıtma liyakatiyle ölçekli
     const v = cfg.implosionVelocity_kms;
     const f_asym = Math.exp(-Math.pow(cfg.asymmetry_rms / 6, 2));
     const f_rough = Math.exp(-Math.pow(cfg.surfaceRoughness_nm / 200, 2));
-    this.chi_ig = (this.rhoR_eff / 0.2) * Math.pow(v / 360, 3) * f_asym * f_rough;
+    this.chi_ig = fd.ignitionScale * (this.rhoR_eff / 0.2) * Math.pow(v / 360, 3) * f_asym * f_rough;
     this.ignited = this.chi_ig >= 1;
     const burnMult = this.ignited ? 1 : Math.pow(Math.max(this.chi_ig, 0), 3);
 
-    const Phi = this.rhoR_eff / (this.rhoR_eff + H_B); // burn-up kesri
-    this.N_fus_total = Phi * N_pairs * burnMult;
-    this.E_fus_total = this.N_fus_total * U.MeV_to_J(E_DT_MeV);
+    const Phi = this.rhoR_eff / (this.rhoR_eff + fd.H_B); // burn-up kesri (yakıt iyonları)
+    this.N_fus_total = Phi * (N_ions / 2) * burnMult; // reaksiyon başına iki iyon
+    this.E_fus_total = this.N_fus_total * U.MeV_to_J(fd.E_rx_MeV);
+    this.N_n_total = this.N_fus_total * fd.neutronsPerReaction;
 
     // hotspot sıcaklığı: kinematik + ateşleme (alfa) yükseltmesi
     const T_kin = (m_i * Math.pow(v * 1e3, 2)) / (3 * C.keV_J); // keV
@@ -103,7 +176,7 @@ export class ICFModel extends PulsedBase {
     d.fill(0);
     const g = this.gauss(t); // 1/ns
     d[IDX.Efus] = this.E_fus_total * g; // J/ns
-    d[IDX.Nn] = this.N_fus_total * g; // 1/ns
+    d[IDX.Nn] = this.N_n_total * g; // 1/ns
     // lazer enerjisi darbe boyunca (t < pulse_ns)
     d[IDX.Ein] = t < this.cfg.pulse_ns ? this.E_laser_J / this.cfg.pulse_ns : 0;
   }
@@ -141,13 +214,16 @@ export class ICFModel extends PulsedBase {
 
   report(hist: HistoryFrame[], events: SimEvent[]): ShotReport {
     const G = this.E_fus_total / Math.max(this.E_laser_J, 1);
+    // Q_eng = P_el,brüt / P_dolaşan = (η_th E_fus) / (E_lazer / η_sürücü) = G η_sürücü η_th. Hohlraum /
+    // soğurma verimi G'nin içindedir (G = E_fus / E_lazer): ikinci kez çarpılmaz.
+    const etaDriver = this.cfg.driverEff ?? DRIVER_EFF_DEFAULT, etaTh = this.cfg.thermalEff ?? THERMAL_EFF_DEFAULT;
     const warnings: string[] = [];
     if (!this.ignited) warnings.push(`Below the ignition threshold (χ_ig = ${this.chi_ig.toFixed(2)} < 1): inadequate velocity, ρR, asymmetry, or roughness — low burn efficiency.`);
     if (this.cfg.asymmetry_rms > 3) warnings.push(`Low-mode asymmetry of ${this.cfg.asymmetry_rms}% is high — the hotspot degrades and yield drops.`);
     return this.buildReport(hist, events, {
       fuel: this.cfg.fuel, wallArea: 314, // ~5 m yarıçaplı hedef odası
-      Q_eng: G * (this.cfg.method === 'icf_indirect' ? this.cfg.hohlraumEff : this.cfg.absorption) * 0.1,
-      Q_eng_note: 'For ICF, Q_eng ≈ G × coupling × wall-plug efficiency (including ~10% laser efficiency); net energy requires G ≳ 100.',
+      Q_eng: G * etaDriver * etaTh,
+      Q_eng_note: `For ICF, Q_eng = G × η_driver × η_thermal (laser wall-plug ${(etaDriver * 100).toFixed(0)}%, thermal conversion ${(etaTh * 100).toFixed(0)}%); the drive coupling is already inside G. Net energy requires G ≳ ${Math.ceil(1 / (etaDriver * etaTh))}.`,
       scoreBreakdown: [
         { label: 'Gain G', value: G, ref: 1, unit: '', note: 'G>1 = scientific breakeven (NIF 2022)' },
         { label: 'Hotspot T', value: this.T_hs, ref: 5, unit: 'keV', note: 'Ignition ~ 4-5 keV' },
@@ -163,6 +239,7 @@ export class ICFModel extends PulsedBase {
         'Gain G': +G.toFixed(2), 'ρR (g/cm²)': +this.rhoR_eff.toFixed(3), 'Ignition χ_ig': +this.chi_ig.toFixed(2),
         'Hotspot T (keV)': +this.T_hs.toFixed(1), 'Coupling': this.cfg.method === 'icf_indirect' ? `hohlraum ${(this.cfg.hohlraumEff * 100).toFixed(0)}%` : `direct ${(this.cfg.absorption * 100).toFixed(0)}%`,
         'Laser (MJ)': this.cfg.E_laser_MJ, 'Ignited': this.ignited,
+        'Burn-up parameter H_B (g/cm²)': +this.fuelData.H_B.toFixed(2), 'Energy per reaction (MeV)': +this.fuelData.E_rx_MeV.toFixed(3),
       },
       extras: {
         'Convergence ratio (CR)': this.cfg.convergenceRatio, 'Adiabat α': this.cfg.adiabat,

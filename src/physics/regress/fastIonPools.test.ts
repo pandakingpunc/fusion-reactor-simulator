@@ -66,11 +66,19 @@ describe('separate alpha and beam pools (0D magnetic model)', { timeout: 60_000 
   });
 
   it('whenever a frame counts as ignited, the charged-product heating covers radiation + transport', () => {
-    for (const id of ['ITER', 'DIIID'] as const) {
-      for (const f of run(id).history) {
-        if ((f.d.ignited ?? 0) > 0) expect(f.d.P_alpha).toBeGreaterThanOrEqual(0.9 * (f.d.P_rad + f.d.P_transport));
-      }
+    // a burn that does ignite: ITER at H98 = 1.4 with the ignition test (heating off at Q ≥ 5), no NTMs
+    const sim = new Simulation({ ...ITER, H98: 1.4, t_end: 150, heating: { ...ITER.heating, autoOff: true }, events: { ...ITER.events, ntm: false } });
+    sim.runAll();
+    const ignited = sim.history.filter((f) => f.d.ignited === 1);
+    expect(ignited.length).toBeGreaterThan(500);
+    // hysteresis: on at P_α ≥ P_rad + W/τ_E, off below 0.9 of it; P_α holds no beam power
+    for (const f of ignited) {
+      expect(f.d.P_alpha).toBeGreaterThanOrEqual(0.9 * (f.d.P_rad + f.d.P_transport));
+      expect(f.d.P_alpha).toBeLessThan(1.2 * f.d.P_charged);
     }
+    // and the flag is the model's own ignition state: the report counts exactly these frames
+    const dtIgn = sim.history.reduce((s, f, i) => (i && f.d.ignited === 1 ? s + f.t - sim.history[i - 1].t : s), 0);
+    expect(sim.report().ignitionTime_s).toBeCloseTo(dtIgn, 9);
   });
 
   it('DIII-D (D-D, 12 MW NBI): P_alpha ≈ 0 while the beam pool carries the NBI power', () => {

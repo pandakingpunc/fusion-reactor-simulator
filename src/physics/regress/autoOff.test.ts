@@ -54,11 +54,23 @@ describe('heating.autoOff (ignition test)', { timeout: 60_000 }, () => {
     expect(report.ignitionTime_s).toBe(0);
   });
 
-  it('ITER at H98 = 1.4 ignites after the heating is off; IGNITION only when P_alpha ≥ P_rad + P_transport', () => {
+  it('ITER at H98 = 1.4 ignites and stays ignited without heating; IGNITION only when the charged products alone cover P_rad + W/τ_E', () => {
     // (NTMs off: a sawtooth-seeded NTM would end the burn early; He ash ends it after ~1 min anyway)
     const r = runWithEventDiag({ ...cfg, H98: 1.4, events: { ...cfg.events, ntm: false } });
     expect(r.atIgnition.length).toBeGreaterThan(0);
-    for (const d of r.atIgnition) expect(d.P_alpha).toBeGreaterThanOrEqual(d.P_rad + d.P_transport);
+    for (const d of r.atIgnition) {
+      expect(d.P_alpha).toBeGreaterThanOrEqual(d.P_rad + d.P_transport);
+      // P_alpha is the charged-product heating only: at most what the products bring in (the pool
+      // lags a rising P_charged), and the beams are a separate term, still on during the ramp-down
+      expect(d.P_alpha).toBeLessThanOrEqual(1.02 * d.P_charged);
+      expect(d.P_beam_heat).toBeGreaterThan(0);
+    }
+    // ignition declared with the heating still ramping down must hold once it is fully off
+    const tOff = r.sim.events.find((e: SimEvent) => e.kind === 'info' && /heating/i.test(e.msg))!.t;
+    const off = r.sim.history.filter((f) => f.t > tOff + cfg.heating.rampTime + 1);
+    expect(off.length).toBeGreaterThan(100);
+    expect(off.every((f) => f.d.P_aux === 0 && f.d.P_beam_heat < 0.01 * f.d.P_alpha)).toBe(true);
+    expect(off.filter((f) => f.d.ignited === 1).length).toBeGreaterThan(100);
     expect(r.report.ignitionTime_s).toBeGreaterThan(20);
   });
 

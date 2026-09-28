@@ -1,19 +1,19 @@
-# Füzyon Reaktörü Simülatörü
+# Fusion Reactor Simulator
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22259861.svg)](https://doi.org/10.5281/zenodo.22259861)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> Zaman-çözümlü füzyon reaktörü simülasyon motoru: **0D** güç dengesi ve (v3.0'da yeni)
-> **1.5D radyal taşınım + Grad–Shafranov dengesi**. Tokamak, sferik tokamak, stellarator,
-> lazer ICF, MTF/MagLIF/Z-pinch, FRC, manyetik ayna ve müon-katalizli füzyon; gerçek makine
-> preset'leri (ITER, JET, SPARC, DEMO, W7-X, NIF, …). Tarayıcıda çalışır, bağımlılıksızdır.
+> A time-resolved fusion reactor simulation engine: **0D** power balance and (new in v3.0)
+> **1.5D radial transport coupled to a Grad–Shafranov equilibrium**. Tokamak, spherical tokamak,
+> stellarator, laser ICF, MTF/MagLIF/Z-pinch, FRC, magnetic mirror and muon-catalysed fusion, with
+> real-machine presets (ITER, JET, SPARC, DEMO, W7-X, NIF, …). Runs in the browser, no runtime
+> dependencies beyond React.
 
-*A time-resolved fusion reactor simulator in TypeScript: 0D power balance and — new in
-v3.0 — a 1.5D transport model (T_e, T_i, n_e, poloidal flux on ρ_tor) coupled to a
-fixed-boundary Grad–Shafranov equilibrium, with Sauter bootstrap current, NBI/RF sources,
-beam–target fusion, sawteeth, ELMs and NTMs; verified against manufactured solutions and
-validated against ITER, JET DTE2, SPARC, EU DEMO and NIF. Publication-quality SVG/PDF
-figures and multi-core parameter scans are built in.*
+The 1.5D model evolves T_e, T_i, n_e and the poloidal flux on ρ_tor, coupled to a fixed-boundary
+Grad–Shafranov equilibrium, with Sauter bootstrap current, NBI/RF sources, beam–target fusion,
+sawteeth, ELMs and NTMs. It is verified against manufactured solutions and validated against
+ITER, JET DTE2, SPARC, EU DEMO and NIF. Publication-quality SVG/PDF figures and multi-core
+parameter scans are built in.
 
 <p align="center">
   <img src="docs/figures/fig01_equilibrium.svg" alt="Grad–Shafranov equilibrium" width="92%">
@@ -21,111 +21,154 @@ figures and multi-core parameter scans are built in.*
 
 ---
 
-## v3.0'da neler yeni?
+## What's new in v3.0
 
-| Alan | Yenilik |
+| Area | Change |
 |---|---|
-| **1.5D taşınım** | ρ̂ = √(Φ/Φ_b) üzerinde T_e, T_i, n_e, ψ; örtük sonlu hacim (geri Euler + Picard), T_e/T_i 2×2 blok üçlü-köşegen, Scharfetter–Gummel yoğunluk akısı, akım difüzyonu (I_p Neumann) |
-| **Grad–Shafranov dengesi** | Sabit sınır (Miller), Shortley–Weller sonlu farklar, bantlı LU (bir kez), Picard; akı yüzeyi izleme, tam tuzaklı-parçacık oranı, q, ℓ_i, β_p, Shafranov kayması; taşınımla yarı-statik bağlaşım |
-| **Neoklasik** | Sauter bootstrap akımı ve iletkenlik, Chang–Hinton iyon tabanı |
-| **Kaynaklar** | 3-bileşenli NBI demet zayıflaması + demet-hedef füzyonu, ECRH/ICRH Gauss birikimi, NBCD/ECCD |
-| **MHD** | Kadomtsev testere dişi (kayma tetikli), tip-I ELM (α_crit + KBM), modifiye Rutherford NTM, L–H histerezisi |
-| **Sayısal doğrulama** | GS 2. derece (2.05), FV ısı 2. derece (1.94), geri Euler 1. derece (0.99), DP5 vs RK4/Euler iş–hassasiyet; 44 birim testi |
-| **POPCON** | 0D modelle aynı fizik: seyrelme (Be/Ar/He külü), çizgi + senkrotron ışınımı, P_loss = P_heat − P_rad |
-| **Figürler** | Bağımlılıksız çizim motoru → SVG + PDF (Times/Symbol, mini-TeX etiketler, Okabe–Ito paleti, dergi sütun genişlikleri); `npm run figures` |
-| **Çok çekirdek** | `worker_threads` havuzu: doğrulama ve parametre taramaları paralel |
-| **Arayüz** | Sihirbazda 0D/1.5D seçimi ve 1.5D ayarları, canlı radyal profil grafiği, GS akı yüzeyli kesit, rapordan SVG/PDF figür dışa aktarımı, 1.5D doğrulama testi |
+| **1.5D transport** | T_e, T_i, n_e, ψ on ρ̂ = √(Φ/Φ_b); implicit finite volume (backward Euler + Picard), 2×2 block-tridiagonal T_e/T_i, Scharfetter–Gummel density flux, current diffusion (I_p Neumann condition) |
+| **Grad–Shafranov equilibrium** | Fixed boundary (Miller), Shortley–Weller finite differences, banded LU (factorised once), Picard; flux-surface tracing, exact trapped-particle fraction, q, ℓ_i, β_p, Shafranov shift; quasi-static coupling to transport |
+| **Neoclassical** | Sauter bootstrap current and conductivity, Chang–Hinton ion floor |
+| **Sources** | 3-component NBI beam attenuation + beam–target fusion, Gaussian ECRH/ICRH deposition, NBCD/ECCD |
+| **MHD** | Kadomtsev sawtooth (shear-triggered), type-I ELM (α_crit + KBM), modified Rutherford NTM, L–H hysteresis |
+| **Numerical verification** | GS 2nd order (2.05), FV heat 2nd order (1.94), backward Euler 1st order (0.99), DP5 vs RK4/Euler work–precision; 44 unit tests |
+| **POPCON** | Same physics as the 0D model: dilution (Be/Ar/He ash), line + synchrotron radiation, P_loss = P_heat − P_rad |
+| **Figures** | Dependency-free plotting engine → SVG + PDF (Times/Symbol, mini-TeX labels, Okabe–Ito palette, journal column widths); `npm run figures` |
+| **Multi-core** | `worker_threads` pool: validation and parameter scans run in parallel |
+| **User interface** | 0D/1.5D choice and 1.5D settings in the wizard, live radial profile plot, cross-section with GS flux surfaces, SVG/PDF figure export from the report, 1.5D validation test |
 
-## Hızlı başlangıç
+## Quick start
 
-Gereksinim: Node.js 18+.
+Requirements: Node.js 18+.
 
 ```bash
 npm install
-npm run dev        # arayüz (Vite) → http://localhost:5173
-npm test           # 44 birim testi (vitest)
-npm run validate   # 25 preset, 19 literatür ölçütü, işçi havuzunda paralel (~45 s)
-npm run figures    # makale figürleri → docs/figures/*.svg|pdf + captions.md (~1 MB, ~55 s)
-npm run build      # tip denetimi + üretim derlemesi
+npm run dev        # user interface (Vite) → http://localhost:5173
+npm test           # unit, CLI and fast golden-regression tests (vitest)
+npm run validate   # 21 presets, 19 literature checks, in parallel on a worker pool (~45 s)
+npm run golden     # golden regression: 22 cases compared with test/golden (~10 s on 4 threads)
+npm run ci:local   # type check + tests + validate + golden, in sequence, stops at the first failure
+npm run figures    # paper figures → docs/figures/*.svg|pdf + captions.md (~1 MB, ~55 s)
+npm run build      # type check + production build
 ```
 
-`validate` seçenekleri: `--threads N`, `--only ITER15,JET15`.
-`figures` seçenekleri: `--only popcon,mhd`, `--scan 7` (tarama ızgarası), `--formats pdf`, `--out DIR`.
+Every command-line tool accepts `--help`, rejects unknown or malformed flags with exit code 2 and
+takes `--threads N` (default: cores − 1).
 
-## Doğrulama özeti
+- `validate`: `--only ITER15,JET15`, `--json` (machine-readable results: preset, metric, value,
+  expected range, pass). Exit code 0 if every executed check passes, 1 if a check or run fails or
+  no check was executed, 2 on a usage error.
+- `figures`: `--only popcon,mhd`, `--scan 7` (scan grid), `--formats pdf`, `--out DIR`.
+- `golden`: `--only NIF,ITER15`. See [Regression testing](#regression-testing).
 
-| Büyüklük | Referans | 0D | 1.5D |
+## Validation summary
+
+| Quantity | Reference | 0D | 1.5D |
 |---|---|---|---|
-| ITER Q (düz tepe) | 10 | 14.0 | **9.8** |
+| ITER Q (flat top) | 10 | 14.0 | **9.8** |
 | ITER P_fus | 500 MW | 715 MW | **491 MW** |
 | ITER f_bs / ℓ_i(3) / q95 | ≈0.2 / 0.85 / 3.0 | — | 0.22 / 0.73 / 3.5 |
 | JET DTE2 E_fus | 59 MJ | 58 MJ | 85 MJ¹ |
 | SPARC P_fus | 140 MW | 182 MW | 157 MW |
 | EU DEMO P_fus | 2 GW | 2.2 GW | 1.95 GW |
-| NIF N221204 kazanç | 1.54 | 1.49 | — |
+| NIF N221204 gain | 1.54 | 1.49 | — |
 
-¹ 1.5D'de füzyonun ≈ %60'ı NBI demet-hedef reaksiyonlarından gelir (TRANSP analizleriyle nitel
-uyumlu); pay, hızlı iyon yavaşlama modeline duyarlıdır. Ayrıntılar: [teknik rapor](docs/technical-report.md) §7.
+¹ In 1.5D about 60 % of the fusion yield comes from NBI beam–target reactions (qualitatively
+consistent with TRANSP analyses); the share is sensitive to the fast-ion slowing-down model.
+Details: [technical report](docs/technical-report.md) §7.
 
 <p align="center">
   <img src="docs/figures/fig03_timetraces.svg" alt="ITER 1.5D time traces" width="92%">
 </p>
 
-## Modellenen fizik
+## Physics model
 
-| Alan | Model | Kaynak |
+| Area | Model | Reference |
 |---|---|---|
-| Reaktivite ⟨σv⟩ | Bosch–Hale (D-T, D-D, D-³He), p-¹¹B sayısal Maxwell ortalaması | Bosch & Hale, *NF* **32** (1992) 611; Nevins & Swain (2000) |
-| Hapsetme | IPB98(y,2), ITER89-P, ISS04, ST; L–H eşiği (Martin 2008) | ITER Physics Basis (1999) |
-| 1.5D taşınım | τ_E-ölçekli χ (PI denetleyici) + kritik-gradyan sertliği, ETB, neoklasik taban; alternatif CGM | METIS (Artaud 2018); Garbet (2004) |
-| Denge | Sabit-sınırlı Grad–Shafranov; Cerfon–Freidberg Solov'ev (doğrulama) | Cerfon & Freidberg (2010); Jeon (2015) |
-| Bootstrap / iletkenlik | Sauter–Angioni–Lin-Liu | *Phys. Plasmas* **6** (1999) 2834 |
-| MHD olayları | Kadomtsev, α_crit ELM, modifiye Rutherford NTM | Kadomtsev (1975); La Haye (2006) |
-| Işınım | Bremsstrahlung (relativistik), Albajar senkrotron, Mavrin çizgi | Albajar (2001); Mavrin (2018) |
-| Kenar | İki-nokta SOL, Eich λ_q | Stangeby (2000); Eich (2013) |
-| Limitler / disruption | Greenwald, Troyon β_N, q95; TQ/CQ, halo, kaçak elektron | Greenwald (1988); Hender (2007) |
-| Zaman entegrasyonu | 0D: Dormand–Prince RK5(4); 1.5D: örtük geri Euler + Picard | Hairer–Nørsett–Wanner |
+| Reactivity ⟨σv⟩ | Bosch–Hale (D-T, D-D, D-³He), numerical Maxwellian average for p-¹¹B | Bosch & Hale, *NF* **32** (1992) 611; Nevins & Swain (2000) |
+| Confinement | IPB98(y,2), ITER89-P, ISS04, ST; L–H threshold (Martin 2008) | ITER Physics Basis (1999) |
+| 1.5D transport | τ_E-scaled χ (PI controller) + critical-gradient stiffness, ETB, neoclassical floor; CGM alternative | METIS (Artaud 2018); Garbet (2004) |
+| Equilibrium | Fixed-boundary Grad–Shafranov; Cerfon–Freidberg Solov'ev (verification) | Cerfon & Freidberg (2010); Jeon (2015) |
+| Bootstrap / conductivity | Sauter–Angioni–Lin-Liu | *Phys. Plasmas* **6** (1999) 2834 |
+| MHD events | Kadomtsev, α_crit ELM, modified Rutherford NTM | Kadomtsev (1975); La Haye (2006) |
+| Radiation | Bremsstrahlung (relativistic), Albajar synchrotron, Mavrin line radiation | Albajar (2001); Mavrin (2018) |
+| Edge | Two-point SOL model, Eich λ_q | Stangeby (2000); Eich (2013) |
+| Limits / disruptions | Greenwald, Troyon β_N, q95; TQ/CQ, halo, runaway electrons | Greenwald (1988); Hender (2007) |
+| Time integration | 0D: Dormand–Prince RK5(4); 1.5D: implicit backward Euler + Picard | Hairer–Nørsett–Wanner |
 
-Sabitler CODATA 2018, iç hesaplar SI; basitleştirmeler kodda `APPROXIMATION` etiketiyle işaretli.
+Constants are CODATA 2018 and all internal calculations use SI units; simplifications are marked
+with an `APPROXIMATION` tag in the code.
 
-## Proje yapısı
+## Regression testing
+
+Two independent safety nets guard the physics:
+
+- **Literature validation** (`npm run validate`) checks selected outputs of every preset against
+  published ranges. The ranges are wide: it catches order-of-magnitude and consistency errors.
+- **Golden regression** (`npm run golden`) catches *any* numerical drift. For 22 cases (all 21
+  presets, covering every method in 0D and 1.5D, plus a 3 s SPARC 1.5D variant) it stores a
+  deterministic snapshot in `test/golden/<case>.json`: every finite scalar of the shot report,
+  flat-top averages of all diagnostics, event counts by kind, frame and step counts and 20 samples
+  of 5–8 key time traces. Numbers are compared with a relative tolerance of 1e-9 when the file was
+  written by the same Node.js major version (1e-6 otherwise); a mismatch prints a table of
+  preset, key, old value, new value and relative difference and exits with code 1. Long
+  discharges are shortened (DEMO 600 s, DEMO15 500 s; recorded in each file) so the suite runs in
+  about 10 s on 4 threads. `npm test` runs a fast subset (JET, NIF, Z, SPARC15-short).
+
+When a change is *meant* to move the numbers, re-record them and say why:
+
+```bash
+npm run golden:update -- --reason "switch ELM model to …"        # all cases
+npm run golden:update -- --reason "…" --only ITER15,DEMO15       # a subset
+```
+
+This rewrites the affected files and appends a dated entry listing the moved presets and keys to
+the append-only log [`test/golden/CHANGES.md`](test/golden/CHANGES.md). It refuses to run without
+`--reason`.
+
+## Project layout
 
 ```
 src/physics/
-  confinement/        0D modeller (magnetic, icf, mtf, frc, mirror, muon) + ortak rapor
+  confinement/        0D models (magnetic, icf, mtf, frc, mirror, muon) + shared shot report
   profiles/           1.5D model: geometry1d, fvsolver, neoclassical, sources, beamtarget, mhd, model, defaults
-  equilibrium/        Grad–Shafranov: miller (sınır), solovev (analitik), gs (çözücü), fluxsurface (ortalamalar)
-  numerics/           linalg (Thomas, blok, bantlı LU), quadrature, interp (spline/PCHIP/bikübik), roots, rk4
-  popcon.ts           Kararlı-durum POPCON (0D ile tutarlı fizik)
+  equilibrium/        Grad–Shafranov: miller (boundary), solovev (analytic), gs (solver), fluxsurface (averages)
+  numerics/           linalg (Thomas, block, banded LU), quadrature, interp (spline/PCHIP/bicubic), roots, rk4
+  analysis/           flatTop (shared flat-top averaging)
+  popcon.ts           Steady-state POPCON (same physics as 0D)
   integrator.ts       Dormand–Prince RK5(4)
-  simulation.ts       Ortak sürücü (0D/1.5D seçimi, kayıt, geri sarma)
-  validation.cli.ts   npm run validate (işçi havuzu)
-src/cli/              pool (worker_threads), presetRunner.worker, figures.cli (npm run figures)
-src/plot/             Çizim motoru: figure, svg, pdf, png, mathtext, fonts, ticks, contour, colors
-  figures/            Makale figürleri (equilibrium, profiles, timetrace, popcon, validation, reactivity, verification, mhd, scan, generic)
-src/worker/, src/ui/  Web-worker ve React arayüzü
+  simulation.ts       Common driver (0D/1.5D selection, recording, rewind)
+src/cli/              Node command-line tools: args (strict flag parser), pool (worker_threads),
+                      presetRunner.worker, validate.cli (npm run validate), figures.cli (npm run figures),
+                      golden.cli (npm run golden / golden:update)
+src/regression/       Golden snapshot extraction, comparator and pool worker
+src/plot/             Plotting engine: figure, svg, pdf, png, mathtext, fonts, ticks, contour, colors
+  figures/            Paper figures (equilibrium, profiles, timetrace, popcon, validation, reactivity, verification, mhd, scan, generic)
+src/worker/, src/ui/  Web worker and React user interface
+scripts/ci-local.mjs  npm run ci:local
+test/golden/          Golden regression snapshots and their change log
 docs/
-  technical-report.md Teknik rapor (denklemler, sayısal yöntemler, doğrulama, figürler)
-  figures/            Üretilmiş figürler (SVG + PDF) ve captions.md
+  technical-report.md Technical report (equations, numerical methods, verification, validation, figures)
+  figures/            Generated figures (SVG + PDF) and captions.md
 ```
 
-## Kaynak kullanımı
+## Resource usage
 
-Simülasyonlar ham veri veya log dosyası yazmaz; geçmiş kareleri düzenli çıktı aralığında
-tutulur, profiller yalnız bu karelere eklenir. Tüm figür seti ≈ 1 MB'tır. İşçi havuzu varsayılan
-olarak `çekirdek − 1` iş parçacığı kullanır (`--threads` ile sınırlandırılabilir).
+Simulations write no raw data or log files; history frames are kept at the regular output
+interval and radial profiles are attached only to those frames. The whole figure set is about
+1 MB. The worker pool uses `cores − 1` threads by default (limit it with `--threads`).
 
-> **Bilimsel doğruluk uyarısı:** Bu bir eğitim, ön-tasarım ve senaryo keşif aracıdır; tam bir
-> serbest-sınır/türbülans/doğrusal-olmayan MHD kodu değildir. Sınırlamalar teknik raporun
-> §11'inde listelenmiştir. Makine tasarımı için birincil kaynak olarak kullanılmamalıdır.
+> **Scientific accuracy disclaimer:** this is a tool for education, pre-conceptual design and
+> scenario exploration; it is not a full free-boundary, turbulence or nonlinear MHD code. Its
+> limitations are listed in §11 of the technical report. It must not be used as a primary source
+> for machine design.
 
-## Atıf
+## Citation
 
-Bu projeyi kullanırsanız lütfen `CITATION.cff` dosyasındaki bilgiyle atıf yapın (GitHub'da
-**"Cite this repository"**). Tüm sürümleri temsil eden kavram DOI'si:
-[10.5281/zenodo.22259861](https://doi.org/10.5281/zenodo.22259861). v3.0.0 sürümünün DOI'si:
+If you use this project, please cite it with the information in `CITATION.cff` (**"Cite this
+repository"** on GitHub). Concept DOI covering all versions:
+[10.5281/zenodo.22259861](https://doi.org/10.5281/zenodo.22259861). DOI of v3.0.0:
 [10.5281/zenodo.22925078](https://doi.org/10.5281/zenodo.22925078).
 
-## Lisans
+## License
 
 [MIT](LICENSE) © 2026 Mustafa Karatum

@@ -2,6 +2,39 @@
 
 Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [SemVer](https://semver.org/) izler.
 
+## [Unreleased]
+
+### Added
+- **Golden regression harness**: `npm run golden` compares 22 deterministic run snapshots (all
+  presets, every method, 0D and 1.5D) with `test/golden/*.json` at a relative tolerance of 1e-9
+  (1e-6 across Node.js major versions) and prints a preset/key/old/new/rel-diff table on mismatch;
+  `npm run golden:update -- --reason "…"` re-records them and appends to the append-only
+  `test/golden/CHANGES.md`. Baseline recorded from unchanged v3.0.0 physics. `npm test` compares a
+  fast subset.
+- `npm run ci:local`: type check, tests, validation and golden regression in sequence (fail-fast).
+- `validate --json`: machine-readable results (preset, metric, value, expected range, pass).
+- Strict command-line flag parser (`src/cli/args.ts`) with generated `--help` for all CLIs.
+- Shared flat-top averaging helper `src/physics/analysis/flatTop.ts` (frame weighting by default,
+  optional time weighting).
+- Tests for the flag parser, worker pool, CLI exit codes, flat-top averaging and the golden
+  comparator (87 tests in total).
+
+### Changed
+- The validation CLI moved to `src/cli/validate.cli.ts` (no Node-only entry point left in
+  `src/physics`). Exit codes: 0 all executed checks passed; 1 a check or run failed, or no check was
+  executed (previously reported as passed); 2 usage error (unknown flag or preset id, invalid
+  `--threads`), where invalid input used to be silently ignored or turned into NaN.
+- `figures`: invalid `--scan`, `--only`, `--formats` or `--threads` values are rejected with exit
+  code 2 instead of being clamped or ignored.
+- README translated to English and extended with a regression-testing section.
+
+### Fixed
+- The worker pool no longer hangs when a worker exits or crashes while running a task: it rejects
+  with an error naming the task, and an invalid thread count raises a typed error.
+
+Physics results are unchanged: a full-precision dump of all 21 presets is byte-identical before
+and after these changes.
+
 ## [3.0.0] — 2026-09-23
 
 ### Eklendi

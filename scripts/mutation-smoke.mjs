@@ -64,7 +64,13 @@ function parseArgs(argv) {
     if (a === '--keep') o.keep = true;
     else if (a === '--only') o.only = (argv[++i] ?? '').split(',').filter(Boolean);
     else if (a === '--threads') o.threads = Number(argv[++i]);
-    else if (a === '--help' || a === '-h') { console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 19).map((l) => l.replace(/^\/\/ ?/, '')).join('\n')); process.exit(0); }
+    else if (a === '--help' || a === '-h') {
+      // the comment block after the shebang, up to the first line that is not a comment
+      const lines = readFileSync(fileURLToPath(import.meta.url), 'utf8').split(/\r?\n/).slice(1);
+      const end = lines.findIndex((l) => !l.startsWith('//'));
+      console.log(lines.slice(0, end < 0 ? lines.length : end).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
+      process.exit(0);
+    }
     else { console.error(`unknown argument ${a}`); process.exit(2); }
   }
   if (!Number.isInteger(o.threads) || o.threads < 1) { console.error('--threads needs a positive integer'); process.exit(2); }

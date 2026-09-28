@@ -93,7 +93,9 @@ export class HeatSolver {
         // sağ yüz: Γ>0 → hücre i'den enerji çıkar (T_i), Γ<0 → i+1'den girer
         if (GR > 0) { B[k] += GR; B[k + 3] += GR * (h.ni1[i] / Math.max(h.ne1[i], 1)); }
         else if (i < N - 1) { C[k] += GR; C[k + 3] += GR * (h.ni1[i + 1] / Math.max(h.ne1[i + 1], 1)); }
-        else { d[k2] -= GR * h.TeB; d[k2 + 1] -= GR * h.TiB; }
+        // inflow through the separatrix: the ion flux is Γ n_i/n_e with the boundary composition of
+        // the last cell, as in the ion conduction there (n_i,B = n_B n_i/n_e)
+        else { d[k2] -= GR * h.TeB; d[k2 + 1] -= GR * h.TiB * (h.ni1[i] / Math.max(h.ne1[i], 1)); }
         // sol yüz: Γ>0 → i−1'den girer
         if (i > 0) {
           if (GL > 0) { A[k] -= GL; A[k + 3] -= GL * (h.ni1[i - 1] / Math.max(h.ne1[i - 1], 1)); }
@@ -119,7 +121,7 @@ export class HeatSolver {
     if (h.convCoef > 0) {
       const G = h.GammaF[N] * h.convCoef;
       e += G > 0 ? G * Te[N - 1] : G * h.TeB;
-      i += G > 0 ? G * Ti[N - 1] * (h.ni1[N - 1] / Math.max(h.ne1[N - 1], 1)) : G * h.TiB * (niB / Math.max(h.nB, 1));
+      i += G * (G > 0 ? Ti[N - 1] : h.TiB) * (h.ni1[N - 1] / Math.max(h.ne1[N - 1], 1));
     }
     return { e, i };
   }

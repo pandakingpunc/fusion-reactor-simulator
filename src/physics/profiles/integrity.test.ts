@@ -87,7 +87,7 @@ describe('Grad–Shafranov updates during a shot', () => {
 
 describe('implicit step failures', () => {
   type StepFn = (t: number, dt: number, yOld: Float64Array, y: Float64Array) => { ok: boolean; change: number };
-  const stubStep = (m: ProfileModel, f: StepFn) => { (m as unknown as { implicitStep: StepFn }).implicitStep = f; };
+  const stubStep = (m: ProfileModel, f: StepFn) => { m.stepper.implicitStep = f; };
   const started = () => {
     const sim = new Simulation({ ...JET_15D, t_end: 1 });
     sim.advance(0.3);

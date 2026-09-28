@@ -110,10 +110,13 @@ function auxAbsorbedMW(r: Run, d: Record<string, number>): number {
 
 const MAGNETIC: [string, number][] = [['ITER', 3], ['W7X', 3], ['MASTU', 2], ['DIIID', 3]];
 const PULSED = ['TAE', 'MIRROR', 'Z', 'GF', 'FRXL', 'ZAP', 'MUON', 'NIF', 'DIRECT'];
-const ALL: [string, number | undefined][] = [...MAGNETIC, ...PULSED.map((id): [string, undefined] => [id, undefined])];
+const ALL: [string, string, number | undefined][] = [
+  ...MAGNETIC.map(([id, t]): [string, string, number] => [id, `t_end = ${t} s`, t]),
+  ...PULSED.map((id): [string, string, undefined] => [id, 'preset duration', undefined]),
+];
 const fuelOf = (r: Run): FuelType => ((r.cfg as { fuel?: FuelType }).fuel ?? 'DT');
 
-describe.each(ALL)('%s (t_end %s)', (id, tEnd) => {
+describe.each(ALL)('%s (%s)', (id, _label, tEnd) => {
   it('every frame has finite diagnostics and state, and time increases strictly', () => {
     const r = run(id, tEnd);
     expect(r.H.length).toBeGreaterThan(10);
@@ -178,7 +181,7 @@ describe.each(ALL)('%s (t_end %s)', (id, tEnd) => {
   });
 });
 
-describe.each(MAGNETIC)('magnetic 0D: %s (t_end %s s)', (id, tEnd) => {
+describe.each(MAGNETIC)('magnetic 0D: %s (t_end = %s s)', (id, tEnd) => {
   it('particle-count sanity: quasi-neutrality bounds and helium ash ≤ reactions', () => {
     const r = run(id, tEnd);
     const V = r.sim.model.geometryInfo().V;

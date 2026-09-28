@@ -55,7 +55,7 @@ export function figPopcon(inp: PopconFigInput): Figure {
   // β_N sınırı ve L–H eşiği
   ax.contour(x, y, bN, [cfg.limits.betaN_limit], { colors: C.vermilion, lw: 0.9, dash: 'dashed', label: `$\\beta_N$ = ${cfg.limits.betaN_limit}` });
   ax.contour(x, y, lh, [0.5], { colors: C.blue, lw: 1.0, dash: 'dotted', label: '$P_{\\mathrm{heat}} = P_{\\mathrm{LH}}$' });
-  // Greenwald (çizgi-ortalama ≈ hacim-ortalama kabulü)
+  // Greenwald limit on the volume-average axis: grid.nG = n_G / lineAverageFactor(α_n) (the limit is for the line average)
   const nG = g.nG / 1e20;
   ax.axvline(nG, { color: C.orange, lw: 0.9, dash: 'dashdot', label: '$n_{\\mathrm{G}}$' });
   // 1.5D yörünge

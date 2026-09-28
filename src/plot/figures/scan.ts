@@ -6,7 +6,7 @@ import { Figure } from '../figure';
 import { C, COL1, contourLabel } from './common';
 
 export interface ScanData {
-  /** x ekseni: n_hedef / n_G ; y ekseni: H98 */
+  /** x axis: line-averaged density n̄_e / n_G (see scanAxes in paper.ts); y axis: H98 */
   x: number[];
   y: number[];
   /** Q[j·nx + i] (satır-öncelikli, j = H98 indeksi) */
@@ -31,7 +31,7 @@ export function figScan(s: ScanData): Figure {
   ax.contour(s.x, s.y, s.Q, lv, { colors: ['#ffffff', C.sky, '#ffffff'], lw: 0.9 });
   lv.forEach((v, k) => contourLabel(ax, s.x, s.y, s.Q, v, `$Q$ = ${v}`, { size: 6, pos: 0.3 + 0.2 * k }));
   ax.plot([s.ref.x], [s.ref.y], { marker: 'd', ms: 5, color: '#ffffff', mfc: C.vermilion, lw: 0, label: s.ref.label });
-  ax.set({ xlim: [s.x[0] - dx / 2, s.x[nx - 1] + dx / 2], ylim: [s.y[0] - dy / 2, s.y[ny - 1] + dy / 2], xlabel: '$n_{\\mathrm{target}}/n_{\\mathrm{G}}$', ylabel: '$H_{98(y,2)}$', title: s.label })
+  ax.set({ xlim: [s.x[0] - dx / 2, s.x[nx - 1] + dx / 2], ylim: [s.y[0] - dy / 2, s.y[ny - 1] + dy / 2], xlabel: '$\\bar{n}_e/n_{\\mathrm{G}}$', ylabel: '$H_{98(y,2)}$', title: s.label })
     .legend({ loc: 'lower right', frame: true, size: 6.5 });
   return fig;
 }

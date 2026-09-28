@@ -10,6 +10,7 @@ import { flatTopAverages } from '../../physics/analysis/flatTop';
 import { DEMO, DEMO_15D, ITER, ITER_15D, JET, JET_15D, NIF, SPARC, SPARC_15D } from '../../physics/presets';
 import { ProfileModel } from '../../physics/profiles/model';
 import { PopconGrid, computePopcon } from '../../physics/popcon';
+import { lineAverageFactor } from '../../physics/limits';
 import { MagneticConfig, ReactorConfig, ShotReport } from '../../physics/types';
 import { FigureSpec } from '../registry';
 import { C, profileFrame } from './common';
@@ -55,18 +56,29 @@ export const PRESET_RUNS: readonly (readonly [string, ReactorConfig])[] = [
 export const POPCON_GRID = { res: 110, Tmax: 30, nMaxFactor: 1.35, uniformT: true } as const;
 export const SCAN_T_END = 150;
 
-/** Scan axes: n_target/n_G 0.5…1.0 (x) and H98 0.7…1.3 (y) */
-export function scanAxes(N: number): { nGfr: number; sx: number[]; sy: number[] } {
+/**
+ * Scan axes: n̄_e/n_G 0.5…1.0 (x) and H98 0.7…1.3 (y). The Greenwald limit is defined for the
+ * LINE-averaged density n̄_e (Greenwald et al., Nucl. Fusion 28 (1988) 2199), whereas the 0D
+ * `n_target` is a VOLUME average: n̄_e = fLine · n_target with fLine = lineAverageFactor(α_n)
+ * (limits.ts), so x = fLine · n_target / n_G. The ITER baseline marker uses the same conversion.
+ */
+export function scanAxes(N: number): { nGfr: number; fLine: number; sx: number[]; sy: number[] } {
   const nGfr = ITER.Ip_MA / (Math.PI * ITER.geometry.a ** 2); // 10²⁰ m⁻³
   return {
     nGfr,
+    fLine: lineAverageFactor(ITER.transport.alpha_n),
     sx: Array.from({ length: N }, (_, i) => 0.5 + (0.5 * i) / (N - 1)),
     sy: Array.from({ length: N }, (_, j) => 0.7 + (0.6 * j) / (N - 1)),
   };
 }
 export function scanConfig(N: number, i: number, j: number): MagneticConfig {
-  const { nGfr, sx, sy } = scanAxes(N);
-  return { ...ITER, H98: sy[j], n_target: sx[i] * nGfr * 1e20, t_end: SCAN_T_END };
+  const { nGfr, fLine, sx, sy } = scanAxes(N);
+  return { ...ITER, H98: sy[j], n_target: (sx[i] * nGfr * 1e20) / fLine, t_end: SCAN_T_END };
+}
+/** x position of the ITER baseline on the scan's n̄_e/n_G axis */
+export function scanBaselineX(): number {
+  const { nGfr, fLine } = scanAxes(2);
+  return (ITER.n_target * fLine) / (nGfr * 1e20);
 }
 
 const iter15Input = { preset: 'ITER_15D', cfg: ITER_15D, zoom: ITER15_ZOOM };
@@ -217,7 +229,7 @@ export const PAPER_FIGURES: readonly Spec[] = [
       const reg = hist.filter((h) => h.prof);
       return {
         fig: figPopcon({ cfg: ITER_15D, grid: ctx.popcon ?? undefined, res: POPCON_GRID.res, traj: { n: reg.map((h) => h.d.ne), T: reg.map((h) => 0.5 * (h.d.Te + h.d.Ti)) }, label: 'ITER (IPB98(y,2), $H_{98}$ = 1)' }),
-        caption: 'Plasma operation contour (POPCON) for ITER from a 0D steady-state power balance using the same physics as the 0D model: fuel dilution by Be, Ar seed and self-consistent He ash, bremsstrahlung, Mavrin line and Albajar synchrotron radiation, IPB98(y,2) confinement (H98 = 1) evaluated at P_loss = P_heat − P_rad, parabolic profiles (α_n = 0.3, α_T = 1.5) and T_i = T_e. Colour, fusion gain Q; white lines, required auxiliary power; black dashed, Q = 5 and 10; red dashed, β_N limit; blue dotted, L–H threshold (Martin 2008); dash-dotted, Greenwald density. No ignited region exists for these assumptions. Red: volume-averaged trajectory of the 1.5D discharge (open circle: final state).',
+        caption: 'Plasma operation contour (POPCON) for ITER from a 0D steady-state power balance using the same physics as the 0D model: fuel dilution by Be, Ar seed and self-consistent He ash, bremsstrahlung, Mavrin line and Albajar synchrotron radiation, IPB98(y,2) confinement (H98 = 1) evaluated at the loss power P_L = P_heat − P_rad,core (radiation from ρ < 0.6), parabolic profiles (α_n = 0.3, α_T = 1.5) and T_i = T_e. Colour, fusion gain Q; white lines, required auxiliary power; black dashed, Q = 5 and 10; red dashed, β_N limit; blue dotted, L–H threshold (Martin 2008 with the Ryter 2014 low-density branch, at the line-averaged density); dash-dotted, Greenwald density (line-averaged). No ignited region exists for these assumptions. Red: volume-averaged trajectory of the 1.5D discharge (open circle: final state).',
       };
     },
   },
@@ -293,10 +305,10 @@ export const PAPER_FIGURES: readonly Spec[] = [
   },
   {
     id: 'scan', title: 'Operating-space scan', number: 9, file: 'fig09_scan', needs: ['scan'],
-    inputs: (p) => ({ config: { scan: { base: ITER, N: p.scan, nOverNG: [0.5, 1.0], H98: [0.7, 1.3], t_end: SCAN_T_END } }, seeds: { ITER: ITER.seed } }),
+    inputs: (p) => ({ config: { scan: { base: ITER, N: p.scan, nOverNG: [0.5, 1.0], nBasis: 'line-averaged', H98: [0.7, 1.3], t_end: SCAN_T_END } }, seeds: { ITER: ITER.seed } }),
     build: (ctx) => {
       const NS = ctx.params.scan;
-      const { nGfr, sx, sy } = scanAxes(NS);
+      const { sx, sy } = scanAxes(NS);
       const Q: number[] = [], Pf: number[] = [];
       let nBad = 0;
       for (let j = 0; j < NS; j++) for (let i = 0; i < NS; i++) {
@@ -306,8 +318,8 @@ export const PAPER_FIGURES: readonly Spec[] = [
         Q.push(aborted ? NaN : r!.avg!.Q); Pf.push(aborted ? NaN : r!.avg!.P_fus);
       }
       return {
-        fig: figScan({ x: sx, y: sy, Q, Pfus: Pf, ref: { x: ITER.n_target / (nGfr * 1e20), y: ITER.H98, label: 'ITER baseline' }, label: `ITER 0D scan (${NS}×${NS} runs)` }),
-        caption: `Operating-space scan of the ITER 0D model: flat-top Q as a function of the confinement enhancement H98 and the density target normalised to the Greenwald density (${NS}×${NS} = ${NS * NS} independent ${SCAN_T_END} s discharges run in parallel on worker threads${nBad ? `; ${nBad} discharges terminated early by a disruption are left blank` : ''}). Contours: Q = 5, 10, 15 (P_aux = 50 MW is fixed, so P_fus = 50 MW × Q); diamond: ITER baseline. Residual structure at high H98 reflects stochastic MHD events (NTM triggering) inside the averaging window.`,
+        fig: figScan({ x: sx, y: sy, Q, Pfus: Pf, ref: { x: scanBaselineX(), y: ITER.H98, label: 'ITER baseline' }, label: `ITER 0D scan (${NS}×${NS} runs)` }),
+        caption: `Operating-space scan of the ITER 0D model: flat-top Q as a function of the confinement enhancement H98 and the line-averaged density n̄_e normalised to the Greenwald density n_G (${NS}×${NS} = ${NS * NS} independent ${SCAN_T_END} s discharges run in parallel on worker threads${nBad ? `; ${nBad} discharges that ended early (disruption, density limit or radiative collapse) are left blank` : ''}). Contours: Q = 5, 10, 15 (P_aux = 50 MW is fixed, so P_fus = 50 MW × Q); diamond: ITER baseline. Residual structure at high H98 reflects stochastic MHD events (NTM triggering) inside the averaging window.`,
       };
     },
   },

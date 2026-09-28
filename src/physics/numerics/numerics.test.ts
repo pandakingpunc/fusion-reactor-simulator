@@ -4,6 +4,7 @@ import { gaussLegendre, integrateGL, profileNodes } from './quadrature';
 import { Bicubic, CubicSpline, Pchip, lerpTable } from './interp';
 import { brent } from './roots';
 import { eulerFixed, rk4Fixed } from './rk4';
+import { AndersonMixer } from './anderson';
 
 describe('linalg', () => {
   it('Thomas algorithm solves a diagonally dominant tridiagonal system', () => {
@@ -153,5 +154,59 @@ describe('fixed-step integrators (order of accuracy)', () => {
   });
   it('explicit Euler converges at first order', () => {
     expect(Math.log2(err(eulerFixed, 200) / err(eulerFixed, 400))).toBeCloseTo(1, 1);
+  });
+});
+
+describe('Anderson acceleration', () => {
+  // linear contraction G(x) = A x + b, A = 0.95·(symmetric tridiagonal with spectrum in (−1, 1))
+  const n = 40;
+  const G = (x: Float64Array, out: Float64Array) => {
+    for (let i = 0; i < n; i++) {
+      const l = i > 0 ? x[i - 1] : 0, r = i < n - 1 ? x[i + 1] : 0;
+      out[i] = 0.95 * (0.5 * x[i] + 0.25 * (l + r)) + Math.sin(i);
+    }
+    return out;
+  };
+  const iterate = (depth: number, beta: number, maxIt = 5000) => {
+    const acc = new AndersonMixer(n, depth);
+    const x = new Float64Array(n), g = new Float64Array(n);
+    for (let it = 1; it <= maxIt; it++) {
+      G(x, g);
+      let r = 0;
+      for (let i = 0; i < n; i++) r = Math.max(r, Math.abs(g[i] - x[i]));
+      if (r < 1e-11) return { it, x: g };
+      acc.step(x, g, beta);
+    }
+    return { it: Infinity, x };
+  };
+
+  it('depth 0 is damped Picard iteration', () => {
+    const acc = new AndersonMixer(3, 0);
+    const x = Float64Array.of(1, 2, 3), g = Float64Array.of(2, 2, 5);
+    acc.step(x, g, 0.5);
+    expect(Array.from(x)).toEqual([1.5, 2, 4]);
+  });
+
+  it('reaches the same fixed point as Picard in far fewer iterations', () => {
+    const plain = iterate(0, 1), aa = iterate(4, 1);
+    expect(plain.it).toBeGreaterThan(200);
+    expect(aa.it).toBeLessThan(plain.it / 3);
+    for (let i = 0; i < n; i++) expect(aa.x[i]).toBeCloseTo(plain.x[i], 9);
+  });
+
+  it('works with damping and after a reset', () => {
+    const ref = iterate(0, 1).x;
+    const acc = new AndersonMixer(n, 3);
+    const x = new Float64Array(n), g = new Float64Array(n);
+    let it = 0, r = Infinity;
+    while (r > 1e-11 && it++ < 2000) {
+      G(x, g);
+      r = 0;
+      for (let i = 0; i < n; i++) r = Math.max(r, Math.abs(g[i] - x[i]));
+      if (it === 10) acc.reset();
+      acc.step(x, g, 0.7);
+    }
+    expect(it).toBeLessThan(200);
+    for (let i = 0; i < n; i++) expect(x[i]).toBeCloseTo(ref[i], 9);
   });
 });

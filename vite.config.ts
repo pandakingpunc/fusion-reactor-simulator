@@ -6,5 +6,26 @@ export default defineConfig({
   base: './',
   worker: { format: 'es' },
   build: { target: 'es2022' },
-  test: { include: ['src/**/*.test.ts'] },
+  test: {
+    include: ['src/**/*.test.ts'],
+    // `npm run coverage` (vitest run --coverage). Code that runs only in child processes or worker
+    // threads (the CLIs, *.worker.ts) is not seen by V8 coverage of the test process.
+    coverage: {
+      provider: 'v8',
+      include: ['src/**'],
+      exclude: ['src/**/*.test.ts', 'src/**/testdata/**', 'src/main.tsx', 'src/App.tsx', 'src/**/*.d.ts'],
+      reporter: ['text-summary', 'json-summary', 'html'],
+      reportsDirectory: 'coverage',
+      // Ratchet: the level measured when coverage was introduced (v4.0 development, 2026-09-28), rounded
+      // down to whole percent. Raise these when the numbers go up; a drop below them fails
+      // `npm run coverage`. Each glob is measured over all files it matches (src/physics/** includes
+      // numerics).
+      thresholds: {
+        'src/physics/numerics/**': { lines: 96, statements: 96, functions: 88, branches: 85 },
+        'src/physics/**': { lines: 89, statements: 89, functions: 78, branches: 80 },
+        'src/plot/**': { lines: 41, statements: 41, functions: 58, branches: 66 },
+        'src/cli/**': { lines: 31, statements: 31, functions: 78, branches: 90 },
+      },
+    },
+  },
 } as any);

@@ -22,3 +22,6 @@ Thumbs.db
 *.log
 npm-debug.log*
 scratch/
+
+# Coverage reports (npm run coverage)
+coverage/

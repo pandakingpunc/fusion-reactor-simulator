@@ -13,6 +13,7 @@ import type { Method } from '../types';
 import { METHOD_INFO } from '../../ui/wizard/schema';
 import { WizardCase, buildConfig, showCase, wizardCase } from '../../testing/wizardCases';
 import { forAll } from '../../testing/prop';
+import { INTEGRATOR_FIXED, pinUntil } from '../../testing/knownBugs';
 
 /**
  * Integrator steps allowed for one output step: typical cases need ~20, the largest regular ones
@@ -29,7 +30,7 @@ function smoke(c: WizardCase, slices = 20): void {
     sim.advance(sim.model.outputDt / slices);
     if (sim.nSteps > STEP_BUDGET) expect.fail(`integration stalled: ${sim.nSteps} steps before t = ${sim.t} (output step ${sim.model.outputDt})`);
   }
-  const hint = Number.isNaN(sim.t) ? ' — the time itself is NaN: see BUG(ws2a) "NaN step size" in numericsProps.test.ts' : '';
+  const hint = Number.isNaN(sim.t) && !INTEGRATOR_FIXED ? ' — the time itself is NaN: see BUG(ws2a) "NaN step size" in numericsProps.test.ts' : '';
   for (const f of sim.history) {
     for (const [k, v] of Object.entries(f.d)) if (!Number.isFinite(v)) expect.fail(`diagnostic ${k} = ${v} at t = ${f.t}${hint}`);
   }
@@ -60,6 +61,7 @@ describe.each(PROFILE_METHODS)('wizard → %s (1.5D profiles)', (method) => {
 // Both are extreme but legal inputs; the cause is the Dormand–Prince step-size control (a trial step's
 // stage leaves the RHS domain → NaN error norm → NaN step size → NaN state accepted), pinned at the
 // integrator level in numericsProps.test.ts. With that fixed both runs end in an orderly disruption.
+// ws5 fixed it in dafd2bf (on v4/integration); with that integrator these cases run as plain tests.
 describe('pinned wizard counterexamples', () => {
   const pinned: WizardCase[] = [
     { method: 'spherical_tokamak', preset: 'MASTU', edits: { 'geometry.R': 0.3, 'geometry.kappa': 1.1, 'impurity.species': 'W', 'transport.tau_p_over_tau_E': 0.5, fidelity: '0D' } },
@@ -69,7 +71,7 @@ describe('pinned wizard counterexamples', () => {
     expect(() => new Simulation(buildConfig(c))).not.toThrow();
   });
   // one advance() call, as the UI and CLI do: slicing the step changes the trial step sizes
-  it.fails.each(pinned.map((c) => [showCase(c), c] as const))('BUG(ws2a) NaN step size — stays finite: %s', (_label, c) => {
+  pinUntil(INTEGRATOR_FIXED).each(pinned.map((c) => [showCase(c), c] as const))('BUG(ws2a) NaN step size — stays finite: %s', (_label, c) => {
     smoke(c, 1);
   });
 });

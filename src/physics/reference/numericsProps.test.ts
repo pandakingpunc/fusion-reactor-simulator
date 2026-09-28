@@ -15,6 +15,7 @@ import { Bicubic, CubicSpline, Pchip, findInterval, lerpTable } from '../numeric
 import { brent, invertMonotone } from '../numerics/roots';
 import { DormandPrince } from '../integrator';
 import { Rand, forAll, gen, mulberry32 } from '../../testing/prop';
+import { INTEGRATOR_FIXED, pinUntil } from '../../testing/knownBugs';
 
 /** dense Gaussian elimination with partial pivoting; A row-major n×n (copied) */
 function gauss(A: ArrayLike<number>, b: ArrayLike<number>, n: number): Float64Array {
@@ -325,7 +326,8 @@ describe('Dormand–Prince integrator', () => {
   // BUG(ws2a): integrator.ts `if (nn === true) for (…) if (y[i] < 0) y[i] = 0; else if (Array.isArray(nn)) …`
   // — the dangling `else` binds to the inner `if (y[i] < 0)`, so an index list (nonNegative: number[],
   // documented in IntegratorOptions) never clamps anything. Latent: every model passes `true` today.
-  it.fails('nonNegative as an index list clamps the listed components (BUG(ws2a): dangling else)', () => {
+  // Fixed by ws5 in dafd2bf (on v4/integration); with that integrator the pin runs as a plain test.
+  pinUntil(INTEGRATOR_FIXED)('nonNegative as an index list clamps the listed components (BUG(ws2a): dangling else)', () => {
     // y0' = −1 from y0 = 1e-3 over a step of 0.01 goes negative; component 0 is listed as non-negative
     const dp = new DormandPrince(2, (_t, _y, d) => { d[0] = -1; d[1] = -1; }, { rtol: 1e-6, atol: 1e-9, dtMin: 1e-3, dtMax: 0.01, nonNegative: [0] }, 0.01);
     const y = Float64Array.of(1e-3, 1e-3);
@@ -339,7 +341,8 @@ describe('Dormand–Prince integrator', () => {
   // `h * Math.max(0.1, 0.9 * Math.pow(err, -0.25))` is NaN: the step size never shrinks, the loop gives up
   // after 30 tries, accepts the NaN state and returns t = NaN. Simulation.advance() then stops silently
   // with a NaN state (found by wizardSmoke.test.ts). Rejecting non-finite stages with h ← h/10 fixes it.
-  it.fails('recovers from trial steps whose stages leave the RHS domain (BUG(ws2a): NaN step size)', () => {
+  // Fixed by ws5 in dafd2bf (on v4/integration); with that integrator the pin runs as a plain test.
+  pinUntil(INTEGRATOR_FIXED)('recovers from trial steps whose stages leave the RHS domain (BUG(ws2a): NaN step size)', () => {
     const dp = new DormandPrince(1, (_t, y, d) => { d[0] = -1e4 * Math.pow(y[0], 1.5); }, { rtol: 1e-6, atol: 1e-12, dtMin: 1e-9, dtMax: 1 }, 1);
     const y = Float64Array.of(1);
     const t = dp.step(0, y, 1);

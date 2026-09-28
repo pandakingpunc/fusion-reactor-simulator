@@ -5,7 +5,7 @@ import { Geometry } from './geometry';
 import { FuelType } from './reactivity';
 import { ImpuritySpecies } from './constants';
 import { DisruptionReport } from './disruption';
-import { IntegratorOptions } from './integrator';
+import { IntegratorOptions, IntegratorSnapshot } from './integrator';
 
 export type Method =
   | 'tokamak' | 'spherical_tokamak' | 'stellarator'
@@ -260,6 +260,15 @@ export interface SimModel {
   profiles?(y: Float64Array): Record<string, number[]>;
   /** Denge değiştiyse yeni akı yüzeyi görüntüsü (bir kez döner, sonra null) */
   takeEqSnapshot?(): EqSnapshot | null;
+  /**
+   * Optional checkpoint of dynamic model state that saveInternal() cannot hold (arrays, strings,
+   * sets, solver objects). Called right after saveInternal() whenever a frame is recorded; the
+   * kernel keeps the value in frame.sim.model and on rewind calls restoreCheckpoint() with it after
+   * restoreInternal(). The value must be structured-clonable data that is never mutated afterwards
+   * (immutable parts, e.g. an equilibrium, may be shared between frames).
+   */
+  saveCheckpoint?(): unknown;
+  restoreCheckpoint?(state: unknown): void;
 }
 
 export interface HistoryFrame {
@@ -271,6 +280,42 @@ export interface HistoryFrame {
   prof?: Record<string, number[]>;
   /** akı yüzeyleri (yalnız dengenin güncellendiği karelerde) */
   eq?: EqSnapshot;
+  /** kernel checkpoint for an exact rewind (written by Simulation since v4) */
+  sim?: SimCheckpoint;
+}
+
+/**
+ * Simulation kernel state at a history frame, taken right after the frame was recorded.
+ * Together with the frame's t, y and internal it is everything Simulation.rewindTo() needs to
+ * continue exactly as the uninterrupted run did.
+ */
+export interface SimCheckpoint {
+  /** steps taken by the kernel so far (the actuator log's step index) */
+  steps: number;
+  /** next regular output time */
+  nextOut: number;
+  /** next synchronisation point (see Simulation) */
+  nextSync: number;
+  /** index of the next user breakpoint */
+  nextBreak: number;
+  /** number of events in Simulation.events when the frame was recorded */
+  nEvents: number;
+  /** Dormand–Prince controller state (unused by models with their own stepper) */
+  integ: IntegratorSnapshot;
+  /** the model's live controls (getControls()) in force at the frame */
+  controls: Record<string, number>;
+  /** SimModel.saveCheckpoint() at the frame, for models that implement it */
+  model?: unknown;
+}
+
+/**
+ * One live intervention (Simulation.applyControl). It takes effect at the step boundary where it
+ * was applied: after `step` kernel steps, at time `t`, before step `step + 1` begins.
+ */
+export interface ActuatorEntry {
+  t: number;
+  step: number;
+  patch: Record<string, number>;
 }
 
 export interface ScoreEntry {

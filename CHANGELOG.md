@@ -39,6 +39,11 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   beam-target table against their direct integrals, 'cgm' smoke test, unit tests of every event
   model, transport geometry against an analytic Solov'ev equilibrium, plug-in hook tests, replays
   from disruption quench frames, and regression tests for every integrity fix below.
+- Kernel tests: the `SimModel` contract, FSAL stage reuse (bitwise on/off for every model family,
+  evaluation counts, invalidation by rewinds and controls), the terminal frame of a failed 1.5D
+  step and set-points across a rewind; the determinism suites yield to the event loop between
+  runs, so they no longer starve the test worker's RPC under coverage; the it.fails pin of the ELM
+  frame bug became a regression test.
 
 ### Changed
 - The validation CLI moved to `src/cli/validate.cli.ts` (no Node-only entry point left in
@@ -56,6 +61,23 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 - 1.5D: ion heat convected in through the separatrix when particles flow in scales with n_i/n_e as
   at every other face, so one heat step conserves energy exactly in both flow directions (only
   MASTU15 has boundary inflow).
+- Kernel: `SimModel.rhs()` and `integratorOpts` are optional when a model provides its own
+  `step()`; `Simulation` builds no Dormand-Prince stepper for such a model (`SimCheckpoint.integ` is
+  then absent), a model with neither is refused with the typed `ModelContractError`, and
+  `SimulationOptions.modelFactory` lets tests and plug-ins supply the model. The 1.5D model no
+  longer carries a dummy `rhs()` and `integratorOpts`.
+- Kernel: the Dormand-Prince integrator reuses the last stage of an accepted step as the first
+  stage of the next one (FSAL) when nothing changed in between; the state of the model
+  (`saveInternal()`, controls) and `y` are checked bitwise, so results are identical (run digests of
+  all 21 presets unchanged) with 14 % fewer right-hand side evaluations for pulsed models and
+  W7-X, 5 % for ITER and about 1 % for ELM tokamaks. `SimulationOptions.fsal = false` switches it
+  off.
+- Kernel contract documented and tested: the terminal frame of a shot ended by a failed 1.5D step
+  shares the time of the last frame (it carries the termination); rewinding re-applies the controls
+  of the frame in 1.5D as in 0D, and the actuator log keeps exactly the entries before the frame.
+- 0D: the frame-weighted flat-top averages, maxima and the derived engineering numbers of the ELM
+  presets move with the frame fix below (ITER P_fus 538 -> 523 MW, Q 10.4 -> 10.1; DEMO Q 20.7 ->
+  20.1; SPARC -0.7 %, JET -0.5 %); the runs themselves are unchanged.
 
 ### Fixed
 - The worker pool no longer hangs when a worker exits or crashes while running a task, or when a
@@ -81,9 +103,13 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   and from disruption quench frames is bit-identical, including the shot report.
 - 1.5D: sawtooth crashes conserve particles and the electron and ion thermal energy exactly (a
   crash used to lose 3-4e-4 of the electron energy).
+- 0D: frames recorded at type-I ELM crashes carried the diagnostics of the pre-crash state (T_e,
+  P_fus, P_rad ... 2-4.5 % off their own state); they are now consistent with their state. The
+  state, internal state, checkpoints and events of the run are unchanged.
 
-Physics results are unchanged: a full-precision dump of all 21 presets is byte-identical before
-and after these changes.
+Physics results are unchanged by the 1.5D changes above: a full-precision dump of all 21 presets
+was byte-identical before and after them. The frame fix of the ELM presets is the exception (see
+Changed).
 
 ## [3.0.0] — 2026-09-23
 

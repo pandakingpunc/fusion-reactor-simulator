@@ -22,7 +22,7 @@ const TU = 1e-6; // µs → s
 const P_T = 0.68; // sıcaklık sıkışma üssü (kayıplı adyabatik)
 /**
  * MagLIF stagnation (dwell) time. A liner dwells near its minimum radius for about r_min/v_imp
- * (I. R. Lindemuth & R. C. Kirkpatrick, Nucl. Fusion 23 (1983) 263). For a self-similar implosion
+ * (cf. I. R. Lindemuth & R. C. Kirkpatrick, Nucl. Fusion 23 (1983) 263). For a self-similar implosion
  * r_min = r_0/CR and v_imp ∝ r_0/t_c, so the width σ of the compression pulse scales as t_c/CR:
  * σ = MAGLIF_DWELL · t_c / CR_eff. The constant is set on Z, where t_c = 100 ns and CR = 30 give the
  * observed 1–2 ns burn (Gomez et al., PRL 113 (2014) 155003; PRL 125 (2020) 155002): σ = 2 ns, burn

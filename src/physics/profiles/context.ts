@@ -1,0 +1,234 @@
+/**
+ * Shared state of one 1.5D shot: configuration, current equilibrium and transport geometry, work
+ * arrays, and the plasma and controller state that is not part of the state vector y.
+ *
+ * Every physics module of the profile model (composition, sources, transport, controllers,
+ * events, diagnostics) reads and writes this object; ProfileModel owns it and orders the calls.
+ * Modules keep their own private state (event timers, caches) and register geometry-dependent
+ * caches with onGeometry so that they are rebuilt whenever an equilibrium is adopted.
+ */
+import type { Geometry } from '../geometry';
+import { FUEL_SPECIES } from '../reactivity';
+import type { DisruptionCause } from '../disruption';
+import { RNG } from '../rng';
+import type { Equilibrium } from '../equilibrium/gs';
+import type { MagneticConfig, ProfileSettings, SimEvent, TerminationInfo } from '../types';
+import { DEFAULT_PROFILE_SETTINGS } from './defaults';
+import type { TransportGeometry } from './geometry1d';
+import { CurrentSolver, DensitySolver, HeatSolver } from './fvsolver';
+import { volumeIntegral } from './sources/deposition';
+import type { BootstrapCoeffs } from './neoclassical';
+import { ProfileState, StateLayout } from './state';
+import { WorkArrays, allocateWorkArrays } from './work';
+
+export const KEV = 1.602176634e-16; // J/keV
+export const MU0 = 1.25663706212e-6;
+export const AMU = 1.66053906660e-27;
+
+/** Operating phase of the discharge */
+export type Phase = 'normal' | 'thermal_quench' | 'current_quench' | 'ended';
+/** Phase codes of the checkpoint record (index into this list) */
+export const PHASES: readonly Phase[] = ['normal', 'thermal_quench', 'current_quench', 'ended'];
+
+/** An accepted equilibrium and the transport geometry built from it (shared by reference) */
+export interface EqGeometry { eq: Equilibrium; tg: TransportGeometry }
+
+/** Quantities held fixed over one implicit step (evaluated from the old state) */
+export interface StepConstants {
+  /** absorbed auxiliary powers after the ramp [W] */
+  P_NBI: number; P_IC: number; P_EC: number;
+  /** NBI shine-through fraction */
+  shine: number;
+  /** beam-target reaction rate per cell [m⁻³ s⁻¹] */
+  btR: Float64Array;
+  /** effective beam energy for current drive [keV] */
+  Eb: number;
+  /** total synchrotron power [W] */
+  Psync: number;
+  /** NBI particle source [1/s] */
+  S_nbi: number;
+}
+
+/** Separatrix boundary values of the transport equations: T_e, T_i [keV], n_e [m⁻³] */
+export interface BoundaryValues { Te: number; Ti: number; n: number }
+
+/** Actuator set-points (live control: Simulation.applyControl) */
+export interface Actuators {
+  P_NBI_MW: number; P_ICRH_MW: number; P_ECRH_MW: number;
+  n_target_1e20: number; H98: number; cZ: number; fuelRate_1e20s: number;
+}
+
+/** State of a disruption once a limit has been crossed */
+export interface DisruptionState {
+  cause: DisruptionCause;
+  /** time of the thermal-quench onset [s] */
+  t: number;
+  /** stored energy and plasma current at the onset [J, A] */
+  W: number;
+  Ip: number;
+  /** what crossed which limit */
+  text: string;
+}
+
+/** MHD crash snapshot at the cell centres: T [keV], n_e [10²⁰ m⁻³], q */
+export interface CrashSnapshot { rho: number[]; Te: number[]; Ti: number[]; ne: number[]; q: number[] }
+export type CrashHook = (kind: 'sawtooth' | 'ELM', t: number, before: CrashSnapshot, after: CrashSnapshot) => void;
+
+/** Settings of a shot: defaults, the interval rule for equilibrium updates, then the user's */
+export function profileSettings(cfg: MagneticConfig): ProfileSettings {
+  return { ...DEFAULT_PROFILE_SETTINGS, eqUpdateInterval: Math.min(Math.max(cfg.t_end / 20, 0.5), 20), ...(cfg.profiles ?? {}) };
+}
+
+export class ProfileContext {
+  // ---------------------------------------------------------------- configuration
+  readonly cfg: MagneticConfig;
+  readonly ps: ProfileSettings;
+  /** radial cells */
+  readonly N: number;
+  readonly layout: StateLayout;
+  /** Grad–Shafranov boundary shape (LCFS) */
+  readonly geomB: Geometry;
+  /** mean fuel ion mass [amu] */
+  readonly M: number;
+  /** density pinch shape: source-free steady state n ∝ exp(−P ρ²) */
+  readonly Pn: number;
+  /** stochastic events (ELM size); part of the checkpoint */
+  readonly rng: RNG;
+  readonly ctrl: Actuators;
+
+  // ---------------------------------------------------------------- equilibrium and geometry
+  geo!: EqGeometry;
+  eq!: Equilibrium;
+  tg!: TransportGeometry;
+  heat!: HeatSolver;
+  dens!: DensitySolver;
+  cur!: CurrentSolver;
+  /** volume-equivalent elongation V/(2π² R a²) of the transport geometry */
+  kappaA = 1;
+  /** the equilibrium changed since the last flux-surface snapshot */
+  eqDirty = true;
+  private geometryListeners: ((tg: TransportGeometry) => void)[] = [];
+
+  // ---------------------------------------------------------------- work arrays
+  readonly w: WorkArrays;
+  /** Sauter bootstrap coefficients per cell, evaluated once per step */
+  sauter: BootstrapCoeffs[] = [];
+  /** step constants of the last evaluation (read by the accepted-step update and diagnostics) */
+  lastK: StepConstants | null = null;
+
+  // ---------------------------------------------------------------- plasma and controller state
+  phase: Phase = 'normal';
+  hmode = false;
+  /** α_ped/α_crit of the last diagnostics (kinetic-ballooning clamp of the pedestal) */
+  alphaRatio = 0;
+  bc: BoundaryValues = { Te: 0.1, Ti: 0.1, n: 1e19 };
+  /** P_SOL, filtered global power balance [W] */
+  PSOL = 0;
+  /** particle outflux through the boundary Γ_b [1/s] */
+  GammaB = 0;
+  /**
+   * power conducted and convected across the separatrix by the solution of the last implicit
+   * attempt [W] (HeatSolver.boundaryLoss with that attempt's inputs; diagnostics only)
+   */
+  Pbound = 0;
+  /** gas-puff gain of the separatrix density */
+  nsepGain = 1;
+  /** proposed next time step [s] */
+  dt = 1e-3;
+  /** loop voltage of the last step [V] */
+  lastVloop = 0;
+  disruption: DisruptionState = { cause: 'none', t: 0, W: 0, Ip: 0, text: '' };
+
+  // ---------------------------------------------------------------- output
+  lastDiag: Record<string, number> = {};
+  lastProf: Record<string, number[]> = {};
+  /** the state was changed outside a step (MHD crash): diagnostics are re-evaluated from y */
+  diagStale = false;
+  terminated: TerminationInfo | null = null;
+  /** events raised inside step() (GS rejection, numerical trouble); postStep emits them */
+  pending: SimEvent[] = [];
+  /** keys of the one-time warnings already issued */
+  warned = new Set<string>();
+  /** optional profile snapshots just before and after an MHD crash (figures; no effect on the run) */
+  crashHook: CrashHook | null = null;
+
+  constructor(cfg: MagneticConfig) {
+    this.cfg = cfg;
+    this.ps = profileSettings(cfg);
+    this.N = Math.max(16, Math.round(this.ps.nRho));
+    this.layout = new StateLayout(this.N);
+    this.w = allocateWorkArrays(this.N);
+    const g0 = cfg.geometry;
+    this.geomB = { R: g0.R, a: g0.a, kappa: this.ps.lcfsKappa ?? g0.kappa, delta: this.ps.lcfsDelta ?? g0.delta };
+    const fs = FUEL_SPECIES[cfg.fuel];
+    this.M = cfg.fuelFracA * fs.a.A + (1 - cfg.fuelFracA) * fs.b.A;
+    this.rng = new RNG(cfg.seed);
+    this.ctrl = {
+      P_NBI_MW: cfg.heating.P_NBI_MW, P_ICRH_MW: cfg.heating.P_ICRH_MW, P_ECRH_MW: cfg.heating.P_ECRH_MW,
+      n_target_1e20: cfg.n_target / 1e20, H98: cfg.H98, cZ: cfg.impurity.concentration,
+      fuelRate_1e20s: cfg.fueling.maxRate_1e20s,
+    };
+    // pinch parameter: source-free equilibrium n ∝ exp(−P ρ²) has n(0)/⟨n⟩ = 1 + α_n
+    const target = 1 + cfg.transport.alpha_n;
+    let P = 0.5;
+    for (let it = 0; it < 60; it++) { const f = P / (1 - Math.exp(-P)) - target; const df = (1 - Math.exp(-P) - P * Math.exp(-P)) / (1 - Math.exp(-P)) ** 2; P = Math.max(1e-3, P - f / df); }
+    this.Pn = cfg.transport.alpha_n > 1e-3 ? P : 1e-3;
+  }
+
+  /** Views of a state vector */
+  view(y: Float64Array): ProfileState { return this.layout.view(y); }
+
+  /** Registers a cache that depends on the transport geometry; called now if a geometry exists and on every adoptGeometry */
+  onGeometry(f: (tg: TransportGeometry) => void): void {
+    this.geometryListeners.push(f);
+    if (this.tg) f(this.tg);
+  }
+
+  /**
+   * Makes an accepted equilibrium and its transport geometry current. The work arrays depend only
+   * on N and keep their values; after a swap mid-shot the caller re-evaluates them on the new
+   * geometry before anything reads them.
+   */
+  adoptGeometry(geo: EqGeometry): void {
+    this.geo = geo;
+    this.eq = geo.eq;
+    const tg = geo.tg;
+    this.tg = tg;
+    this.heat = new HeatSolver(tg);
+    this.dens = new DensitySolver(tg);
+    this.cur = new CurrentSolver(tg);
+    this.kappaA = tg.volume / (2 * Math.PI * Math.PI * this.geomB.R * this.geomB.a * this.geomB.a);
+    for (const f of this.geometryListeners) f(tg);
+    this.eqDirty = true;
+  }
+
+  /** Volume average */
+  volAvg(a: ArrayLike<number>): number { return volumeIntegral(this.tg, a) / this.tg.volume; }
+  /** Mid-plane line average */
+  lineAvg(a: ArrayLike<number>): number {
+    const g = this.tg;
+    let s = 0;
+    for (let i = 0; i < g.N; i++) s += a[i] * (g.RoutF[i + 1] - g.RoutF[i] + g.RinF[i] - g.RinF[i + 1]);
+    return s / (g.RoutF[g.N] - g.RinF[g.N]);
+  }
+
+  /** Pushes a warning event the first time `key` is seen; returns whether it did */
+  warnOnce(key: string, t: number, msg: string, out: SimEvent[] = this.pending): boolean {
+    if (this.warned.has(key)) return false;
+    this.warned.add(key);
+    out.push({ t, kind: 'warning', msg });
+    return true;
+  }
+
+  /** Stored thermal energy W = Σ 3/2 (n_e T_e + n_i T_i) ΔV [J] (n_i from the work arrays) */
+  storedEnergy(st: ProfileState): number {
+    const g = this.tg, N = this.N, ni = this.w.ni;
+    let W = 0;
+    for (let i = 0; i < N; i++) W += 1.5 * (st.ne[i] * st.Te[i] + ni[i] * st.Ti[i]) * KEV * g.dV[i];
+    return W;
+  }
+
+  crashSnapshot(st: ProfileState): CrashSnapshot {
+    return { rho: Array.from(this.tg.rhoC), Te: Array.from(st.Te), Ti: Array.from(st.Ti), ne: Array.from(st.ne, (x) => x * 1e-20), q: Array.from(this.w.q) };
+  }
+}

@@ -9,7 +9,7 @@
  *  - Akım sürme verimi γ = n_e[1e20] R I_CD / P [10²⁰ A W⁻¹ m⁻²] (ITER tipik: NBCD ≈ 0.3,
  *    ECCD ≈ 0.2 T_e ölçekli) — APPROXIMATION.
  */
-import { TransportGeometry } from './geometry1d';
+import { TransportGeometry } from '../geometry1d';
 
 /** Gauss birikim profili; Σ p_i ΔV_i = 1 olacak şekilde normalize [1/m³] */
 export function gaussianDeposition(g: TransportGeometry, rho0: number, width: number, out: Float64Array = new Float64Array(g.N)): Float64Array {

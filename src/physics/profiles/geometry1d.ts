@@ -9,7 +9,8 @@
  * Silindirik yedek geometri (circularGeometry) birim testlerde analitik çözümler için.
  */
 import { CubicSpline } from '../numerics/interp';
-import { Equilibrium } from '../equilibrium/gs';
+import type { EqProfiles } from '../equilibrium/gs';
+import type { TracedSurfaces } from '../equilibrium/fluxsurface';
 
 export interface TransportGeometry {
   N: number;
@@ -37,8 +38,22 @@ function grids(N: number) {
   return { rhoC, rhoF, dRho: 1 / N };
 }
 
+/**
+ * What the transport geometry is built from: the flux-surface tables (on the ψ_N levels, axis
+ * first) and the global values of a Grad–Shafranov equilibrium. An Equilibrium is one; tests
+ * build them from analytic equilibria.
+ */
+export interface EquilibriumTables {
+  prof: Pick<EqProfiles, 'psiN' | 'rhoTor' | 'q' | 'F' | 'V' | 'dVdpsiN' | 'area' | 'avgR2inv' | 'avgGrad2R2' | 'avgGrad2' | 'avgGrad' | 'avgB2' | 'ft' | 'Rin' | 'Rout'>;
+  /** traced flux surfaces; the last one (the LCFS) gives the plasma surface area */
+  surfaces: Pick<TracedSurfaces, 'R' | 'dlw'>;
+  /** ψ on the magnetic axis (ψ = 0 on the LCFS) [Wb/rad], axis radius [m], toroidal flux inside the LCFS [Wb] */
+  psiAxis: number; Raxis: number; PhiB: number;
+  rhoTorB: number; B0: number; R0: number; volume: number; perimeter: number;
+}
+
 /** Dengeden taşınım geometrisi */
-export function geometryFromEquilibrium(eq: Equilibrium, N: number, geom: { a: number; kappa: number; delta: number }): TransportGeometry {
+export function geometryFromEquilibrium(eq: EquilibriumTables, N: number, geom: { a: number; kappa: number; delta: number }): TransportGeometry {
   const P = eq.prof;
   const n = P.psiN.length;
   const PhiB = eq.PhiB, dpsi = eq.psiAxis;
@@ -61,18 +76,23 @@ export function geometryFromEquilibrium(eq: Equilibrium, N: number, geom: { a: n
   eps[0] = 0; Rg[0] = eq.Raxis;
   const sp = (a: ArrayLike<number>) => new CubicSpline(x, a);
   const Su = sp(u), Sg1 = sp(g1), Sg2 = sp(g2), Sgr = sp(gr), SR2 = sp(P.avgR2inv), SF = sp(P.F), SB2 = sp(P.avgB2), Sft = sp(P.ft), Seps = sp(eps), SRg = sp(Rg), Sq = sp(P.q);
-  const SV = sp(P.V), SA = sp(P.area), SRin = sp(P.Rin), SRout = sp(P.Rout);
+  const SRin = sp(P.Rin), SRout = sp(P.Rout);
+  // volume and poloidal area vanish as ρ̂² at the axis: spline them against ρ̂², the volume with the
+  // end slopes dV/d(ρ̂²) = V'/(2ρ̂) of the tables (a natural spline in ρ̂ put the volume of the
+  // innermost cell off by 1.3 % and of the outermost by 0.03 %; geometry.test.ts, Solov'ev check)
+  const x2 = Float64Array.from(x, (r) => r * r);
+  const SV = new CubicSpline(x2, P.V, { d1Start: 0.5 * u[0], d1End: 0.5 * u[n - 1] }), SA = new CubicSpline(x2, P.area);
   const { rhoC, rhoF, dRho } = grids(N);
   const f = (S: CubicSpline, r: ArrayLike<number>) => Float64Array.from(r, (v) => S.eval(v));
   const VpC = Float64Array.from(rhoC, (r) => Su.eval(r) * r);
   const VpF = Float64Array.from(rhoF, (r) => Su.eval(r) * r);
-  const VF = f(SV, rhoF);
+  const VF = Float64Array.from(rhoF, (r) => SV.eval(r * r));
   VF[0] = 0; VF[N] = eq.volume;
   const dV = new Float64Array(N);
   for (let i = 0; i < N; i++) dV[i] = VF[i + 1] - VF[i];
   const ftC = f(Sft, rhoC).map((v) => Math.min(Math.max(v, 0), 1));
   const epsC = f(Seps, rhoC).map((v) => Math.max(v, 1e-4));
-  const AF = f(SA, rhoF); AF[0] = 0;
+  const AF = Float64Array.from(rhoF, (r) => SA.eval(r * r)); AF[0] = 0;
   const RinF = f(SRin, rhoF), RoutF = f(SRout, rhoF);
   RinF[0] = RoutF[0] = eq.Raxis;
   // plazma yüzey alanı S = 2π ∮ R dl (son akı yüzeyi)

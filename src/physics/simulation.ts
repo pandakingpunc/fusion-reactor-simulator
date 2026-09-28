@@ -13,17 +13,19 @@
  *    step reaches t_sync (within 1e-12). This is exactly where runAll() used to cut its chunks, so
  *    runs keep bitwise the results recorded before the kernel became chunk invariant.
  *  - Exact rewind. Every history frame carries a checkpoint (frame.sim: step counter, next output
- *    and synchronisation times, event count, integrator controller state, live controls, and the
- *    model's saveCheckpoint() if it has one); rewindTo() restores it together with the frame's
- *    state and the model's internal state, so the rewound run continues as the uninterrupted one
- *    did — as far as the model's saveInternal()/saveCheckpoint() capture its state.
+ *    and synchronisation times, event count, integrator controller state, live controls, the
+ *    model's termination, and the model's saveCheckpoint() if it has one); rewindTo() restores it
+ *    together with the frame's state and the model's internal state, so the rewound run continues
+ *    as the uninterrupted one did — as far as the model's saveInternal()/saveCheckpoint() capture
+ *    its state. A shot that had ended at the frame (scheduled end, disruption, magnet quench) is
+ *    still ended after the rewind.
  *  - Actuator log. applyControl() takes effect at the current step boundary (a paused simulation
  *    is always at one) and is logged as {t, step, patch}; rewindTo() truncates the log. Replaying a
  *    log (new Simulation(cfg, { actuatorLog }) or Simulation.replay) reproduces the run bitwise,
  *    and runFingerprint() hashes the inputs that define a run.
  */
 import { DormandPrince } from './integrator';
-import { ActuatorEntry, HistoryFrame, MagneticConfig, ReactorConfig, ShotReport, SimCheckpoint, SimEvent, SimModel } from './types';
+import { ActuatorEntry, HistoryFrame, MagneticConfig, ReactorConfig, ShotReport, SimCheckpoint, SimEvent, SimModel, TerminationInfo } from './types';
 import { MagneticModel } from './confinement/magnetic';
 import { ICFModel } from './confinement/icf';
 import { MTFModel } from './confinement/mtf';
@@ -131,6 +133,7 @@ export class Simulation {
     const cp: SimCheckpoint = {
       steps: this.steps, nextOut: this.nextOut, nextSync: this.nextSync, nextBreak: this.breakIdx,
       nEvents: this.events.length, integ: this.integ.snapshot(), controls: this.model.getControls(),
+      terminated: this.model.terminated ? { ...this.model.terminated } : null,
     };
     if (this.model.saveCheckpoint) cp.model = this.model.saveCheckpoint();
     return cp;
@@ -200,6 +203,9 @@ export class Simulation {
   runAll(): ShotReport {
     let guard = 0;
     while (!this.done && guard++ < MAX_CHUNKS) this.advance(this.model.tEnd / SYNC_INTERVALS);
+    // advance() ends with flushEnd(); a run that is already done (e.g. rewound to its final frame)
+    // never calls advance(), so make the end-of-run call here as well
+    this.flushEnd();
     this.applyPending();
     return this.report();
   }
@@ -210,8 +216,8 @@ export class Simulation {
 
   /**
    * Rewinds to history frame `frameIndex` (clamped to the recorded frames); later frames, events
-   * and actuator entries are dropped (branching). The kernel, integrator, controls and the model's
-   * internal state are restored from the frame's checkpoint.
+   * and actuator entries are dropped (branching). The kernel, integrator, controls, the model's
+   * termination and its internal state are restored from the frame's checkpoint.
    */
   rewindTo(frameIndex: number): void {
     if (Number.isNaN(frameIndex)) throw new RangeError('rewindTo: frame index is NaN');
@@ -225,6 +231,8 @@ export class Simulation {
     const cp = f.sim;
     if (cp) {
       if (cp.model !== undefined && this.model.restoreCheckpoint) this.model.restoreCheckpoint(cp.model);
+      // restoreInternal() cleared it; SimModel.terminated is writable for the kernel (see types.ts)
+      (this.model as { terminated: TerminationInfo | null }).terminated = cp.terminated ? { ...cp.terminated } : null;
       this.model.applyControl(cp.controls);
       this.integ.restore(cp.integ);
       this.steps = cp.steps;

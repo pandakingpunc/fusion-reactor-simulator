@@ -8,6 +8,7 @@ import { createModel, Simulation } from '../simulation';
 import { PRESETS } from '../presets';
 import { RNG } from '../rng';
 import type { ActuatorEntry, ReactorConfig } from '../types';
+import { canonicalString } from './canonical';
 import { UnknownMethodError } from './errors';
 import { runFingerprint } from './fingerprint';
 import {
@@ -117,14 +118,53 @@ describe('exact rewind', () => {
     expect(() => sim.rewindTo(NaN)).toThrow(RangeError);
   });
 
-  it('rewinding to the last frame of a finished run and running again changes nothing', () => {
-    const cfg = presetCfg('JET');
-    const ref = referenceRun(cfg);
-    const sim = new Simulation(cfg);
-    sim.runAll();
-    sim.rewindTo(sim.history.length - 1);
-    sim.runAll();
-    expectSameRun(normalizeRng(sim), normalizeRng(ref), 'JET rewound to its last frame');
+  // A shot that has ended stays ended when rewound to its final frame (frame.sim.terminated):
+  // restoreInternal() clears SimModel.terminated, which used to report a finished shot as
+  // 'In progress' and let a disrupted or quenched plasma run on to t_end.
+  const ENDED: [string, () => ReactorConfig][] = [
+    ['JET (scheduled end)', () => presetCfg('JET')],
+    ['NIF (pulsed, scheduled end)', () => presetCfg('NIF')],
+    ['JET at n = 3e20 m^-3 (density-limit disruption)', () => ({ ...presetCfg('JET'), n_target: 3e20 }) as ReactorConfig],
+    ['JET at B0 = 30 T (magnet quench at t = 0)', () => ({ ...presetCfg('JET'), B0: 30 }) as ReactorConfig],
+  ];
+  for (const [label, mk] of ENDED) {
+    it(`${label}: rewinding to the final frame and running again changes nothing, report included`, () => {
+      const cfg = mk();
+      const ref = new Simulation(cfg);
+      const refReport = canonicalString(ref.runAll());
+      const term = ref.model.terminated;
+      expect(term).not.toBeNull();
+      const sim = new Simulation(cfg);
+      sim.runAll();
+      sim.rewindTo(sim.history.length - 1);
+      expect(sim.history[sim.history.length - 1].sim?.terminated).toEqual(term);
+      expect(sim.model.terminated).toEqual(term);
+      expect(sim.done).toBe(true);
+      expect(sim.advance(sim.model.tEnd)).toEqual({ frames: [], events: [] });
+      expect(canonicalString(sim.runAll())).toBe(refReport);
+      expect(sim.t).toBe(ref.t);
+      expectSameRun(normalizeRng(sim), normalizeRng(ref), `${label} rewound to its final frame`);
+    }, 60000);
+  }
+
+  // Warnings aside, as for ITER and W7-X above: the density-limit warning issued just before the
+  // disruption is issued again after a rewind that precedes it (MagneticModel `warned`, lane ws2b).
+  it('a disrupted shot rewound before, at and after the disruption replays the physics and the report bitwise', () => {
+    const cfg = { ...presetCfg('JET'), n_target: 3e20 } as ReactorConfig;
+    const ref = new Simulation(cfg);
+    const refReport = canonicalString(ref.runAll());
+    expect(ref.model.terminated?.natural).toBe(false);
+    const iDis = ref.history.findIndex((f) => f.t >= ref.events.find((e) => e.kind === 'disruption')!.t);
+    const n = ref.history.length;
+    // before the disruption, the frame of the disruption, the thermal / current quench, the end
+    for (const i of [Math.floor(n / 4), Math.floor(n / 2), iDis - 1, iDis, iDis + 1, n - 2, n - 1]) {
+      const sim = advanceRandomly(new Simulation(cfg), 60 + i);
+      sim.rewindTo(i);
+      expect(sim.model.terminated).toEqual(i === n - 1 ? ref.model.terminated : null);
+      advanceRandomly(sim, 160 + i);
+      expect(canonicalString(sim.report()), `report after a rewind to frame ${i}`).toBe(refReport);
+      expectSameRun(withoutWarnings(normalizeRng(sim)), withoutWarnings(normalizeRng(ref)), `disrupted JET rewound to frame ${i} of ${n}`);
+    }
   }, 60000);
 
   it('stores and restores an optional model checkpoint (SimModel.saveCheckpoint)', () => {

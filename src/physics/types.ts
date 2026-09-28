@@ -238,6 +238,11 @@ export interface SimModel {
   diagnostics(t: number, y: Float64Array): Record<string, number>;
   /** kabul edilen adımdan sonra; y'yi değiştirebilir (ELM vb.) ve olay üretebilir */
   postStep(t: number, dt: number, y: Float64Array): SimEvent[];
+  /**
+   * How the shot ended, or null while it runs. Read-only for consumers; the model sets it, and
+   * Simulation.rewindTo() writes back the value stored in the frame's checkpoint (after
+   * restoreInternal()), so implementations must keep it a writable data property.
+   */
   readonly terminated: TerminationInfo | null;
   /** canlı müdahale */
   applyControl(patch: Record<string, number>): void;
@@ -304,6 +309,12 @@ export interface SimCheckpoint {
   integ: IntegratorSnapshot;
   /** the model's live controls (getControls()) in force at the frame */
   controls: Record<string, number>;
+  /**
+   * SimModel.terminated at the frame (a copy; null while the shot runs). restoreInternal() clears
+   * it, so without it a rewind to the final frame of a finished, disrupted or quenched shot would
+   * bring the shot back to life.
+   */
+  terminated: TerminationInfo | null;
   /** SimModel.saveCheckpoint() at the frame, for models that implement it */
   model?: unknown;
 }

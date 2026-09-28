@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { Simulation } from '../simulation';
+import { canonicalString } from './canonical';
 import { advanceRandomly, applyRandomControls, digestOf, expectSameRun, normalizeRng, presetCfg, referenceRun, rewindAt, runChunked } from './testkit';
 
 describe('1.5D: chunk invariance', () => {
@@ -44,5 +45,30 @@ describe('1.5D: exact rewind', () => {
       advanceRandomly(sim, 4100 + p * 100);
       expectSameRun(normalizeRng(sim), ref, `ITER15 rewound at ${p * 100} %`);
     }
+  }, 180000);
+
+  it('JET 1.5D (1.2 s): a rewind to the final frame keeps the shot ended and the run unchanged', () => {
+    const cfg = presetCfg('JET15', 1.2);
+    const ref = referenceRun(cfg);
+    const sim = new Simulation(cfg);
+    sim.runAll();
+    const term = sim.model.terminated;
+    expect(term?.reason).toBe('Scheduled end');
+    sim.rewindTo(sim.history.length - 1);
+    expect(sim.model.terminated).toEqual(term);
+    expect(sim.done).toBe(true);
+    sim.runAll();
+    expectSameRun(normalizeRng(sim), normalizeRng(ref), 'JET15 rewound to its final frame');
+  }, 180000);
+
+  // Expected to fail until ProfileModel checkpoints its ELM history: restoreInternal() empties
+  // elmTimes, from which report() computes 'ELM frequency (Hz)' (37.11 Hz before the rewind, 0
+  // after it); lane ws3. The kernel part (termination, frames, events) is asserted above.
+  it.fails('JET 1.5D (1.2 s): a rewind to the final frame leaves report() unchanged (needs the model to checkpoint its ELM history)', () => {
+    const cfg = presetCfg('JET15', 1.2);
+    const sim = new Simulation(cfg);
+    const before = canonicalString(sim.runAll());
+    sim.rewindTo(sim.history.length - 1);
+    expect(canonicalString(sim.runAll())).toBe(before);
   }, 180000);
 });

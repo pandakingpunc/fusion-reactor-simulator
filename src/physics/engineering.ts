@@ -113,11 +113,18 @@ export function tritiumBreedingRatio(type: BlanketType, li6: number, coverage: n
 export function economics(p: {
   V_core_m3: number; magnetCostRel: number; P_fus_MW: number; P_aux_MW: number; P_recirc_MW: number;
   thermalEff: number; wallPlugEff: number; availability: number; discountRate: number; lifetime_yr: number;
-  blanketGain: number; capitalOverride_MUSD?: number;
+  /** neutron power (part of P_fus) [MW] */
+  P_neutron_MW: number;
+  /** energy-multiplication factor M_n of the neutron energy entering the blanket (⁶Li(n,α)T, (n,2n); ≈ 1.18 for D-T); 1 if there is no blanket */
+  neutronMult: number;
+  /** blanket coverage fraction (share of the neutrons that enter the blanket) */
+  blanketCoverage: number;
+  capitalOverride_MUSD?: number;
 }) {
   const Ccap = p.capitalOverride_MUSD ?? (3500 * Math.pow(p.V_core_m3 / 1000, 0.6) * p.magnetCostRel + 1500);
-  // Termal güç: nötron enerjisi battaniyede çoğalır (M_n ≈ 1.15–1.3), alfa gücü duvara/divertöre
-  const P_th = p.P_fus_MW * p.blanketGain + p.P_aux_MW;
+  // Thermal power: only the NEUTRON energy entering the blanket is multiplied, by (M_n − 1)·coverage·P_n; the power of the charged
+  // products goes to the wall/divertor as it is
+  const P_th = p.P_fus_MW + (p.neutronMult - 1) * p.blanketCoverage * p.P_neutron_MW + p.P_aux_MW;
   const P_gross = P_th * p.thermalEff;
   const P_heat_wallplug = p.P_aux_MW / p.wallPlugEff;
   const P_recirc = P_heat_wallplug + p.P_recirc_MW; // pompalar, kriyo, vb.

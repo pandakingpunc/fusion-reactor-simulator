@@ -12,19 +12,19 @@
 import { IntegratorOptions } from '../integrator';
 import { RNG } from '../rng';
 import { U } from '../units';
-import { FUEL_CHANNELS, FuelType } from '../reactivity';
+import { FUEL_CHANNELS, FuelType, pairDensity } from '../reactivity';
 import { DiagSpec, HistoryFrame, Method, ScoreEntry, ShotReport, SimEvent, SimModel, TerminationInfo } from '../types';
 
 /** Lawson ateşleme referansı nTτ_E (yakıta göre) [keV s m^-3] */
 export const LAWSON_REF: Record<FuelType, number> = { DT: 3e21, DHe3: 4e22, DD: 1e23, pB11: 1e24 };
 
-/** Hacimsel füzyon güçleri [W/m³] ve reaksiyon hızı yoğunluğu [1/m³/s] (düz profil). */
+/** Volumetric fusion powers [W/m³] and reaction-rate density [1/m³/s] (flat profile; see pairDensity for the a+a channels). */
 export function fusionRates(fuel: FuelType, na: number, nb: number, T_keV: number) {
   let rate = 0, P_total = 0, P_charged = 0, P_neutron = 0, neutrons = 0;
   const T = Math.max(T_keV, 0.01);
   for (const ch of FUEL_CHANNELS[fuel]) {
     const sv = ch.sigmav(T);
-    const R = (ch.sameSpecies ? 0.5 * na * na : na * nb) * sv; // reaksiyon / m³ / s
+    const R = pairDensity(fuel, ch, na, nb) * sv; // reaksiyon / m³ / s
     rate += R;
     P_total += R * U.MeV_to_J(ch.Etot_MeV);
     P_charged += R * U.MeV_to_J(ch.Echarged_MeV);

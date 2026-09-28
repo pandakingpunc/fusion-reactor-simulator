@@ -7,11 +7,13 @@
  * modellenir. Yanma zaman içinde bang-time çevresinde Gauss darbesi olarak verilir.
  *
  * Kalibrasyon: NIF N221204 preset'i G ≈ 1.5 verir (Abu-Shawareb 2024).
+ * Fuel: the energy and the neutron number per reaction, H_B and the ignition threshold come from the selected fuel (icfFuelData);
+ * the D-T values keep the calibration exactly.
  * Durum y: [0] E_fus [J]  [1] E_in [J]  [2] N_n
  * APPROXIMATION: 0D, tek noktalı hotspot; hidrodinamik ayrıntı yok.
  */
 import { ICFConfig } from '../types';
-import { FUEL_SPECIES } from '../reactivity';
+import { FUEL_CHANNELS, FUEL_SPECIES, FuelType, isSingleSpecies, pairDensity } from '../reactivity';
 import { U } from '../units';
 import { C } from '../constants';
 import { DiagSpec, HistoryFrame, ShotReport, SimEvent } from '../types';
@@ -19,9 +21,77 @@ import { PulsedBase } from './common';
 
 const IDX = { Efus: 0, Ein: 1, Nn: 2 } as const;
 const NSTATE = 3;
-const H_B = 7.0; // g/cm², DT burn parametresi (Atzeni)
+const H_B_DT = 7.0; // g/cm², D-T burn parameter (Atzeni & Meyer-ter-Vehn 2004; calibration point)
 const ICF_CAL = 0.07; // geometrik ρR → gerçekçi ρR kalibrasyonu (NIF'e ayarlı)
-const E_DT_MeV = 17.589;
+/** Default driver (laser) wall-plug efficiency and thermal conversion efficiency (used when ICFConfig gives none) */
+const DRIVER_EFF_DEFAULT = 0.1;
+const THERMAL_EFF_DEFAULT = 0.4;
+
+export interface ICFFuelData {
+  /** mean fuel-ion mass [amu] and mean charge (x_a, x_b = FUEL_SPECIES.fracA) */
+  m_f_amu: number;
+  Zbar: number;
+  /** burn-up parametresi H_B [g/cm²]: Φ = ρR/(ρR + H_B) */
+  H_B: number;
+  /** burn temperature at which H_B is minimal (the optimum) [keV] */
+  T_burn_keV: number;
+  /** mean energy per reaction [MeV] and neutrons per reaction at that temperature (with the branching ratios) */
+  E_rx_MeV: number;
+  neutronsPerReaction: number;
+  /** ignition-parameter factor: self-heating figure of merit max_T ⟨σv E_ch⟩/((1+Z̄)² T²) relative to D-T (D-T = 1) */
+  ignitionScale: number;
+}
+
+/**
+ * Fuel-specific ICF burn data.
+ * Burn-up (Atzeni & Meyer-ter-Vehn, "The Physics of Inertial Fusion", OUP 2004, burn-fraction model):
+ * for equimolar D-T Φ = ρR/(ρR + H_B), H_B = 8 m_f c_s/⟨σv⟩. For a general mixture the burn rate of the fuel ions
+ * is dn/dt = −n² K, K = Σ_ch 2 x_ch ⟨σv⟩_ch (x_ch = x_a x_b or x_a²/2; each reaction consumes two
+ * ions) and the same derivation gives H(T) = 4 m_f c_s/K (D-T: K = ⟨σv⟩/2 → 8 m_f c_s/⟨σv⟩);
+ * c_s = √((1+Z̄)T/m_f) is the isothermal sound speed. The minimum of H(T) is ≈ 7.3 g/cm² for D-T (T ≈ 39 keV);
+ * the calibrated D-T value of the model, 7 g/cm², is kept and the other fuels are scaled by the ratio:
+ *   H_B,fuel = 7 · min_T H_fuel / min_T H_DT.
+ * The energy and neutron number per reaction use the branching ratios at this optimal burn temperature.
+ * The ignition threshold (Lawson-type figure of merit at constant pressure, self-heating ∝ p² ⟨σv⟩E_ch/((1+Z̄)²T²)) is scaled
+ * relative to D-T. APPROXIMATION: Maxwellian ⟨σv⟩ (Bosch-Hale / p-¹¹B table), T_e = T_i.
+ */
+export function icfFuelData(fuel: FuelType): ICFFuelData {
+  const cached = FUEL_DATA_CACHE.get(fuel);
+  if (cached) return cached;
+  const raw = (f: FuelType) => {
+    const fs = FUEL_SPECIES[f];
+    const xa = isSingleSpecies(f) ? 1 : fs.fracA, xb = 1 - xa;
+    const m_f_amu = xa * fs.a.A + xb * fs.b.A, Zbar = xa * fs.a.Z + xb * fs.b.Z;
+    const m_f = m_f_amu * C.amu;
+    let Hmin = Infinity, Tbest = 0, Smax = 0;
+    for (let i = 0; i <= 600; i++) {
+      const T = Math.exp((Math.log(1000) * i) / 600); // 1 … 1000 keV
+      let K = 0, Pch = 0;
+      for (const ch of FUEL_CHANNELS[f]) {
+        const r = pairDensity(f, ch, xa, xb) * ch.sigmav(T);
+        K += 2 * r; Pch += r * ch.Echarged_MeV;
+      }
+      const cs = Math.sqrt(((1 + Zbar) * T * C.keV_J) / m_f);
+      const H = K > 0 ? (4 * m_f * cs) / K / 10 : Infinity; // kg/m² → g/cm²
+      if (H < Hmin) { Hmin = H; Tbest = T; }
+      Smax = Math.max(Smax, Pch / ((1 + Zbar) * (1 + Zbar) * T * T));
+    }
+    let R = 0, E = 0, Nn = 0;
+    for (const ch of FUEL_CHANNELS[f]) {
+      const r = pairDensity(f, ch, xa, xb) * ch.sigmav(Tbest);
+      R += r; E += r * ch.Etot_MeV; if (ch.Eneutron_MeV > 0) Nn += r;
+    }
+    return { m_f_amu, Zbar, Hmin, Tbest, Smax, E_rx: E / R, nPerRx: Nn / R };
+  };
+  const dt = raw('DT'), me = fuel === 'DT' ? dt : raw(fuel);
+  const d: ICFFuelData = {
+    m_f_amu: me.m_f_amu, Zbar: me.Zbar, H_B: H_B_DT * (me.Hmin / dt.Hmin), T_burn_keV: me.Tbest,
+    E_rx_MeV: me.E_rx, neutronsPerReaction: me.nPerRx, ignitionScale: me.Smax / dt.Smax,
+  };
+  FUEL_DATA_CACHE.set(fuel, d);
+  return d;
+}
+const FUEL_DATA_CACHE = new Map<FuelType, ICFFuelData>();
 
 const ICF_DIAGS: DiagSpec[] = [
   { key: 'P_fus', label: 'P_fusion (instantaneous)', unit: 'MW', group: 'Power' },
@@ -39,9 +109,11 @@ export class ICFModel extends PulsedBase {
   readonly diagSpecs = ICF_DIAGS;
 
   private cfg: ICFConfig;
+  private fuelData: ICFFuelData;
   private E_laser_J: number;
   private E_fus_total: number; // toplam füzyon enerjisi [J]
   private N_fus_total: number; // toplam füzyon reaksiyonu
+  private N_n_total: number; // total number of neutrons
   private rhoR_eff: number; // g/cm²
   private chi_ig: number; // ateşleme parametresi
   private T_hs: number; // hotspot sıcaklığı [keV]
@@ -60,11 +132,11 @@ export class ICFModel extends PulsedBase {
     this.bang = cfg.pulse_ns;
     this.E_laser_J = cfg.E_laser_MJ * 1e6;
 
-    const fs = FUEL_SPECIES[cfg.fuel];
+    const fd = icfFuelData(cfg.fuel);
+    this.fuelData = fd;
     const m_fuel = cfg.fuelMass_ug * 1e-9; // kg
-    const m_pair = (fs.a.A + fs.b.A) * C.amu;
-    const N_pairs = m_fuel / m_pair;
-    const m_i = 0.5 * (fs.a.A + fs.b.A) * C.amu; // ort. iyon kütlesi
+    const m_i = fd.m_f_amu * C.amu; // mean fuel-ion mass
+    const N_ions = m_fuel / m_i;
 
     // durgunluk geometrisi
     const R0 = cfg.capsuleRadius_um * 1e-6;
@@ -73,17 +145,18 @@ export class ICFModel extends PulsedBase {
     const rhoR_geo = rhoR_kg / 10; // g/cm²
     this.rhoR_eff = ICF_CAL * rhoR_geo * Math.sqrt(2.8 / Math.max(cfg.adiabat, 0.5));
 
-    // ateşleme cliff: hız, ρR, asimetri, pürüzlülük
+    // ignition cliff: rate, ρR, asymmetry, roughness (calibrated to D-T), scaled by the self-heating figure of merit of the fuel
     const v = cfg.implosionVelocity_kms;
     const f_asym = Math.exp(-Math.pow(cfg.asymmetry_rms / 6, 2));
     const f_rough = Math.exp(-Math.pow(cfg.surfaceRoughness_nm / 200, 2));
-    this.chi_ig = (this.rhoR_eff / 0.2) * Math.pow(v / 360, 3) * f_asym * f_rough;
+    this.chi_ig = fd.ignitionScale * (this.rhoR_eff / 0.2) * Math.pow(v / 360, 3) * f_asym * f_rough;
     this.ignited = this.chi_ig >= 1;
     const burnMult = this.ignited ? 1 : Math.pow(Math.max(this.chi_ig, 0), 3);
 
-    const Phi = this.rhoR_eff / (this.rhoR_eff + H_B); // burn-up kesri
-    this.N_fus_total = Phi * N_pairs * burnMult;
-    this.E_fus_total = this.N_fus_total * U.MeV_to_J(E_DT_MeV);
+    const Phi = this.rhoR_eff / (this.rhoR_eff + fd.H_B); // burn-up fraction (fuel ions)
+    this.N_fus_total = Phi * (N_ions / 2) * burnMult; // two ions per reaction
+    this.E_fus_total = this.N_fus_total * U.MeV_to_J(fd.E_rx_MeV);
+    this.N_n_total = this.N_fus_total * fd.neutronsPerReaction;
 
     // hotspot sıcaklığı: kinematik + ateşleme (alfa) yükseltmesi
     const T_kin = (m_i * Math.pow(v * 1e3, 2)) / (3 * C.keV_J); // keV
@@ -103,7 +176,7 @@ export class ICFModel extends PulsedBase {
     d.fill(0);
     const g = this.gauss(t); // 1/ns
     d[IDX.Efus] = this.E_fus_total * g; // J/ns
-    d[IDX.Nn] = this.N_fus_total * g; // 1/ns
+    d[IDX.Nn] = this.N_n_total * g; // 1/ns
     // lazer enerjisi darbe boyunca (t < pulse_ns)
     d[IDX.Ein] = t < this.cfg.pulse_ns ? this.E_laser_J / this.cfg.pulse_ns : 0;
   }
@@ -141,13 +214,16 @@ export class ICFModel extends PulsedBase {
 
   report(hist: HistoryFrame[], events: SimEvent[]): ShotReport {
     const G = this.E_fus_total / Math.max(this.E_laser_J, 1);
+    // Q_eng = P_el,gross / P_recirculating = (η_th E_fus) / (E_laser / η_driver) = G η_driver η_th. The hohlraum /
+    // absorption efficiency is already inside G (G = E_fus / E_laser): it is not multiplied in a second time.
+    const etaDriver = this.cfg.driverEff ?? DRIVER_EFF_DEFAULT, etaTh = this.cfg.thermalEff ?? THERMAL_EFF_DEFAULT;
     const warnings: string[] = [];
     if (!this.ignited) warnings.push(`Below the ignition threshold (χ_ig = ${this.chi_ig.toFixed(2)} < 1): inadequate velocity, ρR, asymmetry, or roughness — low burn efficiency.`);
     if (this.cfg.asymmetry_rms > 3) warnings.push(`Low-mode asymmetry of ${this.cfg.asymmetry_rms}% is high — the hotspot degrades and yield drops.`);
     return this.buildReport(hist, events, {
       fuel: this.cfg.fuel, wallArea: 314, // ~5 m yarıçaplı hedef odası
-      Q_eng: G * (this.cfg.method === 'icf_indirect' ? this.cfg.hohlraumEff : this.cfg.absorption) * 0.1,
-      Q_eng_note: 'For ICF, Q_eng ≈ G × coupling × wall-plug efficiency (including ~10% laser efficiency); net energy requires G ≳ 100.',
+      Q_eng: G * etaDriver * etaTh,
+      Q_eng_note: `For ICF, Q_eng = G × η_driver × η_thermal (laser wall-plug ${(etaDriver * 100).toFixed(0)}%, thermal conversion ${(etaTh * 100).toFixed(0)}%); the drive coupling is already inside G. Net energy requires G ≳ ${Math.ceil(1 / (etaDriver * etaTh))}.`,
       scoreBreakdown: [
         { label: 'Gain G', value: G, ref: 1, unit: '', note: 'G>1 = scientific breakeven (NIF 2022)' },
         { label: 'Hotspot T', value: this.T_hs, ref: 5, unit: 'keV', note: 'Ignition ~ 4-5 keV' },
@@ -163,6 +239,7 @@ export class ICFModel extends PulsedBase {
         'Gain G': +G.toFixed(2), 'ρR (g/cm²)': +this.rhoR_eff.toFixed(3), 'Ignition χ_ig': +this.chi_ig.toFixed(2),
         'Hotspot T (keV)': +this.T_hs.toFixed(1), 'Coupling': this.cfg.method === 'icf_indirect' ? `hohlraum ${(this.cfg.hohlraumEff * 100).toFixed(0)}%` : `direct ${(this.cfg.absorption * 100).toFixed(0)}%`,
         'Laser (MJ)': this.cfg.E_laser_MJ, 'Ignited': this.ignited,
+        'Burn-up parameter H_B (g/cm²)': +this.fuelData.H_B.toFixed(2), 'Energy per reaction (MeV)': +this.fuelData.E_rx_MeV.toFixed(3),
       },
       extras: {
         'Convergence ratio (CR)': this.cfg.convergenceRatio, 'Adiabat α': this.cfg.adiabat,

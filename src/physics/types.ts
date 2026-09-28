@@ -119,7 +119,13 @@ export interface MagneticConfig {
   };
   H98: number; H89: number;
   scaling: 'IPB98y2' | 'ST_Valovic';
-  stellarator: { iota23: number; f_ren: number };
+  stellarator: {
+    iota23: number;
+    /** @deprecated alias: if H_ISS04 is not given, τ_E = f_ren · H98 · τ_ISS04 (the old behaviour) */
+    f_ren: number;
+    /** confinement multiplier relative to ISS04: τ_E = H_ISS04 · τ_ISS04 (when given, f_ren and H98 are not used) */
+    H_ISS04?: number;
+  };
   limits: { betaN_limit: number; greenwald_limit: number; q95_limit: number; W_conc_limit: number };
   transport: { tau_p_over_tau_E: number; tau_He_over_tau_E: number; alpha_n: number; alpha_T: number };
   events: { elms: boolean; sawteeth: boolean; ntm: boolean };
@@ -152,6 +158,10 @@ export interface ICFConfig {
   surfaceRoughness_nm: number; // RT tohumu
   fuel: FuelType;
   seed: number;
+  /** driver (laser) wall-plug efficiency, for Q_eng (default 0.1) */
+  driverEff?: number;
+  /** thermal → electric conversion efficiency, for Q_eng (default 0.4) */
+  thermalEff?: number;
 }
 
 export interface MTFConfig {
@@ -187,6 +197,8 @@ export interface MirrorConfig {
   L_m: number; a_m: number; B_center_T: number; mirrorRatio: number;
   n0: number; T_keV: number; P_aux_MW: number; tandem: boolean;
   t_end: number; seed: number; fuel: FuelType;
+  /** tandem end-plug potential eφ_c / T_i (default 1; tandem only) */
+  plugPotential?: number;
 }
 export interface MuonConfig {
   method: 'muon';

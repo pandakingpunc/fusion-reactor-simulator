@@ -49,24 +49,64 @@ export function ionHeatingFraction(E0_keV: number, Ec_keV: number): number {
 }
 
 /**
- * Spitzer yavaşlama süresi (elektronlar üzerinde) — NRL Formulary:
+ * Spitzer slowing-down time (on electrons) — NRL Formulary:
  *  τ_se = 6.27e8 · A_f · T_e[eV]^1.5 / (Z_f² · n_e[cm^-3] · lnΛ)   [s]
- * Termalleşme süresi: τ_th = (τ_se/3) · ln(1 + (E_0/E_c)^1.5)
+ * Energy loss of a fast ion (Stix, Plasma Phys. 14 (1972) 367):
+ *  dE/dt = −(2E/τ_se) · [1 + (E_c/E)^{3/2}]
+ */
+export function spitzerSlowingDownTime(Te_keV: number, ne: number, A_fast: number, Z_fast: number): number {
+  const lnL = coulombLog(ne, Te_keV);
+  return (6.27e8 * A_fast * Math.pow(Math.max(Te_keV, 0.01) * 1e3, 1.5)) / (Z_fast * Z_fast * ne * 1e-6 * lnL);
+}
+
+/**
+ * Thermalisation time (E_0 → 0): τ_th = (τ_se/3) · ln(1 + (E_0/E_c)^1.5).
+ * The fast-ion DENSITY of a steady source is n_f = S · τ_th (for beam-target fusion).
  */
 export function slowingDownTime(Te_keV: number, ne: number, A_fast: number, Z_fast: number, E0_keV: number, Ec_keV: number): number {
-  const lnL = coulombLog(ne, Te_keV);
-  const tau_se = (6.27e8 * A_fast * Math.pow(Math.max(Te_keV, 0.01) * 1e3, 1.5)) / (Z_fast * Z_fast * ne * 1e-6 * lnL);
+  const tau_se = spitzerSlowingDownTime(Te_keV, ne, A_fast, Z_fast);
   return (tau_se / 3) * Math.log(1 + Math.pow(E0_keV / Math.max(Ec_keV, 1e-6), 1.5));
 }
 
-export interface HeatingConfig {
-  P_NBI: number; // W
-  E_NBI_keV: number; // demet enerjisi (D için ~100 keV JET, 1 MeV ITER)
-  P_ICRH: number; // W
-  P_ECRH: number; // W
-  /** ICRH iyon payı (azınlık ısıtma ~0.7 iyon; APPROXIMATION) */
-  f_ICRH_ion: number;
-  /** NBI kırılma (shine-through) kaybı, düşük yoğunlukta artar */
+/**
+ * ENERGY content of the steady slowing-down distribution / source power [s]:
+ *  τ_W = W_f / P_f = (1/E_0) ∫₀^{E_0} E dE / |dE/dt| = (τ_se/2) · (1 − G(E_0/E_c))
+ * (the direct integral of the Stix loss law above; G = ionHeatingFraction). The 0D fast-ion
+ * pool dW_f/dt = P_f − W_f/τ_W gives, in steady state, the correct stored energy (fast-particle pressure)
+ * and the correct heating power (P_f). APPROXIMATION: velocity-space diffusion and the thermal tail are neglected,
+ * no fast-ion loss.
+ */
+export function fastIonEnergyTime(Te_keV: number, ne: number, A_fast: number, Z_fast: number, E0_keV: number, Ec_keV: number): number {
+  const tau_se = spitzerSlowingDownTime(Te_keV, ne, A_fast, Z_fast);
+  return 0.5 * tau_se * (1 - ionHeatingFraction(E0_keV, Ec_keV));
+}
+
+/** One fast-ion species: birth energy and source power (power weight) */
+export interface FastSpecies {
+  A: number;
+  Z: number;
+  E0_keV: number;
+  /** source power [W] (used only as a weight) */
+  P: number;
+}
+
+/**
+ * Power-weighted Stix quantities of fast species that feed the same pool (e.g. the α and p of D-³He):
+ *  G = Σ P_k G_k / Σ P_k ,  τ_W = Σ P_k τ_W,k / Σ P_k  (in steady state W = Σ P_k τ_W,k).
+ * E_c,k = criticalEnergy(T_e, A_k, ionSum). Equal weights if all powers are zero.
+ */
+export function fastPoolMix(species: readonly FastSpecies[], Te_keV: number, ne: number, ionSum: number): { G: number; tauW: number } {
+  let wSum = 0, G = 0, tauW = 0;
+  const equal = species.every((s) => !(s.P > 0));
+  for (const s of species) {
+    const w = equal ? 1 : Math.max(s.P, 0);
+    if (w === 0) continue;
+    const Ec = criticalEnergy(Te_keV, s.A, ionSum);
+    G += w * ionHeatingFraction(s.E0_keV, Ec);
+    tauW += w * fastIonEnergyTime(Te_keV, ne, s.A, s.Z, s.E0_keV, Ec);
+    wSum += w;
+  }
+  return wSum > 0 ? { G: G / wSum, tauW: tauW / wSum } : { G: 0, tauW: 0 };
 }
 
 /** NBI shine-through — APPROXIMATION: exp(−n_e a σ_stop) ; σ_stop ~ 1e-20 m² /(E/100keV)^0.5 */

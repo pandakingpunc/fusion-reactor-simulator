@@ -1,11 +1,13 @@
 /**
- * MANYETİK AYNA — 0D güç dengesi (tek sıcaklık), kayıp konisi hapsetmesi.
+ * MAGNETIC MIRROR — 0D power balance (single temperature), loss-cone confinement.
  *
- * Durum y: [0] W [J]  [1] E_fus [J]  [2] E_in [J]  [3] N_n
- * Hapsetme: Pastukhov-benzeri τ_E ≈ κ · R_m · log₁₀(R_m) · τ_ii (tandem: ambipolar
- * potansiyel bariyeri ile artırılmış). Basit ayna için τ ~ √R_m · τ_ii.
- * Kaynak: Pastukhov, Nucl. Fusion 14 (1974) 3; NRL Formulary (çarpışma zamanları).
- * APPROXIMATION: 0D, sabit yoğunluk, izotropik dağılım.
+ * State y: [0] W [J]  [1] E_fus [J]  [2] E_in [J]  [3] N_n
+ * Confinement: simple mirror τ_E ≈ κ · R_m · L / v_th (end loss, see tauE). Tandem: the ambipolar potential
+ * barrier eφ_c of the end plugs confines the ions additionally; with the asymptotic form of the
+ * Pastukhov solution τ_tandem = τ_simple · (1 + F(x)), F(x) = x e^x / (1 + 1/(2x)), x = eφ_c/T_i
+ * (V.P. Pastukhov, Nucl. Fusion 14 (1974) 3; R.H. Cohen et al., Nucl. Fusion 18 (1978) 1229).
+ * x = MirrorConfig.plugPotential (default 1). For x → 0 the tandem reduces to the simple mirror.
+ * APPROXIMATION: 0D, constant density, isotropic distribution; the plug power and the plug plasma are not modelled.
  */
 import { MirrorConfig } from '../types';
 import { FUEL_SPECIES } from '../reactivity';
@@ -17,6 +19,14 @@ import { PulsedBase, fusionRates } from './common';
 
 const IDX = { W: 0, Efus: 1, Ein: 2, Nn: 3 } as const;
 const NSTATE = 4;
+/** Default plug potential eφ_c/T_i (when MirrorConfig.plugPotential is not given) */
+const PLUG_POTENTIAL_DEFAULT = 1;
+
+/** Pastukhov potential-well factor F(x) = x e^x / (1 + 1/(2x)), x = eφ/T (x ≤ 0 → 0) */
+export function pastukhovFactor(x: number): number {
+  if (!(x > 0)) return 0;
+  return (x * Math.exp(x)) / (1 + 1 / (2 * x));
+}
 
 const MIRROR_DIAGS: DiagSpec[] = [
   { key: 'Ti', label: 'T (ion≈electron)', unit: 'keV', group: 'Temperature' },
@@ -43,6 +53,8 @@ export class MirrorModel extends PulsedBase {
   private na: number;
   private nb: number;
   private ne: number;
+  /** ion density n_a + n_b (differs from n_e for D-³He and p-¹¹B) */
+  private ni: number;
   private Zeff: number;
   private Aavg: number;
   private lastTauE = 1e-3;
@@ -58,13 +70,15 @@ export class MirrorModel extends PulsedBase {
     this.na = cfg.n0 * fs.fracA;
     this.nb = cfg.n0 * (1 - fs.fracA);
     this.ne = this.na * fs.a.Z + this.nb * fs.b.Z;
+    this.ni = this.na + this.nb;
     this.Zeff = (this.na * fs.a.Z ** 2 + this.nb * fs.b.Z ** 2) / Math.max(this.ne, 1);
     this.Aavg = fs.fracA * fs.a.A + (1 - fs.fracA) * fs.b.A;
     this.ctrl = { P_aux_MW: cfg.P_aux_MW, kappa_conf: 50 };
   }
 
   private T(y: Float64Array): number {
-    return Math.max(y[IDX.W] / (3 * this.ne * this.V * C.keV_J), 0.01);
+    // W = 3/2 (n_e + n_i) T V (T_e = T_i)
+    return Math.max(y[IDX.W] / (1.5 * (this.ne + this.ni) * this.V * C.keV_J), 0.01);
   }
   /**
    * Uç (end-loss) hapsetme süresi [s]. Kayıp konisindeki parçacıklar bir geçiş
@@ -77,13 +91,14 @@ export class MirrorModel extends PulsedBase {
     const m_i = this.Aavg * C.amu;
     const v_th = Math.sqrt((2 * Math.max(T_keV, 0.01) * C.keV_J) / m_i);
     const R = Math.max(this.cfg.mirrorRatio, 1.5);
-    const conf = this.cfg.tandem ? R * Math.log10(R) : R;
-    return Math.max((this.ctrl.kappa_conf * conf * this.cfg.L_m) / v_th, 1e-7);
+    const tauSimple = (this.ctrl.kappa_conf * R * this.cfg.L_m) / v_th;
+    const plug = this.cfg.tandem ? 1 + pastukhovFactor(this.cfg.plugPotential ?? PLUG_POTENTIAL_DEFAULT) : 1;
+    return Math.max(tauSimple * plug, 1e-7);
   }
 
   initialState(): Float64Array {
     const y = new Float64Array(NSTATE);
-    y[IDX.W] = 3 * this.ne * U.keV_to_J(this.cfg.T_keV) * this.V;
+    y[IDX.W] = 1.5 * (this.ne + this.ni) * U.keV_to_J(this.cfg.T_keV) * this.V;
     return y;
   }
 

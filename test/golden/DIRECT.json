@@ -109,7 +109,7 @@
   "scalars": {
     "E_fusion_MJ": 5.882236346866163,
     "E_input_MJ": 1.8996551302083327,
-    "Q_eng": 0.18575483200629994,
+    "Q_eng": 0.12383655467086663,
     "Q_sci_avg": 3.0964759094041803,
     "Q_sci_max": 3.0964759094041803,
     "Temax_keV": 4.311297169038051,
@@ -118,6 +118,8 @@
     "Tmax_keV": 4.311297169038051,
     "burnTime_s": 3.041999999999977e-9,
     "duration": 12.99999999999991,
+    "engineering.Burn-up parameter H_B (g/cm²)": 7,
+    "engineering.Energy per reaction (MeV)": 17.589,
     "engineering.Gain G": 3.1,
     "engineering.Hotspot T (keV)": 4.3,
     "engineering.Ignited": 1,

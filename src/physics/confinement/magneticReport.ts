@@ -12,6 +12,11 @@ import { HistoryFrame, MagneticConfig, Method, ShotReport, SimEvent, Termination
 
 /** Lawson ateşleme referansı: D-T için nTτ_E ≈ 3e21 keV s m^-3 (Wesson; T≈15 keV, profil düz) */
 export const LAWSON_DT = 3e21;
+/**
+ * Energy-multiplication factor of the blanket for neutron energy (typically 1.15–1.3 for 14 MeV neutrons; EU DEMO
+ * blanket designs ~1.2). APPROXIMATION: the same value for the 2.45 MeV neutrons of D-D.
+ */
+export const BLANKET_NEUTRON_MULT = 1.18;
 
 export interface MagneticReportContext {
   cfg: MagneticConfig;
@@ -32,14 +37,23 @@ export function buildMagneticReport(ctx: MagneticReportContext, hist: HistoryFra
   const last = hist[hist.length - 1];
   const d = (k: string) => hist.map((h) => h.d[k] ?? 0);
   const max = (arr: number[]) => arr.reduce((m, v) => (v > m ? v : m), -Infinity);
-  const Ti0 = d('Ti0'), Ti = d('Ti'), Te = d('Te'), Q = d('Q'), Pf = d('P_fus');
-  const Tmax = max(Ti0);
-  // süreler
+  const Q = d('Q'), Pf = d('P_fus');
+  // The start-up transient (density and heating ramp: full power at low density → T overshoot) does not enter T_max or
+  // the design score: the window is t ≥ max(n_rampTime, heating.rampTime), at most the second half of the shot.
+  const tStartup = Math.min(Math.max(c.n_rampTime, c.heating.rampTime), 0.5 * last.t);
+  const post = hist.filter((h) => h.t >= tStartup);
+  const dp = (k: string) => post.map((h) => h.d[k] ?? 0);
+  const Tmax = max(dp('Ti0'));
+  // durations. Ignition time: if the model reports its own ignition state ('ignited', with hysteresis; 0D) that is used —
+  // the same criterion as the event log; if it does not (1.5D) the frame criterion P_α ≥ P_rad + P_cond applies.
+  const hasIgnFlag = hist.some((h) => h.d.ignited !== undefined);
   let burnTime = 0, ignTime = 0;
   for (let i = 1; i < hist.length; i++) {
     const dt = hist[i].t - hist[i - 1].t;
     if (hist[i].d.Q >= 1) burnTime += dt;
-    if (hist[i].d.P_alpha >= hist[i].d.P_rad + hist[i].d.P_cond && hist[i].d.P_fus > 1 && hist[i].d.Q >= 5) ignTime += dt;
+    const ign = hasIgnFlag ? (hist[i].d.ignited ?? 0) > 0
+      : hist[i].d.P_alpha >= hist[i].d.P_rad + hist[i].d.P_cond && hist[i].d.P_fus > 1 && hist[i].d.Q >= 5;
+    if (ign) ignTime += dt;
   }
   const term = ctx.terminated ?? { t: last.t, natural: true, reason: 'In progress', diagnosis: '', fix: '' };
   const stableTime = ctx.tDisrupt > 0 && !term.natural ? ctx.tDisrupt : last.t;
@@ -58,7 +72,9 @@ export function buildMagneticReport(ctx: MagneticReportContext, hist: HistoryFra
   const eco = economics({
     V_core_m3: ctx.V, magnetCostRel: MAGNET_TECH[c.magnet.tech].cost_rel, P_fus_MW: Pfus_avg, P_aux_MW: Paux_avg, P_recirc_MW: P_recirc_other,
     thermalEff: c.economics.thermalEff, wallPlugEff: c.economics.wallPlugEff, availability: c.economics.availability,
-    discountRate: c.economics.discountRate, lifetime_yr: c.economics.lifetime_yr, blanketGain: c.fuel === 'DT' ? 1.18 : 1.0,
+    discountRate: c.economics.discountRate, lifetime_yr: c.economics.lifetime_yr,
+    // energy multiplication only on the neutron share, and only if a blanket exists
+    P_neutron_MW: Pn_avg, neutronMult: c.blanket.type !== 'none' ? BLANKET_NEUTRON_MULT : 1, blanketCoverage: c.blanket.type !== 'none' ? c.blanket.coverage : 0,
     capitalOverride_MUSD: c.economics.capital_MUSD_override,
   });
   const warnings: string[] = [];
@@ -70,11 +86,11 @@ export function buildMagneticReport(ctx: MagneticReportContext, hist: HistoryFra
   if (ctx.extraWarnings) warnings.push(...ctx.extraWarnings);
   // skor
   const scoreBreakdown = [
-    { label: 'Q_scientific (max)', value: max(Q), ref: 10, unit: '', note: 'ITER target Q=10' },
+    { label: 'Q_scientific (max)', value: max(dp('Q')), ref: 10, unit: '', note: 'ITER target Q=10 (after start-up)' },
     { label: 'Fusion energy', value: Efus, ref: 59, unit: 'MJ', note: 'JET DTE2 record 59 MJ (2021)' },
-    { label: 'Triple product', value: triple, ref: lawsonRef, unit: 'keV s m⁻³', note: 'Ignition ≈ 3e21' },
+    { label: 'Triple product', value: max(dp('triple')), ref: lawsonRef, unit: 'keV s m⁻³', note: 'Ignition ≈ 3e21 (after start-up)' },
     { label: 'Stable time', value: stableTime, ref: c.t_end, unit: 's', note: 'Scheduled duration' },
-    { label: 'Temperature', value: Tmax, ref: 20, unit: 'keV', note: 'ITER axis ~20 keV' },
+    { label: 'Temperature', value: Tmax, ref: 20, unit: 'keV', note: 'ITER axis ~20 keV (after start-up)' },
   ];
   let score = 0;
   for (const s of scoreBreakdown) score += 20 * Math.min(1, s.value / s.ref);
@@ -88,9 +104,9 @@ export function buildMagneticReport(ctx: MagneticReportContext, hist: HistoryFra
   ];
   return {
     method: ctx.method, duration: last.t, timeUnit: 's',
-    Tmax_keV: Tmax, Tmax_MC: U.keV_to_MC(Tmax), Timax_keV: max(Ti), Temax_keV: max(Te),
+    Tmax_keV: Tmax, Tmax_MC: U.keV_to_MC(Tmax), Timax_keV: max(dp('Ti')), Temax_keV: max(dp('Te')),
     stableTime_s: stableTime, burnTime_s: burnTime, ignitionTime_s: ignTime,
-    stableDefinition: 'Stable time = duration for which the plasma is sustained without disruption/extinction. Burn time = duration with Q ≥ 1 (P_fusion ≥ P_auxiliary+P_ohmic). Ignition time = duration with P_alpha ≥ P_rad + P_conduction (self-sustaining without external heating).',
+    stableDefinition: 'Stable time = duration for which the plasma is sustained without disruption/extinction. Burn time = duration with Q ≥ 1 (P_fusion ≥ P_auxiliary+P_ohmic). Ignition time = duration with P_alpha ≥ P_rad + W/τ_E (conduction plus ELM losses), where P_alpha is the heating by charged fusion products only (beam ions excluded): self-sustaining without external heating.',
     Q_sci_max: max(Q), Q_sci_avg: Qavg, Q_eng: eco.Q_eng,
     Q_eng_note: `Q_eng = P_electric,gross / P_recirculating = (${eco.P_gross_MW.toFixed(0)} MW) / (${eco.P_recirc_MW.toFixed(0)} MW). Scientific Q is measured at the plasma boundary (P_fusion/P_heating,absorbed), Q_eng at the wall plug: heating wall-plug efficiency ${(c.economics.wallPlugEff * 100).toFixed(0)}%, thermal efficiency ${(c.economics.thermalEff * 100).toFixed(0)}%.`,
     E_fusion_MJ: Efus, E_input_MJ: Ein,

@@ -42,6 +42,8 @@ export class FRCModel extends PulsedBase {
   private na: number;
   private nb: number;
   private ne: number;
+  /** ion density n_a + n_b (differs from n_e for D-³He and p-¹¹B) */
+  private ni: number;
   private Zeff: number;
   private lastTauE = 1e-3;
 
@@ -56,12 +58,14 @@ export class FRCModel extends PulsedBase {
     this.na = cfg.n0 * fs.fracA;
     this.nb = cfg.n0 * (1 - fs.fracA);
     this.ne = this.na * fs.a.Z + this.nb * fs.b.Z;
+    this.ni = this.na + this.nb;
     this.Zeff = (this.na * fs.a.Z ** 2 + this.nb * fs.b.Z ** 2) / Math.max(this.ne, 1);
     this.ctrl = { P_NBI_MW: cfg.P_NBI_MW, kappa_conf: 10 };
   }
 
   private T(y: Float64Array): number {
-    return Math.max(y[IDX.W] / (3 * this.ne * this.V * C.keV_J), 0.01);
+    // W = 3/2 (n_e + n_i) T V (T_e = T_i)
+    return Math.max(y[IDX.W] / (1.5 * (this.ne + this.ni) * this.V * C.keV_J), 0.01);
   }
   private tauE(T_keV: number): number {
     // Bohm: χ = T[eV]/(16 B) [m²/s]; τ_E = κ · r_s²/(6χ)
@@ -71,7 +75,7 @@ export class FRCModel extends PulsedBase {
 
   initialState(): Float64Array {
     const y = new Float64Array(NSTATE);
-    y[IDX.W] = 3 * this.ne * U.keV_to_J(this.cfg.T0_keV) * this.V;
+    y[IDX.W] = 1.5 * (this.ne + this.ni) * U.keV_to_J(this.cfg.T0_keV) * this.V;
     return y;
   }
 

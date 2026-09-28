@@ -159,18 +159,33 @@ describe('1.5D profile model (integration)', () => {
     expect(sim.events.some((e) => e.kind === 'LH')).toBe(true);
   }, 60000);
 
-  it('rewind restores the state and continues deterministically', () => {
+  it('rewind across Grad–Shafranov updates reproduces the run to 1e-10', () => {
     const sim = new Simulation(short(JET, 1.0));
-    sim.advance(0.4);
-    const idx = Math.floor(sim.history.length / 2);
-    const tRef = sim.history[idx].t;
-    sim.advance(0.3);
-    const ref = sim.history.find((h) => h.t > tRef + 0.1)!;
+    sim.advance(1.0);
+    const eqT = sim.history.filter((h) => h.eq && h.t > 0).map((h) => h.t);
+    expect(eqT.length).toBeGreaterThanOrEqual(3);
+    // a regular frame between the first and the second update: the replay crosses later updates
+    // and must also start from the equilibrium that was current then
+    let idx = -1;
+    sim.history.forEach((h, i) => { if (h.prof && h.t > eqT[0] && h.t < eqT[1]) idx = i; });
+    expect(idx).toBeGreaterThan(0);
+    const t0 = sim.history[idx].t;
+    const ref = sim.history.slice(idx + 1);
+    const evKey = (e: { t: number; kind: string; msg: string }) => `${e.t} ${e.kind} ${e.msg}`;
+    const refEvents = sim.events.filter((e) => e.t > t0).map(evKey);
     sim.rewindTo(idx);
-    sim.advance(0.3);
-    const again = sim.history.find((h) => Math.abs(h.t - ref.t) < 1e-9);
-    expect(again).toBeDefined();
-    expect(again!.d.W / ref.d.W).toBeCloseTo(1, 2);
+    sim.advance(1.0);
+    const again = sim.history.slice(idx + 1);
+    expect(again.length).toBe(ref.length);
+    const rel = (a: number, b: number) => Math.abs(a - b) / Math.max(Math.abs(b), 1e-300);
+    let worst = 0;
+    for (let k = 0; k < ref.length; k++) {
+      expect(again[k].t).toBe(ref[k].t);
+      worst = Math.max(worst, rel(again[k].d.q0, ref[k].d.q0), rel(again[k].d.W, ref[k].d.W));
+    }
+    expect(worst).toBeLessThan(1e-10);
+    expect(sim.events.filter((e) => e.t > t0).map(evKey)).toEqual(refEvents);
+    expect(sim.history.filter((h) => h.eq && h.t > t0).length).toBeGreaterThanOrEqual(eqT.filter((t) => t > t0).length);
   }, 60000);
 
   it('ITER-like plasma reaches H-mode, burns (Q > 3) within 30 s', () => {

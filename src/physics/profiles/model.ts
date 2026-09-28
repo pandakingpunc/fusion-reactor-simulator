@@ -120,6 +120,10 @@ export const PROFILE_DIAGS: DiagSpec[] = [
 ];
 
 type Phase = 'normal' | 'thermal_quench' | 'current_quench' | 'ended';
+const PHASES: readonly Phase[] = ['normal', 'thermal_quench', 'current_quench', 'ended'];
+
+/** An accepted equilibrium and the transport geometry built from it (shared by reference) */
+interface EqGeometry { eq: Equilibrium; tg: TransportGeometry }
 
 /** Quantities held fixed over one implicit step (evaluated from the old state) */
 interface StepConstants { P_NBI: number; P_IC: number; P_EC: number; shine: number; btR: Float64Array; Eb: number; Psync: number; S_nbi: number }
@@ -219,7 +223,7 @@ export class ProfileModel implements SimModel {
     this.magnetInfo = checkMagnet(cfg.geometry, cfg.B0, cfg.magnet.tech, cfg.magnet.gap_m, cfg.magnet.coilThickness_m);
     this.gsSolver = new GSSolver(this.geomB, { NR: this.ps.eqNR });
     this.eq = this.gsSolver.solve({ Ip: Math.max(cfg.Ip_MA, 0.05) * 1e6, B0: cfg.B0, profile: { kind: 'shape', alphaM: 2, alphaN: 1.3, betaP: 0.1 }, tol: 1e-7 });
-    this.setGeometry(geometryFromEquilibrium(this.eq, this.N, this.geomB));
+    this.adoptGeometry({ eq: this.eq, tg: geometryFromEquilibrium(this.eq, this.N, this.geomB) });
     this.eqBetaP = this.eq.betaP; this.eqLi = this.eq.li3;
     if (this.magnetInfo.quench) {
       this.phase = 'ended';
@@ -232,6 +236,14 @@ export class ProfileModel implements SimModel {
   }
 
   get currentDt(): number { return this.dt; }
+
+  /** Makes an accepted equilibrium and its transport geometry current */
+  private adoptGeometry(geo: EqGeometry): void {
+    this.geo = geo;
+    this.eq = geo.eq;
+    this.setGeometry(geo.tg);
+  }
+  private geo!: EqGeometry;
 
   /**
    * Switches the transport geometry. The work arrays depend only on N, so they are allocated once
@@ -1140,8 +1152,7 @@ export class ProfileModel implements SimModel {
     this.eqStats = { it: last.iterations, res: last.residual };
     if (!out.eq || !built.tg) return false;
     if (out.stage > 0) this.eqRetried++;
-    this.eq = out.eq;
-    this.setGeometry(built.tg);
+    this.adoptGeometry({ eq: out.eq, tg: built.tg });
     // postStep (ELM, sawtooth) runs next and reads n_i, q, p: evaluate them on the new geometry
     this.evaluateWorkArrays(t, y);
     return true;
@@ -1370,22 +1381,61 @@ export class ProfileModel implements SimModel {
     for (const k of Object.keys(patch)) if (k in this.ctrl) this.ctrl[k] = patch[k];
   }
   getControls(): Record<string, number> { return { ...this.ctrl }; }
+  /**
+   * Checkpoint of everything that the continuation of the shot depends on besides y: the
+   * equilibrium and transport geometry (with the GS warm start, eq.psi), the update bookkeeping,
+   * the controller and filter states (n_sep gain, P_SOL filter, Γ_b, τ_E used by the fueling
+   * loop; the C_χ integrator and the fueling lag live in y), MHD and disruption state, counters and
+   * the RNG. Numbers go into the returned record; references and strings stay in a model-side
+   * store under the record's `ck` key, which restoreInternal prunes of checkpoints after the one
+   * restored (their frames are discarded by the rewind). Actuator set-points (applyControl) are
+   * deliberately not part of it: after a rewind the latest controls stay in force.
+   */
   saveInternal(): Record<string, number> {
+    const ck = this.nextCheckpoint++;
+    this.checkpoints.set(ck, { geo: this.geo, diagText: this.diagText, disruptCause: this.disruptCause, elmTimes: this.elmTimes.slice(), warned: [...this.warned] });
     return {
-      rng: this.rng.getState(), phase: ['normal', 'thermal_quench', 'current_quench', 'ended'].indexOf(this.phase),
+      ck, rng: this.rng.getState(), phase: PHASES.indexOf(this.phase),
       hmode: +this.hmode, lastSaw: this.lastSaw, lastElm: this.lastElm, ignited: +this.ignited, burning: +this.burning,
-      dt: this.dt, eqTime: this.eqTime, PSOL: this.PSOL, GammaB: this.GammaB, TeB: this.bc.Te, nB: this.bc.n, nsepGain: this.nsepGain,
+      dt: this.dt, eqTime: this.eqTime, PSOL: this.PSOL, GammaB: this.GammaB, TeB: this.bc.Te, TiB: this.bc.Ti, nB: this.bc.n, nsepGain: this.nsepGain,
+      eqBetaP: this.eqBetaP, eqLi: this.eqLi, eqRetryAt: this.eqRetryAt, eqFailStreak: this.eqFailStreak,
+      eqUpdates: this.eqUpdates, eqRetried: this.eqRetried, eqRejected: this.eqRejected, forcedSteps: this.forcedSteps,
+      tauE: this.lastDiag.tauE ?? NaN, alphaRatio: this.alphaRatio, lastVloop: this.lastVloop,
+      ntmOn32: +this.ntmOn32, ntmOn21: +this.ntmOn21, tDisrupt: this.tDisrupt, Wd: this.Wd, IpD: this.IpD,
     };
   }
   restoreInternal(st: Record<string, number>): void {
+    const num = (k: string, dflt: number) => (Number.isFinite(st[k]) ? st[k] : dflt);
     this.rng.setState(st.rng);
-    this.phase = (['normal', 'thermal_quench', 'current_quench', 'ended'] as Phase[])[st.phase] ?? 'normal';
+    this.phase = PHASES[st.phase] ?? 'normal';
     this.hmode = !!st.hmode; this.lastSaw = st.lastSaw; this.lastElm = st.lastElm; this.ignited = !!st.ignited; this.burning = !!st.burning;
-    this.dt = st.dt ?? 1e-3; this.eqTime = st.eqTime ?? 0; this.PSOL = st.PSOL ?? 0; this.GammaB = st.GammaB ?? 0;
-    this.bc = { Te: st.TeB ?? 0.1, Ti: st.TeB ?? 0.1, n: st.nB ?? 1e19 };
-    this.nsepGain = st.nsepGain ?? 1;
-    this.terminated = null; this.warned.clear(); this.lastDiag = {}; this.elmTimes = [];
+    this.dt = num('dt', 1e-3); this.eqTime = num('eqTime', 0); this.PSOL = num('PSOL', 0); this.GammaB = num('GammaB', 0);
+    this.bc = { Te: num('TeB', 0.1), Ti: num('TiB', num('TeB', 0.1)), n: num('nB', 1e19) };
+    this.nsepGain = num('nsepGain', 1);
+    this.eqBetaP = num('eqBetaP', this.eqBetaP); this.eqLi = num('eqLi', this.eqLi);
+    this.eqRetryAt = num('eqRetryAt', 0); this.eqFailStreak = num('eqFailStreak', 0);
+    this.eqUpdates = num('eqUpdates', this.eqUpdates); this.eqRetried = num('eqRetried', this.eqRetried);
+    this.eqRejected = num('eqRejected', this.eqRejected); this.forcedSteps = num('forcedSteps', this.forcedSteps);
+    this.alphaRatio = num('alphaRatio', 0); this.lastVloop = num('lastVloop', 0);
+    this.ntmOn32 = !!st.ntmOn32; this.ntmOn21 = !!st.ntmOn21;
+    this.tDisrupt = num('tDisrupt', 0); this.Wd = num('Wd', 0); this.IpD = num('IpD', 0);
+    this.terminated = null; this.stepFailure = null; this.pending = []; this.diagStale = false;
+    // τ_E of the last diagnostics feeds the fueling loop of the next step; the rest is rebuilt from y
+    this.lastDiag = Number.isFinite(st.tauE) ? { tauE: st.tauE } : {};
+    const aux = this.checkpoints.get(st.ck);
+    if (aux) {
+      if (aux.geo !== this.geo) this.adoptGeometry(aux.geo);
+      this.diagText = aux.diagText; this.disruptCause = aux.disruptCause;
+      this.elmTimes = aux.elmTimes.slice(); this.warned = new Set(aux.warned);
+      for (const k of this.checkpoints.keys()) if (k > st.ck) this.checkpoints.delete(k);
+    } else {
+      // a record from elsewhere (no stored references): keep the current equilibrium
+      this.warned.clear(); this.elmTimes = [];
+    }
   }
+  /** references and strings of each checkpoint, by the record's `ck` */
+  private checkpoints = new Map<number, { geo: EqGeometry; diagText: string; disruptCause: DisruptionCause; elmTimes: number[]; warned: string[] }>();
+  private nextCheckpoint = 0;
   geometryInfo(): Record<string, number> {
     const c = this.cfg, eq = this.eq;
     return {

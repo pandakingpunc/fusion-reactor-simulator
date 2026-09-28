@@ -16,9 +16,9 @@ const internals = (m: ProfileModel) => m as unknown as Internals;
 
 describe('work arrays after an equilibrium swap', () => {
   it.each([
-    ['ITER15', ITER_15D, 400],
-    ['DEMO15', DEMO_15D, 500],
-  ] as [string, MagneticConfig, number][])('%s: no postStep sees n_i = 0 and every sawtooth flattens T_i', (_id, cfg, tEnd) => {
+    ['ITER15', ITER_15D, 400, 10],
+    ['DEMO15', DEMO_15D, 500, 0],
+  ] as [string, MagneticConfig, number, number][])('%s: no postStep sees n_i = 0 and every sawtooth flattens T_i', (_id, cfg, tEnd, minSawteeth) => {
     const sim = new Simulation({ ...cfg, t_end: tEnd });
     const m = sim.model as ProfileModel;
     const post = m.postStep.bind(m);
@@ -34,6 +34,7 @@ describe('work arrays after an equilibrium swap', () => {
     expect(m.eqUpdates).toBeGreaterThan(10); // the shot crosses many equilibrium swaps
     expect(calls).toBeGreaterThan(1000);
     expect(zero).toBe(0);
+    expect(tiFlattened.length).toBeGreaterThanOrEqual(minSawteeth);
     expect(tiFlattened.every(Boolean)).toBe(true);
   }, 180000);
 });

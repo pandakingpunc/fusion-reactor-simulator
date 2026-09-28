@@ -3,7 +3,8 @@
  * (enforced by the `Dict` type in tr.ts and by i18n.test.ts).
  *
  * Key prefixes: app.* top bar · run.* run screen · ctrl.* live controls · geom.* geometry summary ·
- * chart.* time chart · field.* wizard fields · rep.* report · cmp.* comparison · common.* shared words.
+ * chart.* time chart · field.* wizard fields · err.* drawing errors · rep.* report ·
+ * cmp.* comparison · common.* shared words.
  * Placeholders are written {name} and filled by t(key, params).
  * Physics symbols (P_NBI, T_max, Q_eng …) are not translated and stay in the components.
  */
@@ -109,6 +110,11 @@ export const en = {
   'field.off': 'off',
   'field.outOfRange': 'Outside the recommended range ({min}–{max})',
   'field.empty': 'Empty — no value is passed to the model',
+
+  'err.viewTitle': 'This view could not be drawn',
+  'err.panelTitle': 'This panel could not be drawn',
+  'err.hint': 'The rest of the application keeps working; saved shots are not affected.',
+  'err.retry': 'Try again',
 
   'rep.empty': 'No completed shots yet.',
   'rep.subtitle': 'Shot duration {duration} · {frames} frames · {events} events',

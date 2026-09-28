@@ -7,6 +7,7 @@ import { useApp, useAppStore, useT } from './ui/state/store';
 import { SimStatus, Tab } from './ui/state/types';
 import { Wizard } from './ui/wizard/Wizard';
 import { RunScreen } from './ui/run/RunScreen';
+import { ErrorBoundary } from './ui/ErrorBoundary';
 import { fmtTime } from './ui/format';
 
 // Setup and Run are the first screens; the others are separate chunks, prefetched after start-up.
@@ -98,6 +99,8 @@ export default function App({ createWorker, schedule }: Props) {
         </select>
       </header>
       <main className="main">
+        {/* a drawing error (or a failed chunk load) replaces the screen, not the app with its shot archive */}
+        <ErrorBoundary resetKeys={[tab, state.runId, state.branchId]}>
         <Suspense fallback={<div className="panel muted">{t('app.st.loading')}</div>}>
         {tab === 'setup' && <Wizard cfg={cfg} setCfg={actions.setCfg} name={cfgName} setName={actions.setCfgName} onRun={run} />}
         {tab === 'run' && <RunScreen sim={sim} onReport={() => actions.setTab('report')} onSetup={() => actions.setTab('setup')} />}
@@ -111,6 +114,7 @@ export default function App({ createWorker, schedule }: Props) {
         {tab === 'compare' && <Compare shots={shots} onRemove={actions.removeShot} onLoad={actions.editShot} />}
         {tab === 'validate' && <Validation runAll={sim.runAll} />}
         </Suspense>
+        </ErrorBoundary>
       </main>
     </div>
   );

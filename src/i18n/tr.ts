@@ -108,6 +108,11 @@ export const tr: Dict = {
   'field.outOfRange': 'Önerilen aralık dışında ({min}–{max})',
   'field.empty': 'Boş — modele değer aktarılmaz',
 
+  'err.viewTitle': 'Bu görünüm çizilemedi',
+  'err.panelTitle': 'Bu panel çizilemedi',
+  'err.hint': 'Uygulamanın geri kalanı çalışmaya devam ediyor; kaydedilen atışlar etkilenmedi.',
+  'err.retry': 'Tekrar dene',
+
   'rep.empty': 'Henüz tamamlanmış atış yok.',
   'rep.subtitle': 'Atış süresi {duration} · {frames} kare · {events} olay',
   'rep.csvSummary': 'Özet CSV ↓',

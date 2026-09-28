@@ -14,6 +14,7 @@ import { ProfilesPanel } from './panels/ProfilesPanel';
 import { PopconPanel } from './panels/PopconPanel';
 import { ImplosionPanel } from './panels/ImplosionPanel';
 import { GeometryPanel } from './panels/GeometryPanel';
+import { ErrorBoundary } from '../ErrorBoundary';
 
 interface Props { sim: SimApi; onReport: () => void; onSetup: () => void }
 
@@ -42,7 +43,17 @@ export function RunScreen({ sim, onReport, onSetup }: Props) {
   const { profFrame, eqFrame } = useMemo(() => latestProfileFrames(frames), [frames]);
 
   if (!meta) {
-    return <div className="panel">{status === 'error' ? <pre className="err" role="alert">{state.error}</pre> : <span className="muted">{t('run.loading')}</span>}</div>;
+    return (
+      <div className="panel">
+        {status === 'error' ? (
+          <div className="diag-box bad" role="alert">
+            <b>{t('run.errTitle')}</b>
+            <pre className="err" style={{ margin: '4px 0 6px' }}>{state.error}</pre>
+            <button className="btn sm" onClick={onSetup}>{t('app.tab.setup')}</button>
+          </div>
+        ) : <span className="muted">{t('run.loading')}</span>}
+      </div>
+    );
   }
 
   const isMag = meta.kind === 'magnetic' && (meta.method === 'tokamak' || meta.method === 'spherical_tokamak' || meta.method === 'stellarator');
@@ -53,31 +64,34 @@ export function RunScreen({ sim, onReport, onSetup }: Props) {
 
   const seekTo = (idx: number) => sim.rewind(Math.max(0, Math.min(idx, frames.length - 1)));
   const seekT = (time: number) => { let lo = 0; while (lo < frames.length - 1 && frames[lo].t < time) lo++; seekTo(lo); };
+  // each panel fails on its own: a drawing error shows in that panel, the rest of the run screen goes on
+  const keys = [state.runId, state.branchId];
+  const guard = (panel: React.ReactNode) => <ErrorBoundary variant="panel" resetKeys={keys}>{panel}</ErrorBoundary>;
 
   return (
     <div className="run">
-      <TransportBar sim={sim} seekTo={seekTo} onReport={onReport} onSetup={onSetup} />
+      {guard(<TransportBar sim={sim} seekTo={seekTo} onReport={onReport} onSetup={onSetup} />)}
 
       <div className="left">
-        <LiveValuesPanel meta={meta} last={last} report={state.report} />
-        <ControlsPanel controls={state.controls} defaults={meta.controls} disabled={status === 'done'} onChange={sim.control} />
-        <EventLogPanel events={events} timeUnit={meta.timeUnit} />
+        {guard(<LiveValuesPanel meta={meta} last={last} report={state.report} />)}
+        {guard(<ControlsPanel controls={state.controls} defaults={meta.controls} disabled={status === 'done'} onChange={sim.control} />)}
+        {guard(<EventLogPanel events={events} timeUnit={meta.timeUnit} />)}
       </div>
 
       <div className="center">
-        <ChartsPanel meta={meta} frames={frames} events={events} groupsOn={groupsOn} onToggleGroup={toggleGroup}
-          live={status === 'running'} resetKey={state.runId} onSeek={canSeek ? seekT : undefined} />
+        {guard(<ChartsPanel meta={meta} frames={frames} events={events} groupsOn={groupsOn} onToggleGroup={toggleGroup}
+          live={status === 'running'} resetKey={state.runId} onSeek={canSeek ? seekT : undefined} />)}
       </div>
 
       <div className="right">
-        {isMag && last && (
+        {isMag && last && guard(
           <CrossSectionPanel meta={meta} cfg={cfg as MagneticConfig} last={last} events={events}
-            disrupted={status === 'done' && !!state.report?.termination?.disruption} eqFrame={eqFrame} profFrame={profFrame} />
+            disrupted={status === 'done' && !!state.report?.termination?.disruption} eqFrame={eqFrame} profFrame={profFrame} />,
         )}
-        {is15 && <ProfilesPanel profFrame={profFrame} timeUnit={meta.timeUnit} />}
-        {isMag && <PopconPanel cfg={cfg as MagneticConfig} last={last} />}
-        {isPulsed && <ImplosionPanel meta={meta} cfg={cfg} frames={frames} t={state.t} />}
-        <GeometryPanel geometry={meta.geometry} />
+        {is15 && guard(<ProfilesPanel profFrame={profFrame} timeUnit={meta.timeUnit} />)}
+        {isMag && guard(<PopconPanel cfg={cfg as MagneticConfig} last={last} />)}
+        {isPulsed && guard(<ImplosionPanel meta={meta} cfg={cfg} frames={frames} t={state.t} />)}
+        {guard(<GeometryPanel geometry={meta.geometry} />)}
       </div>
     </div>
   );

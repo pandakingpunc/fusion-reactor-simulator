@@ -13,7 +13,9 @@ import { FUEL_SPECIES } from '../reactivity';
 import { pLH_Martin, pLH_threshold, nLHmin } from '../transport';
 import type { MagneticConfig, SimEvent } from '../types';
 import { RHO_CORE } from '../radiation';
+import { scalingTauE } from './control/confinement';
 import { powerTotals } from './diagnostics';
+import { ntmConfinementFactor } from './events/ntm';
 import { ProfileModel } from './model';
 import { mean, rel, stepChecks } from './testkit';
 
@@ -68,14 +70,44 @@ describe('loss power P_L = P_heat − P_rad,core − dW/dt', () => {
     expect(free).toBeGreaterThan(50); // not just the floors
     expect(sim.history.some((h) => h.d.H_mode === 1)).toBe(true);
   });
+});
 
-  it('the τ_E scaling is evaluated at that loss power: in the scaling mode τ_E is the scaling law at P_L, so P_L and the reported τ_E move together', () => {
-    const late = sim.history.filter((h) => h.t > 20);
-    expect(late.length).toBeGreaterThan(5);
-    // IPB98(y,2): τ_E ∝ P_L^-0.69 at fixed plasma parameters. The frames of one late stretch differ little in n, I_p, B and geometry.
-    const a = late[0].d, b = late[late.length - 1].d;
-    const slope = Math.log(b.tauE / a.tauE) / Math.log(b.P_loss / a.P_loss);
-    if (Math.abs(Math.log(b.P_loss / a.P_loss)) > 0.02) expect(slope).toBeLessThan(0);
+describe('the τ_E scaling and the C_χ controller use the loss power (scaling transport)', () => {
+  // A scaling law evaluated at another P (say P_heat − P_rad, the definition before ws3d) changes tauE_scal at the
+  // percent level and every golden number with it, but a monotonic-slope test does not see it: the scaling law is
+  // recomputed here from the P_loss of each accepted step, exactly.
+  it('every accepted step (L- and H-mode): τ_E,scal is the scaling law at P_L, τ_E is τ_E,scal, and C_χ is set against the target τ_scal P_L', () => {
+    const m = new ProfileModel({ ...JET_15D, t_end: 1.5 });
+    const y = m.initialState();
+    m.diagnostics(0, y);
+    let exact = 0, controlled = 0, lmode = 0, hmode = 0, worstTau = 0, worstC = 0, quiet = true;
+    const check = m.coupling.check.bind(m.coupling);
+    m.coupling.check = (ctx, t, yy, update) => {
+      const d = ctx.lastDiag, s = ctx.view(yy).s;
+      // the island widths of the step's start are what the scaling used: compare on steps without islands
+      const islands = s.w32 > 0 || s.w21 > 0 || d.w32 > 0 || d.w21 > 0;
+      if (!islands) {
+        const want = Math.max(scalingTauE(ctx, d.Ip, d.nbar * 1e20, d.P_loss * 1e6) * ntmConfinementFactor(ctx, s), 1e-3);
+        worstTau = Math.max(worstTau, rel(d.tauE_scal, want));
+        expect(d.tauE).toBe(d.tauE_scal);
+        exact++;
+        if (d.H_mode === 1) hmode++; else lmode++;
+        // C_χ = C_I exp(1.5 ln(W / (τ_scal P_L))) while the exponent is not clamped
+        const err = Math.log((d.W * 1e6) / (d.tauE_scal * d.P_loss * 1e6));
+        if (Math.abs(1.5 * err) < 1.4 && s.Cchi > 1e-3 && s.Cchi < 1e3) { worstC = Math.max(worstC, Math.abs(Math.log(s.Cchi / s.CI) - 1.5 * err)); controlled++; }
+      }
+      quiet = quiet && Number.isFinite(d.P_loss);
+      return check(ctx, t, yy, update);
+    };
+    let t = 0;
+    while (t < 1.5 && !m.terminated) { const t0 = t; t = m.step(t, y, 1.5); m.postStep(t, t - t0, y); }
+    expect(quiet).toBe(true);
+    expect(exact).toBeGreaterThan(60);
+    expect(lmode).toBeGreaterThan(5); // ITER89-P branch (L-mode)
+    expect(hmode).toBeGreaterThan(20); // IPB98(y,2) branch
+    expect(worstTau).toBeLessThan(1e-12);
+    expect(controlled).toBeGreaterThan(20);
+    expect(worstC).toBeLessThan(1e-9);
   });
 });
 

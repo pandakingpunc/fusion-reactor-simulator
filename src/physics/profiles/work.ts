@@ -13,10 +13,11 @@
 export const CELL_ARRAYS = [
   // composition (composition.ts)
   'ni', 'ni0', 'na', 'nb', 'nHe', 'nZ', 'ns', 'Zeff', 'ZeffMain', 'ionSum', 'Zimp', 'Zseed',
-  // fusion (sources/fusion.ts), beam-target and alpha heating; ash production; fast-ion energy content
-  'Pfus', 'Pchg', 'Pneut', 'Rfus', 'Nfus', 'burnA', 'burnB', 'ash', 'Pbt', 'PaE', 'PaI', 'Walpha',
-  // auxiliary heating (sources/nbi.ts, sources/rf.ts); NBI fast-ion energy content
-  'PnbiE', 'PnbiI', 'PicE', 'PicI', 'PecE', 'nbiDep', 'nbiTmp', 'nbiPart', 'nfast', 'Wbeam',
+  // fusion (sources/fusion.ts), beam-target and alpha heating; ash production; energy content P τ_W of the
+  // steady slowing-down distribution of the fast products and its time constant τ_W (fastIons.ts)
+  'Pfus', 'Pchg', 'Pneut', 'Rfus', 'Nfus', 'burnA', 'burnB', 'ash', 'Pbt', 'PaE', 'PaI', 'Walpha', 'tauWa',
+  // auxiliary heating (sources/nbi.ts, sources/rf.ts); the same for the NBI fast ions
+  'PnbiE', 'PnbiI', 'PicE', 'PicI', 'PecE', 'nbiDep', 'nbiTmp', 'nbiPart', 'nfast', 'Wbeam', 'tauWb',
   // ohmic heating, radiation, e–i exchange
   'Poh', 'Pbr', 'Pline', 'Psync', 'Prad', 'dPrad', 'nuEq',
   // heat and particle equation inputs

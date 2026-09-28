@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import { JET_15D } from '../../presets';
 import { criticalEnergy, fastIonEnergyTime, ionHeatingFraction } from '../../heating';
-import { FUEL_CHANNELS, FuelType, beamTargetReactivity, burnPerReaction, isSingleSpecies } from '../../reactivity';
+import { FUEL_CHANNELS, FuelType, beamTargetReactivity, burnPerReaction, isSingleSpecies, pairDensity } from '../../reactivity';
 import type { MagneticConfig } from '../../types';
 import { KEV } from '../context';
 import { ProfileModel } from '../model';
@@ -232,5 +232,41 @@ describe('heating by the charged products', () => {
     const tau = fastIonEnergyTime(T, ne, pr.A, pr.Z, pr.E_MeV * 1e3, criticalEnergy(T, pr.A, w.ionSum[0]));
     expect(tau).toBeGreaterThan(0.01);
     expect(rel(w.Walpha[0], w.Pchg[0] * tau)).toBeLessThan(1e-9);
+    // the time constant of the pool of the cell is τ_W of the only product
+    expect(rel(w.tauWa[0], tau)).toBeLessThan(1e-9);
+  });
+
+  it('D-³He: the pool time constant is the birth-power-weighted mean τ_W of the protons, α, T and ³He of all channels', () => {
+    const T = 40, ne = 6e19;
+    const { w } = uniform({ fuel: 'DHe3', fuelFracA: 0.5, heating: NO_HEATING }, T, ne);
+    let wt = 0, wSum = 0;
+    for (const ch of FUEL_CHANNELS.DHe3) {
+      const r = pairDensity('DHe3', ch, w.na[0], w.nb[0]) * ch.sigmav(T);
+      for (const pr of ch.products) {
+        const pk = r * pr.E_MeV;
+        wt += pk * fastIonEnergyTime(T, ne, pr.A, pr.Z, pr.E_MeV * 1e3, criticalEnergy(T, pr.A, w.ionSum[0]));
+        wSum += pk;
+      }
+    }
+    expect(FUEL_CHANNELS.DHe3.length).toBeGreaterThan(1);
+    expect(rel(w.tauWa[0], wt / wSum)).toBeLessThan(1e-9);
+    expect(rel(w.Walpha[0], (wt / wSum) * w.Pchg[0])).toBeLessThan(1e-9);
+  });
+
+  it('without any reaction (a pure ³He plasma) the time constant is the mean over all the products (equal weights, as fastPoolMix), so that a pool still decays', () => {
+    const T = 40, ne = 6e19;
+    const { w } = uniform({ fuel: 'DHe3', fuelFracA: 0, heating: NO_HEATING }, T, ne);
+    expect(w.na[0]).toBe(0);
+    expect(w.Pchg[0]).toBe(0);
+    expect(w.Walpha[0]).toBe(0);
+    let sum = 0, n = 0;
+    for (const ch of FUEL_CHANNELS.DHe3) for (const pr of ch.products) {
+      sum += Math.max(fastIonEnergyTime(T, ne, pr.A, pr.Z, pr.E_MeV * 1e3, criticalEnergy(T, pr.A, w.ionSum[0])), 1e-3);
+      n++;
+    }
+    expect(n).toBeGreaterThan(3);
+    expect(rel(w.tauWa[0], sum / n)).toBeLessThan(1e-9);
   });
 });
+
+

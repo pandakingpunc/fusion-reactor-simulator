@@ -90,14 +90,19 @@ export interface PowerTotals {
   P_rad_core: number;
   /** P_aux_abs + P_oh + P_alpha */
   P_heat: number;
-  /** energy content of the fast charged fusion products and of the NBI fast ions [J] */
-  W_alpha: number; W_beam: number;
+  /**
+   * energy content of the steady slowing-down distributions of the fast charged fusion products and of
+   * the NBI fast ions, P τ_W [J]: what the pools of fastIons.ts relax towards
+   */
+  Wss_alpha: number; Wss_beam: number;
 }
 
 /** Global quantities a diagnostics frame is written from */
 export interface GlobalTotals extends PowerTotals {
   /** stored energy [J], its rate of change [W] */
   W: number; dWdt: number;
+  /** energy content of the fast charged fusion products and of the NBI fast ions: the pools of fastIons.ts [J] */
+  W_alpha: number; W_beam: number;
   /** reported τ_E and the scaling-law τ_E [s] */
   tauE: number; tauScal: number;
   /** loss power [W], line-averaged density [m⁻³] */
@@ -123,7 +128,7 @@ export function powerTotals(ctx: ProfileContext, K: StepConstants): PowerTotals 
   for (let i = 0; i < g.N; i++) core += Math.min(1, Math.max(0, (RHO_CORE - g.rhoF[i]) / g.dRho)) * (w.Pbr[i] + w.Pline[i]) * g.dV[i];
   const P_rad_core = core + P_sync;
   const P_heat = P_aux_abs + P_oh + P_alpha;
-  return { P_fus, P_chg, P_neut, P_bt, P_aux_abs, P_beam, P_oh, P_alpha, P_brems, P_line, P_sync, P_rad, P_rad_core, P_heat, W_alpha: I(w.Walpha), W_beam: I(w.Wbeam) };
+  return { P_fus, P_chg, P_neut, P_bt, P_aux_abs, P_beam, P_oh, P_alpha, P_brems, P_line, P_sync, P_rad, P_rad_core, P_heat, Wss_alpha: I(w.Walpha), Wss_beam: I(w.Wbeam) };
 }
 
 /**
@@ -139,8 +144,9 @@ export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: Globa
   let TeA = 0, TiA = 0;
   for (let i = 0; i < N; i++) { TeA += v.Te[i] * v.ne[i] * g.dV[i]; TiA += v.Ti[i] * w.ni[i] * g.dV[i]; }
   TeA /= Math.max(volumeIntegral(g, v.ne), 1); TiA /= Math.max(volumeIntegral(g, w.ni), 1);
-  // pressure: thermal ⟨n_e T_e + n_i T_i⟩ = (2/3) W/V, plus the fast ions (2/3) (W_α + W_beam)/V (isotropic;
-  // APPROXIMATION: the anisotropy of the beam ions is neglected, as in the 0D model). β_T and β_N are
+  // pressure: thermal ⟨n_e T_e + n_i T_i⟩ = (2/3) W/V, plus the fast ions (2/3) (W_α + W_beam)/V, the pools
+  // that build up with τ_W and cannot exceed the injected energy (fastIons.ts; isotropic, APPROXIMATION: the
+  // anisotropy of the beam ions is neglected, as in the 0D model). β_T and β_N are
   // total; β_N,th (the drive of the NTMs is the bootstrap current of the thermal pressure gradient)
   // and β_p (the equilibrium's pressure table is thermal) are thermal.
   const pAvg = X.W / (1.5 * g.volume);
@@ -231,7 +237,7 @@ export function stateDiagnostics(ctx: ProfileContext, st: ProfileState, K: StepC
   const P = powerTotals(ctx, K);
   const P_loss = lossPower(ctx, P.P_heat, P.P_rad_core, ctx.dWdtS);
   const tauE = predictive ? W / P_loss : tauPrev;
-  writeDiagnostics(ctx, st, { ...P, W, dWdt: 0, tauE, tauScal, P_loss, nbar: ctx.lineAvg(st.ne), P_bound: boundaryPower(ctx, st) });
+  writeDiagnostics(ctx, st, { ...P, W, dWdt: 0, W_alpha: ctx.WfAlpha, W_beam: ctx.WfBeam, tauE, tauScal, P_loss, nbar: ctx.lineAvg(st.ne), P_bound: boundaryPower(ctx, st) });
 }
 
 /** Diagnostics during the quench phases of a disruption: only the quantities the quench changes */

@@ -2,7 +2,7 @@
  * Update after an accepted transport step from t to t + dt: the global (0D) quantities that are
  * integrated explicitly over the step, in this order:
  *
- *   power totals and stored energy (dW/dt from the old state with the old ion density) → boundary
+ *   power totals, fast-ion pools and stored energy (dW/dt from the old state with the old ion density) → boundary
  *   outflux Γ_b and loop voltage → ELM power average → lagged P_SOL → smoothed dW/dt → loss power
  *   and confinement times → C_χ controller → separatrix density gain → He ash, impurity and fuel
  *   mix → energy, neutron and tritium counters → NTM islands → the transport model's and the
@@ -12,6 +12,7 @@
  */
 import type { ProfileContext } from '../context';
 import { evolveInventories } from '../composition';
+import { advanceFastIons } from '../fastIons';
 import { updatePsol } from '../boundary/sol';
 import { confinementTimes, lossPower, updateTransportMultiplier } from '../control/confinement';
 import { FuelingControl } from '../control/fueling';
@@ -27,6 +28,7 @@ export function acceptStep(ctx: ProfileContext, fueling: FuelingControl, physics
   const K = ctx.lastK!;
   // volume integrals [W]
   const P = powerTotals(ctx, K);
+  advanceFastIons(ctx, P, dt);
   const Rfus = volumeIntegral(g, w.Rfus), Nn = volumeIntegral(g, w.Nfus), ashRate = volumeIntegral(g, w.ash);
   // stored energy: one definition (ctx.storedEnergy), with the ion density of the old composition for the old state
   const W = ctx.storedEnergy(v);
@@ -62,5 +64,5 @@ export function acceptStep(ctx: ProfileContext, fueling: FuelingControl, physics
   evolveIslands(ctx, dt, o, v);
   // state of plug-in modules
   physics.accepted(t, dt, o, v);
-  writeDiagnostics(ctx, v, { ...P, W, dWdt, tauE, tauScal, P_loss, nbar, P_bound: ctx.Pbound });
+  writeDiagnostics(ctx, v, { ...P, W, dWdt, W_alpha: ctx.WfAlpha, W_beam: ctx.WfBeam, tauE, tauScal, P_loss, nbar, P_bound: ctx.Pbound });
 }

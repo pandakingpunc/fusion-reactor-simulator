@@ -13,8 +13,10 @@
  *    E_c = 14.8 T_e A_f (Σ n_j Z_j²/(n_e A_j))^{2/3} and gives the fraction G(E_0/E_c) of its energy
  *    to the ions (heating.ts), the rest to the electrons. APPROXIMATION: instantaneous and local
  *    (no fast-particle transport, no loss of fast ions).
- *  - Fast-product energy content W_α = Σ P_k τ_W,k of the slowing-down distributions (w.Walpha, for
- *    the fast-ion pressure of β; the pool of the 0D model in steady state).
+ *  - Fast-product energy content of the steady slowing-down distributions, W_α,ss = Σ P_k τ_W,k
+ *    (w.Walpha) and the birth-power-weighted mean τ_W (w.tauWa), τ_W = τ_se (1 − G)/2 (Stix). The
+ *    energy content that enters β is the pool that relaxes towards W_α,ss with τ_W (fastIons.ts),
+ *    as in the 0D model: the steady value is reached only after a few τ_W.
  */
 import { FUEL_CHANNELS, burnPerReaction, pairDensity } from '../../reactivity';
 import { criticalEnergy, ionHeatingFraction, spitzerSlowingDownTime } from '../../heating';
@@ -35,7 +37,7 @@ export class FusionSource implements SourceModel {
     for (let i = 0; i < N; i++) {
       const Tiv = Math.max(Ti[i], 0.01), Tev = Math.max(Te[i], 0.01);
       const na = w.na[i], nb = w.nb[i];
-      let R = 0, P = 0, Pc = 0, Pn = 0, Nn = 0, bA = 0, bB = 0, ash = 0, PaE = 0, PaI = 0, Wa = 0;
+      let R = 0, P = 0, Pc = 0, Pn = 0, Nn = 0, bA = 0, bB = 0, ash = 0, PaE = 0, PaI = 0, Wa = 0, Pp = 0, tauSum = 0, nProd = 0;
       for (let j = 0; j < chans.length; j++) {
         const ch = chans[j];
         // thermal + beam-target rate of the channel [m⁻³ s⁻¹]
@@ -48,17 +50,22 @@ export class FusionSource implements SourceModel {
         const [ba, bb] = burnPerReaction(fuel, ch, na, nb);
         bA += r * ba; bB += r * bb;
         ash += r * ch.ash;
-        if (!(r > 0)) continue;
-        // charged products: Stix split and energy content, per product
+        // charged products: Stix split and energy content, per product; τ_W of every product also without
+        // reactions (the fast-ion pool relaxes with it when the burn stops, fastIons.ts)
         for (const pr of ch.products) {
           const pk = r * pr.E_MeV * MEV;
           const G = ionHeatingFraction(pr.E_MeV * 1e3, criticalEnergy(Tev, pr.A, w.ionSum[i]));
+          const tauW = Math.max(0.5 * spitzerSlowingDownTime(Tev, ne[i], pr.A, pr.Z) * (1 - G), 1e-3);
+          tauSum += tauW; nProd++;
+          if (!(pk > 0)) continue;
           PaI += pk * G; PaE += pk * (1 - G);
-          Wa += pk * Math.max(0.5 * spitzerSlowingDownTime(Tev, ne[i], pr.A, pr.Z) * (1 - G), 1e-3);
+          Wa += pk * tauW; Pp += pk;
         }
       }
       w.Rfus[i] = R; w.Pfus[i] = P; w.Pchg[i] = Pc; w.Pneut[i] = Pn; w.Nfus[i] = Nn; w.burnA[i] = bA; w.burnB[i] = bB; w.ash[i] = ash;
       w.PaE[i] = PaE; w.PaI[i] = PaI; w.Walpha[i] = Wa;
+      // birth-power-weighted mean τ_W of the products (equal weights without reactions: heating.fastPoolMix)
+      w.tauWa[i] = Pp > 0 ? Wa / Pp : tauSum / Math.max(nProd, 1);
     }
   }
 }

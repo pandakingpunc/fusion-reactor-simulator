@@ -103,7 +103,7 @@ export class CheckpointStore {
 /**
  * Checkpoint part of the shared context: RNG, phase and mode, time step, boundary and controller
  * state (P_SOL filter, Γ_b, n_sep gain), α_ped/α_crit, loop voltage, τ_E used by the fueling loop
- * of the next step, the smoothed dW/dt and the ELM energy not yet booked in it, the ignition state
+ * of the next step, the smoothed dW/dt and the ELM energy not yet booked in it, the fast-ion pools, the ignition state
  * and the start of the ignition test, the disruption state; the equilibrium/geometry pair, the issued warnings, the
  * disruption cause and text and the last diagnostics by reference or copy. Actuator set-points
  * (applyControl) are deliberately not part of it: after a rewind the latest controls stay in
@@ -128,7 +128,7 @@ export function contextCheckpoint(ctx: ProfileContext): Checkpointable {
         rng: ctx.rng.getState(), phase: PHASES.indexOf(ctx.phase), hmode: +ctx.hmode,
         dt: ctx.dt, PSOL: ctx.PSOL, GammaB: ctx.GammaB, TeB: ctx.bc.Te, TiB: ctx.bc.Ti, nB: ctx.bc.n, nsepGain: ctx.nsepGain,
         tauE: ctx.lastDiag.tauE ?? NaN, alphaRatio: ctx.alphaRatio, lastVloop: ctx.lastVloop,
-        dWdtS: ctx.dWdtS, crashE: ctx.crashE, ignited: +ctx.ignited, tAuxOff: ctx.tAuxOff,
+        dWdtS: ctx.dWdtS, crashE: ctx.crashE, WfAlpha: ctx.WfAlpha, WfBeam: ctx.WfBeam, ignited: +ctx.ignited, tAuxOff: ctx.tAuxOff,
         tDisrupt: ctx.disruption.t, Wd: ctx.disruption.W, IpD: ctx.disruption.Ip,
       });
     },
@@ -142,6 +142,7 @@ export function contextCheckpoint(ctx: ProfileContext): Checkpointable {
       ctx.nsepGain = num('nsepGain', 1);
       ctx.alphaRatio = num('alphaRatio', 0); ctx.lastVloop = num('lastVloop', 0);
       ctx.dWdtS = num('dWdtS', 0); ctx.crashE = num('crashE', 0); ctx.ignited = !!st.ignited;
+      ctx.WfAlpha = num('WfAlpha', 0); ctx.WfBeam = num('WfBeam', 0);
       // Infinity (the external heating stays on) is a number too, but a record that went through JSON has null
       ctx.tAuxOff = typeof st.tAuxOff === 'number' ? st.tAuxOff : Infinity;
       const D = ctx.disruption;

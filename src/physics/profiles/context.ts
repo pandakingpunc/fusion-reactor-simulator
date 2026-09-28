@@ -138,6 +138,12 @@ export class ProfileContext {
   dWdtS = 0;
   /** energy taken out of the plasma by the ELM crashes since the last accepted step [J] */
   crashE = 0;
+  /**
+   * energy content of the fast charged fusion products and of the NBI fast ions [J]: pools that
+   * relax towards the steady slowing-down content with τ_W (fastIons.ts), as in the 0D model
+   */
+  WfAlpha = 0;
+  WfBeam = 0;
   /** ignition state (P_α ≥ P_rad + W/τ_E, with hysteresis): a diagnostic and the report's ignition time */
   ignited = false;
   /** heating.autoOff: the time at which the external heating starts to ramp down (Infinity = it stays on) */

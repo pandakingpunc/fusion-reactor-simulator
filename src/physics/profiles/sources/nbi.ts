@@ -12,8 +12,9 @@
  *  - Beam-target fusion: steady-state slowing-down distribution n_f = S τ_th, rate
  *    R = n_f n_target ⟨σv⟩_bt (beamtarget.ts) per channel of the fuel; the target of a channel is
  *    species b, or species a in the a + a channels (beamTargetDensity, reactivity.ts).
- *  - Fast-ion energy content W_b = P τ_W (Stix slowing-down distribution, heating.ts
- *    fastIonEnergyTime), for the fast-ion pressure of β (w.Wbeam).
+ *  - Fast-ion energy content of the steady slowing-down distribution, W_b,ss = P τ_W (Stix, heating.ts
+ *    fastIonEnergyTime; w.Wbeam) and its time constant τ_W per cell (w.tauWb). The content that
+ *    enters β is the pool that relaxes towards W_b,ss with τ_W (fastIons.ts), as in the 0D model.
  *  - Current drive: I_CD = γ P/(n̄₂₀ R0) with γ_NB ≈ γ0 (T_e/10 keV) √(E_b/1 MeV) (the Fisch–Cordey
  *    trend: efficiency grows with T_e and beam speed; ITER 1 MeV, T_e ≈ 12 keV → ≈ 0.25; JET
  *    110 keV, T_e ≈ 7 keV → ≈ 0.05). APPROXIMATION.
@@ -47,11 +48,21 @@ export class NbiSource implements SourceModel {
     const Eb = c.heating.E_NBI_keV;
     const comps: [number, number][] = Eb < 250 ? [[Eb, 0.75], [Eb / 2, 0.15], [Eb / 3, 0.1]] : [[Eb, 1]];
     let shine = 0, sqrtE = 0;
-    w.nbiDep.fill(0); w.nfast.fill(0); w.nbiPart.fill(0); w.PnbiE.fill(0); w.PnbiI.fill(0); w.Pbt.fill(0); w.Wbeam.fill(0);
+    w.nbiDep.fill(0); w.nfast.fill(0); w.nbiPart.fill(0); w.PnbiE.fill(0); w.PnbiI.fill(0); w.Pbt.fill(0); w.Wbeam.fill(0); w.tauWb.fill(0);
     const btR = K.btR; // per channel, fresh zeros from the pipeline
     const chans = FUEL_CHANNELS[c.fuel];
     if (!this.chord) this.chord = new NbiChord(g, ctx.ps.nbiRtan * g.R0);
     const svBuf: number[] = chans.map(() => 0);
+    // τ_W of the beam ions per cell, independent of the beam power: the fast-ion pool (fastIons.ts) relaxes with it
+    // also after the beam is switched off (it is only needed while the beam is on or its pool is not yet empty)
+    if (P_NBI > 0 || ctx.WfBeam > 0) {
+      for (let i = 0; i < N; i++) {
+        const Tev = Math.max(Te[i], 0.01), Ec = criticalEnergy(Tev, fs.a.A, w.ionSum[i]);
+        let tau = 0;
+        for (const [Ek, fk] of comps) tau += fk * Math.max(fastIonEnergyTime(Tev, ne[i], fs.a.A, fs.a.Z, Ek, Ec), 1e-3);
+        w.tauWb[i] = tau;
+      }
+    }
     for (const [Ek, fk] of comps) {
       if (P_NBI <= 0) break;
       const r = this.chord.deposit(ne, Ek, fs.a.A, w.nbiTmp);

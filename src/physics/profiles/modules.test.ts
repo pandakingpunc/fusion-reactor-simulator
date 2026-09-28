@@ -114,9 +114,9 @@ describe('module wiring', () => {
     sim.runAll();
     const keys = Object.keys(sim.history[sim.history.length - 1].internal).sort();
     expect(keys).toEqual([
-      'GammaB', 'IpD', 'PSOL', 'TeB', 'TiB', 'Wd', 'alphaRatio', 'burning', 'ck', 'dt', 'eqBetaP', 'eqFailStreak', 'eqLi', 'eqRejected',
-      'eqRetried', 'eqRetryAt', 'eqTime', 'eqUpdates', 'forcedSteps', 'hmode', 'ignited', 'lastElm', 'lastSaw', 'lastVloop', 'nB',
-      'nsepGain', 'ntmOn21', 'ntmOn32', 'phase', 'rng', 'tDisrupt', 'tauE',
+      'GammaB', 'IpD', 'PSOL', 'TeB', 'TiB', 'Wd', 'alphaRatio', 'burning', 'ck', 'crashE', 'dWdtS', 'dt', 'eqBetaP', 'eqFailStreak', 'eqLi',
+      'eqRejected', 'eqRetried', 'eqRetryAt', 'eqTime', 'eqUpdates', 'forcedSteps', 'hmode', 'ignited', 'lastElm', 'lastSaw', 'lastVloop',
+      'nB', 'nsepGain', 'ntmOn21', 'ntmOn32', 'phase', 'rng', 'tDisrupt', 'tauE',
     ].sort());
   });
 });

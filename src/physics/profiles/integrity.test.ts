@@ -473,9 +473,14 @@ describe('checkpoints and replays', () => {
   // density limit → thermal and current quench: the quench phases patch the last diagnostics in
   // place, so a checkpoint must carry all of them
   const disrupting = (): MagneticConfig => ({ ...JET_15D, t_end: 3, n_target: JET_15D.n_target * 3 });
+  // User breakpoints every 2.9 ms end steps off the output grid (3.75 ms): the step of the disruption onset then
+  // ends at a time that is not an output time and is recorded as an irregular frame. Without them the
+  // Δt of the density ramp is longer than the output interval, every step is cut at an output time and the onset
+  // frame is a regular one.
+  const grid = { breakpoints: Array.from({ length: 1034 }, (_, k) => (k + 1) * 2.9e-3) };
 
   it('a replay from a thermal- or current-quench frame reproduces the frames and the report', () => {
-    const ref = new Simulation(disrupting());
+    const ref = new Simulation(disrupting(), grid);
     ref.runAll();
     const refFrames = ref.history.map((h) => ({ t: h.t, y: h.y, d: { ...h.d }, prof: h.prof }));
     const refReport = JSON.stringify(ref.report());
@@ -492,7 +497,7 @@ describe('checkpoints and replays', () => {
     expect(onset).toBeGreaterThan(0);
     expect(ref.history[onset].t).toBeLessThan(ref.history[tq].t);
     for (const idx of [onset, tq, cq]) {
-      const sim = new Simulation(disrupting());
+      const sim = new Simulation(disrupting(), grid);
       sim.runAll();
       sim.rewindTo(idx);
       // the checkpoint restores the diagnostics and profiles of that frame

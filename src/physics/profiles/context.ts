@@ -131,6 +131,13 @@ export class ProfileContext {
   bc: BoundaryValues = { Te: 0.1, Ti: 0.1, n: 1e19 };
   /** P_SOL, filtered global power balance [W] */
   PSOL = 0;
+  /**
+   * dW/dt of the loss power P_L = P_heat − P_rad,core − dW/dt: the rate of change of the stored
+   * energy including the energy the ELM crashes take out of it, low-pass filtered with τ_E [W]
+   */
+  dWdtS = 0;
+  /** energy taken out of the plasma by the ELM crashes since the last accepted step [J] */
+  crashE = 0;
   /** particle outflux through the boundary Γ_b [1/s] */
   GammaB = 0;
   /**
@@ -227,9 +234,13 @@ export class ProfileContext {
     return true;
   }
 
-  /** Stored thermal energy W = Σ 3/2 (n_e T_e + n_i T_i) ΔV [J] (n_i from the work arrays) */
-  storedEnergy(st: ProfileState): number {
-    const g = this.tg, N = this.N, ni = this.w.ni;
+  /**
+   * Stored thermal energy W = Σ 3/2 (n_e T_e + n_i T_i) ΔV [J]: the one definition of W of the model
+   * (accepted step, diagnostics of a state no step produced, quench). ni: the ion density of the
+   * state (default: the work array of the current composition; ctx.w.ni0 for the old state of a step).
+   */
+  storedEnergy(st: ProfileState, ni: ArrayLike<number> = this.w.ni): number {
+    const g = this.tg, N = this.N;
     let W = 0;
     for (let i = 0; i < N; i++) W += 1.5 * (st.ne[i] * st.Te[i] + ni[i] * st.Ti[i]) * KEV * g.dV[i];
     return W;

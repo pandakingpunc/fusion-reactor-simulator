@@ -30,6 +30,7 @@ export class ElmEvents implements EventModel {
     if (before) ctx.crashHook!('ELM', t, before, ctx.crashSnapshot(st));
     s.NHe *= 1 - 0.1 * fW; s.cZ *= 1 - 0.1 * fW;
     s.Pelm += dW / 1.0; // energy pulse into the exponential average (τ = 1 s)
+    ctx.crashE += dW; // the loss power of the τ_E scaling counts it in dW/dt (acceptStep)
     this.lastElm = t;
     this.elmTimes.push(t); if (this.elmTimes.length > 20) this.elmTimes.shift();
     ctx.dt = Math.min(ctx.dt, Math.max(0.01 * (d.tauE ?? 0.1), 5e-4));

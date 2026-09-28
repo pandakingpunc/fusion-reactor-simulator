@@ -4,8 +4,9 @@
  *
  *  - Scaling law: IPB98(y,2) (ITER Physics Basis, Nucl. Fusion 39 (1999) 2175) or the spherical-
  *    tokamak scaling after Valovič et al. (Nucl. Fusion 51 (2011) 073045) in H-mode, times H98;
- *    ITER89-P (Yushmanov et al., Nucl. Fusion 30 (1990) 1999) times H89 in L-mode (transport.ts).
- *    NTM islands degrade it by the belt-model factor (events/ntm.ts).
+ *    ITER89-P (Yushmanov et al., Nucl. Fusion 30 (1990) 1999) times H89 in L-mode (transport.ts),
+ *    evaluated at the line-averaged density and the loss power P_L = P_heat − P_rad,core − dW/dt
+ *    (lossPower). NTM islands degrade it by the belt-model factor (events/ntm.ts).
  *  - Non-predictive transport (transport/scaling.ts): a PI controller on log(W/W_target),
  *    W_target = τ_scal P_loss, sets the amplitude C_χ; its integral term (the state scalar CI) is
  *    bounded around the diffusive estimate C_est = a²κ_a/(6 τ (1 + c/2)) against wind-up. τ_E is
@@ -19,9 +20,16 @@ import type { ProfileContext } from '../context';
 import type { ProfileState } from '../state';
 import { ntmConfinementFactor } from '../events/ntm';
 
-/** Loss power for τ_E [W]: heating minus radiation, floored against radiation-dominated states */
-export function lossPower(ctx: ProfileContext, P_heat: number, P_rad: number): number {
-  return Math.max(P_heat - P_rad, 0.1 * P_heat, 0.5e6 * (ctx.tg.volume / 100));
+/**
+ * Loss power for the τ_E scaling and the L–H test [W]: P_L = P_heat − P_rad,core − dW/dt (ITER Physics
+ * Basis, Nucl. Fusion 39 (1999) 2175, ch. 2: heating minus the rate of change of the stored energy
+ * minus the radiation of the confined core), the same definition as the 0D model. P_rad,core is the
+ * radiation from ρ < RHO_CORE (radiation.ts: the outer mantle stays in P_L, as in the τ_E databases),
+ * dW/dt the filtered rate of change of the stored energy including the ELM losses (ctx.dWdtS). Floored
+ * at 10 % of P_heat and at 0.5 MW per 100 m³ against radiation- and transient-dominated states.
+ */
+export function lossPower(ctx: ProfileContext, P_heat: number, P_rad_core: number, dWdt: number): number {
+  return Math.max(P_heat - P_rad_core - dWdt, 0.1 * P_heat, 0.5e6 * (ctx.tg.volume / 100));
 }
 
 /** Scaling-law τ_E of the current mode, with the H factor [s] */

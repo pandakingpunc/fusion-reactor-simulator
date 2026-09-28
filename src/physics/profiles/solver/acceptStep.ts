@@ -3,15 +3,14 @@
  * integrated explicitly over the step, in this order:
  *
  *   power totals and stored energy (dW/dt from the old state with the old ion density) → boundary
- *   outflux Γ_b and loop voltage → ELM power average → lagged P_SOL → loss power and confinement
- *   times → C_χ controller → separatrix density gain → He ash, impurity and fuel mix → energy,
- *   neutron and tritium counters → NTM islands → the transport model's and the sources'
- *   `accepted` hooks → diagnostics of the new state.
+ *   outflux Γ_b and loop voltage → ELM power average → lagged P_SOL → smoothed dW/dt → loss power
+ *   and confinement times → C_χ controller → separatrix density gain → He ash, impurity and fuel
+ *   mix → energy, neutron and tritium counters → NTM islands → the transport model's and the
+ *   sources' `accepted` hooks → diagnostics of the new state.
  *
  * The equilibrium update check follows (ProfileModel).
  */
 import type { ProfileContext } from '../context';
-import { KEV } from '../context';
 import { evolveInventories } from '../composition';
 import { updatePsol } from '../boundary/sol';
 import { confinementTimes, lossPower, updateTransportMultiplier } from '../control/confinement';
@@ -29,20 +28,24 @@ export function acceptStep(ctx: ProfileContext, fueling: FuelingControl, physics
   // volume integrals [W]
   const P = powerTotals(ctx, K);
   const Rfus = volumeIntegral(g, w.Rfus), Nn = volumeIntegral(g, w.Nfus), ashRate = volumeIntegral(g, w.ash);
-  let We = 0, Wi = 0;
-  for (let i = 0; i < N; i++) { We += 1.5 * v.ne[i] * v.Te[i] * KEV * g.dV[i]; Wi += 1.5 * w.ni[i] * v.Ti[i] * KEV * g.dV[i]; }
-  const W = We + Wi;
-  let W0 = 0;
-  for (let i = 0; i < N; i++) W0 += 1.5 * (o.ne[i] * o.Te[i] + w.ni0[i] * o.Ti[i]) * KEV * g.dV[i];
+  // stored energy: one definition (ctx.storedEnergy), with the ion density of the old composition for the old state
+  const W = ctx.storedEnergy(v);
+  const W0 = ctx.storedEnergy(o, w.ni0);
   const dWdt = (W - W0) / dt;
   ctx.GammaB = ctx.dens.GammaF[N];
   ctx.lastVloop = (2 * Math.PI * (v.psi[N - 1] - o.psi[N - 1])) / dt;
   // ELM power, exponential memory τ = 1 s
   s.Pelm = o.s.Pelm * Math.exp(-dt / 1.0);
   updatePsol(ctx, dt, P.P_heat, P.P_rad, dWdt);
+  // smoothed dW/dt of the loss power: the average rate of change of W, which includes the energy the ELM
+  // crashes took out of the plasma between the previous step and this one (booked in ctx.crashE), so that it
+  // vanishes in a steady H-mode; low-pass filtered with τ_E of the previous step (5 ms at least), as in the 0D model
+  const dWdtTotal = (W - W0 - ctx.crashE) / dt;
+  ctx.crashE = 0;
+  ctx.dWdtS += (dWdtTotal - ctx.dWdtS) * (1 - Math.exp(-dt / Math.max(ctx.lastDiag.tauE ?? 0.1, 5e-3)));
   // confinement
   const nbar = ctx.lineAvg(v.ne);
-  const P_loss = lossPower(ctx, P.P_heat, P.P_rad);
+  const P_loss = lossPower(ctx, P.P_heat, P.P_rad_core, ctx.dWdtS);
   const { tauScal, tauE, tauT } = confinementTimes(ctx, predictive, v, W, P_loss, nbar);
   updateTransportMultiplier(ctx, predictive, dt, o, v, W, P_loss, tauScal);
   fueling.updateSeparatrixGain(ctx, t, dt, nbar, tauT);

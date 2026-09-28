@@ -381,30 +381,31 @@ export class GSGrid {
       for (let c = 0; c < xs.length; c++) if (c !== a) w *= (s - xs[c]) / (xs[a] - xs[c]);
       return w;
     });
-    // accumulated terms of the nodes of the current pass
-    const terms: Map<number, { t: [number, number][]; c: number; n: number }> = new Map();
-    const add = (k: number, t: [number, number][], c: number) => {
-      let e = terms.get(k);
-      if (!e) { e = { t: [], c: 0, n: 0 }; terms.set(k, e); }
-      for (const x of t) e.t.push(x);
-      e.c += c; e.n++;
+    // Every pass scans nodes in increasing index order and finishes one node before the next, so a
+    // node's terms (averaged over its directions, duplicate sources merged) are emitted right away;
+    // the pass's nodes become "known" only after the pass.
+    const tS = new Int32Array(16), tW = new Float64Array(16);
+    let nt = 0, cSum = 0, nDir = 0;
+    const pend: number[] = [];
+    const term = (sIdx: number, w: number) => {
+      for (let q = 0; q < nt; q++) if (tS[q] === sIdx) { tW[q] += w; return; }
+      tS[nt] = sIdx; tW[nt++] = w;
     };
-    /** commit the pass (in index order): averages over directions, marks known */
-    const commit = (mark: number) => {
-      const ks = [...terms.keys()].sort((x, y) => x - y);
-      for (const k of ks) {
-        const e = terms.get(k)!;
-        // merge duplicate sources (deterministic order)
-        const acc = new Map<number, number>();
-        for (const [s, w] of e.t) acc.set(s, (acc.get(s) ?? 0) + w / e.n);
+    const endNode = (k: number) => {
+      if (nDir > 0) {
         tgt.push(k);
-        for (const s of [...acc.keys()].sort((x, y) => x - y)) { src.push(s); wts.push(acc.get(s)!); }
+        for (let q = 0; q < nt; q++) { src.push(tS[q]); wts.push(tW[q] / nDir); }
         start.push(src.length);
-        cst.push(e.c / e.n);
+        cst.push(cSum / nDir);
+        pend.push(k);
       }
-      for (const k of ks) known[k] = mark;
-      terms.clear();
-      return ks;
+      nt = 0; cSum = 0; nDir = 0;
+    };
+    const commit = (mark: number) => {
+      for (const k of pend) known[k] = mark;
+      const done = pend.slice();
+      pend.length = 0;
+      return done;
     };
     // layer 1: exterior nodes next to the boundary
     for (let j = 0; j < NZ; j++) for (let i = 0; i < NR; i++) {
@@ -440,31 +441,34 @@ export class GSGrid {
         }
         if (xs.length < 2) { xs.push(0); idx.push(k1); }
         const wv = lagW(xs, h);
-        const t: [number, number][] = [];
-        let c = 0;
         for (let a = 0; a < xs.length; a++) {
-          if (idx[a] < 0) c += wv[a] * gb; else t.push([idx[a], wv[a]]);
+          if (idx[a] < 0) cSum += wv[a] * gb; else term(idx[a], wv[a]);
         }
-        add(k, t, c);
+        nDir++;
       }
+      endNode(k);
     }
     commit(2);
     // layers 2…EXT_LAYERS: quadratic (or linear) extrapolation along grid lines from known nodes
+    const W3 = [3, -3, 1], W2 = [2, -1];
     for (let layer = 2; layer <= EXT_LAYERS; layer++) {
       for (let j = 0; j < NZ; j++) for (let i = 0; i < NR; i++) {
         const k = j * NR + i;
         if (known[k]) continue;
         for (const [di, dj] of dirs) {
-          const pts: number[] = [];
+          let np = 0;
+          const p3 = [0, 0, 0];
           for (let m = 1; m <= 3; m++) {
             const ii = i - m * di, jj = j - m * dj;
             if (!inGrid(ii, jj) || !known[jj * NR + ii]) break;
-            pts.push(jj * NR + ii);
+            p3[np++] = jj * NR + ii;
           }
-          const w = pts.length === 3 ? [3, -3, 1] : pts.length === 2 ? [2, -1] : null;
+          const w = np === 3 ? W3 : np === 2 ? W2 : null;
           if (!w) continue;
-          add(k, pts.map((s, m) => [s, w[m]] as [number, number]), 0);
+          for (let m = 0; m < np; m++) term(p3[m], w[m]);
+          nDir++;
         }
+        endNode(k);
       }
       if (commit(3).length === 0) break;
     }
@@ -476,11 +480,13 @@ export class GSGrid {
         const i = k % NR, j = (k - i) / NR;
         for (const [di, dj] of dirs) {
           const ii = i + di, jj = j + dj;
-          if (inGrid(ii, jj) && known[jj * NR + ii]) add(k, [[jj * NR + ii, 1]], 0);
+          if (inGrid(ii, jj) && known[jj * NR + ii]) { term(jj * NR + ii, 1); nDir++; }
         }
+        endNode(k);
       }
-      if (terms.size === 0) break;
-      for (const k of commit(4)) free.push(k);
+      const done = commit(4);
+      if (done.length === 0) break;
+      for (const k of done) free.push(k);
     }
     free.sort((x, y) => x - y);
     const nF = free.length;
@@ -640,27 +646,59 @@ export interface Equilibrium {
   currentScale?: number;
 }
 
-/** Magnetic axis: grid maximum + bicubic Newton */
+/**
+ * Magnetic axis: start at the grid maximum, then maximise the bicubic ψ with Newton steps
+ * −H⁻¹∇ψ where the Hessian H is negative definite and saddle-free Newton steps |H|⁻¹∇ψ otherwise
+ * (|H|: eigenvalues replaced by their magnitudes — an ascent direction for any curvature;
+ * Y. N. Dauphin et al., "Identifying and attacking the saddle point problem in high-dimensional
+ * non-convex optimization", NeurIPS 2014), with backtracking so that ψ never decreases. A flat or
+ * hollow-current core can put a node on a saddle of the spline (∂²ψ/∂Z² > 0 at the grid maximum),
+ * where plain Newton would stop on the node below the true maximum.
+ */
 function findAxis(grid: GSGrid, psi: Float64Array, bi: Bicubic): { R: number; Z: number; psi: number } {
   let kmax = -1, vmax = -Infinity;
   for (let k = 0; k < psi.length; k++) if (grid.kind[k] === 1 && psi[k] > vmax) { vmax = psi[k]; kmax = k; }
   let R = grid.R(kmax % grid.NR), Z = grid.Z(Math.floor(kmax / grid.NR));
-  const g = new Float64Array(3), gp = new Float64Array(3), gm = new Float64Array(3);
-  const e = 1e-4 * grid.dR;
-  for (let it = 0; it < 20; it++) {
-    bi.evalGrad(R, Z, g);
+  const g = new Float64Array(3), gp = new Float64Array(3), gm = new Float64Array(3), gt = new Float64Array(3);
+  const e = 1e-4 * grid.dR, lim = grid.dR;
+  bi.evalGrad(R, Z, g);
+  for (let it = 0; it < 40; it++) {
     bi.evalGrad(R + e, Z, gp); bi.evalGrad(R - e, Z, gm);
     const hRR = (gp[1] - gm[1]) / (2 * e), hRZ = (gp[2] - gm[2]) / (2 * e);
     bi.evalGrad(R, Z + e, gp); bi.evalGrad(R, Z - e, gm);
     const hZZ = (gp[2] - gm[2]) / (2 * e);
     const det = hRR * hZZ - hRZ * hRZ;
-    if (!(det > 0)) break;
-    const dRn = -(hZZ * g[1] - hRZ * g[2]) / det, dZn = -(-hRZ * g[1] + hRR * g[2]) / det;
-    const lim = grid.dR;
-    R += Math.max(-lim, Math.min(lim, dRn)); Z += Math.max(-lim, Math.min(lim, dZn));
-    if (Math.hypot(dRn, dZn) < 1e-12 * grid.geom.a) break;
+    let dRn: number, dZn: number;
+    if (hRR < 0 && det > 0) {
+      dRn = -(hZZ * g[1] - hRZ * g[2]) / det; dZn = -(-hRZ * g[1] + hRR * g[2]) / det;
+    } else {
+      // saddle-free step Σ v_i (v_i·∇ψ)/|λ_i| over the eigenpairs of H
+      const m = 0.5 * (hRR + hZZ), d = Math.hypot(0.5 * (hRR - hZZ), hRZ);
+      const l1 = m + d, l2 = m - d;
+      const floor = 1e-8 * Math.max(Math.abs(l1), Math.abs(l2)) + 1e-300;
+      // eigenvector of l1: (hRZ, l1 − hRR) or (l1 − hZZ, hRZ), whichever is better conditioned
+      let v1R = hRZ, v1Z = l1 - hRR;
+      if (Math.hypot(v1R, v1Z) < Math.hypot(l1 - hZZ, hRZ)) { v1R = l1 - hZZ; v1Z = hRZ; }
+      const n1 = Math.hypot(v1R, v1Z);
+      if (n1 > 0) { v1R /= n1; v1Z /= n1; } else { v1R = 1; v1Z = 0; }
+      const v2R = -v1Z, v2Z = v1R;
+      const c1 = (v1R * g[1] + v1Z * g[2]) / Math.max(Math.abs(l1), floor);
+      const c2 = (v2R * g[1] + v2Z * g[2]) / Math.max(Math.abs(l2), floor);
+      dRn = c1 * v1R + c2 * v2R; dZn = c1 * v1Z + c2 * v2Z;
+    }
+    dRn = Math.max(-lim, Math.min(lim, dRn)); dZn = Math.max(-lim, Math.min(lim, dZn));
+    if (!(Number.isFinite(dRn) && Number.isFinite(dZn))) break;
+    // backtracking: ψ must not decrease
+    let t = 1;
+    for (; t > 1e-6; t *= 0.5) {
+      bi.evalGrad(R + t * dRn, Z + t * dZn, gt);
+      if (gt[0] >= g[0] - 1e-15 * Math.abs(g[0])) break;
+    }
+    if (!(t > 1e-6)) break;
+    R += t * dRn; Z += t * dZn;
+    g.set(gt);
+    if (Math.hypot(t * dRn, t * dZn) < 1e-12 * grid.geom.a) break;
   }
-  bi.evalGrad(R, Z, g);
   return { R, Z, psi: g[0] };
 }
 

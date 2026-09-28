@@ -34,17 +34,20 @@ current equilibrium and transport geometry, work arrays, plasma and controller s
 
 `CoupledStepper.step` (normal phase) takes an implicit step from `yOld` to `y`:
 
-1. once, on the old state: composition → q profile → boundary values → step constants
-   (`heatingPowers`, then every source's `prepare`, then the neoclassical closure) → fueling source;
+1. once per attempt, on the old state: composition → q profile → boundary values → step constants
+   (`heatingPowers`, then every source's `prepare`, then the neoclassical closure) → fueling
+   source (`w.Sn`) → every source's `particles`;
 2. Picard iterations (≤ 8) on the iterate: transport coefficients (χ relaxed by ½) → density solve →
    composition → every source's `heat` → q profile → current sources (σ, bootstrap, every source's
    `current`, ohmic) → `assembleHeatSources` → heat solve (T_e, T_i together) → current solve;
 3. P_bound from the last heat solve, final composition and q profile.
 
-A failed attempt is retried with Δt × 0.4; after 12 attempts one forced attempt is accepted if
-finite, otherwise the shot ends with a `StepFailure`. Then `acceptStep` integrates the global
-quantities (P_SOL, τ_E and C_χ, inventories, counters, NTM widths), writes the diagnostics, and the
-equilibrium coupling may adopt a new geometry (the work arrays are re-evaluated on it).
+A failed attempt is retried with Δt × 0.4 (and runs the per-attempt parts of 1. again); after 12
+attempts one forced attempt is accepted if finite, otherwise the shot ends with a `StepFailure`.
+Then `acceptStep` integrates the global quantities (P_SOL, τ_E and C_χ, inventories, counters, NTM
+widths), calls the `accepted` hooks of the transport model and the sources, writes the
+diagnostics, and the equilibrium coupling may adopt a new geometry (the work arrays are
+re-evaluated on it).
 `ProfileModel.postStep` then runs the event models in list order. Frames of a state no step
 produced (t = 0, after an MHD crash, after a rewind) evaluate everything from `y` through
 `PhysicsPipeline.evaluateWorkArrays`.
@@ -60,24 +63,40 @@ this closure: put its power density into a work array, add it in `assembleHeatSo
 source list, or adds event models (tests, experiments). `Simulation` builds the defaults; a module
 that should run in every shot is registered as below.
 
-**SourceModel** (`sources/SourceModel.ts`), registered in `defaultSources()` (`sources/index.ts`):
+**SourceModel** (`sources/SourceModel.ts`), registered in `defaultSources()` (`sources/index.ts`).
+All hooks are optional:
 
-- `prepare(ctx, t, st, K)`: once per step on the old state; deposition that is held fixed over
+- `prepare(ctx, t, st, K)`: on the old state, once per attempt; deposition that is held fixed over
   the step, fields of `K` (`StepConstants`);
+- `particles(ctx, t, dt, st, K)`: once per attempt, after the fueling control assigned `w.Sn`; add
+  the source's particle source density [m⁻³ s⁻¹] into `w.Sn` (the density solve uses the sum; the
+  fueling feedback on n̄ closes the electron balance, but a source that changes the fuel mix or
+  the impurity inventory accounts for that itself);
 - `heat(ctx, st, K)`: every Picard iteration on the iterate (its composition is current);
 - `current(ctx, st, K)`: every Picard iteration; add driven current into `ctx.w.jcdB`;
+- `accepted(ctx, t, dt, yOld, y)`: once after each accepted step of the normal phase (also a
+  forced one; not during the quench phases): the place to evolve state;
 - `geometryChanged(ctx, tg)`: rebuild caches that depend on the transport geometry.
 
+`prepare`, `particles`, `heat` and `current` are evaluations, not events. A retried step runs
+`prepare` and `particles` again, `heat` and `current` run once per Picard iteration, and `prepare`
+(with the other work-array evaluations) also runs for a state no step produced (first frame, after
+an equilibrium swap, after an MHD crash). Write them as functions of (state, t, the source's own
+state) that leave that state unchanged. A population that evolves from step to step is integrated
+in `accepted` and saved and restored through `Checkpointable`.
+
 The heat equation takes its sources from the fixed list of work arrays in `assembleHeatSources`
-(the summation order is part of the bitwise results): add the new arrays there. A particle source
-goes into `w.Sn` (see `control/fueling.ts`).
+(the summation order is part of the bitwise results): add the new arrays there.
 
 **TransportModel** (`transport/TransportModel.ts`), registered in `TRANSPORT_MODELS`
 (`transport/index.ts`) under a `ProfileSettings.transportModel` id (the union in `types.ts`, owned
 by the kernel lane, needs the id appended). `diffusivities(ctx, st, chiE, chiI)` writes the
 anomalous χ on the N + 1 faces; barrier, particle transport, islands and floors are added by
-`coefficients.ts`. `predictive: true` leaves confinement to the model (τ_E = W/P_loss, C_χ = 1);
-`false` puts the amplitude under the C_χ controller that tracks the τ_E scaling.
+`coefficients.ts`. It is an evaluation like `heat` (once per Picard iteration and per state
+evaluation: idempotent). `predictive: true` leaves confinement to the model (τ_E = W/P_loss,
+C_χ = 1); `false` puts the amplitude under the C_χ controller that tracks the τ_E scaling. Optional
+`accepted(ctx, t, dt, yOld, y)` (runs before the sources' hooks) and `geometryChanged(ctx, tg)`
+work as for sources.
 
 **EventModel** (`events/EventModel.ts`), added in `defaultEvents()` (`events/index.ts`) before the
 disruption check: `afterStep(ctx, t, st, d, ev)` after every accepted step of the normal phase,
@@ -86,7 +105,8 @@ next frame re-evaluates the diagnostics) and may cap `ctx.dt`; it conserves what
 conserve (the sawtooth crash conserves particles and electron and ion energy exactly).
 
 **Checkpointable** (`checkpoint.ts`): every module with state beyond `y` implements `save(rec, aux)`
-and `restore(rec, aux)`. Numbers go into `rec` under keys unique over all modules (they are
+and `restore(rec, aux)` (the context part also carries the last diagnostics and, in the quench
+phases, the profiles). Numbers go into `rec` under keys unique over all modules (they are
 stored in the history frames, so existing key names never change); references and strings go
 into `aux`. `restore` must accept a record without `aux` (from elsewhere) and missing keys
 (`recNum` defaults). Event models, sources and the transport model take part as soon as they
@@ -112,6 +132,13 @@ implement the hooks; other parts are listed in `ProfileModel.checkpointParts`.
 
 ## Known limitations
 
+- `ProfileModules.events` only adds event models (before the disruption check); the standard ones,
+  in particular `ELM` (its statistics go into the report) and `sawtooth`, are replaced by
+  editing `defaultEvents()`. Sources and the transport model can be replaced.
+- The `accepted` hooks and the checkpoints of sources and the transport model run in the normal
+  phase; during the quench phases of a disruption profiles are scaled, not transported.
+- Replaying from an irregular frame (an ELM or crash frame) after `Simulation.rewindTo` also
+  depends on the kernel's output clock, which is not part of the model checkpoint.
 - The stored energy is summed in two places (`acceptStep` as W_e + W_i, `ctx.storedEnergy` for
   frames no step produced and the quench); they agree to rounding only.
 - `ProfileModel` still carries the `rhs`/`integratorOpts` stub that `SimModel` requires, although
@@ -125,13 +152,13 @@ implement the hooks; other parts are listed in `ProfileModel.checkpointParts`.
 
 | File | Covers |
 | --- | --- |
-| `modules.test.ts` | state layout, work arrays, module wiring, checkpoint keys, the three plug-in interfaces |
+| `modules.test.ts` | state layout, work arrays, module wiring, checkpoint keys, the three plug-in interfaces (hooks and their call counts, particle source, state over accepted steps and rewinds) |
 | `events/events.test.ts` | every event model through `afterStep`, with checkpoints |
 | `energy.test.ts` | convection vs an analytic steady state, exact energy identity of a heat step, full-model energy balance (ITER15) |
 | `geometry.test.ts` | transport geometry of an analytic Solov'ev equilibrium |
 | `sources/sources.test.ts` | NBI chord cache vs direct deposition, beam-target table vs the integral |
 | `transport/transport.test.ts` | 'cgm' smoke test (ITER15 ramp-up) |
-| `integrity.test.ts` | equilibrium swaps, GS failures, step failures, reported τ_E, initial equilibrium |
+| `integrity.test.ts` | equilibrium swaps (fresh work arrays), GS failures and retry timing, step failures, reported τ_E, initial equilibrium, replays from quench frames |
 | `profiles.test.ts` | solver verification (analytic), neoclassical, MHD helpers, integration runs |
 
 A change meant to preserve behaviour should leave `npm run golden` passing; a refactor can be

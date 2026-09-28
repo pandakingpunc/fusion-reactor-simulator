@@ -117,7 +117,7 @@ export class ProfileModel implements SimModel {
     this.events = ev.list; this.elm = ev.elm; this.disruption = ev.disruption;
     this.coupling = new EquilibriumCoupling(ctx);
     this.stepper = new CoupledStepper(ctx, this.physics, this.fueling, this.disruption, (t, dt, yOld, y) => {
-      acceptStep(ctx, this.fueling, this.physics.transport.predictive, t, dt, yOld, y);
+      acceptStep(ctx, this.fueling, this.physics, t, dt, yOld, y);
       this.coupling.check(ctx, t + dt, y, (tu, yu) => this.updateEquilibrium(tu, yu));
     });
     this.checkpointParts = [contextCheckpoint(ctx), this.coupling, this.stepper, this.physics.transport, ...this.physics.sources, ...this.events];

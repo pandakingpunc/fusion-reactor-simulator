@@ -23,10 +23,11 @@ function drive(m: ProfileModel, tEnd: number) {
   const y = m.initialState();
   const frames: { t: number; d: Record<string, number>; y: number[] }[] = [{ t: 0, d: m.diagnostics(0, y), y: Array.from(y) }];
   const events: SimEvent[] = [];
-  let t = 0, nextOut = m.outputDt;
+  let t = 0, nextOut = m.outputDt, steps = 0;
   while (t < tEnd - 1e-12 && !m.terminated) {
     const t0 = t;
     t = m.step(t, y, Math.min(tEnd, nextOut));
+    if (t > t0) steps++;
     const ev = m.postStep(t, t - t0, y);
     events.push(...ev);
     const regular = t >= nextOut - 1e-12;
@@ -35,7 +36,7 @@ function drive(m: ProfileModel, tEnd: number) {
       if (regular) nextOut = t + m.outputDt;
     }
   }
-  return { frames, events, y };
+  return { frames, events, y, steps, t };
 }
 
 describe('state layout and work arrays', () => {
@@ -94,55 +95,114 @@ describe('module wiring', () => {
 describe('plug-in interfaces', () => {
   const T = 0.3;
 
-  it('SourceModel: hooks run once per step (prepare) and per Picard iteration (heat, current); a no-op source changes nothing', () => {
-    const calls = { prepare: 0, heat: 0, current: 0, geometry: 0 };
+  it('SourceModel: prepare and particles run per attempt, heat and current per Picard iteration, accepted once per accepted step; no-op hooks change nothing', () => {
+    const calls = { prepare: 0, particles: 0, heat: 0, current: 0, accepted: 0, geometry: 0 };
+    // accepted steps tile the time axis: each starts where the previous one ended
+    let tNext = 0, gap = 0, dtSum = 0, moved = true;
     const probe: SourceModel = {
       id: 'probe',
       prepare: (_c: ProfileContext, _t: number, _s: ProfileState, K: StepConstants) => { calls.prepare++; expect(K.P_NBI).toBeGreaterThanOrEqual(0); },
+      particles: (_c, _t, dt) => { calls.particles++; expect(dt).toBeGreaterThan(0); },
       heat: () => { calls.heat++; },
       current: () => { calls.current++; },
+      accepted: (_c, t, dt, yOld, y) => {
+        calls.accepted++;
+        gap = Math.max(gap, Math.abs(t - tNext)); tNext = t + dt; dtSum += dt;
+        moved = moved && y.Te.some((x, i) => x !== yOld.Te[i]);
+      },
       geometryChanged: () => { calls.geometry++; },
     };
     const ref = drive(new ProfileModel(cfg(T)), T);
     const withProbe = new ProfileModel(cfg(T), { sources: [...defaultSources(), probe] });
+    let attempts = 0;
+    const implicitStep = withProbe.stepper.implicitStep.bind(withProbe.stepper);
+    withProbe.stepper.implicitStep = (t, dt, yOld, y) => { attempts++; return implicitStep(t, dt, yOld, y); };
     const run = drive(withProbe, T);
     expect(run.y).toEqual(ref.y);
     expect(run.frames.map((f) => f.d)).toEqual(ref.frames.map((f) => f.d));
     expect(calls.geometry).toBe(1 + withProbe.eqUpdates);
-    expect(calls.prepare).toBeGreaterThan(10);
-    // prepare: once per implicit attempt (and per evaluation of a state); heat and current: once per
-    // Picard iteration, at least two per attempt
+    // once per implicit attempt (a retried step repeats it); prepare also by the evaluations of a
+    // state no step produced (first frame, after an equilibrium swap or a crash)
+    expect(attempts).toBeGreaterThan(10);
+    expect(calls.particles).toBe(attempts);
+    expect(calls.prepare).toBeGreaterThanOrEqual(attempts);
+    // heat and current: once per Picard iteration, at least two per attempt
     expect(calls.heat).toBeGreaterThan(calls.prepare);
     expect(calls.current).toBe(calls.heat);
+    // accepted: once per accepted step, with the step's Δt and the old and the new state
+    expect(calls.accepted).toBe(run.steps);
+    expect(calls.accepted).toBeLessThanOrEqual(attempts);
+    expect(gap).toBeLessThan(1e-12);
+    expect(Math.abs(dtSum - run.t)).toBeLessThan(1e-9);
+    expect(moved).toBe(true);
   }, 60000);
 
-  it('SourceModel and TransportModel with state take part in the checkpoints', () => {
-    class Counting implements SourceModel {
-      readonly id = 'counting';
-      n = 0;
-      prepare() { this.n++; }
-      save(rec: CheckpointRecord) { rec.countingN = this.n; }
-      restore(rec: Readonly<CheckpointRecord>) { this.n = rec.countingN; }
+  it('SourceModel.particles: an additional particle source is added into w.Sn once per attempt, after the fueling control', () => {
+    const S0 = 1e20; // m⁻³ s⁻¹, uniform
+    let after: number[] = [], drift = 0, calls = 0;
+    const probe: SourceModel = {
+      id: 'pellet',
+      particles: (c) => {
+        calls++;
+        for (let i = 0; i < c.N; i++) c.w.Sn[i] += S0;
+        after = Array.from(c.w.Sn);
+      },
+      // every Picard iteration must see exactly what particles left: the source was added once, not per iteration
+      heat: (c) => { if (after.some((x, i) => c.w.Sn[i] !== x)) drift++; },
+    };
+    const base = drive(new ProfileModel(cfg(T)), T);
+    const run = drive(new ProfileModel(cfg(T), { sources: [...defaultSources(), probe] }), T);
+    expect(calls).toBeGreaterThan(10);
+    expect(drift).toBe(0);
+    // the fueling control assigns w.Sn (it would overwrite an earlier addition): the source survives
+    // to the density solve, which raises n_e by about S0 · t (uniform), ~0.3·10²⁰ m⁻³ here
+    const ne = (r: { frames: { d: Record<string, number> }[] }) => r.frames[r.frames.length - 1].d.ne;
+    expect(ne(run) - ne(base)).toBeGreaterThan(0.15);
+    expect(ne(run) - ne(base)).toBeLessThan(0.35);
+  }, 60000);
+
+  it('SourceModel and TransportModel with state that evolves per accepted step take part in the checkpoints', () => {
+    class Clock implements SourceModel {
+      readonly id = 'clock';
+      time = 0; steps = 0;
+      accepted(_c: ProfileContext, _t: number, dt: number) { this.time += dt; this.steps++; }
+      save(rec: CheckpointRecord) { rec.clockTime = this.time; rec.clockSteps = this.steps; }
+      restore(rec: Readonly<CheckpointRecord>) { this.time = rec.clockTime; this.steps = rec.clockSteps; }
     }
-    const src = new Counting();
-    const tr = Object.assign(new ScalingTransport(), {
-      calls: 0,
-      save(rec: CheckpointRecord) { rec.trCalls = tr.calls; },
-      restore(rec: Readonly<CheckpointRecord>) { tr.calls = rec.trCalls; },
-    });
-    const diff = tr.diffusivities.bind(tr);
-    tr.diffusivities = (c, s, e, i) => { tr.calls++; diff(c, s, e, i); };
-    const m = new ProfileModel(cfg(T), { sources: [...defaultSources(), src], transport: tr });
+    class Counting extends ScalingTransport {
+      accepts = 0; geometries = 0;
+      accepted() { this.accepts++; }
+      geometryChanged() { this.geometries++; }
+      save(rec: CheckpointRecord) { rec.trAccepts = this.accepts; }
+      restore(rec: Readonly<CheckpointRecord>) { this.accepts = rec.trAccepts; }
+    }
+    const clock = new Clock(), tr = new Counting();
+    const m = new ProfileModel(cfg(T), { sources: [...defaultSources(), clock], transport: tr });
     const y = m.initialState();
     m.diagnostics(0, y);
+    const advance = (from: number, to: number) => {
+      let t = from;
+      while (t < to - 1e-12 && !m.terminated) { const t0 = t; t = m.step(t, y, to); m.postStep(t, t - t0, y); }
+      return t;
+    };
+    const tHalf = advance(0, T / 2);
+    expect(clock.time).toBeCloseTo(tHalf, 12);
+    expect(clock.steps).toBeGreaterThan(5);
+    expect(tr.accepts).toBe(clock.steps);
     const rec = m.saveInternal();
-    expect([rec.countingN, rec.trCalls]).toEqual([src.n, tr.calls]);
-    const at = [src.n, tr.calls];
-    let t = 0;
-    while (t < 0.05) t = m.step(t, y, 0.05);
-    expect(src.n).toBeGreaterThan(at[0]);
+    expect([rec.clockTime, rec.clockSteps, rec.trAccepts]).toEqual([clock.time, clock.steps, tr.accepts]);
+    const yHalf = Float64Array.from(y);
+    const tEnd = advance(tHalf, T);
+    expect(m.eqUpdates).toBeGreaterThan(0); // the run crosses an equilibrium swap
+    expect(tr.geometries).toBe(1 + m.eqUpdates);
+    const first = { time: clock.time, steps: clock.steps, accepts: tr.accepts, y: Array.from(y) };
+    expect(first.time).toBeCloseTo(tEnd, 12);
+    // rewind: the state comes back and the replay accumulates the same values
     m.restoreInternal(rec);
-    expect([src.n, tr.calls]).toEqual(at);
+    y.set(yHalf);
+    expect([clock.time, clock.steps, tr.accepts]).toEqual([rec.clockTime, rec.clockSteps, rec.trAccepts]);
+    expect(advance(tHalf, T)).toBe(tEnd);
+    expect({ time: clock.time, steps: clock.steps, accepts: tr.accepts, y: Array.from(y) }).toEqual(first);
   }, 60000);
 
   it('TransportModel: a predictive model sets χ and closes τ_E as W/P_loss, without the C_χ controller', () => {

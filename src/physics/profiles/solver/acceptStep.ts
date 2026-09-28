@@ -5,7 +5,8 @@
  *   power totals and stored energy (dW/dt from the old state with the old ion density) → boundary
  *   outflux Γ_b and loop voltage → ELM power average → lagged P_SOL → loss power and confinement
  *   times → C_χ controller → separatrix density gain → He ash, impurity and fuel mix → energy,
- *   neutron and tritium counters → NTM islands → diagnostics of the new state.
+ *   neutron and tritium counters → NTM islands → the transport model's and the sources'
+ *   `accepted` hooks → diagnostics of the new state.
  *
  * The equilibrium update check follows (ProfileModel).
  */
@@ -18,9 +19,11 @@ import { FuelingControl } from '../control/fueling';
 import { powerTotals, writeDiagnostics } from '../diagnostics';
 import { evolveIslands } from '../events/ntm';
 import { volumeIntegral } from '../sources/deposition';
+import type { PhysicsPipeline } from './pipeline';
 
-export function acceptStep(ctx: ProfileContext, fueling: FuelingControl, predictive: boolean, t: number, dt: number, yOld: Float64Array, y: Float64Array): void {
+export function acceptStep(ctx: ProfileContext, fueling: FuelingControl, physics: PhysicsPipeline, t: number, dt: number, yOld: Float64Array, y: Float64Array): void {
   const N = ctx.N, w = ctx.w, g = ctx.tg, c = ctx.cfg;
+  const predictive = physics.transport.predictive;
   const v = ctx.view(y), o = ctx.view(yOld), s = v.s;
   const K = ctx.lastK!;
   // volume integrals [W]
@@ -54,5 +57,7 @@ export function acceptStep(ctx: ProfileContext, fueling: FuelingControl, predict
   if (c.fuel === 'DT') { s.NTburn = o.s.NTburn + Rfus * dt; s.NTfuel = o.s.NTfuel + Sf * (1 - wA) * dt; }
   // NTM islands (modified Rutherford equation, explicit substeps)
   evolveIslands(ctx, dt, o, v);
+  // state of plug-in modules
+  physics.accepted(t, dt, o, v);
   writeDiagnostics(ctx, t + dt, v, { ...P, W, dWdt, tauE, tauScal, P_loss, nbar, P_bound: ctx.Pbound });
 }

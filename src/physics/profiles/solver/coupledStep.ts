@@ -140,6 +140,7 @@ export class CoupledStepper implements Checkpointable {
     const K: StepConstants = physics.stepConstants(t, o);
     // fueling feedback and particle source
     this.fueling.particleSource(ctx, t, dt, o, v, K);
+    physics.particleSources(t, dt, o, K);
     // Picard
     const heatIn: HeatInputs = {
       dt, ne0: o.ne, ne1: v.ne, ni0: w.ni0, ni1: w.ni, Te0: o.Te, Ti0: o.Ti, chiE: w.chiE, chiI: w.chiI,

@@ -20,6 +20,14 @@
  * With `options.onTaskError` the failure is turned into that task's result instead: a crashed, hung or
  * broken worker is replaced by a fresh one and the remaining tasks continue.
  *
+ * Shutdown: the returned promise settles only after every worker thread the pool ever started has
+ * stopped (its 'exit' event has fired), whatever the outcome: success, task error, timeout, abort,
+ * SIGINT/SIGTERM or a callback that throws. A caller may therefore end the process right after the
+ * promise settles without tearing down threads that are still shutting down (on Windows that race
+ * crashed a spawned `validate` process once with exit code 0xC0000005, an access violation, while
+ * Node was exiting). Workers that do not stop within {@link SHUTDOWN_GRACE_MS} are given up on so a
+ * wedged thread cannot make the pool hang.
+ *
  * Cancellation: aborting `options.signal`, or SIGINT/SIGTERM while the pool runs, terminates every
  * worker and rejects with a {@link PoolAbortError}; a CLI maps the error to exit code 130. Process
  * signals are handled only by the options form (`handleSignals`, default true there); the positional
@@ -39,6 +47,9 @@ import { availableParallelism } from 'node:os';
 export function defaultThreads(): number {
   return Math.max(1, availableParallelism() - 1);
 }
+
+/** How long the pool waits for terminated workers to stop before it settles anyway [ms]. */
+export const SHUTDOWN_GRACE_MS = 10_000;
 
 /** Invalid pool configuration (e.g. a thread count that is not a finite integer ≥ 1). CLIs map it to exit code 2. */
 export class PoolConfigError extends Error {
@@ -195,21 +206,38 @@ export async function runPool<T, R>(
     const handleSignals = opts.handleSignals ?? true;
     if (handleSignals) { process.once('SIGINT', onSigint); process.once('SIGTERM', onSigterm); }
 
+    /** stop promises of every worker terminated so far (replaced ones included); they never reject */
+    const stopping = new Set<Promise<void>>();
+    /** terminates a worker; idempotent, and terminating one that has already exited is a no-op */
+    function stop(w: Worker): void {
+      stopping.add(w.terminate().then(() => undefined, () => undefined));
+    }
+    /** resolves when every terminated worker has stopped, or after the grace period */
+    function stopped(): Promise<void> {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const grace = new Promise<void>((r) => { timer = setTimeout(r, SHUTDOWN_GRACE_MS); });
+      return Promise.race([Promise.all(stopping).then(() => undefined), grace]).finally(() => clearTimeout(timer));
+    }
+
     function cleanup(): void {
       signal?.removeEventListener('abort', onAbort);
       if (handleSignals) { process.off('SIGINT', onSigint); process.off('SIGTERM', onSigterm); }
       for (const s of slots) {
         if (s.timer) clearTimeout(s.timer);
-        void s.worker.terminate();
+        stop(s.worker);
       }
     }
+    // `settled` is set at once so that no event of a dying worker is handled again; the promise itself
+    // settles once every worker thread has stopped
     function finish(): void {
       if (settled) return;
-      settled = true; cleanup(); resolve(results);
+      settled = true; cleanup();
+      void stopped().then(() => resolve(results));
     }
     function fail(e: Error): void {
       if (settled) return;
-      settled = true; cleanup(); reject(e);
+      settled = true; cleanup();
+      void stopped().then(() => reject(e));
     }
 
     /** stores a settled task's result and reports it; false if the pool settled meanwhile (a callback threw or cancelled it) */
@@ -285,7 +313,7 @@ export async function runPool<T, R>(
       const { label, id } = describeTask(tasks[i], i);
       const err = new PoolTaskError(`worker pool: ${what} while running ${label}`, i, id, exitCode, { cause, timedOut });
       if (!onTaskError) { fail(err); return; }
-      void w.terminate(); // it crashed, hung or is about to exit; never reuse it
+      stop(w); // it crashed, hung or is about to exit; never reuse it (the pool waits for it before it settles)
       if (!recover(slot, err)) return;
       if (done === total) { finish(); return; }
       if (next < total) {

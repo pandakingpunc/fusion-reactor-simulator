@@ -5,6 +5,16 @@
 import { ImpuritySpecies, IMPURITIES } from './constants';
 
 /**
+ * Çekirdek radyasyonu bölgesi ρ < RHO_CORE (normalize küçük yarıçap). τ_E ölçeklemelerinin ve L-H
+ * eşiğinin kayıp gücü P_L = P_heat − P_rad,core − dW/dt yalnız bu bölgenin radyasyonunu düşer
+ * (sistem-kodu kuralı: PROCESS 'coreradius' = 0.6; M. Kovari et al., Fusion Eng. Des. 89 (2014) 3054).
+ * Dış manto radyasyonu, τ_E veritabanlarının kayıp gücünde olduğu gibi P_L'nin içinde kalır; 0D güç
+ * dengesi ise tüm radyasyonu açıkça düşer. APPROXIMATION: 0D profillerde pedestal yok; soğuk kenarın
+ * çizgi radyasyonu mantoya yazılır. Senkrotron sıcak çekirdekten yayılır ve tamamen çekirdek sayılır.
+ */
+export const RHO_CORE = 0.6;
+
+/**
  * Bremsstrahlung güç yoğunluğu [W/m³].
  * P_br = 5.35e-37 · n_e · Σ_j n_j Z_j² · sqrt(T_e)   (NRL Formulary 2022 s.58; Wesson §4.x)
  * Relativistik düzeltme (T_e ≳ 50 keV, p-B11 için kritik):

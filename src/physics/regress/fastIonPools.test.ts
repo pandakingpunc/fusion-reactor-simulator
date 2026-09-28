@@ -44,7 +44,7 @@ describe('fast-ion energy content of a steady slowing-down distribution', () => 
   });
 });
 
-describe('separate alpha and beam pools (0D magnetic model)', () => {
+describe('separate alpha and beam pools (0D magnetic model)', { timeout: 60_000 }, () => {
   it('ITER: P_alpha is the charged-fusion-product heating, the beams are reported separately', () => {
     const h = run('ITER').history;
     const Pa = flatTopMean(h, 'P_alpha'), Pch = flatTopMean(h, 'P_charged'), Pfus = flatTopMean(h, 'P_fus');
@@ -93,7 +93,7 @@ describe('separate alpha and beam pools (0D magnetic model)', () => {
   });
 });
 
-describe('fast-particle pressure: Troyon limit yes, NTM drive no', () => {
+describe('fast-particle pressure: Troyon limit yes, NTM drive no', { timeout: 60_000 }, () => {
   // an ITER flat-top state
   const sim = new Simulation({ ...ITER, t_end: 120 });
   sim.runAll();

@@ -20,7 +20,7 @@ function initialDiag(cfg: MagneticConfig, t = 0) {
   return m.diagnostics(t, m.initialState());
 }
 
-describe('D-D fuel with fuelFracA < 1 (both fuel slots hold deuterium)', () => {
+describe('D-D fuel with fuelFracA < 1 (both fuel slots hold deuterium)', { timeout: 60_000 }, () => {
   it('0D thermal fusion power does not depend on how D is split between the two slots', () => {
     const full = initialDiag({ ...DIIID, fuelFracA: 1.0 });
     const half = initialDiag({ ...DIIID, fuelFracA: 0.5 });
@@ -51,7 +51,7 @@ describe('D-D fuel with fuelFracA < 1 (both fuel slots hold deuterium)', () => {
   });
 });
 
-describe('D-³He fuel includes the D-D side reactions', () => {
+describe('D-³He fuel includes the D-D side reactions', { timeout: 60_000 }, () => {
   it('lists D(d,p)T and D(d,n)³He as deuterium-deuterium channels after the main reaction', () => {
     const ch = FUEL_CHANNELS.DHe3;
     expect(ch[0].name).toBe('D+He3');

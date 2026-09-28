@@ -67,3 +67,18 @@ export function profileIntegral(fn: (rho: number) => number, N = 40): number {
   }
   return s / N;
 }
+
+/**
+ * profileIntegral ile aynı integral (bit bit aynı toplam) ve ρ < rhoSplit iç bölgenin payı
+ * (orta noktası rhoSplit'in altında kalan hücreler).
+ */
+export function profileIntegralSplit(fn: (rho: number) => number, rhoSplit: number, N = 40): { total: number; inner: number } {
+  let s = 0, si = 0;
+  for (let i = 0; i < N; i++) {
+    const rho = (i + 0.5) / N;
+    const v = fn(rho) * 2 * rho;
+    s += v;
+    if (rho < rhoSplit) si += v;
+  }
+  return { total: s / N, inner: si / N };
+}

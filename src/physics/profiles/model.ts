@@ -22,7 +22,7 @@
 import { Geometry } from '../geometry';
 import { FUEL_CHANNELS, FUEL_SPECIES } from '../reactivity';
 import { tauIPB98y2, tauITER89P, tauSTValovic } from '../transport';
-import { disruptionReport, DisruptionCause, DISRUPTION_LABELS, DISRUPTION_FIXES } from '../disruption';
+import { DISRUPTION_FIXES } from '../disruption';
 import { checkMagnet, MAGNET_TECH, MagnetCheck } from '../engineering';
 import { GSSolver, Equilibrium, EquilibriumOptions } from '../equilibrium/gs';
 import { buildMagneticReport } from '../confinement/magneticReport';
@@ -34,8 +34,8 @@ import { EquilibriumInitFailure, StepFailure } from './failures';
 import { DEFAULT_PROFILE_SETTINGS } from './defaults';
 import { HeatInputs } from './fvsolver';
 import { edgeDeposition, gaussianDeposition, volumeIntegral } from './sources/deposition';
-import { elmCrash, flattenConserving, kadomtsevMixingRadius, mreRate, rhoOfQ, shearAt } from './mhd';
-import { CrashHook, KEV, MU0, PHASES, ProfileContext } from './context';
+import { rhoOfQ } from './mhd';
+import { CrashHook, KEV, ProfileContext } from './context';
 import { composition } from './composition';
 import { currentProfiles, q95 } from './qprofile';
 import { separatrixT } from './boundary/sol';
@@ -44,6 +44,11 @@ import { PROFILE_DIAGS, writeDiagnostics } from './diagnostics';
 import { assembleHeatSources, defaultSources } from './sources';
 import { createTransportModel } from './transport';
 import { PhysicsPipeline } from './solver/pipeline';
+import { defaultEvents, EventModel } from './events';
+import type { DisruptionEvents } from './events/disruption';
+import type { ElmEvents } from './events/elm';
+import { evolveIslands } from './events/ntm';
+import { CheckpointStore, Checkpointable, contextCheckpoint, recNum } from './checkpoint';
 
 export { DEFAULT_PROFILE_SETTINGS };
 export { PROFILE_DIAGS };
@@ -83,21 +88,19 @@ export class ProfileModel implements SimModel {
   private magnetInfo: MagnetCheck;
 
   // dinamik iç durum
-  private lastSaw = -1e9;
-  private lastElm = -1e9;
-  private elmTimes: number[] = [];
   private eqTime = 0;
   private eqBetaP = 0;
   private eqLi = 0;
-  private ignited = false;
-  private burning = false;
-  private ntmOn32 = false;
-  private ntmOn21 = false;
 
   // çalışma dizileri
   private depGas!: Float64Array; private depPel!: Float64Array;
   /** work-array evaluation: transport model and sources */
   readonly physics: PhysicsPipeline;
+  /** event models, in postStep order */
+  readonly events: readonly EventModel[];
+  private readonly elm: ElmEvents;
+  private readonly disruption: DisruptionEvents;
+  private readonly checkpointParts: readonly Partial<Checkpointable>[];
 
   get terminated(): TerminationInfo | null { return this.ctx.terminated; }
   get ps(): ProfileSettings { return this.ctx.ps; }
@@ -118,6 +121,9 @@ export class ProfileModel implements SimModel {
     this.outputDt = Math.max(cfg.t_end / 800, 0.002);
     this.nState = ctx.layout.size;
     this.physics = new PhysicsPipeline(ctx, createTransportModel(ctx.ps.transportModel), defaultSources());
+    const ev = defaultEvents();
+    this.events = ev.list; this.elm = ev.elm; this.disruption = ev.disruption;
+    this.checkpointParts = [contextCheckpoint(ctx), this.modelCheckpoint, ...this.events];
     // fueling deposition profiles on the transport geometry
     ctx.onGeometry((tg) => {
       this.depGas = edgeDeposition(tg, 0.04);
@@ -250,7 +256,7 @@ export class ProfileModel implements SimModel {
    */
   step(t: number, y: Float64Array, tMax: number): number {
     if (this.ctx.phase === 'ended') return tMax;
-    if (this.ctx.phase !== 'normal') return this.disruptionStep(t, y, tMax);
+    if (this.ctx.phase !== 'normal') return this.disruption.quenchStep(this.ctx, t, y, tMax);
     const dtWant = this.ctx.dt;
     let dt = Math.min(dtWant, tMax - t);
     if (dt <= 0) return t;
@@ -511,29 +517,8 @@ export class ProfileModel implements SimModel {
     s.Ein = o.s.Ein + (K.P_NBI + K.P_IC + K.P_EC + P_oh) * dt;
     s.Nn = o.s.Nn + Nn * dt;
     if (c.fuel === 'DT') { s.NTburn = o.s.NTburn + Rfus * dt; s.NTfuel = o.s.NTfuel + Sf * (1 - wA) * dt; }
-    // NTM adaları (MRE, açık Euler alt adımlarla)
-    for (const [key, m, qv] of [['w32', 3, 1.5], ['w21', 2, 2]] as const) {
-      let wv = o.s[key];
-      if (wv <= 0 || !c.events.ntm) { s[key] = 0; continue; }
-      const rs = rhoOfQ(g, w.qF, qv);
-      if (rs <= 0) { s[key] = 0; continue; }
-      const i = Math.min(N - 2, Math.max(1, Math.floor(rs / g.dRho)));
-      const rsm = 0.5 * (g.RoutC[i] - g.RinC[i]);
-      const eta = 1 / Math.max(w.sigma[i], 1);
-      const pS = w.p[i];
-      const dp = (w.p[i + 1] - w.p[i - 1]) / (2 * g.dRho) * g.gradRhoC[i];
-      const dq = (w.qF[i + 1] - w.qF[i]) / g.dRho * g.gradRhoC[i];
-      const Lp = pS / Math.max(-dp, 1e-6), Lq = qv / Math.max(dq, 1e-6);
-      const Bth = (g.epsC[i] * g.B0) / qv;
-      const bth = (2 * MU0 * pS) / (Bth * Bth);
-      const wd = 0.012 * (g.a / 2);
-      // a_bs ≈ 1: doymuş ada w/a ≈ 0.05–0.1 (JET/DIII-D 3/2 NTM deneysel aralığı; La Haye 2006)
-      const par = { eta, m, rs: rsm, eps: g.epsC[i], betaTheta: bth, LqOverLp: Math.min(Lq / Math.max(Lp, 1e-3), 5), wd, aBs: 1.0, aPol: 0.5 };
-      const nsub = 20;
-      for (let k = 0; k < nsub; k++) wv = Math.max(0, wv + (dt / nsub) * mreRate(wv, par));
-      if (wv < 0.2 * wd) wv = 0;
-      s[key] = Math.min(wv, 0.4 * g.a);
-    }
+    // NTM islands (modified Rutherford equation, explicit substeps)
+    evolveIslands(this.ctx, dt, o, v);
     // teşhis
     writeDiagnostics(this.ctx, t + dt, v, { P_fus, P_chg, P_neut, P_bt, P_aux_abs, P_oh, P_alpha, P_brems, P_line, P_sync, P_rad, P_heat, W, dWdt, tauE, tauScal, P_loss, nbar });
     this.eqCheck(t + dt, y);
@@ -678,155 +663,22 @@ export class ProfileModel implements SimModel {
 
   // ------------------------------------------------------------------ olaylar
   postStep(t: number, _dt: number, y: Float64Array): SimEvent[] {
-    const ev: SimEvent[] = this.ctx.pending.splice(0);
-    if (this.ctx.terminated) return ev;
-    const c = this.cfg, g = this.ctx.tg, w = this.ctx.w, N = this.N, ps = this.ps;
-    const v = this.ctx.view(y), s = v.s;
-    const d = this.ctx.lastDiag;
+    const ctx = this.ctx;
+    const ev: SimEvent[] = ctx.pending.splice(0);
+    if (ctx.terminated) return ev;
+    const d = ctx.lastDiag;
     if (!d.Te) return ev;
-    if (this.ctx.phase === 'normal') {
-      // L-H geçişi (Martin eşiği, histerezis 0.7)
-      const P_L = d.P_loss;
-      if (!this.ctx.hmode && P_L > d.P_LH && t > 0.05) {
-        this.ctx.hmode = true; ev.push({ t, kind: 'LH', msg: `L→H transition: P_loss ${P_L.toFixed(1)} MW > P_LH ${d.P_LH.toFixed(1)} MW — edge transport barrier forms` });
-      } else if (this.ctx.hmode && P_L < 0.7 * d.P_LH) {
-        this.ctx.hmode = false; ev.push({ t, kind: 'HL', msg: `H→L back-transition: P_loss ${P_L.toFixed(1)} MW < 0.7·P_LH ${(0.7 * d.P_LH).toFixed(1)} MW — pedestal lost` });
-      }
-      // ELM: α_ped > α_crit ve pedestal toparlanma (bekleme) süresi τ_E/8 geçti
-      // (deneysel f_ELM τ_E ≈ 5–30: ITER ≈ 2 Hz, JET ≈ 30 Hz, DIII-D ≈ 50 Hz)
-      const tRef = Math.max((d.tauE ?? 0.1) / 8, 2e-3);
-      if (this.ctx.hmode && c.events.elms && d.alpha_ped > 1 && t - this.lastElm > tRef) {
-        const rhoPed = 1 - ps.pedestalWidth;
-        const fW = ps.elmFraction * (0.8 + 0.4 * this.ctx.rng.next());
-        const before = this.ctx.crashHook ? this.ctx.crashSnapshot(v) : null;
-        // tip-I ELM: pedestal + iç komşu bölge (~0.15 ρ) etkilenir (Loarte et al., PPCF 45 (2003) 1549)
-        const dW = elmCrash(g, v.Te, v.Ti, v.ne, w.ni, this.ctx.bc.Te, this.ctx.bc.Ti, this.ctx.bc.n, rhoPed, fW, 0.5 * fW, 0.15);
-        if (before) this.ctx.crashHook!('ELM', t, before, this.ctx.crashSnapshot(v));
-        s.NHe *= 1 - 0.1 * fW; s.cZ *= 1 - 0.1 * fW;
-        s.Pelm += dW / 1.0; // üstel ortalama (τ = 1 s) içine enerji darbesi
-        this.lastElm = t;
-        this.elmTimes.push(t); if (this.elmTimes.length > 20) this.elmTimes.shift();
-        this.ctx.dt = Math.min(this.ctx.dt, Math.max(0.01 * (d.tauE ?? 0.1), 5e-4));
-        this.ctx.diagStale = true;
-        ev.push({ t, kind: 'ELM', msg: `Type-I ELM (α_ped/α_crit = ${d.alpha_ped.toFixed(2)}): ΔW = ${(dW / 1e6).toFixed(2)} MJ`, value: dW / 1e6 });
-      }
-      // testere dişi: q=1 yüzeyinde kayma s₁ > s_kritik
-      if (c.events.sawteeth && t - this.lastSaw > 0.05) {
-        const r1 = rhoOfQ(g, w.qF, 1);
-        if (r1 > 0.05 && r1 < 0.8) {
-          const s1 = shearAt(g, w.qF, r1);
-          if (s1 > ps.sawtoothShear) {
-            const rmix = Math.min(kadomtsevMixingRadius(g, w.qF), 0.95);
-            if (rmix > r1) {
-              const Te0 = v.Te[0];
-              const before = this.ctx.crashHook ? this.ctx.crashSnapshot(v) : null;
-              flattenConserving(g, v.Te, v.ne, r1, rmix);
-              flattenConserving(g, v.Ti, w.ni, r1, rmix);
-              flattenConserving(g, v.ne, null, r1, rmix);
-              // q → max(q, 1.01) karışım bölgesinde; ψ'yi ρ_mix'ten içe yeniden kur
-              const iMix = Math.min(N - 1, Math.floor(rmix / g.dRho));
-              for (let f = 1; f <= iMix; f++) {
-                if (w.qF[f] < 1.01) w.dpsiF[f] = (g.PhiB * g.rhoF[f]) / (Math.PI * 1.01);
-              }
-              for (let i = iMix - 1; i >= 0; i--) v.psi[i] = v.psi[i + 1] - w.dpsiF[i + 1] * g.dRho;
-              currentProfiles(this.ctx, v.psi, s.Ip);
-              if (before) this.ctx.crashHook!('sawtooth', t, before, this.ctx.crashSnapshot(v));
-              this.lastSaw = t;
-              this.ctx.dt = Math.min(this.ctx.dt, 5e-3);
-              this.ctx.diagStale = true;
-              ev.push({ t, kind: 'sawtooth', msg: `Sawtooth crash (s₁ = ${s1.toFixed(2)}): ρ(q=1) = ${r1.toFixed(2)}, ρ_mix = ${rmix.toFixed(2)}, T_e0 ${Te0.toFixed(1)} → ${v.Te[0].toFixed(1)} keV`, value: (Te0 - v.Te[0]) / Te0 });
-              // NTM tohumu
-              if (c.events.ntm) {
-                const wd = 0.012 * (g.a / 2);
-                if (rhoOfQ(g, w.qF, 1.5) > 0 && s.w32 < 2.5 * wd && d.betaN > 0.5 * c.limits.betaN_limit) s.w32 = 2.5 * wd;
-                if (rhoOfQ(g, w.qF, 2) > 0 && s.w21 < 2 * wd && d.betaN > 0.75 * c.limits.betaN_limit) s.w21 = 2 * wd;
-              }
-            }
-          }
-        }
-      }
-      // NTM başlangıç / sönüm olayları
-      for (const [key, name] of [['w32', '3/2'], ['w21', '2/1']] as const) {
-        const on = s[key] > 0.02 * g.a;
-        const flag = key === 'w32' ? this.ntmOn32 : this.ntmOn21;
-        if (on && !flag) ev.push({ t, kind: 'NTM_onset', msg: `NTM ${name} island grew to w/a = ${(s[key] / g.a).toFixed(3)} (β_N = ${d.betaN.toFixed(2)}) — local profile flattening, τ_E degrading` });
-        if (!on && flag) ev.push({ t, kind: 'NTM_gone', msg: `NTM ${name} island decayed` });
-        if (key === 'w32') this.ntmOn32 = on; else this.ntmOn21 = on;
-      }
-      // ateşleme / yanma
-      const P_loss_total = d.P_rad + d.P_cond;
-      const ignOn = d.P_alpha >= P_loss_total && d.P_fus > 1 && d.Q >= 5;
-      const ignOff = d.P_alpha < 0.9 * P_loss_total || d.Q < 4;
-      if (ignOn && !this.ignited) { this.ignited = true; ev.push({ t, kind: 'ignition', msg: `IGNITION: P_alpha ${d.P_alpha.toFixed(0)} MW ≥ P_loss ${P_loss_total.toFixed(0)} MW` }); }
-      if (ignOff && this.ignited) { this.ignited = false; ev.push({ t, kind: 'info', msg: 'Ignition condition lost' }); }
-      if (d.Q >= 1 && !this.burning) { this.burning = true; ev.push({ t, kind: 'burn_start', msg: 'Q ≥ 1 (scientific breakeven)' }); }
-      if (d.Q < 1 && this.burning) { this.burning = false; ev.push({ t, kind: 'burn_end', msg: 'Q < 1' }); }
-      // uyarılar
-      if (d.q_div > 10 && !this.ctx.warned.has('div')) { this.ctx.warned.add('div'); ev.push({ t, kind: 'warning', msg: `Divertor heat flux ${d.q_div.toFixed(0)} MW/m² > 10 MW/m² — material lifetime at risk` }); }
-      if (d.nG_frac > 0.85 && !this.ctx.warned.has('nG')) { this.ctx.warned.add('nG'); ev.push({ t, kind: 'warning', msg: `n̄/n_G = ${d.nG_frac.toFixed(2)} — approaching the density limit` }); }
-      if (d.betaN > 0.85 * c.limits.betaN_limit && !this.ctx.warned.has('bN')) { this.ctx.warned.add('bN'); ev.push({ t, kind: 'warning', msg: `β_N = ${d.betaN.toFixed(2)} — approaching the Troyon limit` }); }
-      // limitler → disruption
-      let cause: DisruptionCause = 'none', diag = '';
-      if (d.nG_frac > c.limits.greenwald_limit) { cause = 'density_limit'; diag = `n̄/n_G reached ${d.nG_frac.toFixed(2)}`; }
-      else if (d.betaN > c.limits.betaN_limit) { cause = 'beta_limit'; diag = `β_N ${d.betaN.toFixed(2)} > ${c.limits.betaN_limit}`; }
-      else if (d.q95 < c.limits.q95_limit) { cause = 'q95_limit'; diag = `q95 = ${d.q95.toFixed(2)} < ${c.limits.q95_limit}`; }
-      else if (s.w21 > 0.1 * g.a) { cause = 'ntm_locked_mode'; diag = `2/1 island w/a = ${(s.w21 / g.a).toFixed(3)} > 0.10 — mode locked to the wall`; }
-      else if (d.cZ > c.limits.W_conc_limit && c.impurity.species === 'W') { cause = 'tungsten_accumulation'; diag = `c_W = ${d.cZ.toExponential(1)} > ${c.limits.W_conc_limit.toExponential(1)}`; }
-      else if (d.P_rad > d.P_heat && t > 0.5 && d.Te < 2) { cause = 'radiative_collapse'; diag = `P_rad ${d.P_rad.toFixed(1)} MW > P_heat ${d.P_heat.toFixed(1)} MW, ⟨T_e⟩ fell to ${d.Te.toFixed(2)} keV`; }
-      if (cause !== 'none') {
-        this.ctx.disruption.cause = cause; this.ctx.disruption.t = t; this.ctx.disruption.W = d.W * 1e6; this.ctx.disruption.Ip = s.Ip;
-        this.ctx.phase = 'thermal_quench'; this.ctx.disruption.text = diag;
-        ev.push({ t, kind: 'disruption', msg: `DISRUPTION: ${DISRUPTION_LABELS[cause]} — ${diag}` });
-      }
-    } else if (this.ctx.phase === 'thermal_quench') {
-      if (d.W * 1e6 < 0.02 * this.ctx.disruption.W || t - this.ctx.disruption.t > 0.05) {
-        this.ctx.phase = 'current_quench';
-        ev.push({ t, kind: 'quench', msg: `Thermal quench complete (${((t - this.ctx.disruption.t) * 1e3).toFixed(1)} ms) → current quench starting` });
-      }
-    } else if (this.ctx.phase === 'current_quench') {
-      if (s.Ip < 0.03 * this.ctx.disruption.Ip) {
-        this.ctx.phase = 'ended';
-        const rep = disruptionReport({ cause: this.ctx.disruption.cause, t: this.ctx.disruption.t, g: this.geomB, Ip_MA: this.ctx.disruption.Ip / 1e6, W_th_J: this.ctx.disruption.W, B0: c.B0 });
-        this.ctx.terminated = {
-          t, natural: false, reason: DISRUPTION_LABELS[this.ctx.disruption.cause],
-          diagnosis: `${DISRUPTION_LABELS[this.ctx.disruption.cause]} — ${this.ctx.disruption.text}, t = ${this.ctx.disruption.t.toFixed(2)} s. Thermal quench ${rep.tau_TQ_ms.toFixed(1)} ms, current quench ${rep.tau_CQ_ms.toFixed(0)} ms; halo current I_h/I_p·TPF = ${rep.halo_TPF_product.toFixed(2)}; runaway electron avalanche e^${rep.runaway_avalanche_efolds.toFixed(0)} → ~${rep.runaway_current_MA.toFixed(1)} MA; wall deposition ${rep.wall_energy_density_MJm2.toFixed(1)} MJ/m².`,
-          fix: DISRUPTION_FIXES[this.ctx.disruption.cause], disruption: rep,
-        };
-        ev.push({ t, kind: 'end', msg: 'Plasma extinguished' });
-      }
-    }
-    if (!this.ctx.terminated && t >= this.tEnd - 1e-9) {
-      this.ctx.phase = 'ended';
-      this.ctx.terminated = { t, natural: true, reason: 'Scheduled end', diagnosis: `The shot completed the scheduled duration of ${this.tEnd} s without disruption.`, fix: '' };
+    const st = ctx.view(y);
+    if (ctx.phase === 'normal') for (const m of this.events) m.afterStep(ctx, t, st, d, ev);
+    else this.disruption.quenchProgress(ctx, t, st, d, ev);
+    if (!ctx.terminated && t >= this.tEnd - 1e-9) {
+      ctx.phase = 'ended';
+      ctx.terminated = { t, natural: true, reason: 'Scheduled end', diagnosis: `The shot completed the scheduled duration of ${this.tEnd} s without disruption.`, fix: '' };
       ev.push({ t, kind: 'end', msg: 'Scheduled end of shot' });
     }
     return ev;
   }
 
-  /** Disruption fazları: termal söndürme (τ_TQ), akım söndürme (τ_CQ) — profiller ölçeklenir */
-  private disruptionStep(t: number, y: Float64Array, tMax: number): number {
-    const v = this.ctx.view(y), s = v.s, N = this.N, g = this.ctx.tg;
-    const tauTQ = 1e-3 * (g.a / 2.0) * (1 + 0.5 * Math.log(1 + this.ctx.disruption.Ip / 5e6));
-    const tauCQ = 4.0e-3 * Math.PI * g.a * g.a * this.geomB.kappa;
-    const tau = this.ctx.phase === 'thermal_quench' ? tauTQ : tauCQ;
-    const dt = Math.min(tau / 5, tMax - t);
-    const fT = Math.exp(-dt / tauTQ), fN = Math.exp(-dt / 0.05);
-    for (let i = 0; i < N; i++) {
-      v.Te[i] = 0.005 + (v.Te[i] - 0.005) * fT;
-      v.Ti[i] = 0.005 + (v.Ti[i] - 0.005) * fT;
-      v.ne[i] *= fN;
-    }
-    if (this.ctx.phase === 'current_quench') s.Ip *= Math.exp(-dt / tauCQ);
-    composition(this.ctx, v.Te, v.ne, s);
-    let W = 0;
-    for (let i = 0; i < N; i++) W += 1.5 * (v.ne[i] * v.Te[i] + this.ctx.w.ni[i] * v.Ti[i]) * KEV * g.dV[i];
-    Object.assign(this.ctx.lastDiag, {
-      W: W / 1e6, Te: this.ctx.volAvg(v.Te), Ti: this.ctx.volAvg(v.Ti), Te0: v.Te[0], Ti0: v.Ti[0], Ip: s.Ip / 1e6,
-      P_fus: 0, P_alpha: 0, P_aux: 0, P_heat: 0, Q: 0, P_bt: 0, P_neutron: 0, P_charged: 0,
-    });
-    this.ctx.dt = dt;
-    return t + dt;
-  }
 
   // ------------------------------------------------------------------ SimModel arayüzü
   diagnostics(t: number, y: Float64Array): Record<string, number> {
@@ -867,61 +719,28 @@ export class ProfileModel implements SimModel {
     for (const k of Object.keys(patch)) if (k in ctrl) ctrl[k] = patch[k];
   }
   getControls(): Record<string, number> { return { ...this.ctx.ctrl }; }
-  /**
-   * Checkpoint of everything that the continuation of the shot depends on besides y: the
-   * equilibrium and transport geometry (with the GS warm start, eq.psi), the update bookkeeping,
-   * the controller and filter states (n_sep gain, P_SOL filter, Γ_b, τ_E used by the fueling
-   * loop; the C_χ integrator and the fueling lag live in y), MHD and disruption state, counters and
-   * the RNG. Numbers go into the returned record; references and strings stay in a model-side
-   * store under the record's `ck` key, which restoreInternal prunes of checkpoints after the one
-   * restored (their frames are discarded by the rewind). Actuator set-points (applyControl) are
-   * deliberately not part of it: after a rewind the latest controls stay in force.
-   */
-  saveInternal(): Record<string, number> {
-    const ck = this.nextCheckpoint++;
-    this.checkpoints.set(ck, { geo: this.ctx.geo, diagText: this.ctx.disruption.text, disruptCause: this.ctx.disruption.cause, elmTimes: this.elmTimes.slice(), warned: [...this.ctx.warned] });
-    return {
-      ck, rng: this.ctx.rng.getState(), phase: PHASES.indexOf(this.ctx.phase),
-      hmode: +this.ctx.hmode, lastSaw: this.lastSaw, lastElm: this.lastElm, ignited: +this.ignited, burning: +this.burning,
-      dt: this.ctx.dt, eqTime: this.eqTime, PSOL: this.ctx.PSOL, GammaB: this.ctx.GammaB, TeB: this.ctx.bc.Te, TiB: this.ctx.bc.Ti, nB: this.ctx.bc.n, nsepGain: this.ctx.nsepGain,
-      eqBetaP: this.eqBetaP, eqLi: this.eqLi, eqRetryAt: this.eqRetryAt, eqFailStreak: this.eqFailStreak,
-      eqUpdates: this.eqUpdates, eqRetried: this.eqRetried, eqRejected: this.eqRejected, forcedSteps: this.forcedSteps,
-      tauE: this.ctx.lastDiag.tauE ?? NaN, alphaRatio: this.ctx.alphaRatio, lastVloop: this.ctx.lastVloop,
-      ntmOn32: +this.ntmOn32, ntmOn21: +this.ntmOn21, tDisrupt: this.ctx.disruption.t, Wd: this.ctx.disruption.W, IpD: this.ctx.disruption.Ip,
-    };
-  }
-  restoreInternal(st: Record<string, number>): void {
-    const num = (k: string, dflt: number) => (Number.isFinite(st[k]) ? st[k] : dflt);
-    this.ctx.rng.setState(st.rng);
-    this.ctx.phase = PHASES[st.phase] ?? 'normal';
-    this.ctx.hmode = !!st.hmode; this.lastSaw = st.lastSaw; this.lastElm = st.lastElm; this.ignited = !!st.ignited; this.burning = !!st.burning;
-    this.ctx.dt = num('dt', 1e-3); this.eqTime = num('eqTime', 0); this.ctx.PSOL = num('PSOL', 0); this.ctx.GammaB = num('GammaB', 0);
-    this.ctx.bc = { Te: num('TeB', 0.1), Ti: num('TiB', num('TeB', 0.1)), n: num('nB', 1e19) };
-    this.ctx.nsepGain = num('nsepGain', 1);
-    this.eqBetaP = num('eqBetaP', this.eqBetaP); this.eqLi = num('eqLi', this.eqLi);
-    this.eqRetryAt = num('eqRetryAt', 0); this.eqFailStreak = num('eqFailStreak', 0);
-    this.eqUpdates = num('eqUpdates', this.eqUpdates); this.eqRetried = num('eqRetried', this.eqRetried);
-    this.eqRejected = num('eqRejected', this.eqRejected); this.forcedSteps = num('forcedSteps', this.forcedSteps);
-    this.ctx.alphaRatio = num('alphaRatio', 0); this.ctx.lastVloop = num('lastVloop', 0);
-    this.ntmOn32 = !!st.ntmOn32; this.ntmOn21 = !!st.ntmOn21;
-    this.ctx.disruption.t = num('tDisrupt', 0); this.ctx.disruption.W = num('Wd', 0); this.ctx.disruption.Ip = num('IpD', 0);
-    this.ctx.terminated = null; this.stepFailure = null; this.ctx.pending = []; this.ctx.diagStale = false;
-    // τ_E of the last diagnostics feeds the fueling loop of the next step; the rest is rebuilt from y
-    this.ctx.lastDiag = Number.isFinite(st.tauE) ? { tauE: st.tauE } : {};
-    const aux = this.checkpoints.get(st.ck);
-    if (aux) {
-      if (aux.geo !== this.ctx.geo) this.ctx.adoptGeometry(aux.geo);
-      this.ctx.disruption.text = aux.diagText; this.ctx.disruption.cause = aux.disruptCause;
-      this.elmTimes = aux.elmTimes.slice(); this.ctx.warned = new Set(aux.warned);
-      for (const k of this.checkpoints.keys()) if (k > st.ck) this.checkpoints.delete(k);
-    } else {
-      // a record from elsewhere (no stored references): keep the current equilibrium
-      this.ctx.warned.clear(); this.elmTimes = [];
-    }
-  }
-  /** references and strings of each checkpoint, by the record's `ck` */
-  private checkpoints = new Map<number, { geo: ProfileContext['geo']; diagText: string; disruptCause: DisruptionCause; elmTimes: number[]; warned: string[] }>();
-  private nextCheckpoint = 0;
+  /** Checkpoint of everything the continuation depends on besides y (checkpoint.ts) */
+  saveInternal(): Record<string, number> { return this.checkpoints.save(this.checkpointParts); }
+  restoreInternal(st: Record<string, number>): void { this.checkpoints.restore(st, this.checkpointParts); }
+  private readonly checkpoints = new CheckpointStore();
+  /** checkpoint part of the equilibrium bookkeeping and the step controller */
+  private readonly modelCheckpoint: Checkpointable = {
+    save: (rec) => {
+      Object.assign(rec, {
+        eqTime: this.eqTime, eqBetaP: this.eqBetaP, eqLi: this.eqLi, eqRetryAt: this.eqRetryAt, eqFailStreak: this.eqFailStreak,
+        eqUpdates: this.eqUpdates, eqRetried: this.eqRetried, eqRejected: this.eqRejected, forcedSteps: this.forcedSteps,
+      });
+    },
+    restore: (st) => {
+      const num = (k: string, dflt: number) => recNum(st, k, dflt);
+      this.eqTime = num('eqTime', 0);
+      this.eqBetaP = num('eqBetaP', this.eqBetaP); this.eqLi = num('eqLi', this.eqLi);
+      this.eqRetryAt = num('eqRetryAt', 0); this.eqFailStreak = num('eqFailStreak', 0);
+      this.eqUpdates = num('eqUpdates', this.eqUpdates); this.eqRetried = num('eqRetried', this.eqRetried);
+      this.eqRejected = num('eqRejected', this.eqRejected); this.forcedSteps = num('forcedSteps', this.forcedSteps);
+      this.stepFailure = null;
+    },
+  };
   geometryInfo(): Record<string, number> {
     const c = this.cfg, eq = this.ctx.eq;
     return {
@@ -958,7 +777,7 @@ export class ProfileModel implements SimModel {
       },
       extraExtras: {
         'T_e axis (final, keV)': +(d.Te0 ?? 0).toFixed(2), 'T_ped (final, keV)': +(d.Tped ?? 0).toFixed(2), 'T_sep (final, keV)': +(d.Tsep ?? 0).toFixed(3),
-        'ELM frequency (Hz)': this.elmTimes.length > 2 ? +((this.elmTimes.length - 1) / (this.elmTimes[this.elmTimes.length - 1] - this.elmTimes[0])).toFixed(2) : 0,
+        'ELM frequency (Hz)': this.elm.frequency(),
         'Sawtooth period (s)': nSaw > 1 ? +(last.t / nSaw).toFixed(2) : 0,
         'ELM count (1.5D)': nElm,
       },

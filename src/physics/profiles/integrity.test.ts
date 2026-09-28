@@ -8,7 +8,7 @@ import { DEMO_15D, ITER_15D, JET_15D } from '../presets';
 import { MagneticConfig } from '../types';
 import { EquilibriumOptions, GSSolver } from '../equilibrium/gs';
 import { ProfileModel } from './model';
-import { StepFailure } from './failures';
+import { EquilibriumInitFailure, StepFailure } from './failures';
 
 /** Work arrays are private; the tests read them through this view only. */
 type Internals = { w: Record<string, Float64Array> };
@@ -159,4 +159,56 @@ describe('reported confinement time', () => {
     sim.runAll();
     for (const h of sim.history.filter((f) => f.t > 0)) expect(h.d.tauE).toBe(h.d.tauE_scal);
   }, 60000);
+});
+
+describe('initial equilibrium', () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+  /** stubs the shape-mode (initial) solves; `f` gets the solver and the call index */
+  const stubInitial = (f: (s: GSSolver, n: number) => 'throw' | 'residual' | null) => {
+    const solve = GSSolver.prototype.solve;
+    let n = 0;
+    vi.spyOn(GSSolver.prototype, 'solve').mockImplementation(function (this: GSSolver, o: EquilibriumOptions) {
+      if (o.profile.kind !== 'shape') return solve.call(this, o);
+      const what = f(this, n++);
+      if (what === 'throw') throw new Error('GS: eksende ψ ≤ 0 — çözüm ıraksadı');
+      const eq = solve.call(this, o);
+      return what === 'residual' ? { ...eq, converged: false, residual: 3e-3 } : eq;
+    });
+  };
+  const requested = (s: GSSolver) => s.geom.kappa === JET_15D.geometry.kappa;
+
+  it('a failed first attempt is retried and the shot runs normally', () => {
+    stubInitial((_s, n) => (n === 0 ? 'throw' : null));
+    const sim = new Simulation({ ...JET_15D, t_end: 0.2 });
+    const r = sim.runAll();
+    expect(r.termination.natural).toBe(true);
+    expect(r.warnings.some((w) => w.includes('Initial Grad–Shafranov'))).toBe(false);
+  }, 60000);
+
+  it('a non-converged initial equilibrium is used but reported', () => {
+    stubInitial(() => 'residual');
+    const sim = new Simulation({ ...JET_15D, t_end: 0.2 });
+    const r = sim.runAll();
+    expect(r.termination.natural).toBe(true);
+    expect(r.warnings.some((w) => w.includes('Initial Grad–Shafranov') && w.includes('3.0e-3'))).toBe(true);
+    expect(sim.events.some((e) => e.kind === 'warning' && e.t === 0 && e.msg.includes('Initial Grad–Shafranov'))).toBe(true);
+  }, 60000);
+
+  it('an equilibrium that cannot be computed ends the shot at t = 0 with a diagnosis', () => {
+    stubInitial((s) => (requested(s) ? 'throw' : null));
+    let sim: Simulation | undefined;
+    expect(() => { sim = new Simulation(JET_15D); }).not.toThrow();
+    expect(sim!.done).toBe(true);
+    const r = sim!.report();
+    expect(r.termination.natural).toBe(false);
+    expect(r.termination.t).toBe(0);
+    expect(r.termination.reason).toBe('Equilibrium failure');
+    expect(r.termination.diagnosis).toContain('ψ ≤ 0');
+    expect((sim!.model as ProfileModel).eqInitFailure).toBeInstanceOf(EquilibriumInitFailure);
+  }, 60000);
+
+  it('if not even a stand-in equilibrium exists, construction throws a typed error', () => {
+    stubInitial(() => 'throw');
+    expect(() => new Simulation(JET_15D)).toThrow(EquilibriumInitFailure);
+  });
 });

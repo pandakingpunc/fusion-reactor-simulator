@@ -34,8 +34,8 @@ import { buildMagneticReport, LAWSON_DT } from '../confinement/magneticReport';
 import { flatTopMean } from '../analysis/flatTop';
 import { DiagSpec, EqSnapshot, HistoryFrame, MagneticConfig, ProfileSettings, ShotReport, SimEvent, SimModel, TerminationInfo } from '../types';
 import { TransportGeometry, geometryFromEquilibrium } from './geometry1d';
-import { GsAttempt, GsStage, acceptableEquilibrium, binomialSmooth, gridScalePasses, isUsableGeometry, solveGuarded, solverErrorMessage } from './eqguard';
-import { StepFailure } from './failures';
+import { GsAttempt, GsStage, acceptableEquilibrium, binomialSmooth, gridScalePasses, isUsableEquilibrium, isUsableGeometry, solveGuarded, solverErrorMessage } from './eqguard';
+import { EquilibriumInitFailure, StepFailure } from './failures';
 import { DEFAULT_PROFILE_SETTINGS } from './defaults';
 import { CurrentSolver, DensitySolver, HeatInputs, HeatSolver } from './fvsolver';
 import { NbiChord, edgeDeposition, gaussianDeposition, volumeIntegral } from './sources';
@@ -223,8 +223,8 @@ export class ProfileModel implements SimModel {
     this.Pn = cfg.transport.alpha_n > 1e-3 ? P : 1e-3;
     this.magnetInfo = checkMagnet(cfg.geometry, cfg.B0, cfg.magnet.tech, cfg.magnet.gap_m, cfg.magnet.coilThickness_m);
     this.gsSolver = new GSSolver(this.geomB, { NR: this.ps.eqNR });
-    this.eq = this.gsSolver.solve({ Ip: Math.max(cfg.Ip_MA, 0.05) * 1e6, B0: cfg.B0, profile: { kind: 'shape', alphaM: 2, alphaN: 1.3, betaP: 0.1 }, tol: 1e-7 });
-    this.adoptGeometry({ eq: this.eq, tg: geometryFromEquilibrium(this.eq, this.N, this.geomB) });
+    const eq0 = this.initialEquilibrium();
+    this.adoptGeometry({ eq: eq0, tg: geometryFromEquilibrium(eq0, this.N, this.geomB) });
     this.eqBetaP = this.eq.betaP; this.eqLi = this.eq.li3;
     if (this.magnetInfo.quench) {
       this.phase = 'ended';
@@ -233,8 +233,53 @@ export class ProfileModel implements SimModel {
         diagnosis: `Peak field in the toroidal field coil B_coil = ${this.magnetInfo.B_coil.toFixed(1)} T, ${MAGNET_TECH[cfg.magnet.tech].label} has a limit of ${this.magnetInfo.B_max} T. The coil quenched; shot aborted.`,
         fix: DISRUPTION_FIXES.magnet_quench,
       };
+    } else if (this.eqInitFailure) {
+      this.phase = 'ended';
+      const b = this.geomB;
+      this.terminated = {
+        t: 0, natural: false, reason: 'Equilibrium failure',
+        diagnosis: `No Grad–Shafranov equilibrium could be computed for the requested boundary (R = ${b.R} m, a = ${b.a} m, κ = ${b.kappa}, δ = ${b.delta}): ${this.eqInitFailure.detail}. The 1.5D model needs it for its transport geometry; shot aborted.`,
+        fix: 'Bring elongation, triangularity and aspect ratio into the usual range, or run the shot at 0D fidelity.',
+      };
     }
   }
+
+  /**
+   * Initial equilibrium: shape profile (j ∝ (1 − ψ_N²)^1.3, β_p = 0.1), cold start. Retry ladder:
+   * nominal (relaxation 0.6, 200 iterations), then relaxation 0.3 with 600 iterations. A result
+   * that did not converge but is usable is kept, reported in the shot report and raised as a
+   * warning event at t = 0. If no attempt gives a usable equilibrium the shot cannot run: the
+   * model is built on a stand-in equilibrium with a circular boundary of the same R and a (so that
+   * the diagnostics of the aborted shot can be evaluated) and ends at t = 0 with eqInitFailure;
+   * if even that fails, construction throws EquilibriumInitFailure.
+   */
+  private initialEquilibrium(): Equilibrium {
+    const c = this.cfg;
+    const base: EquilibriumOptions = { Ip: Math.max(c.Ip_MA, 0.05) * 1e6, B0: c.B0, profile: { kind: 'shape', alphaM: 2, alphaN: 1.3, betaP: 0.1 }, tol: 1e-7 };
+    const stages: GsStage[] = [{ label: 'nominal', opts: {} }, { label: 'relaxation 0.3', opts: { relax: 0.3, maxIter: 600 } }];
+    const out = solveGuarded(this.gsSolver, base, stages);
+    if (out.eq) return out.eq;
+    if (out.best) {
+      const best = out.best;
+      this.eqInitResidual = best.residual;
+      this.pending.push({ t: 0, kind: 'warning', msg: `Initial Grad–Shafranov equilibrium did not converge (residual ${best.residual.toExponential(1)} after ${best.iterations} iterations) — used until the first accepted update` });
+      return best;
+    }
+    const detail = out.attempts.map((a) => `${a.stage}: ${a.error ?? `residual ${a.residual.toExponential(1)}`}`).join('; ');
+    try {
+      const b = this.geomB;
+      const standIn = new GSSolver({ R: b.R, a: b.a, kappa: 1, delta: 0 }, { NR: this.ps.eqNR }).solve({ ...base, relax: 0.3, maxIter: 600 });
+      if (!isUsableEquilibrium(standIn)) throw new Error(`stand-in equilibrium unusable (residual ${standIn.residual.toExponential(1)})`);
+      this.eqInitFailure = new EquilibriumInitFailure(detail);
+      return standIn;
+    } catch (e) {
+      throw new EquilibriumInitFailure(`${detail}; circular stand-in: ${solverErrorMessage(e)}`, { cause: e });
+    }
+  }
+  /** residual of an initial equilibrium kept without convergence (null: it converged) */
+  eqInitResidual: number | null = null;
+  /** set when no initial equilibrium existed for the requested boundary (the shot ends at t = 0) */
+  eqInitFailure: EquilibriumInitFailure | null = null;
 
   get currentDt(): number { return this.dt; }
 
@@ -1467,7 +1512,8 @@ export class ProfileModel implements SimModel {
     const d = last.d;
     const avg = (k: string) => flatTopMean(hist, k, { samples: 'all' });
     const warnings: string[] = [];
-    if (this.eq && !this.eq.converged) warnings.push('Grad–Shafranov equilibrium did not fully converge — geometry coefficients may be inaccurate.');
+    if (this.eqInitResidual !== null) warnings.push(`Initial Grad–Shafranov equilibrium did not converge (residual ${this.eqInitResidual.toExponential(1)}) — it was used until the first accepted update${this.eqUpdates ? '' : ' (there was none)'}; geometry coefficients may be inaccurate.`);
+    else if (this.eq && !this.eq.converged) warnings.push('Grad–Shafranov equilibrium did not fully converge — geometry coefficients may be inaccurate.');
     const nEq = this.eqUpdates + this.eqRejected;
     if (this.eqRejected > 0) warnings.push(`Grad–Shafranov: ${this.eqRejected} of ${nEq} equilibrium updates were rejected (no convergence in any retry stage) — the transport geometry was held at the last accepted equilibrium in between.`);
     if (this.forcedSteps > 0) warnings.push(`${this.forcedSteps} transport step(s) exhausted the Δt retries and were forced at the smallest Δt without Picard convergence — accuracy is reduced around those times.`);

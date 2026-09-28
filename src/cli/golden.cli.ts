@@ -7,15 +7,20 @@
  *       Exit 0: all match; 1: a mismatch, a missing/unreadable golden file or a failed run
  *       (a table lists preset, key, old, new, rel. diff); 2: usage error.
  *   npm run golden:update -- --reason "why the numbers moved" [--only A,B]
+ *   npm run golden:update -- --reason-file reason.txt [--only A,B]
  *       Rewrites the golden files and appends a dated entry to test/golden/CHANGES.md: the reason,
  *       the added and unchanged cases and, per changed case, a schema change, how many existing keys
- *       moved (largest relative change, first keys) and the keys added or removed, by section.
- *       Files in an older schema are compared too, so a format-only change is logged as
- *       "0 keys moved". Refuses to run without --reason.
+ *       moved (largest relative change) and how many were added or removed, by section, then the moved,
+ *       added and removed keys themselves (first 12 of each). Files in an older schema are
+ *       compared too, so a format-only change is logged as "0 keys moved". Refuses to run without a reason.
+ *       The reason of --reason-file may be long: the first paragraph is the title of the entry, further
+ *       paragraphs (blank-line separated) follow it. Use it when the reason does not fit on a command line
+ *       (npm.cmd on Windows rejects a long --reason with 'command line is too long').
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
-import { GOLDEN_CASES, GoldenDiff, SnapshotChange, caseConfig, compareSnapshots, countBySection, formatDiffTable, parseSnapshot, serializeSnapshot, summarizeChange, toleranceFor } from '../regression/golden';
+import { GOLDEN_CASES, GoldenDiff, SnapshotChange, caseConfig, compareSnapshots, formatDiffTable, parseSnapshot, serializeSnapshot, summarizeChange, toleranceFor } from '../regression/golden';
+import { Changed, Reason, changesEntry, parseReason } from '../regression/changes';
 import type { GoldenResult, GoldenTask } from '../regression/golden.worker';
 import { PoolAbortError, PoolConfigError, defaultThreads, runPool } from './pool';
 import { defineCli, exitUsage, parseArgsOrExit } from './args';
@@ -25,8 +30,9 @@ const CLI = defineCli({
   summary: 'Golden regression check: runs every golden case and compares it with test/golden/<case>.json.\n' +
     'Exit codes: 0 all match; 1 mismatch, missing golden file or failed run; 2 usage error.',
   flags: {
-    update: { type: 'bool', help: 'rewrite the golden files (npm run golden:update); requires --reason' },
+    update: { type: 'bool', help: 'rewrite the golden files (npm run golden:update); requires --reason or --reason-file' },
     reason: { type: 'string', metavar: 'TEXT', help: 'why the numbers moved; recorded in CHANGES.md (update only)' },
+    'reason-file': { type: 'string', metavar: 'FILE', help: 'read the reason from this UTF-8 file instead (update only); first paragraph = title, the rest follows it' },
     only: { type: 'list', choices: GOLDEN_CASES.map((c) => c.id), metavar: 'ID,…', help: 'only these cases' },
     threads: { type: 'int', min: 1, help: 'worker threads (default: cores − 1)' },
     dir: { type: 'string', default: 'test/golden', metavar: 'DIR', help: 'golden file folder' },
@@ -55,9 +61,9 @@ const firstLine = (s: string | undefined) => (s ?? 'no result').split('\n')[0];
 
 async function main() {
   const args = parseArgsOrExit(CLI);
-  const reason = args.reason?.replace(/\s+/g, ' ').trim();
-  if (args.update && !reason) exitUsage(CLI.name, 'golden:update requires --reason "why the numbers moved" (it is recorded in CHANGES.md)');
+  const reason = args.update ? reasonOrExit(args.reason, args['reason-file']) : undefined;
   if (!args.update && args.reason !== undefined) exitUsage(CLI.name, '--reason is only used by golden:update');
+  if (!args.update && args['reason-file'] !== undefined) exitUsage(CLI.name, '--reason-file is only used by golden:update');
   const dir = resolve(args.dir);
   const cases = GOLDEN_CASES.filter((c) => !args.only || args.only.includes(c.id));
   const threads = args.threads ?? defaultThreads();
@@ -75,7 +81,7 @@ async function main() {
   const byId = new Map(res.map((r) => [r.id, r]));
   const ordered = cases.map((c) => byId.get(c.id)!);
 
-  if (args.update) update(dir, ordered, reason!, args.only, wall);
+  if (reason) update(dir, ordered, reason, args.only, wall);
   else check(dir, ordered, args['max-rows'], !args.only, wall);
 }
 
@@ -109,7 +115,7 @@ function check(dir: string, results: GoldenResult[], maxRows: number, all: boole
   if (failures) process.exitCode = 1;
 }
 
-function update(dir: string, results: GoldenResult[], reason: string, only: string[] | undefined, wall: number): void {
+function update(dir: string, results: GoldenResult[], reason: Reason, only: string[] | undefined, wall: number): void {
   mkdirSync(dir, { recursive: true });
   const added: string[] = [], unchanged: string[] = [], failed: string[] = [];
   const changed: Changed[] = [];
@@ -139,7 +145,7 @@ function update(dir: string, results: GoldenResult[], reason: string, only: stri
   if (added.length || changed.length) {
     const log = join(dir, 'CHANGES.md');
     if (!existsSync(log)) writeFileSync(log, CHANGES_HEADER);
-    appendFileSync(log, changesEntry(reason, added, changed, unchanged, failed, only));
+    appendFileSync(log, changesEntry({ reason, added, changed, unchanged, failed, only }));
     console.log(`\n✓ golden: ${added.length} added, ${changed.length} updated, ${unchanged.length} unchanged (${secs(wall)} wall); entry appended to ${relative(process.cwd(), log)}`);
   } else {
     console.log(`\n✓ golden: files already up to date (${unchanged.length} cases); nothing written`);
@@ -150,48 +156,20 @@ function update(dir: string, results: GoldenResult[], reason: string, only: stri
   }
 }
 
-interface Changed {
-  id: string;
-  /** undefined if the old file could not be read */
-  change?: SnapshotChange;
-  meta?: string;
-}
-
-/**
- * One log line per changed case: the schema change if any, how many existing keys moved (with the
- * largest relative change and the first moved or removed keys), and added/removed keys by section.
- * A format-only re-record therefore reads "schema 1 → 2; 0 keys moved; N keys added (…)".
- */
-function describeChange(c: Changed): string {
-  const parts: string[] = [];
-  let keys = '';
-  if (c.change) {
-    const { schema, moved, added, removed } = c.change;
-    if (schema) parts.push(`schema ${String(schema[0])} → ${String(schema[1])}`);
-    const numeric = moved.filter((d) => Number.isFinite(d.rel));
-    parts.push(`${plural(moved.length, 'key')} moved` + (numeric.length ? `; max rel. diff ${Math.max(...numeric.map((d) => d.rel)).toExponential(2)}` : ''));
-    if (added.length) parts.push(`${plural(added.length, 'key')} added (${countBySection(added)})`);
-    if (removed.length) parts.push(`${plural(removed.length, 'key')} removed (${countBySection(removed)})`);
-    const listed = [...moved, ...removed];
-    if (listed.length) keys = ` — ${listed.slice(0, 12).map((d) => d.key).join(', ')}${listed.length > 12 ? `, … (+${listed.length - 12} more)` : ''}`;
+/** The reason of an update, from --reason or --reason-file; a usage error (exit 2) if there is none, both, or the file cannot be read. */
+function reasonOrExit(text: string | undefined, file: string | undefined): Reason {
+  if (text !== undefined && file !== undefined) exitUsage(CLI.name, '--reason and --reason-file are mutually exclusive');
+  let raw = text;
+  if (file !== undefined) {
+    try {
+      raw = readFileSync(file, 'utf8');
+    } catch (e) {
+      exitUsage(CLI.name, `--reason-file: cannot read ${file}: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
-  if (c.meta) parts.push(c.meta);
-  return `  - ${c.id}: ${parts.join('; ')}${keys}`;
-}
-
-function changesEntry(reason: string, added: string[], changed: Changed[], unchanged: string[], failed: string[], only: string[] | undefined): string {
-  const now = new Date().toISOString();
-  const stamp = `${now.slice(0, 10)} ${now.slice(11, 16)} UTC`;
-  const L: string[] = ['', `## ${stamp} — ${reason}`, ''];
-  L.push(`Node ${process.version} · \`npm run golden:update\` · ${only ? `--only ${only.join(',')}` : 'all cases'}`, '');
-  if (added.length) L.push(`- Added (${added.length}): ${added.join(', ')}`);
-  if (changed.length) {
-    L.push(`- Changed (${changed.length}):`);
-    for (const c of changed) L.push(describeChange(c));
-  }
-  if (unchanged.length) L.push(`- Unchanged (${unchanged.length}): ${unchanged.join(', ')}`);
-  if (failed.length) L.push(`- Failed to run, not written (${failed.length}): ${failed.join(', ')}`);
-  return L.join('\n') + '\n';
+  const reason = raw === undefined ? undefined : parseReason(raw);
+  if (!reason) exitUsage(CLI.name, file !== undefined ? `--reason-file ${file} contains no text` : 'golden:update requires --reason "why the numbers moved" or --reason-file FILE (it is recorded in CHANGES.md)');
+  return reason;
 }
 
 main().catch((e) => {

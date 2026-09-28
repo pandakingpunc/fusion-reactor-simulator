@@ -254,7 +254,7 @@ describe('golden CLI', { timeout: 60_000 }, () => {
       expect(golden('--update', '--reason', 'restore', '--only', 'NIF,Z', '--dir', dir).code).toBe(0);
       const second = readFileSync(log, 'utf8');
       expect(second.startsWith(first)).toBe(true); // append-only
-      expect(second).toMatch(/— restore\n\n.*\n\n- Changed \(1\):\n {2}- NIF: 1 key moved; max rel\. diff 1\.00e-7 — scalars\.Q_sci_max\n- Unchanged \(1\): Z\n$/);
+      expect(second).toMatch(/— restore\n\n.*\n\n- Changed \(1\):\n {2}- NIF: 1 key moved; max rel\. diff 1\.00e-7\n {4}- moved, largest change first: scalars\.Q_sci_max\n- Unchanged \(1\): Z\n$/);
       expect(golden('--only', 'NIF,Z', '--dir', dir).code).toBe(0);
 
       // a file in an older format (previous schema, without the events section) is rejected by the
@@ -270,9 +270,45 @@ describe('golden CLI', { timeout: 60_000 }, () => {
       expect(golden('--update', '--reason', 'format', '--only', 'NIF', '--dir', dir).code).toBe(0);
       const third = readFileSync(log, 'utf8');
       expect(third.startsWith(second)).toBe(true);
+      // the added keys are named as added, under their own label
       expect(third.slice(second.length)).toContain(
-        `- NIF: schema ${cur.meta.schema - 1} → ${cur.meta.schema}; 0 keys moved; ${nEvents} key${nEvents === 1 ? '' : 's'} added (events ${nEvents})\n`);
+        `- NIF: schema ${cur.meta.schema - 1} → ${cur.meta.schema}; 0 keys moved; ${nEvents} key${nEvents === 1 ? '' : 's'} added (events ${nEvents})\n` +
+        `    - added: ${Object.keys(cur.events).sort().map((k) => `events.${k}`).slice(0, 12).join(', ')}`);
       expect(golden('--only', 'NIF', '--dir', dir).code).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('--reason-file: a long reason in a file (title paragraph plus body), CRLF included; usage errors exit 2', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'golden-'));
+    try {
+      const long = 'x'.repeat(9000); // more than npm.cmd takes on a command line (8191 characters)
+      const file = join(dir, 'reason.txt');
+      writeFileSync(file, `Headline of the change\r\ncontinued here\r\n\r\n(A) first cause: ${long}\r\n\r\n(B) second cause\r\n`);
+      const u = golden('--update', '--reason-file', file, '--only', 'NIF', '--dir', dir);
+      expect(u.code).toBe(0);
+      const log = readFileSync(join(dir, 'CHANGES.md'), 'utf8');
+      expect(log).toMatch(/\n## \d{4}-\d\d-\d\d \d\d:\d\d UTC — Headline of the change continued here\n\n\(A\) first cause: x{9000}\n\n\(B\) second cause\n\nNode v\S+ · `npm run golden:update` · --only NIF\n\n- Added \(1\): NIF\n$/);
+      expect(golden('--only', 'NIF', '--dir', dir).code).toBe(0);
+
+      // usage errors: both reasons, neither, an unreadable or blank file, and the flag outside an update
+      const both = golden('--update', '--reason', 'a', '--reason-file', file, '--only', 'NIF', '--dir', dir);
+      expect(both.code).toBe(2);
+      expect(both.stderr).toMatch(/--reason and --reason-file are mutually exclusive/);
+      const missing = golden('--update', '--reason-file', join(dir, 'nope.txt'), '--only', 'NIF', '--dir', dir);
+      expect(missing.code).toBe(2);
+      expect(missing.stderr).toMatch(/--reason-file: cannot read .*nope\.txt/);
+      const blank = join(dir, 'blank.txt');
+      writeFileSync(blank, ' \r\n\r\n');
+      const empty = golden('--update', '--reason-file', blank, '--only', 'NIF', '--dir', dir);
+      expect(empty.code).toBe(2);
+      expect(empty.stderr).toMatch(/blank\.txt contains no text/);
+      const outside = golden('--reason-file', file, '--only', 'NIF', '--dir', dir);
+      expect(outside.code).toBe(2);
+      expect(outside.stderr).toMatch(/--reason-file is only used by golden:update/);
+      expect(golden('--update', '--only', 'NIF', '--dir', dir).stderr).toMatch(/requires --reason "why the numbers moved" or --reason-file FILE/);
+      expect(readFileSync(join(dir, 'CHANGES.md'), 'utf8')).toBe(log); // none of them wrote anything
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

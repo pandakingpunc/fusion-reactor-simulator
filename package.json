@@ -19,6 +19,7 @@
     "ci:local": "node scripts/ci-local.mjs",
     "release:check": "node scripts/release-check.mjs",
     "figures": "tsx src/cli/figures.cli.ts",
+    "figures:check": "tsx src/cli/figures.cli.ts --check",
     "bench:convergence": "tsx bench/convergence.ts",
     "bench:perf": "tsx bench/perf.ts"
   },

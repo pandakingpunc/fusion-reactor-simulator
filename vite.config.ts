@@ -9,11 +9,16 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.ts', 'bench/**/*.test.ts'],
     // `npm run coverage` (vitest run --coverage). Code that runs only in child processes or worker
-    // threads (the CLIs, *.worker.ts) is not seen by V8 coverage of the test process.
+    // threads (the CLI entry points *.cli.ts, *.worker.ts) is not seen by V8 coverage of the test
+    // process, so it is excluded: counted, it read as 0 % however well the end-to-end tests
+    // (cli.test.ts) exercise it, and every line added to a CLI lowered the src/cli ratchet.
     coverage: {
       provider: 'v8',
       include: ['src/**'],
-      exclude: ['src/**/*.test.ts', 'src/**/testdata/**', 'src/main.tsx', 'src/App.tsx', 'src/**/*.d.ts'],
+      exclude: [
+        'src/**/*.test.ts', 'src/**/testdata/**', 'src/main.tsx', 'src/App.tsx', 'src/**/*.d.ts',
+        'src/**/*.cli.ts', 'src/**/*.worker.ts',
+      ],
       reporter: ['text-summary', 'json-summary', 'html'],
       reportsDirectory: 'coverage',
       // Ratchet: the level measured when coverage was introduced (v4.0 development, 2026-09-28), rounded
@@ -24,7 +29,8 @@ export default defineConfig({
         'src/physics/numerics/**': { lines: 96, statements: 96, functions: 88, branches: 85 },
         'src/physics/**': { lines: 89, statements: 89, functions: 78, branches: 80 },
         'src/plot/**': { lines: 41, statements: 41, functions: 58, branches: 66 },
-        'src/cli/**': { lines: 31, statements: 31, functions: 78, branches: 90 },
+        // src/cli: args.ts and pool.ts; pool's timing-dependent paths move branches by about ±0.5 % between runs
+        'src/cli/**': { lines: 93, statements: 93, functions: 86, branches: 91 },
       },
     },
   },

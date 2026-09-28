@@ -5,9 +5,10 @@
  *    the intrinsic impurity and an optional seeded impurity at fixed concentrations, their mean
  *    charges from coronal equilibrium (radiation.ts), Z_eff and the ion sum Σ n_j Z_j²/A_j / n_e
  *    used by the slowing-down and equilibration rates.
- *  - Global inventories (evolveInventories): He ash with confinement time τ_He, impurity content
- *    relaxing to its set-point with τ_Z (plus the tungsten source from the divertor), and the fuel
- *    mix n_a/(n_a + n_b) from fueling, beam and burn-up.
+ *  - Global inventories (evolveInventories): He ash with confinement time τ_He (production: the
+ *    ash of every fusion channel, fusion.ts), impurity content relaxing to its set-point with τ_Z
+ *    (plus the tungsten source from the divertor), and the fuel mix n_a/(n_a + n_b) from fueling,
+ *    beam and the per-channel burn-up (fusion.ts).
  */
 import { FUEL_CHANNELS, FUEL_SPECIES } from '../reactivity';
 import { meanCharge } from '../radiation';
@@ -58,8 +59,8 @@ export interface InventoryInputs {
   dt: number;
   /** particle confinement time used for the ash, impurity and particle times (τ_E-based) [s] */
   tauT: number;
-  /** total fusion reaction rate [1/s] */
-  Rfus: number;
+  /** He ash production Σ_channels R_j × ash per reaction [1/s] (∫ w.ash dV) */
+  ashRate: number;
   /** fueling rate entering the plasma, after the efficiency [1/s] */
   Sf: number;
   /** NBI particle source [1/s] */
@@ -74,11 +75,10 @@ export interface InventoryInputs {
  */
 export function evolveInventories(ctx: ProfileContext, o: ProfileState, st: ProfileState, X: InventoryInputs): void {
   const c = ctx.cfg, g = ctx.tg, w = ctx.w, N = ctx.N, s = st.s;
-  const { dt, tauT, Rfus, Sf, S_nbi, wA } = X;
+  const { dt, tauT, ashRate, Sf, S_nbi, wA } = X;
   const Ne = volumeIntegral(g, st.ne);
   const tauHe = Math.max(c.transport.tau_He_over_tau_E * tauT, 1e-2);
-  const ashPerRx = c.fuel === 'pB11' ? 3 : c.fuel === 'DD' ? 0.5 : 1;
-  s.NHe = Math.max(0, o.s.NHe + dt * (Rfus * ashPerRx - o.s.NHe / tauHe));
+  s.NHe = Math.max(0, o.s.NHe + dt * (ashRate - o.s.NHe / tauHe));
   const tau_p = Math.max(c.transport.tau_p_over_tau_E * tauT, 1e-2);
   // tungsten accumulates faster without the flushing of ELMs and sawteeth
   const tauW_accum = c.impurity.species === 'W' && (!c.events.elms || !c.events.sawteeth) ? 4 : 1;

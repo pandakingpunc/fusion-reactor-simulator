@@ -28,7 +28,7 @@ export function acceptStep(ctx: ProfileContext, fueling: FuelingControl, physics
   const K = ctx.lastK!;
   // volume integrals [W]
   const P = powerTotals(ctx, K);
-  const Rfus = volumeIntegral(g, w.Rfus), Nn = volumeIntegral(g, w.Nfus);
+  const Rfus = volumeIntegral(g, w.Rfus), Nn = volumeIntegral(g, w.Nfus), ashRate = volumeIntegral(g, w.ash);
   let We = 0, Wi = 0;
   for (let i = 0; i < N; i++) { We += 1.5 * v.ne[i] * v.Te[i] * KEV * g.dV[i]; Wi += 1.5 * w.ni[i] * v.Ti[i] * KEV * g.dV[i]; }
   const W = We + Wi;
@@ -49,7 +49,7 @@ export function acceptStep(ctx: ProfileContext, fueling: FuelingControl, physics
   // He ash, impurity, fuel mix
   const Sf = s.Sfuel * FuelingControl.efficiency(ctx);
   const wA = c.fueling.method === 'nbi' ? 1 : c.fuelFracA;
-  evolveInventories(ctx, o, v, { dt, tauT, Rfus, Sf, S_nbi: K.S_nbi, wA });
+  evolveInventories(ctx, o, v, { dt, tauT, ashRate, Sf, S_nbi: K.S_nbi, wA });
   // counters
   s.Efus = o.s.Efus + P.P_fus * dt;
   s.Ein = o.s.Ein + (K.P_NBI + K.P_IC + K.P_EC + P.P_oh) * dt;

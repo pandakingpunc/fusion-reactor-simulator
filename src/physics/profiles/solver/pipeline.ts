@@ -15,6 +15,7 @@
  * per-attempt parts again, so the evaluations must be idempotent (see SourceModel).
  */
 import type { ProfileContext, StepConstants } from '../context';
+import { FUEL_CHANNELS } from '../../reactivity';
 import { composition } from '../composition';
 import { heatingPowers } from '../control/actuators';
 import { currentProfiles } from '../qprofile';
@@ -36,7 +37,8 @@ export class PhysicsPipeline {
   /** Quantities held fixed over one step, from the old state st (its composition and q evaluated) */
   stepConstants(t: number, st: ProfileState): StepConstants {
     const ctx = this.ctx;
-    const K: StepConstants = { ...heatingPowers(ctx, t), shine: 0, btR: new Float64Array(ctx.N), Eb: ctx.cfg.heating.E_NBI_keV, Psync: 0, S_nbi: 0 };
+    const btR = FUEL_CHANNELS[ctx.cfg.fuel].map(() => new Float64Array(ctx.N));
+    const K: StepConstants = { ...heatingPowers(ctx, t), shine: 0, btR, Eb: ctx.cfg.heating.E_NBI_keV, Psync: 0, S_nbi: 0 };
     for (const s of this.sources) s.prepare?.(ctx, t, st, K);
     neoclassicalCoefficients(ctx, st);
     return K;

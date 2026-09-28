@@ -39,8 +39,8 @@ export interface StepConstants {
   P_NBI: number; P_IC: number; P_EC: number;
   /** NBI shine-through fraction */
   shine: number;
-  /** beam-target reaction rate per cell [m⁻³ s⁻¹] */
-  btR: Float64Array;
+  /** beam-target reaction rate per channel of the fuel (FUEL_CHANNELS order) and cell [m⁻³ s⁻¹] */
+  btR: Float64Array[];
   /** effective beam energy for current drive [keV] */
   Eb: number;
   /** total synchrotron power [W] */

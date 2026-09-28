@@ -35,7 +35,7 @@ export function Report({ shot, onRerun, onEdit }: Props) {
       const m = await import('./exportFigures');
       // The UI keeps frames without the worker-only rewind state; the figure code reads t, d, prof and eq only.
       const hist: HistoryFrame[] = frames.map((f) => ({ ...f, y: [], internal: {} }));
-      m.exportFigure({ name, cfg, frames: hist, events, diagSpecs: meta.diagSpecs, timeUnit: meta.timeUnit }, figKinds.includes(figKind) ? figKind : 'traces', format);
+      await m.exportFigure({ name, cfg, frames: hist, events, diagSpecs: meta.diagSpecs, timeUnit: meta.timeUnit }, figKinds.includes(figKind) ? figKind : 'traces', format);
     } finally { setFigBusy(false); }
   };
 

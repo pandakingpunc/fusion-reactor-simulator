@@ -1,7 +1,8 @@
 /// <reference types="node" />
 /**
- * Figure registry, captions.md merging, provenance manifest merging, and the figures CLI contract
- * (unknown ids and bad --check usage exit 2; --check detects a changed output file, exit 1).
+ * Figure registry, captions.md merging, provenance manifest merging and on-disk verification, and the
+ * figures CLI contract (unknown ids and bad --check usage exit 2; --check detects an edited file in
+ * --out and output that the code no longer reproduces, exit 1).
  */
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -11,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { UnknownFigureError, captionBlock, mergeCaptions, parseCaptions, selectFigures } from './registry';
 import { PAPER_FIGURES, PAPER_FIGURE_IDS, PaperNeed, poolTasks } from './figures/paper';
-import { FigureRecord, FiguresManifest, MANIFEST_FILE, compareWithManifest, configHash, mergeManifest } from '../cli/provenance';
+import { FigureRecord, FiguresManifest, MANIFEST_FILE, compareWithManifest, configHash, fileRecord, mergeManifest, sha256Hex, verifyFilesOnDisk } from '../cli/provenance';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -105,6 +106,39 @@ describe('provenance manifest', () => {
     expect(compareWithManifest(exp, {}, ['scan'])).toEqual(['scan: not regenerated']);
     expect(compareWithManifest(exp, {}, ['mhd'])).toEqual(['mhd: not in the manifest']);
   });
+
+  it('files on disk: changed, missing and CRLF-converted outputs and captions', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'frs-figdisk-'));
+    try {
+      const svg = '<?xml version="1.0"?>\n<svg>\n<text>ρ ≈ ş</text>\n</svg>', pdf = new Uint8Array([37, 80, 68, 70, 10, 0, 255]);
+      const cap = captionBlock(9, 'fig09_scan', 'Scan.\n\n| a | b |\n| 1 | 2 |');
+      const m = base({
+        scan: { ...rec('fig09_scan', ''), files: { 'fig09_scan.svg': fileRecord(svg), 'fig09_scan.pdf': fileRecord(pdf) }, captionSha256: sha256Hex(cap.text) },
+        mhd: { ...rec('fig08_mhd', ''), files: { 'fig08_mhd.svg': fileRecord('x') }, captionSha256: sha256Hex('y') },
+      });
+      expect(verifyFilesOnDisk(m, dir, ['scan'])).toEqual({ diffs: ['captions.md: missing', 'fig09_scan.svg: missing', 'fig09_scan.pdf: missing'], notes: [] });
+      writeFileSync(join(dir, 'fig09_scan.svg'), svg);
+      writeFileSync(join(dir, 'fig09_scan.pdf'), pdf);
+      writeFileSync(join(dir, 'captions.md'), mergeCaptions(null, '# Captions', [cap]));
+      expect(verifyFilesOnDisk(m, dir, ['scan'])).toEqual({ diffs: [], notes: [] });
+      // a Windows checkout with core.autocrlf: SVG and captions.md with CRLF are the same content
+      writeFileSync(join(dir, 'fig09_scan.svg'), svg.replace(/\n/g, '\r\n'));
+      writeFileSync(join(dir, 'captions.md'), mergeCaptions(null, '# Captions', [cap]).replace(/\n/g, '\r\n'));
+      const crlf = verifyFilesOnDisk(m, dir, ['scan']);
+      expect(crlf.diffs).toEqual([]);
+      expect(crlf.notes).toEqual([expect.stringMatching(/^fig09_scan\.svg: CRLF line endings/)]);
+      // PDFs are binary (never line-ending normalised); a changed SVG or caption and a missing caption are reported
+      writeFileSync(join(dir, 'fig09_scan.pdf'), new Uint8Array([37, 80, 68, 70, 13, 10, 0, 255]));
+      writeFileSync(join(dir, 'fig09_scan.svg'), svg + '<!-- edited -->');
+      writeFileSync(join(dir, 'captions.md'), mergeCaptions(null, '# Captions', [captionBlock(9, 'fig09_scan', 'Edited.')]));
+      writeFileSync(join(dir, 'fig08_mhd.svg'), 'x');
+      const d = verifyFilesOnDisk(m, dir, ['scan', 'mhd']).diffs;
+      expect(d).toHaveLength(4);
+      expect(d[0]).toMatch(/^fig09_scan\.svg: sha256 [0-9a-f]{12}… \(\d+ B\) ≠ manifest/);
+      expect(d[1]).toMatch(/^fig09_scan\.pdf: sha256/);
+      expect(d.slice(2)).toEqual(['captions.md: caption of fig09_scan differs', 'captions.md: no caption for fig08_mhd']);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
 });
 
 function figures(...args: string[]) {
@@ -130,7 +164,7 @@ describe('figures CLI', { timeout: 180_000 }, () => {
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
-  it('--only writes the figure, captions.md and manifest; --check finds a changed file (exit 1) and names only it', () => {
+  it('--only writes the figure, captions.md and manifest; --check names an edited file on disk and a non-reproduced output (exit 1)', () => {
     const dir = mkdtempSync(join(tmpdir(), 'frs-figtest-'));
     try {
       const g = figures('--only', 'verification', '--threads', '1', '--out', dir);
@@ -143,13 +177,17 @@ describe('figures CLI', { timeout: 180_000 }, () => {
       expect(svg).toContain(`config-sha256="${man.figures.verification.configSha256}"`);
       expect(svg).not.toContain(man.git?.sha ?? '@@no-git@@');
       expect(readFileSync(join(dir, 'captions.md'), 'utf8')).toContain('**Fig. 7 (fig07_verification).**');
-      // tamper with one recorded hash: the regenerated SVG must still match, the PDF must not
-      man.figures.verification.files['fig07_verification.pdf'].sha256 = '0'.repeat(64);
+      // (a) an edited file in --out: the manifest and the regenerated SVG still agree, the file on disk does not;
+      // (b) a PDF whose file and manifest entry were both replaced: consistent on disk, but not what the code regenerates
+      writeFileSync(join(dir, 'fig07_verification.svg'), svg + '<!-- edited -->');
+      writeFileSync(join(dir, 'fig07_verification.pdf'), 'garbage');
+      man.figures.verification.files['fig07_verification.pdf'] = fileRecord('garbage');
       writeFileSync(join(dir, MANIFEST_FILE), JSON.stringify(man));
       const c = figures('--check', '--threads', '1', '--out', dir);
       expect(c.code, c.stderr).toBe(1);
-      expect(c.stdout).toMatch(/fig07_verification\.pdf: sha256/);
-      expect(c.stdout).not.toMatch(/fig07_verification\.svg: sha256|caption differs|configuration hash/);
+      expect(c.stdout).toMatch(/on disk: fig07_verification\.svg: sha256/);
+      expect(c.stdout).toMatch(/regenerated: fig07_verification\.pdf: sha256/);
+      expect(c.stdout).not.toMatch(/on disk: fig07_verification\.pdf|regenerated: fig07_verification\.svg|caption|configuration hash/);
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });

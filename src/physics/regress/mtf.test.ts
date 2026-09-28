@@ -33,6 +33,35 @@ describe('MagLIF stagnation', () => {
   it('slow liner/piston compressions keep their 0.3·t_c stagnation', () => {
     expect(burnFWHM(GF_PISTON) / GF_PISTON.compressionTime_us).toBeGreaterThan(0.2);
   });
+
+  // The dwell time r_min/v_imp of a self-similar implosion scales as t_c/CR: a MagLIF run with the
+  // wizard's slow compression times (up to 20 ms) must neither stagnate for Z's 2 ns nor be
+  // integrated with a 0.2 ns step over the whole shot (2e7 steps at t_c = 2 ms before the fix).
+  it('the stagnation time scales with t_c/CR (self-similar implosion)', () => {
+    const zRatio = burnFWHM(ZMACHINE) / ZMACHINE.compressionTime_us;
+    for (const tc of [0.01, 20, 2000]) {
+      expect(burnFWHM({ ...ZMACHINE, compressionTime_us: tc }) / tc / zRatio).toBeCloseTo(1, 2);
+    }
+    // half the convergence ratio, twice the dwell time (the burn narrows a little less than σ)
+    const r = burnFWHM({ ...ZMACHINE, compressionRatio: 15 }) / burnFWHM(ZMACHINE);
+    expect(r).toBeGreaterThan(1.8);
+    expect(r).toBeLessThan(2.4);
+  });
+
+  it('wizard-range MagLIF shots finish in O(10³) integrator steps', () => {
+    const cases = [0.01, 20, 2000, 20000].map((tc) => ({ ...ZMACHINE, compressionTime_us: tc }));
+    // the minimal counterexample of ws2a's wizard smoke test (stopped as stalled after 20001 steps)
+    cases.push({ ...ZMACHINE, compressionTime_us: 1999.31, current_MA: 37.2337, flowShear: 0.0658, preheat_kJ: 26.7 });
+    for (const cfg of cases) {
+      const sim = new Simulation(cfg);
+      sim.advance(sim.model.outputDt);
+      expect(sim.nSteps, `t_c = ${cfg.compressionTime_us} µs, first output step`).toBeLessThan(50);
+      sim.runAll();
+      expect(sim.nSteps, `t_c = ${cfg.compressionTime_us} µs, whole shot`).toBeLessThan(5000);
+      expect(sim.model.terminated?.natural).toBe(true);
+      expect(Number.isFinite(sim.history[sim.history.length - 1].d.Efus_MJ)).toBe(true);
+    }
+  });
 });
 
 describe('FRC / mirror thermal energy with n_i ≠ n_e', () => {

@@ -21,12 +21,26 @@ const NSTATE = 3;
 const TU = 1e-6; // µs → s
 const P_T = 0.68; // sıcaklık sıkışma üssü (kayıplı adyabatik)
 /**
- * MagLIF durgunluk (sıkışma darbesi) genişliği σ [s]: Z'deki MagLIF'te yanma ~1–2 ns sürer
- * (Gomez et al., PRL 113 (2014) 155003; PRL 125 (2020) 155002) — liner eylemsizliği belirler, sürücü
- * akım süresi (~100 ns) değil. σ = 2 ns ile yanma FWHM'i ≈ 2 ns (yanma ∝ C^~7 daha dar). Yavaş liner /
- * piston sıkıştırmaları için σ = 0.3 t_c korunur.
+ * MagLIF stagnation (dwell) time. A liner dwells near its minimum radius for about r_min/v_imp
+ * (I. R. Lindemuth & R. C. Kirkpatrick, Nucl. Fusion 23 (1983) 263). For a self-similar implosion
+ * r_min = r_0/CR and v_imp ∝ r_0/t_c, so the width σ of the compression pulse scales as t_c/CR:
+ * σ = MAGLIF_DWELL · t_c / CR_eff. The constant is set on Z, where t_c = 100 ns and CR = 30 give the
+ * observed 1–2 ns burn (Gomez et al., PRL 113 (2014) 155003; PRL 125 (2020) 155002): σ = 2 ns, burn
+ * FWHM ≈ 2 ns. It is capped at the 0.3 t_c of the slow liner/piston compressions (reached at CR_eff ≤ 2).
+ * A fixed 2 ns for every t_c would be unphysical for the wizard's slow compressions (up to 20 ms) and
+ * forced a 0.2 ns time step over the whole shot.
  */
-const MAGLIF_STAGNATION_S = 2e-9;
+const MAGLIF_DWELL = 0.6;
+/** width σ of the compression pulse of slow liner/piston compressions, in units of t_c */
+const SLOW_STAGNATION = 0.3;
+
+/** Effective convergence ratio after the instability (jitter, flow shear) losses. */
+function effectiveCompression(cfg: MTFConfig, tc: number): number {
+  const jitter0 = Math.max(0.1 * tc, 0.02);
+  let f_stab = Math.exp(-Math.pow(cfg.jitter_us / jitter0, 2));
+  if (cfg.method === 'zpinch_sfs') f_stab *= 0.3 + 0.7 * Math.min(cfg.flowShear, 1); // flow-shear stabilisation
+  return 1 + (Math.max(cfg.compressionRatio, 1) - 1) * f_stab;
+}
 
 const MTF_DIAGS: DiagSpec[] = [
   { key: 'Ti', label: 'T (compressed)', unit: 'keV', group: 'Temperature' },
@@ -60,9 +74,11 @@ export class MTFModel extends PulsedBase {
     const tEnd = tc * 2;
     const atol = new Float64Array(NSTATE);
     atol.set([1e2, 1e2, 1e10]);
-    const width = cfg.method === 'maglif' ? MAGLIF_STAGNATION_S / TU : 0.3 * tc; // µs
-    super({ seed: cfg.seed, tEnd, timeUnit: 'µs', dt0: Math.min(tc / 200, width / 10),
-      integratorOpts: { rtol: 1e-5, atol, dtMin: tc / 1e5, dtMax: Math.min(tc / 40, width / 10), nonNegative: true }, outputDt: tEnd / 1000 });
+    const CR_eff = effectiveCompression(cfg, tc);
+    const width = tc * (cfg.method === 'maglif' ? Math.min(SLOW_STAGNATION, MAGLIF_DWELL / CR_eff) : SLOW_STAGNATION); // µs
+    const dtMax = Math.min(tc / 40, width / 10);
+    super({ seed: cfg.seed, tEnd, timeUnit: 'µs', dt0: Math.min(tc / 200, dtMax),
+      integratorOpts: { rtol: 1e-5, atol, dtMin: Math.min(tc / 1e5, dtMax / 10), dtMax, nonNegative: true }, outputDt: tEnd / 1000 });
     this.method = cfg.method;
     this.cfg = cfg;
     this.tc = tc;
@@ -77,11 +93,8 @@ export class MTFModel extends PulsedBase {
     const preheat_J = cfg.preheat_kJ * 1e3;
     this.T0_eff = cfg.T0_keV + preheat_J / Math.max(3 * cfg.n0 * this.V0 * C.keV_J, 1e-30);
 
-    // kararsızlık → etkin sıkışma oranı
-    const jitter0 = Math.max(0.1 * tc, 0.02);
-    let f_stab = Math.exp(-Math.pow(cfg.jitter_us / jitter0, 2));
-    if (cfg.method === 'zpinch_sfs') f_stab *= 0.3 + 0.7 * Math.min(cfg.flowShear, 1); // kesme-akış stabilizasyonu
-    this.CR_eff = 1 + (Math.max(cfg.compressionRatio, 1) - 1) * f_stab;
+    // instabilities → effective convergence ratio
+    this.CR_eff = CR_eff;
 
     this.E_in_total = cfg.driverEnergy_MJ * 1e6 + preheat_J;
     this.ctrl = {};

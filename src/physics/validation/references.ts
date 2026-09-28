@@ -10,16 +10,20 @@
  *   sanity      a physical bound or an order-of-magnitude comparison where no firm reference exists
  *
  * Acceptance policy. An accept range is derived from the literature, never fitted to the model output:
- * the published value with its published uncertainty (or the spread of the published predictions),
- * widened by a reduced-model tolerance where a 0D/1.5D model cannot be expected to be closer. The
- * tolerances used, with their origin, are:
+ * the published band — the published value with its published uncertainty, or the spread of the
+ * published predictions (`band`) — widened by a reduced-model tolerance where a 0D/1.5D model cannot be
+ * expected to be closer. The policy tolerances (`tolerance`), with their origin, are:
  *   confinement (τ_E, W, H98)  ×/÷ exp(2·0.145) = ×/÷ 1.34: twice the RMS log error of the IPB98(y,2)
  *                              fit to the ITPA ELMy H-mode database (ITER Physics Basis 1999, ch. 2)
  *   temperature                ±30 % (prescribed profile peaking and single-fluid energy balances)
- *   fusion yield of a pulsed   factor 3: the D-D/D-T reactivity scales roughly as T^3–4 at 2–5 keV,
- *   (ICF/MIF) plasma           so ±30 % in temperature is about a factor 3 in yield
- *   gain Q or G                about a factor 2 (Q grows faster than τ_E² near Q ≈ 10)
- * Each entry states its own derivation in `basis`.
+ *   yield (fusion yield of a   ×/÷ 3: the D-D/D-T reactivity scales roughly as T^3–4 at 2–5 keV,
+ *   pulsed ICF/MIF plasma)     so ±30 % in temperature is about a factor 3 in yield
+ *   gain (Q or G)              ×/÷ 2 (Q grows faster than τ_E² near Q ≈ 10)
+ * For these four the range is exactly {@link widen}(tolerance, {@link publishedBand}), rounded outward
+ * to three significant digits; references.test.ts recomputes it, so a hand-typed range cannot drift
+ * from the policy. A check whose range does not follow from one of them (a design requirement, a
+ * physical bound, a ±2σ interval, a tolerance of its own) has tolerance 'stated', and its `basis` gives
+ * the numbers. Each entry states its own derivation in `basis`.
  *
  * Known failures. When the current model falls outside a defensible range, the check is kept and
  * `knownFailure` says why: validate prints it as KNOWN-FAIL, lists it in the summary and does not fail
@@ -29,6 +33,11 @@
 import type { MetricPath } from './metrics';
 
 export type CheckKind = 'validation' | 'benchmark' | 'sanity';
+
+/** The reduced-model tolerances of the acceptance policy (see above). */
+export type PolicyTolerance = 'confinement' | 'temperature' | 'yield' | 'gain';
+/** How `accept` follows from the published band: a policy tolerance, or 'stated' in `basis`. */
+export type Tolerance = PolicyTolerance | 'stated';
 
 export interface ReferenceCheck {
   /** unique, stable id: `<preset>.<quantity>` */
@@ -43,6 +52,11 @@ export interface ReferenceCheck {
   value: number;
   /** published 1σ uncertainty or half-spread of the published values, in `unit` */
   uncertainty?: number;
+  /**
+   * published band when it is not value ± uncertainty, e.g. the spread of several code predictions
+   * around a reference value; see {@link publishedBand}
+   */
+  band?: readonly [number, number];
   unit: string;
   /** short citation for one-line reports, e.g. "Gomez 2020" */
   ref: string;
@@ -51,6 +65,8 @@ export interface ReferenceCheck {
   doi?: string;
   /** accepted model range [lo, hi], inclusive */
   accept: readonly [number, number];
+  /** policy tolerance that widens the published band into `accept`, or 'stated' (derivation in `basis`) */
+  tolerance: Tolerance;
   kind: CheckKind;
   /** how `accept` follows from the reference and the tolerances above */
   basis: string;
@@ -104,10 +120,37 @@ const DOI = {
 } as const satisfies Record<keyof typeof SRC, string>;
 
 /** exp(2 × 0.145): 2σ of the IPB98(y,2) database fit */
-const CONF = Math.exp(2 * 0.145);
+export const CONFINEMENT_FACTOR = Math.exp(2 * 0.145);
+
+/** The published band of a check: `band` if given, otherwise value ± uncertainty (the value alone without one). */
+export function publishedBand(c: Pick<ReferenceCheck, 'value' | 'uncertainty' | 'band'>): readonly [number, number] {
+  if (c.band) return c.band;
+  const u = c.uncertainty ?? 0;
+  return [c.value - u, c.value + u];
+}
+
+/**
+ * Rounds x outward to three significant digits (down for a lower bound, up for an upper one), after
+ * absorbing binary noise such as 0.7 × 1.3 = 0.9099999999999999.
+ */
+export function roundOutward(x: number, dir: 'down' | 'up'): number {
+  if (x === 0 || !Number.isFinite(x)) return x;
+  const e = Math.floor(Math.log10(Math.abs(x))) - 2;
+  const scaled = Number((x / 10 ** e).toPrecision(12));
+  const k = dir === 'down' ? Math.floor(scaled) : Math.ceil(scaled);
+  return Number((k * 10 ** e).toPrecision(3));
+}
+
+/** The accept range a policy tolerance gives for a published band [lo, hi] (positive quantities). */
+export function widen(tolerance: PolicyTolerance, [lo, hi]: readonly [number, number]): readonly [number, number] {
+  const [a, b] = tolerance === 'confinement' ? [lo / CONFINEMENT_FACTOR, hi * CONFINEMENT_FACTOR]
+    : tolerance === 'temperature' ? [lo * 0.7, hi * 1.3]
+      : tolerance === 'yield' ? [lo / 3, hi * 3]
+        : [lo / 2, hi * 2];
+  return [roundOutward(a, 'down'), roundOutward(b, 'up')];
+}
+
 const r3 = (x: number) => Math.round(x * 1000) / 1000;
-/** ×/÷ CONF around [lo, hi], rounded to 3 decimals outward-safe */
-const confRange = (lo: number, hi: number): readonly [number, number] => [Math.floor((lo / CONF) * 1000) / 1000, Math.ceil(hi * CONF * 1000) / 1000];
 /** lossless (adiabatic, γ = 5/3) temperature after radial compression of a cylinder by C: T0·C^(4/3) */
 const adiabaticCyl = (T0: number, C: number) => r3(T0 * C ** (4 / 3));
 
@@ -115,212 +158,222 @@ export const REFERENCE_CHECKS: readonly ReferenceCheck[] = [
   // ─── ITER (0D) ────────────────────────────────────────────────────────────────────────────────
   {
     id: 'ITER.Q', preset: 'ITER', metric: 'Q (flat-top avg.)', path: 'flatTop.Q', value: 10, unit: '',
-    ref: 'Shimada 2007', source: SRC.shimada2007, doi: DOI.shimada2007, accept: [5, 20], kind: 'benchmark',
-    basis: 'inductive design point Q = 10; factor 2 either way (gain tolerance)',
+    ref: 'Shimada 2007', source: SRC.shimada2007, doi: DOI.shimada2007, accept: [5, 20], tolerance: 'gain', kind: 'benchmark',
+    basis: 'inductive design point Q = 10; ×/÷ 2 (gain tolerance)',
   },
   {
     id: 'ITER.Pfus', preset: 'ITER', metric: 'P_fusion (flat-top)', path: 'flatTop.P_fus', value: 500, unit: 'MW',
-    ref: 'Shimada 2007', source: SRC.shimada2007, doi: DOI.shimada2007, accept: [300, 800], kind: 'benchmark',
+    ref: 'Shimada 2007', source: SRC.shimada2007, doi: DOI.shimada2007, accept: [300, 800], tolerance: 'stated', kind: 'benchmark',
     basis: 'Q = 10 at the 50 MW of heating of this preset (400–500 MW in the ITER design scenarios); −40 %/+60 % for a reduced model',
   },
   {
     id: 'ITER.H98', preset: 'ITER', metric: 'H98(y,2) (flat-top)', path: 'derived.H98y2', value: 1, unit: '',
-    ref: 'ITER Physics Basis 1999', source: SRC.ipb1999, doi: DOI.ipb1999, accept: confRange(1, 1), kind: 'benchmark',
-    basis: 'ITER Q = 10 assumes H98 = 1 (Shimada 2007); IPB98(y,2) evaluated independently at the flat-top n̄ and P_heat; ×/÷ exp(2·0.145) database scatter',
+    ref: 'ITER Physics Basis 1999', source: SRC.ipb1999, doi: DOI.ipb1999, accept: [0.748, 1.34], tolerance: 'confinement', kind: 'sanity',
+    basis: 'ITER Q = 10 assumes H98 = 1 (Shimada 2007); ×/÷ exp(2·0.145) database scatter. Sanity only, not a test of ' +
+      'confinement physics: the 0D model sets τ_E = H98 × τ_IPB98(y,2) with the preset\'s input H98 = 1, so this checks that ' +
+      'input together with the model\'s loss power (it feeds P_heat − P_rad into the scaling, while IPB98(y,2) and this ' +
+      'independent evaluation at the flat-top n̄ and P_heat use P_heat), its density average and NTM degradation',
   },
   // ─── JET DTE2 (0D) ───────────────────────────────────────────────────────────────────────────
   {
     id: 'JET.Efus', preset: 'JET', metric: 'E_fusion', path: 'report.E_fusion_MJ', value: 59, uncertainty: 6, unit: 'MJ',
-    ref: 'Maslov 2023', source: SRC.maslov2023, doi: DOI.maslov2023, accept: [40, 80], kind: 'validation',
+    ref: 'Maslov 2023', source: SRC.maslov2023, doi: DOI.maslov2023, accept: [40, 80], tolerance: 'stated', kind: 'validation',
     basis: 'record pulse #99971 (2021): 59 MJ in ~5 s; ≈10 % neutron-yield calibration uncertainty, widened to −32 %/+36 % for a 0D model',
   },
   // ─── SPARC (0D) ──────────────────────────────────────────────────────────────────────────────
   {
     id: 'SPARC.Q', preset: 'SPARC', metric: 'Q (flat-top avg.)', path: 'flatTop.Q', value: 11, unit: '',
-    ref: 'Creely 2020', source: SRC.creely2020, doi: DOI.creely2020, accept: [2, 20], kind: 'benchmark',
+    ref: 'Creely 2020', source: SRC.creely2020, doi: DOI.creely2020, accept: [2, 20], tolerance: 'stated', kind: 'benchmark',
     basis: 'predicted Q ≈ 11 at H98 = 1; the mission requirement Q > 2 is the lower bound, about factor 2 above the prediction the upper one',
   },
   // ─── DIII-D (0D) ─────────────────────────────────────────────────────────────────────────────
   {
     id: 'DIIID.H98', preset: 'DIIID', metric: 'H98(y,2) (flat-top)', path: 'derived.H98y2', value: 1, unit: '',
-    ref: 'ITER Physics Basis 1999', source: SRC.ipb1999, doi: DOI.ipb1999, accept: confRange(1, 1), kind: 'benchmark',
-    basis: 'IPB98(y,2) reproduces the ELMy H-mode database, DIII-D included, with RMS log error 0.145: H98 = 1 within ×/÷ exp(2·0.145); scaling evaluated independently at the flat-top n̄ and P_heat',
+    ref: 'ITER Physics Basis 1999', source: SRC.ipb1999, doi: DOI.ipb1999, accept: [0.748, 1.34], tolerance: 'confinement', kind: 'sanity',
+    basis: 'IPB98(y,2) reproduces the ELMy H-mode database, DIII-D included, with RMS log error 0.145: H98 = 1 within ×/÷ exp(2·0.145). ' +
+      'Sanity only: the preset is a generic DIII-D H-mode, not a documented discharge, so there is no measurement to compare with, ' +
+      'and the 0D model sets τ_E = H98 × τ_IPB98(y,2) with the preset\'s input H98 = 1. The check covers that input, the model\'s ' +
+      'loss power (P_heat − P_rad in the scaling; P_heat in this independent evaluation at the flat-top n̄) and NTM degradation',
   },
   // ─── JT-60SA (0D) ────────────────────────────────────────────────────────────────────────────
   {
-    id: 'JT60SA.W', preset: 'JT60SA', metric: 'W_th (flat-top)', path: 'flatTop.W', value: 22.0, uncertainty: 1.1, unit: 'MJ',
-    ref: 'Garzotti 2018', source: SRC.garzotti2018, doi: DOI.garzotti2018, accept: confRange(22.0, 22.0), kind: 'benchmark',
-    basis: 'scenario 2 (5.5 MA, 2.25 T, 41 MW): reference W_th = 22.0 MJ, 21.2–23.3 MJ from four transport codes; ×/÷ exp(2·0.145)',
+    id: 'JT60SA.W', preset: 'JT60SA', metric: 'W_th (flat-top)', path: 'flatTop.W', value: 22.0, band: [21.2, 23.3], unit: 'MJ',
+    ref: 'Garzotti 2018', source: SRC.garzotti2018, doi: DOI.garzotti2018, accept: [15.8, 31.2], tolerance: 'confinement', kind: 'benchmark',
+    basis: 'scenario 2 (5.5 MA, 2.25 T, 41 MW): reference W_th = 22.0 MJ; the four transport-code predictions span 21.2–23.3 MJ (the band); ×/÷ exp(2·0.145)',
   },
   {
-    id: 'JT60SA.tauE', preset: 'JT60SA', metric: 'τ_E (flat-top)', path: 'flatTop.tauE', value: 0.64, uncertainty: 0.12, unit: 's',
-    ref: 'Garzotti 2018', source: SRC.garzotti2018, doi: DOI.garzotti2018, accept: confRange(0.64, 0.64), kind: 'benchmark',
-    basis: 'scenario 2 reference τ_E = 0.64 s, 0.52–0.61 s from four transport codes (uncertainty covers them); ×/÷ exp(2·0.145)',
+    id: 'JT60SA.tauE', preset: 'JT60SA', metric: 'τ_E (flat-top)', path: 'flatTop.tauE', value: 0.64, band: [0.52, 0.64], unit: 's',
+    ref: 'Garzotti 2018', source: SRC.garzotti2018, doi: DOI.garzotti2018, accept: [0.389, 0.856], tolerance: 'confinement', kind: 'benchmark',
+    basis: 'scenario 2: reference τ_E = 0.64 s; the four transport codes predict 0.60, 0.61, 0.58 and 0.52 s, so the band is 0.52–0.64 s; ×/÷ exp(2·0.145)',
   },
   // ─── MAST Upgrade (0D) ───────────────────────────────────────────────────────────────────────
   {
     id: 'MASTU.H98', preset: 'MASTU', metric: 'H98(y,2) (flat-top)', path: 'derived.H98y2', value: 1.15, uncertainty: 0.15, unit: '',
-    ref: 'Harrison 2024', source: SRC.harrison2024, doi: DOI.harrison2024, accept: confRange(1.0, 1.3), kind: 'validation',
-    basis: 'first campaigns: H98 ≈ 1.3 in the best H-modes, ≈ 1 once 2/1 tearing modes set in (range 1.0–1.3); ×/÷ exp(2·0.145) because the preset is not one of those discharges',
+    ref: 'Harrison 2024', source: SRC.harrison2024, doi: DOI.harrison2024, accept: [0.748, 1.74], tolerance: 'confinement', kind: 'validation',
+    basis: 'first campaigns: H98 ≈ 1.3 in the best H-modes, ≈ 1 once 2/1 tearing modes set in (range 1.0–1.3); ×/÷ exp(2·0.145) because ' +
+      'the preset is not one of those discharges. Not circular: the preset confines with the spherical-tokamak scaling of Valovič, ' +
+      'and H98 is IPB98(y,2) evaluated independently',
   },
   // ─── Wendelstein 7-X (0D) ────────────────────────────────────────────────────────────────────
   {
     id: 'W7X.Ti0', preset: 'W7X', metric: 'T_i(0) (flat-top)', path: 'flatTop.Ti0', value: 1.5, uncertainty: 0.2, unit: 'keV',
-    ref: 'Beurskens 2021', source: SRC.beurskens2021, doi: DOI.beurskens2021, accept: [1.05, 1.95], kind: 'validation',
-    basis: 'gas-fuelled ECRH plasmas (this preset: 7.5 MW ECRH, no pellets): central T_i clamped at 1.5 ± 0.2 keV by ion-scale turbulence; ±30 % temperature tolerance',
-    knownFailure: 'the 0D ISS04 energy balance (f_ren = 0.8) with prescribed profile peaking gives T_i(0) ≈ 2.0 keV; ' +
-      'the ion-temperature clamping of W7-X ECRH plasmas is a turbulent-transport effect the 0D model does not contain',
+    ref: 'Beurskens 2021', source: SRC.beurskens2021, doi: DOI.beurskens2021, accept: [0.91, 2.21], tolerance: 'temperature', kind: 'validation',
+    basis: 'gas-fuelled ECRH plasmas (this preset: 7.5 MW ECRH, no pellets): central T_i clamped at 1.5 ± 0.2 keV by ion-scale ' +
+      'turbulence; ±30 % temperature tolerance. The 0D model (ISS04 energy balance, prescribed profile peaking) has no turbulent ' +
+      'clamping, so this bounds its energy balance only',
   },
   // ─── EU DEMO (0D) ────────────────────────────────────────────────────────────────────────────
   {
     id: 'DEMO.Pfus', preset: 'DEMO', metric: 'P_fusion (flat-top)', path: 'flatTop.P_fus', value: 2000, unit: 'MW',
-    ref: 'Federici 2019', source: SRC.federici2019, doi: DOI.federici2019, accept: [1000, 3000], kind: 'benchmark',
+    ref: 'Federici 2019', source: SRC.federici2019, doi: DOI.federici2019, accept: [1000, 3000], tolerance: 'stated', kind: 'benchmark',
     basis: '2018 baseline top-level requirement P_fus = 2000 MW; ±50 % for a reduced model',
   },
   // ─── ITER · 1.5D ─────────────────────────────────────────────────────────────────────────────
   {
     id: 'ITER15.Q', preset: 'ITER15', metric: 'Q (flat-top avg.)', path: 'flatTop.Q', value: 10, unit: '',
-    ref: 'Shimada 2007', source: SRC.shimada2007, doi: DOI.shimada2007, accept: [5, 20], kind: 'benchmark',
-    basis: 'inductive design point Q = 10; factor 2 either way (gain tolerance)',
+    ref: 'Shimada 2007', source: SRC.shimada2007, doi: DOI.shimada2007, accept: [5, 20], tolerance: 'gain', kind: 'benchmark',
+    basis: 'inductive design point Q = 10; ×/÷ 2 (gain tolerance)',
   },
   {
     id: 'ITER15.Pfus', preset: 'ITER15', metric: 'P_fusion (flat-top)', path: 'flatTop.P_fus', value: 500, unit: 'MW',
-    ref: 'Shimada 2007', source: SRC.shimada2007, doi: DOI.shimada2007, accept: [300, 800], kind: 'benchmark',
+    ref: 'Shimada 2007', source: SRC.shimada2007, doi: DOI.shimada2007, accept: [300, 800], tolerance: 'stated', kind: 'benchmark',
     basis: 'Q = 10 at the 50 MW of heating of this preset (400–500 MW in the ITER design scenarios); −40 %/+60 % for a reduced model',
   },
   {
     id: 'ITER15.fbs', preset: 'ITER15', metric: 'Bootstrap fraction', path: 'flatTop.f_bs', value: 0.2, uncertainty: 0.05, unit: '',
-    ref: 'Sips 2005', source: SRC.sips2005, doi: DOI.sips2005, accept: [0.1, 0.4], kind: 'benchmark',
-    basis: 'inductive scenario f_bs ≈ 0.15–0.25; −50 %/+100 % because f_bs depends on the pedestal pressure',
+    ref: 'Sips 2005', source: SRC.sips2005, doi: DOI.sips2005, accept: [0.1, 0.4], tolerance: 'stated', kind: 'benchmark',
+    basis: 'inductive scenario f_bs ≈ 0.15–0.25; −50 %/+100 % of the value because f_bs depends on the pedestal pressure',
   },
   {
     id: 'ITER15.li', preset: 'ITER15', metric: 'ℓ_i(3)', path: 'flatTop.li', value: 0.85, uncertainty: 0.15, unit: '',
-    ref: 'Shimada 2007', source: SRC.shimada2007, doi: DOI.shimada2007, accept: [0.6, 1.1], kind: 'benchmark',
+    ref: 'Shimada 2007', source: SRC.shimada2007, doi: DOI.shimada2007, accept: [0.6, 1.1], tolerance: 'stated', kind: 'benchmark',
     basis: 'flat-top ℓ_i(3) design range 0.7–1.0 (poloidal-field system capability); ±0.1 for the current-diffusion model',
   },
   {
     id: 'ITER15.q95', preset: 'ITER15', metric: 'q95', path: 'flatTop.q95', value: 3.0, unit: '',
-    ref: 'Shimada 2007', source: SRC.shimada2007, doi: DOI.shimada2007, accept: [2.7, 4.0], kind: 'benchmark',
+    ref: 'Shimada 2007', source: SRC.shimada2007, doi: DOI.shimada2007, accept: [2.7, 4.0], tolerance: 'stated', kind: 'benchmark',
     basis: '15 MA / 5.3 T inductive scenario q95 = 3; −10 %/+33 % for the equilibrium reconstructed on the 1.5D grid',
   },
   {
     id: 'ITER15.Tped', preset: 'ITER15', metric: 'T_e pedestal', path: 'flatTop.Tped', value: 4.5, uncertainty: 0.5, unit: 'keV',
-    ref: 'Snyder 2011', source: SRC.snyder2011, doi: DOI.snyder2011, accept: [2, 7], kind: 'benchmark',
-    basis: 'EPED prediction for the ITER baseline, T_ped ≈ 4–5 keV; about ±50 % because the model uses an α-limited, not EPED, pedestal',
+    ref: 'Snyder 2011', source: SRC.snyder2011, doi: DOI.snyder2011, accept: [2, 7], tolerance: 'stated', kind: 'benchmark',
+    basis: 'EPED prediction for the ITER baseline, T_ped ≈ 4–5 keV; −50 %/+40 % of that band because the model uses an α-limited, not EPED, pedestal',
   },
   {
     id: 'ITER15.nG', preset: 'ITER15', metric: 'n̄/n_G', path: 'flatTop.nG_frac', value: 0.85, unit: '',
-    ref: 'Shimada 2007', source: SRC.shimada2007, doi: DOI.shimada2007, accept: [0.6, 1.0], kind: 'benchmark',
+    ref: 'Shimada 2007', source: SRC.shimada2007, doi: DOI.shimada2007, accept: [0.6, 1.0], tolerance: 'stated', kind: 'benchmark',
     basis: 'inductive scenario n̄/n_G = 0.85; up to the Greenwald limit, down to −30 %',
   },
   // ─── JET DTE2 · 1.5D ─────────────────────────────────────────────────────────────────────────
   {
     id: 'JET15.Efus', preset: 'JET15', metric: 'E_fusion', path: 'report.E_fusion_MJ', value: 59, uncertainty: 6, unit: 'MJ',
-    ref: 'Maslov 2023', source: SRC.maslov2023, doi: DOI.maslov2023, accept: [40, 80], kind: 'validation',
+    ref: 'Maslov 2023', source: SRC.maslov2023, doi: DOI.maslov2023, accept: [40, 80], tolerance: 'stated', kind: 'validation',
     basis: 'record pulse #99971: 59 MJ, beam-target fusion included; same range as the 0D check (≈10 % calibration uncertainty, −32 %/+36 %)',
     knownFailure: 'the 1.5D model gives ≈ 85 MJ (+43 %, preset note "1.5D: +40 %"): beam-target fusion from the 3-component ' +
       'NBI deposition and a T_i(0) near 10 keV together over-predict the neutron rate of the record pulse',
   },
   {
     id: 'JET15.Ti0', preset: 'JET15', metric: 'T_i axis', path: 'flatTop.Ti0', value: 10, unit: 'keV',
-    ref: 'Maslov 2023', source: SRC.maslov2023, doi: DOI.maslov2023, accept: [6, 15], kind: 'validation',
+    ref: 'Maslov 2023', source: SRC.maslov2023, doi: DOI.maslov2023, accept: [6, 15], tolerance: 'stated', kind: 'validation',
     basis: 'DTE2 high-fusion-power pulses: T_i(0) ≈ 10 keV; −40 %/+50 %',
   },
   // ─── SPARC · 1.5D ────────────────────────────────────────────────────────────────────────────
   {
     id: 'SPARC15.Q', preset: 'SPARC15', metric: 'Q (flat-top avg.)', path: 'flatTop.Q', value: 11, unit: '',
-    ref: 'Creely 2020', source: SRC.creely2020, doi: DOI.creely2020, accept: [2, 20], kind: 'benchmark',
+    ref: 'Creely 2020', source: SRC.creely2020, doi: DOI.creely2020, accept: [2, 20], tolerance: 'stated', kind: 'benchmark',
     basis: 'predicted Q ≈ 11 at H98 = 1; the mission requirement Q > 2 is the lower bound, about factor 2 above the prediction the upper one',
   },
   // ─── EU DEMO · 1.5D ──────────────────────────────────────────────────────────────────────────
   {
     id: 'DEMO15.Pfus', preset: 'DEMO15', metric: 'P_fusion (flat-top)', path: 'flatTop.P_fus', value: 2000, unit: 'MW',
-    ref: 'Federici 2019', source: SRC.federici2019, doi: DOI.federici2019, accept: [1000, 3000], kind: 'benchmark',
+    ref: 'Federici 2019', source: SRC.federici2019, doi: DOI.federici2019, accept: [1000, 3000], tolerance: 'stated', kind: 'benchmark',
     basis: '2018 baseline top-level requirement P_fus = 2000 MW; ±50 % for a reduced model',
   },
   {
     id: 'DEMO15.fbs', preset: 'DEMO15', metric: 'Bootstrap fraction', path: 'flatTop.f_bs', value: 0.35, unit: '',
-    ref: 'Siccinio 2020', source: SRC.siccinio2020, doi: DOI.siccinio2020, accept: [0.2, 0.6], kind: 'benchmark',
+    ref: 'Siccinio 2020', source: SRC.siccinio2020, doi: DOI.siccinio2020, accept: [0.2, 0.6], tolerance: 'stated', kind: 'benchmark',
     basis: 'pulsed DEMO baseline f_bs ≈ 0.35; −40 %/+70 % because f_bs depends on the pedestal pressure',
   },
   // ─── NIF N221204 ─────────────────────────────────────────────────────────────────────────────
   {
     id: 'NIF.G', preset: 'NIF', metric: 'Gain G', path: 'report.Q_sci_max', value: 1.5, unit: '',
-    ref: 'Abu-Shawareb 2024', source: SRC.abushawareb2024, doi: DOI.abushawareb2024, accept: [1.0, 3.0], kind: 'validation',
-    basis: 'N221204: 3.1 MJ from 2.05 MJ of laser energy, G = 1.5; −33 %/+100 % (gain tolerance) for a 0D implosion model',
+    ref: 'Abu-Shawareb 2024', source: SRC.abushawareb2024, doi: DOI.abushawareb2024, accept: [1.0, 3.0], tolerance: 'stated', kind: 'validation',
+    basis: 'N221204: 3.15 MJ from 2.05 MJ of laser energy, G = 1.5. Lower bound G = 1, the result the shot is known for (target ' +
+      'gain above unity); upper bound ×2 (gain tolerance)',
   },
   // ─── Direct-drive ICF (1.9 MJ) ───────────────────────────────────────────────────────────────
   {
     id: 'DIRECT.G', preset: 'DIRECT', metric: 'Gain G', path: 'report.Q_sci_max', value: 0.74, uncertainty: 0.14, unit: '',
-    ref: 'Gopalaswamy 2024', source: SRC.gopalaswamy2024, doi: DOI.gopalaswamy2024, accept: [0.37, 1.5], kind: 'benchmark',
-    basis: 'hydro-equivalent scaling of the best OMEGA cryogenic implosions to 2.15 MJ: 1.6 ± 0.3 MJ of fusion yield, G = 0.74 ± 0.14 (a burning, not ignited, plasma); factor 2 (gain tolerance). The preset\'s 1.9 MJ would give less',
-    knownFailure: 'the 0D implosion model ignites the 1.9 MJ CH capsule and returns G ≈ 3.1; laser–plasma instabilities, ' +
+    ref: 'Gopalaswamy 2024', source: SRC.gopalaswamy2024, doi: DOI.gopalaswamy2024, accept: [0.3, 1.76], tolerance: 'gain', kind: 'benchmark',
+    basis: 'hydro-equivalent scaling of the best OMEGA cryogenic implosions to 2.15 MJ: 1.6 ± 0.3 MJ of fusion yield, G = 0.74 ± 0.14 ' +
+      '(a burning, not ignited, plasma); ×/÷ 2 (gain tolerance). The preset\'s 1.9 MJ would give less',
+    knownFailure: 'the 0D implosion model ignites the 1.9 MJ CH capsule and returns G ≈ 3; laser–plasma instabilities, ' +
       'hot-electron preheat and laser imprint, which limit direct drive today, are not modelled',
   },
   // ─── Z machine MagLIF ────────────────────────────────────────────────────────────────────────
   {
     id: 'Z.yield', preset: 'Z', metric: 'D-D neutron yield', path: 'report.neutronYield', value: 1.1e13, unit: '',
-    ref: 'Gomez 2020', source: SRC.gomez2020, doi: DOI.gomez2020, accept: [3.7e12, 3.3e13], kind: 'validation',
-    basis: 'best MagLIF shots at ~20 MA with enhanced B_z and preheat: primary D-D yield 1.1 × 10¹³ (2 kJ D-T equivalent); factor 3 (pulsed yield tolerance)',
-    knownFailure: 'the 0D MagLIF model yields ≈ 3 × 10¹⁵ neutrons (×270): its ideal compression to CR = 30 has no ' +
-      'liner–fuel mix, end losses, preheat losses or Be radiation, which limit the experiments',
+    ref: 'Gomez 2020', source: SRC.gomez2020, doi: DOI.gomez2020, accept: [3.66e12, 3.3e13], tolerance: 'yield', kind: 'validation',
+    basis: 'best MagLIF shots at ~20 MA with enhanced B_z and preheat: primary D-D yield 1.1 × 10¹³ (2 kJ D-T equivalent); ×/÷ 3 (pulsed yield tolerance)',
+    knownFailure: 'the 0D MagLIF model over-predicts the yield by more than an order of magnitude: its ideal compression to ' +
+      'CR = 30 has no liner–fuel mix, end losses, preheat losses or Be radiation, which limit the experiments',
   },
   {
     id: 'Z.Ti', preset: 'Z', metric: 'T_i (burn-averaged)', path: 'burn.Ti', value: 3.1, unit: 'keV',
-    ref: 'Gomez 2020', source: SRC.gomez2020, doi: DOI.gomez2020, accept: [2.2, 4.0], kind: 'validation',
+    ref: 'Gomez 2020', source: SRC.gomez2020, doi: DOI.gomez2020, accept: [2.17, 4.03], tolerance: 'temperature', kind: 'validation',
     basis: 'burn-averaged ion temperature of the best shots, 3.1 keV (neutron time of flight); ±30 % temperature tolerance',
   },
   // ─── General Fusion piston MTF ───────────────────────────────────────────────────────────────
   {
     id: 'GF.Tmax', preset: 'GF', metric: 'T_max (compressed)', path: 'report.Tmax_keV', value: adiabaticCyl(0.3, 10), unit: 'keV',
-    ref: 'Lindemuth 1983', source: SRC.lindemuth1983, doi: DOI.lindemuth1983, accept: [0.3, adiabaticCyl(0.3, 10)], kind: 'sanity',
+    ref: 'Lindemuth 1983', source: SRC.lindemuth1983, doi: DOI.lindemuth1983, accept: [0.3, adiabaticCyl(0.3, 10)], tolerance: 'stated', kind: 'sanity',
     basis: 'no measurement at these conditions: the compressed temperature must lie between the initial T0 = 0.3 keV and the lossless adiabatic limit T0·C^(4/3) of a radial compression by C = 10 (γ = 5/3)',
   },
   // ─── FRX-L electromagnetic liner MTF ─────────────────────────────────────────────────────────
   {
     id: 'FRXL.Tmax', preset: 'FRXL', metric: 'T_max (compressed)', path: 'report.Tmax_keV', value: adiabaticCyl(0.3, 10), unit: 'keV',
-    ref: 'Lindemuth 1983', source: SRC.lindemuth1983, doi: DOI.lindemuth1983, accept: [0.3, adiabaticCyl(0.3, 10)], kind: 'sanity',
+    ref: 'Lindemuth 1983', source: SRC.lindemuth1983, doi: DOI.lindemuth1983, accept: [0.3, adiabaticCyl(0.3, 10)], tolerance: 'stated', kind: 'sanity',
     basis: 'no measurement at these conditions: the compressed temperature must lie between the initial T0 = 0.3 keV and the lossless adiabatic limit T0·C^(4/3) of a radial compression by C = 10 (γ = 5/3)',
   },
   // ─── Zap FuZE-Q sheared-flow Z pinch ─────────────────────────────────────────────────────────
   {
     id: 'ZAP.Te', preset: 'ZAP', metric: 'T_e (flat-top)', path: 'flatTop.Te', value: 2, uncertainty: 1, unit: 'keV',
-    ref: 'Levitt 2024', source: SRC.levitt2024, doi: DOI.levitt2024, accept: [0.7, 3.9], kind: 'sanity',
+    ref: 'Levitt 2024', source: SRC.levitt2024, doi: DOI.levitt2024, accept: [0.7, 3.9], tolerance: 'temperature', kind: 'sanity',
     basis: 'FuZE Thomson scattering: T_e = 1–3 keV on axis during neutron production; ±30 % temperature tolerance. Sanity only: at C = 1 the model keeps the preset\'s T0',
   },
   // ─── TAE Norman / C-2W FRC ───────────────────────────────────────────────────────────────────
   {
     id: 'TAE.Te', preset: 'TAE', metric: 'T_e (flat-top)', path: 'flatTop.Te', value: 0.5, unit: 'keV',
-    ref: 'Gota 2021', source: SRC.gota2021, doi: DOI.gota2021, accept: [0.25, 1.0], kind: 'validation',
-    basis: 'C-2W: T_e > 500 eV sustained for up to 30 ms by NBI; factor 2 for a 0D single-temperature model',
+    ref: 'Gota 2021', source: SRC.gota2021, doi: DOI.gota2021, accept: [0.25, 1.0], tolerance: 'stated', kind: 'validation',
+    basis: 'C-2W: T_e > 500 eV sustained for up to 30 ms by NBI (a lower bound, not a central value); factor 2 either way for a 0D single-temperature model',
   },
   {
     id: 'TAE.Ttot', preset: 'TAE', metric: 'T_e + T_i (flat-top)', path: 'derived.Ttot', value: 3.0, unit: 'keV',
-    ref: 'Gota 2021', source: SRC.gota2021, doi: DOI.gota2021, accept: [1.5, 6.0], kind: 'validation',
-    basis: 'C-2W: total temperature T_e + T_i > 3 keV (fast-ion dominated); factor 2 for a 0D model',
+    ref: 'Gota 2021', source: SRC.gota2021, doi: DOI.gota2021, accept: [1.5, 6.0], tolerance: 'stated', kind: 'validation',
+    basis: 'C-2W: total temperature T_e + T_i > 3 keV (fast-ion dominated; a lower bound); factor 2 either way for a 0D model',
     knownFailure: 'the single-temperature FRC model has T_i = T_e ≈ 0.6 keV, so T_e + T_i ≈ 1.2 keV; the hot ' +
       'beam-driven ion population of C-2W (T_i several times T_e) is not modelled',
   },
   // ─── Tandem mirror ───────────────────────────────────────────────────────────────────────────
   {
     id: 'MIRROR.Te', preset: 'MIRROR', metric: 'T_e (flat-top)', path: 'flatTop.Te', value: 0.66, uncertainty: 0.05, unit: 'keV',
-    ref: 'Bagryansky 2015', source: SRC.bagryansky2015, doi: DOI.bagryansky2015, accept: [0.33, 1.8], kind: 'sanity',
+    ref: 'Bagryansky 2015', source: SRC.bagryansky2015, doi: DOI.bagryansky2015, accept: [0.33, 1.8], tolerance: 'stated', kind: 'sanity',
     basis: 'hottest bulk electrons measured in an open trap (GDT, 5 MW NBI + ECRH): 0.66 ± 0.05 keV on axis, peaks above 0.9 keV; ' +
-      'factor 2 around that range. Sanity only: the preset is a tandem mirror of similar size and heating, not GDT',
-    knownFailure: 'the single-temperature mirror model sets T_e = T_i ≈ 4.8 keV; mirror electrons are cooled by axial heat ' +
+      'factor 2 around that range (0.66/2 to 0.9 × 2). Sanity only: the preset is a tandem mirror of similar size and heating, not GDT',
+    knownFailure: 'the single-temperature mirror model sets T_e = T_i, several keV; mirror electrons are cooled by axial heat ' +
       'loss to the end walls, which limits every open trap built so far to T_e ≲ 1 keV and is not modelled',
   },
   // ─── Muon-catalysed fusion ───────────────────────────────────────────────────────────────────
   {
     id: 'MUON.Yf', preset: 'MUON', metric: 'Fusions per muon', path: 'flatTop.Yf', value: 150, uncertainty: 20.4, unit: '',
-    ref: 'Jones 1986', source: SRC.jones1986, doi: DOI.jones1986, accept: [109, 191], kind: 'validation',
+    ref: 'Jones 1986', source: SRC.jones1986, doi: DOI.jones1986, accept: [109, 191], tolerance: 'stated', kind: 'validation',
     basis: 'LAMPF record in high-density D-T: 150 ± 4 (stat.) ± 20 (syst.) fusions per muon; ±2σ with the errors in quadrature',
     knownFailure: 'Y_f = 1/(ω_s + 1/(λ_c τ_µ)) with the preset\'s ω_s = 0.56 % and λ_c = 1.2 × 10⁸ s⁻¹ gives 106 fusions per muon; ' +
       'the measured ≈150 implies a lower effective sticking (reactivation) or a faster cycling rate',
   },
   {
     id: 'MUON.Q', preset: 'MUON', metric: 'Q_scientific', path: 'report.Q_sci_max', value: r3((150 * 17.589) / 5000), unit: '',
-    ref: 'Jones 1986', source: SRC.jones1986, doi: DOI.jones1986, accept: [0, 0.99], kind: 'sanity',
-    basis: 'energy gain per muon: 150 fusions × 17.6 MeV / 5 GeV muon cost ≈ 0.53; µCF cannot exceed Q = 1 at the measured yields',
+    ref: 'Jones 1986', source: SRC.jones1986, doi: DOI.jones1986, accept: [0, 0.99], tolerance: 'stated', kind: 'sanity',
+    basis: 'energy gain per muon: 150 fusions × 17.6 MeV / 5 GeV muon cost ≈ 0.53; µCF cannot exceed Q = 1 at the measured yields (bound)',
   },
 ];

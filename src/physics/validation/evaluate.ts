@@ -9,7 +9,8 @@
  *   known-fail  outside the range, documented by `knownFailure` → reported, does not fail
  *   xpass       a documented known failure now passes          → reported, remove the marker
  */
-import type { CheckKind, ReferenceCheck } from './references';
+import { type CheckKind, type ReferenceCheck, type Tolerance, publishedBand, widen } from './references';
+import { DERIVED_METRICS, METRIC_SCOPES } from './metrics';
 
 export type CheckStatus = 'pass' | 'fail' | 'error' | 'known-fail' | 'xpass';
 
@@ -78,7 +79,8 @@ export function fmtRange(c: ReferenceCheck): string {
 
 export function fmtReference(c: ReferenceCheck): string {
   const u = c.uncertainty !== undefined ? ` ± ${fmt(c.uncertainty)}` : '';
-  return `${fmt(c.value)}${u}${c.unit ? ` ${c.unit}` : ''}`;
+  const band = c.band ? ` (${fmt(c.band[0])}–${fmt(c.band[1])})` : '';
+  return `${fmt(c.value)}${u}${band}${c.unit ? ` ${c.unit}` : ''}`;
 }
 
 const STATUS_LABEL: Record<CheckStatus, string> = { pass: 'PASS', fail: 'FAIL', error: 'FAIL', 'known-fail': 'KNOWN-FAIL', xpass: 'XPASS' };
@@ -118,4 +120,76 @@ export function markdownTable(rows: readonly (ReferenceCheck | CheckOutcome)[]):
   }
   if (notes.length) L.push('', ...notes);
   return L.join('\n');
+}
+
+const KINDS: readonly CheckKind[] = ['validation', 'benchmark', 'sanity'];
+const TOLERANCES: readonly Tolerance[] = ['confinement', 'temperature', 'yield', 'gain', 'stated'];
+
+/**
+ * Structural and acceptance-policy problems of a check table (empty when it is sound): unique ids of
+ * the form `<preset>.<quantity>`, known presets, metric paths with a known scope, finite ordered accept
+ * ranges that contain the published band, and — for a policy tolerance — an accept range equal to
+ * {@link widen}(tolerance, {@link publishedBand}), so that no range drifts from the stated policy.
+ */
+export function tableProblems(checks: readonly ReferenceCheck[], presetIds: readonly string[]): string[] {
+  const problems: string[] = [];
+  const seen = new Set<string>();
+  for (const c of checks) {
+    const at = (msg: string) => problems.push(`${c.id}: ${msg}`);
+    if (seen.has(c.id)) at('duplicate id');
+    seen.add(c.id);
+    if (!c.id.startsWith(`${c.preset}.`) || !/^[A-Za-z0-9_]+$/.test(c.id.slice(c.preset.length + 1))) at('id must be <preset>.<quantity>');
+    if (!presetIds.includes(c.preset)) at(`unknown preset '${c.preset}'`);
+    const dot = c.path.indexOf('.');
+    const scope = c.path.slice(0, dot);
+    if (dot < 1 || dot === c.path.length - 1 || !(METRIC_SCOPES as readonly string[]).includes(scope)) {
+      at(`metric path '${c.path}' must be <scope>.<key> with scope ${METRIC_SCOPES.join(', ')}`);
+    } else if (scope === 'derived' && !(DERIVED_METRICS as readonly string[]).includes(c.path.slice(dot + 1))) {
+      at(`unknown derived metric '${c.path}' (known: ${DERIVED_METRICS.join(', ')})`);
+    }
+    if (!KINDS.includes(c.kind)) at(`kind must be one of ${KINDS.join(', ')}`);
+    if (!TOLERANCES.includes(c.tolerance)) at(`tolerance must be one of ${TOLERANCES.join(', ')}`);
+    const [lo, hi] = c.accept;
+    if (!(Number.isFinite(lo) && Number.isFinite(hi) && lo < hi)) { at('accept must be a finite range [lo, hi] with lo < hi'); continue; }
+    const [bLo, bHi] = publishedBand(c);
+    if (!(bLo <= c.value && c.value <= bHi) && c.band) at(`value ${c.value} outside its band ${bLo}–${bHi}`);
+    if (!(lo <= bLo && bHi <= hi)) at(`accept ${lo}–${hi} does not contain the published band ${fmt(bLo)}–${fmt(bHi)}`);
+    if (c.tolerance !== 'stated' && TOLERANCES.includes(c.tolerance)) {
+      const [wLo, wHi] = widen(c.tolerance, [bLo, bHi]);
+      if (lo !== wLo || hi !== wHi) at(`accept ${lo}–${hi} is not the ${c.tolerance} tolerance of the band ${fmt(bLo)}–${fmt(bHi)}: expected [${wLo}, ${wHi}]`);
+    }
+    if (c.tolerance === 'stated' && !/%|±|factor|×|bound|limit|σ|requirement/.test(c.basis)) at("tolerance 'stated' needs the widening (%, ±, factor, ×, bound, limit, σ or requirement) in basis");
+    if (c.knownFailure !== undefined && c.knownFailure.trim().length === 0) at('knownFailure must explain the failure');
+  }
+  return problems;
+}
+
+/**
+ * Reads a check table from parsed JSON (the `--checks FILE` of validate): an array of objects with the
+ * fields of {@link ReferenceCheck}. Throws an Error listing every problem, including those of
+ * {@link tableProblems}.
+ */
+export function parseChecks(data: unknown, presetIds: readonly string[]): ReferenceCheck[] {
+  if (!Array.isArray(data)) throw new Error('a check table must be a JSON array of checks');
+  const problems: string[] = [];
+  const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+  const isPair = (v: unknown): v is [number, number] => Array.isArray(v) && v.length === 2 && isNum(v[0]) && isNum(v[1]);
+  data.forEach((e: unknown, i: number) => {
+    const at = (msg: string) => problems.push(`check #${i}${e && typeof e === 'object' && typeof (e as { id?: unknown }).id === 'string' ? ` (${(e as { id: string }).id})` : ''}: ${msg}`);
+    if (!e || typeof e !== 'object' || Array.isArray(e)) { at('must be an object'); return; }
+    const o = e as Record<string, unknown>;
+    for (const k of ['id', 'preset', 'metric', 'path', 'unit', 'ref', 'source', 'kind', 'tolerance', 'basis']) {
+      if (typeof o[k] !== 'string') at(`'${k}' must be a string`);
+    }
+    for (const k of ['doi', 'knownFailure']) if (o[k] !== undefined && typeof o[k] !== 'string') at(`'${k}' must be a string`);
+    if (!isNum(o.value)) at("'value' must be a finite number");
+    if (o.uncertainty !== undefined && !(isNum(o.uncertainty) && o.uncertainty >= 0)) at("'uncertainty' must be a finite number >= 0");
+    if (!isPair(o.accept)) at("'accept' must be [lo, hi]");
+    if (o.band !== undefined && !(isPair(o.band) && o.band[0] <= o.band[1])) at("'band' must be [lo, hi] with lo <= hi");
+  });
+  if (problems.length) throw new Error(`invalid check table:\n  ${problems.join('\n  ')}`);
+  const checks = data as ReferenceCheck[];
+  const policy = tableProblems(checks, presetIds);
+  if (policy.length) throw new Error(`invalid check table:\n  ${policy.join('\n  ')}`);
+  return checks;
 }

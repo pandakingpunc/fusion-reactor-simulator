@@ -19,6 +19,10 @@
 import type { HistoryFrame, MagneticConfig, ReactorConfig, ShotReport } from '../types';
 
 export type DerivedMetric = 'H98y2' | 'Ttot';
+/** every derived metric, for validating metric paths read from a file */
+export const DERIVED_METRICS: readonly DerivedMetric[] = ['H98y2', 'Ttot'];
+/** the scopes a metric path can start with */
+export const METRIC_SCOPES = ['flatTop', 'report', 'engineering', 'burn', 'derived'] as const;
 
 /** ShotReport keys whose value is a number */
 export type NumericReportKey = { [K in keyof ShotReport]-?: ShotReport[K] extends number ? K : never }[keyof ShotReport];

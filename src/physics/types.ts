@@ -191,6 +191,8 @@ export interface MirrorConfig {
   L_m: number; a_m: number; B_center_T: number; mirrorRatio: number;
   n0: number; T_keV: number; P_aux_MW: number; tandem: boolean;
   t_end: number; seed: number; fuel: FuelType;
+  /** tandem uç tıkacı potansiyeli eφ_c / T_i (varsayılan 1; yalnız tandem) */
+  plugPotential?: number;
 }
 export interface MuonConfig {
   method: 'muon';

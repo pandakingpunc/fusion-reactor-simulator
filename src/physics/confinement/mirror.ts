@@ -2,10 +2,12 @@
  * MANYETİK AYNA — 0D güç dengesi (tek sıcaklık), kayıp konisi hapsetmesi.
  *
  * Durum y: [0] W [J]  [1] E_fus [J]  [2] E_in [J]  [3] N_n
- * Hapsetme: Pastukhov-benzeri τ_E ≈ κ · R_m · log₁₀(R_m) · τ_ii (tandem: ambipolar
- * potansiyel bariyeri ile artırılmış). Basit ayna için τ ~ √R_m · τ_ii.
- * Kaynak: Pastukhov, Nucl. Fusion 14 (1974) 3; NRL Formulary (çarpışma zamanları).
- * APPROXIMATION: 0D, sabit yoğunluk, izotropik dağılım.
+ * Hapsetme: basit ayna τ_E ≈ κ · R_m · L / v_th (uç kaybı, bkz. tauE). Tandem: uç tıkaçlarının
+ * ambipolar potansiyel bariyeri eφ_c iyonları ayrıca tutar; Pastukhov çözümünün asimptotik
+ * biçimiyle τ_tandem = τ_basit · (1 + F(x)), F(x) = x e^x / (1 + 1/(2x)), x = eφ_c/T_i
+ * (V.P. Pastukhov, Nucl. Fusion 14 (1974) 3; R.H. Cohen et al., Nucl. Fusion 18 (1978) 1229).
+ * x = MirrorConfig.plugPotential (varsayılan 1). x → 0'da tandem basit aynaya indirgenir.
+ * APPROXIMATION: 0D, sabit yoğunluk, izotropik dağılım; tıkaç gücü ve tıkaç plazması modellenmez.
  */
 import { MirrorConfig } from '../types';
 import { FUEL_SPECIES } from '../reactivity';
@@ -17,6 +19,14 @@ import { PulsedBase, fusionRates } from './common';
 
 const IDX = { W: 0, Efus: 1, Ein: 2, Nn: 3 } as const;
 const NSTATE = 4;
+/** Varsayılan tıkaç potansiyeli eφ_c/T_i (MirrorConfig.plugPotential verilmezse) */
+const PLUG_POTENTIAL_DEFAULT = 1;
+
+/** Pastukhov potansiyel-kuyusu çarpanı F(x) = x e^x / (1 + 1/(2x)), x = eφ/T (x ≤ 0 → 0) */
+export function pastukhovFactor(x: number): number {
+  if (!(x > 0)) return 0;
+  return (x * Math.exp(x)) / (1 + 1 / (2 * x));
+}
 
 const MIRROR_DIAGS: DiagSpec[] = [
   { key: 'Ti', label: 'T (ion≈electron)', unit: 'keV', group: 'Temperature' },
@@ -77,8 +87,9 @@ export class MirrorModel extends PulsedBase {
     const m_i = this.Aavg * C.amu;
     const v_th = Math.sqrt((2 * Math.max(T_keV, 0.01) * C.keV_J) / m_i);
     const R = Math.max(this.cfg.mirrorRatio, 1.5);
-    const conf = this.cfg.tandem ? R * Math.log10(R) : R;
-    return Math.max((this.ctrl.kappa_conf * conf * this.cfg.L_m) / v_th, 1e-7);
+    const tauSimple = (this.ctrl.kappa_conf * R * this.cfg.L_m) / v_th;
+    const plug = this.cfg.tandem ? 1 + pastukhovFactor(this.cfg.plugPotential ?? PLUG_POTENTIAL_DEFAULT) : 1;
+    return Math.max(tauSimple * plug, 1e-7);
   }
 
   initialState(): Float64Array {

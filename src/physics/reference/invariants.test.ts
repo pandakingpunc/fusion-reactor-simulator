@@ -17,12 +17,15 @@
  * which switch τ_E between two samples) break the trapezoid rule on the interval that contains them, so
  * those intervals are left out of both sides of every balance; the rest must close.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Simulation, createModel } from '../simulation';
 import { PRESETS } from '../presets';
 import { nbiShineThrough } from '../heating';
 import { FUEL_CHANNELS, FuelType } from '../reactivity';
 import type { HistoryFrame, MagneticConfig, ReactorConfig, SimEvent } from '../types';
+
+// the first test of each preset runs the simulation (0.1–0.5 s alone; allow for a loaded machine)
+vi.setConfig({ testTimeout: 60_000 });
 
 const MeV_J = 1.602176634e-13;
 const E_DT_MeV = 17.589; // Q-value of D + T → ⁴He + n (AME2020 mass defect, see reactivity.test.ts)

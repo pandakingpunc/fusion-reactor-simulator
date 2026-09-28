@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { HistoryFrame, SimEvent } from '../../physics/types';
+import { SimEvent } from '../../physics/types';
+import { UiFrame } from '../../worker/protocol';
 import { fmtAxis, fmtNum, fmtTime } from '../format';
+import { useT } from '../state/store';
 
 export interface Series { key: string; label: string; unit: string; color: string; log?: boolean }
 
 interface Props {
-  frames: HistoryFrame[];
+  frames: UiFrame[];
   series: Series[];
   timeUnit: string;
   tEnd: number;
@@ -28,6 +30,7 @@ const EVENT_COLOR: Record<string, string> = {
 const PAD = { l: 58, r: 12, t: 8, b: 22 };
 
 export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height = 220, title, live, resetKey, cursorT, onSeek }: Props) {
+  const t = useT();
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [width, setWidth] = useState(600);
@@ -128,8 +131,7 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
     if (cursorT !== undefined && cursorT >= x0 && cursorT <= x1) drawV(xToPx(cursorT), '#4cc9f0');
     if (hover !== null) {
       drawV(hover, '#d6dce8');
-      const t = pxToX(hover);
-      const f = nearest(frames, t);
+      const f = nearest(frames, pxToX(hover));
       if (f) {
         const lines = [fmtTime(f.t, timeUnit), ...visible.map((s) => `${s.label}: ${fmtNum(f.d[s.key])} ${s.unit}`)];
         const bw = Math.max(...lines.map((l) => l.length)) * 6.2 + 12, bh = lines.length * 13 + 8;
@@ -143,7 +145,10 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
   }, [frames, visible, events, width, height, x0, x1, y0, y1, logY, xToPx, yToPx, pxToX, plotW, plotH, hover, cursorT, timeUnit, title]);
 
   // etkileşim
-  const onWheel = (e: React.WheelEvent) => {
+  // Wheel zoom. React registers wheel listeners as passive, where preventDefault() is ignored and the
+  // page scrolls along with the zoom; a native non-passive listener lets the chart own the wheel.
+  const zoom = useRef<(e: WheelEvent) => void>(() => {});
+  zoom.current = (e: WheelEvent) => {
     e.preventDefault();
     const rect = canvasRef.current!.getBoundingClientRect();
     const tx = pxToX(e.clientX - rect.left);
@@ -152,6 +157,12 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
     if (nx1 - nx0 < tEnd * 1e-4) return;
     setXRange([nx0, nx1]);
   };
+  useEffect(() => {
+    const cv = canvasRef.current; if (!cv) return;
+    const onWheel = (e: WheelEvent) => zoom.current(e);
+    cv.addEventListener('wheel', onWheel, { passive: false });
+    return () => cv.removeEventListener('wheel', onWheel);
+  }, []);
   const onDown = (e: React.MouseEvent) => { drag.current = { x0: e.clientX, range: [x0, x1] }; };
   const onMove = (e: React.MouseEvent) => {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -173,7 +184,7 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
 
   return (
     <div className="chart-wrap" ref={wrapRef}>
-      <canvas ref={canvasRef} style={{ height, cursor: 'crosshair' }} onWheel={onWheel} onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}
+      <canvas ref={canvasRef} style={{ height, cursor: 'crosshair' }} onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}
         onMouseLeave={() => { drag.current = null; setHover(null); }} onDoubleClick={() => setXRange(null)} />
       <div className="chart-legend">
         {series.map((s) => (
@@ -182,8 +193,8 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
           </span>
         ))}
         <span className="spacer" />
-        <span className="li" onClick={() => setLogY((v) => !v)} title="logarithmic y-axis">{logY ? 'log' : 'lin'}</span>
-        {xRange && <span className="li" onClick={() => setXRange(null)} title="reset zoom (double-click)">⟲</span>}
+        <span className="li" onClick={() => setLogY((v) => !v)} title={t('chart.logTitle')}>{logY ? 'log' : 'lin'}</span>
+        {xRange && <span className="li" onClick={() => setXRange(null)} title={t('chart.resetZoom')}>⟲</span>}
       </div>
     </div>
   );
@@ -202,7 +213,7 @@ function logTicks(a: number, b: number): number[] {
   for (let e = Math.floor(Math.log10(a)); e <= Math.ceil(Math.log10(b)); e++) out.push(Math.pow(10, e));
   return out;
 }
-function nearest(frames: HistoryFrame[], t: number): HistoryFrame | null {
+function nearest(frames: UiFrame[], t: number): UiFrame | null {
   if (!frames.length) return null;
   let lo = 0, hi = frames.length - 1;
   while (hi - lo > 1) { const m = (lo + hi) >> 1; if (frames[m].t < t) lo = m; else hi = m; }

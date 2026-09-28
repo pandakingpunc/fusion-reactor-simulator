@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { NIF, ZMACHINE, MUON } from '../../physics/presets';
 import { createModel, Simulation } from '../../physics/simulation';
 import { HistoryFrame, ReactorConfig } from '../../physics/types';
-import { SavedShot } from '../../App';
+import { SavedShot } from '../state/types';
 import { Report } from './Report';
 
 const cases: { name: string; cfg: ReactorConfig; unit: string; seconds: number }[] = [

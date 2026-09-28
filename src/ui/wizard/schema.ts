@@ -19,6 +19,12 @@ export interface FieldDef {
   hint?: string;
   /** cfg'de değer yoksa gösterilen (modelin kullandığı) varsayılan */
   def?: unknown;
+  /**
+   * Blank is a valid setting: the model then applies its own rule, which `hint` explains
+   * (e.g. "Blank = two-point model"). A numeric field with neither `def` nor `optional` is
+   * required: RUN stays blocked while it is empty (see missingRequired).
+   */
+  optional?: boolean;
 }
 export interface StepDef { id: string; title: string; fields: FieldDef[]; note?: string }
 
@@ -81,7 +87,7 @@ const MAGNETIC_STEPS: StepDef[] = [
     { path: 'impurity.wallReflectivity', label: 'Wall reflectivity (synchrotron)', min: 0, max: 0.99, step: 0.01 },
     { path: 'impurity.W_source_frac', label: 'Additional W source', min: 0, max: 1, step: 0.01, hint: 'Divertor W erosion → core accumulation' },
     { path: 'impurity.seedSpecies', label: 'Seeding impurity', type: 'select', options: [{ value: '', label: 'none' }, ...['Ne', 'Ar'].map((v) => ({ value: v, label: v }))] },
-    { path: 'impurity.seedConcentration', label: 'Seed c_s', min: 0, max: 0.05, step: 1e-4 },
+    { path: 'impurity.seedConcentration', label: 'Seed c_s', min: 0, max: 0.05, step: 1e-4, optional: true, hint: 'Blank or 0 = no seeding' },
   ] },
   { id: 'driver', title: 'Magnet, blanket, divertor, economics', fields: [
     { path: 'magnet.tech', label: 'Magnet technology', type: 'select', options: [{ value: 'Cu', label: 'Copper (normal conducting)' }, { value: 'NbTi', label: 'NbTi (≈ 9 T)' }, { value: 'Nb3Sn', label: 'Nb₃Sn (≈ 13 T)' }, { value: 'REBCO', label: 'REBCO HTS (≈ 20+ T)' }], hint: 'B_coil > B_max → quench, shot aborted' },
@@ -127,8 +133,8 @@ const MAGNETIC_STEPS: StepDef[] = [
     { path: 'profiles.transportModel', label: '1.5D · transport model', type: 'select', def: PS.transportModel, options: [{ value: 'scaling', label: 'τ_E-scaling constrained (validated)' }, { value: 'cgm', label: 'Critical-gradient model (predictive, experimental)' }] },
     { path: 'profiles.nRho', label: '1.5D · radial cells N_ρ', min: 16, max: 200, step: 1, def: PS.nRho },
     { path: 'profiles.eqNR', label: '1.5D · Grad–Shafranov grid N_R', min: 25, max: 129, step: 2, def: PS.eqNR },
-    { path: 'profiles.lcfsKappa', label: '1.5D · LCFS elongation', min: 1, max: 3, step: 0.01, hint: 'Blank = geometry κ (κ_95 ≈ κ_LCFS/1.1)' },
-    { path: 'profiles.lcfsDelta', label: '1.5D · LCFS triangularity', min: -0.3, max: 0.8, step: 0.01, hint: 'Blank = geometry δ' },
+    { path: 'profiles.lcfsKappa', label: '1.5D · LCFS elongation', min: 1, max: 3, step: 0.01, optional: true, hint: 'Blank = geometry κ (κ_95 ≈ κ_LCFS/1.1)' },
+    { path: 'profiles.lcfsDelta', label: '1.5D · LCFS triangularity', min: -0.3, max: 0.8, step: 0.01, optional: true, hint: 'Blank = geometry δ' },
     { path: 'profiles.chiShape', label: '1.5D · χ shape c in (1 + cρ²)', min: 0, max: 10, step: 0.1, def: PS.chiShape },
     { path: 'profiles.chiRatio', label: '1.5D · χ_i / χ_e', min: 0.2, max: 5, step: 0.05, def: PS.chiRatio },
     { path: 'profiles.DoverChi', label: '1.5D · D / χ_e', min: 0.05, max: 2, step: 0.05, def: PS.DoverChi },
@@ -146,7 +152,7 @@ const MAGNETIC_STEPS: StepDef[] = [
     { path: 'profiles.nbcdEff', label: '1.5D · NBCD efficiency factor', min: 0, max: 1, step: 0.01, def: PS.nbcdEff },
     { path: 'profiles.eccdEff', label: '1.5D · ECCD efficiency factor', min: 0, max: 1, step: 0.01, def: PS.eccdEff },
     { path: 'profiles.nsepFrac', label: '1.5D · separatrix density n_sep/⟨n_e⟩', min: 0.1, max: 0.8, step: 0.01, def: PS.nsepFrac },
-    { path: 'profiles.Tsep_keV', label: '1.5D · separatrix T_e', unit: 'keV', min: 0.02, max: 0.5, step: 0.005, hint: 'Blank = two-point model (Eich λ_q)' },
+    { path: 'profiles.Tsep_keV', label: '1.5D · separatrix T_e', unit: 'keV', min: 0.02, max: 0.5, step: 0.005, optional: true, hint: 'Blank = two-point model (Eich λ_q)' },
   ] },
 ];
 
@@ -276,6 +282,27 @@ export function fieldVisible(method: Method, path: string, cfg?: ReactorConfig):
   if (path === 'jitter_us') return method !== 'zpinch_sfs';
   if (path === 'linerThicknessRatio' || path === 'compressionRatio' || path === 'driverEnergy_MJ' || path === 'compressionTime_us') return method !== 'zpinch_sfs' || path !== 'linerThicknessRatio';
   return true;
+}
+
+/** A numeric field must have a value before a run: blank is neither a documented model default nor a documented setting. */
+export function isRequired(f: FieldDef): boolean {
+  return (f.type ?? 'number') === 'number' && f.def === undefined && !f.optional;
+}
+
+/**
+ * Visible required fields of `cfg` that are empty (a blank wizard input stores undefined).
+ * The model has no default for them, so running would give non-finite results.
+ */
+export function missingRequired(cfg: ReactorConfig): { step: StepDef; field: FieldDef }[] {
+  const out: { step: StepDef; field: FieldDef }[] = [];
+  for (const step of stepsFor(cfg.method)) {
+    for (const field of step.fields) {
+      if (!isRequired(field) || !fieldVisible(cfg.method, field.path, cfg)) continue;
+      const v = getPath(cfg, field.path);
+      if (typeof v !== 'number' || !Number.isFinite(v)) out.push({ step, field });
+    }
+  }
+  return out;
 }
 
 export function getPath(obj: unknown, path: string): unknown {

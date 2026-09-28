@@ -28,9 +28,9 @@ function interp(xs: number[], ys: number[], x: number): number {
 }
 
 function tempColor(u: number): string {
-  // 0 → koyu mavi, 0.5 → mor/kırmızı, 1 → sarı-beyaz (plazma görünümü)
+  // 0 → koyu mavi, 0.5 → mor/kırmızı, 1 → sarı-beyaz (plazma görünümü); NaN (no temperature) → the cold end
   const stops = [[10, 20, 60], [60, 20, 140], [190, 40, 110], [255, 120, 40], [255, 235, 160]];
-  const x = Math.min(1, Math.max(0, u)) * (stops.length - 1), i = Math.min(stops.length - 2, Math.floor(x)), f = x - i;
+  const x = (Number.isNaN(u) ? 0 : Math.min(1, Math.max(0, u))) * (stops.length - 1), i = Math.min(stops.length - 2, Math.floor(x)), f = x - i;
   const c = stops[i].map((v, k) => Math.round(v + (stops[i + 1][k] - v) * f));
   return `rgb(${c[0]},${c[1]},${c[2]})`;
 }

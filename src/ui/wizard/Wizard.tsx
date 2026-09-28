@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { Method, ReactorConfig } from '../../physics/types';
 import { Field } from './Field';
-import { METHOD_DEFAULT, METHOD_INFO, PRESETS, STEP_IDS, STEP_TITLES, StepId, fieldVisible, getPath, setPath, stepsFor } from './schema';
+import { METHOD_DEFAULT, METHOD_INFO, PRESETS, STEP_IDS, STEP_TITLES, StepId, fieldVisible, getPath, missingRequired, setPath, stepsFor } from './schema';
 import { fmtNum } from '../format';
+import { useT } from '../state/store';
 
 interface Props {
   cfg: ReactorConfig;
@@ -14,11 +15,19 @@ interface Props {
 
 const METHODS = Object.keys(METHOD_INFO) as Method[];
 
+/** the "modified" suffix of either language, stripped before the current one is appended */
+const MODIFIED_SUFFIX = / \((modified|değiştirildi)\)$/;
+
 export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
+  const t = useT();
   const [stepIdx, setStepIdx] = useState(0);
   const stepId = STEP_IDS[stepIdx];
   const steps = useMemo(() => stepsFor(cfg.method), [cfg.method]);
   const activePreset = PRESETS.find((p) => p.cfg === cfg)?.id;
+  // required fields left blank: the model has no default for them, so RUN stays blocked
+  const missing = useMemo(() => missingRequired(cfg), [cfg]);
+  const blocked = missing.length > 0 ? t('wiz.missingBlocked', { fields: missing.map((m) => m.field.label).join(', ') }) : undefined;
+  const goToStep = (id: string) => { const i = STEP_IDS.indexOf(id as StepId); if (i >= 0) setStepIdx(i); };
 
   const pickMethod = (m: Method) => {
     if (m === cfg.method) return;
@@ -35,7 +44,7 @@ export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
   };
   const update = (path: string, v: unknown) => {
     setCfg(setPath(cfg, path, v));
-    if (activePreset) setName(`${name.replace(/ \(değiştirildi\)$/, '')} (modified)`);
+    if (activePreset) setName(`${name.replace(MODIFIED_SUFFIX, '')} ${t('wiz.modified')}`);
   };
 
   const groups = useMemo(() => {
@@ -48,8 +57,8 @@ export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
     if (id === 'method') {
       return (
         <>
-          <h2>1 · Confinement method</h2>
-          <p className="muted small">Each method runs its own physics module. Changing the method loads its reference preset.</p>
+          <h2>1 · {t('wiz.methodTitle')}</h2>
+          <p className="muted small">{t('wiz.methodNote')}</p>
           {groups.map(([grp, ms]) => (
             <div key={grp} style={{ marginBottom: 12 }}>
               <h3>{grp}</h3>
@@ -66,15 +75,15 @@ export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
         </>
       );
     }
-    if (id === 'run') return <RunSummary cfg={cfg} name={name} onRun={onRun} />;
+    if (id === 'run') return <RunSummary cfg={cfg} name={name} onRun={onRun} missing={missing} blocked={blocked} goToStep={goToStep} />;
     const def = steps.find((s) => s.id === id);
-    if (!def) return <p className="muted">No settings for this method at this step.</p>;
+    if (!def) return <p className="muted">{t('wiz.noSettingsMethod')}</p>;
     const fields = def.fields.filter((f) => fieldVisible(cfg.method, f.path, cfg));
     return (
       <>
         <h2>{stepIdx + 1} · {def.title}</h2>
         {def.note && <p className="muted small">{def.note}</p>}
-        {fields.length === 0 && !def.note && <p className="muted">No settings at this step.</p>}
+        {fields.length === 0 && !def.note && <p className="muted">{t('wiz.noSettings')}</p>}
         <div className="fields">
           {fields.map((f) => <Field key={f.path} def={f} value={getPath(cfg, f.path) ?? f.def} onChange={(v) => update(f.path, v)} />)}
         </div>
@@ -85,30 +94,34 @@ export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
   return (
     <div className="wizard">
       <aside className="panel">
-        <h3>Setup steps</h3>
+        <h3>{t('wiz.steps')}</h3>
         <div className="steps">
-          {STEP_IDS.map((id, i) => (
-            <div key={id} className={`step ${i === stepIdx ? 'active' : ''} ${i < stepIdx ? 'done' : ''}`} onClick={() => setStepIdx(i)}>
-              <span className="idx">{i + 1}</span><span>{STEP_TITLES[id]}</span>
-            </div>
-          ))}
+          {STEP_IDS.map((id, i) => {
+            const empty = missing.filter((m) => m.step.id === id);
+            return (
+              <div key={id} className={`step ${i === stepIdx ? 'active' : ''} ${i < stepIdx ? 'done' : ''}`} onClick={() => setStepIdx(i)}>
+                <span className="idx">{i + 1}</span><span>{STEP_TITLES[id]}</span>
+                {empty.length > 0 && <span className="badge warn" title={t('wiz.missingBlocked', { fields: empty.map((m) => m.field.label).join(', ') })}>!</span>}
+              </div>
+            );
+          })}
         </div>
         <div style={{ marginTop: 14 }}>
           <label className="field">
-            <span className="lbl"><span>Configuration name</span></span>
+            <span className="lbl"><span>{t('wiz.cfgName')}</span></span>
             <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
           </label>
         </div>
         <div className="row" style={{ marginTop: 12, justifyContent: 'space-between' }}>
-          <button className="btn sm" disabled={stepIdx === 0} onClick={() => setStepIdx(stepIdx - 1)}>◀ Back</button>
+          <button className="btn sm" disabled={stepIdx === 0} onClick={() => setStepIdx(stepIdx - 1)}>{t('wiz.back')}</button>
           {stepIdx < STEP_IDS.length - 1
-            ? <button className="btn sm" onClick={() => setStepIdx(stepIdx + 1)}>Next ▶</button>
-            : <button className="btn sm primary" onClick={() => onRun(cfg)}>RUN ▶</button>}
+            ? <button className="btn sm" onClick={() => setStepIdx(stepIdx + 1)}>{t('wiz.next')}</button>
+            : <button className="btn sm primary" disabled={!!blocked} title={blocked} onClick={() => onRun(cfg)}>{t('wiz.run')}</button>}
         </div>
       </aside>
       <section className="panel" style={{ overflow: 'auto' }}>{renderStep(stepId)}</section>
       <aside className="panel" style={{ overflow: 'auto' }}>
-        <div className="panel-title"><h3>Presets</h3><span className="muted small">{PRESETS.length}  devices</span></div>
+        <div className="panel-title"><h3>{t('wiz.presets')}</h3><span className="muted small">{t('wiz.devices', { n: PRESETS.length })}</span></div>
         <div className="preset-list">
           {PRESETS.map((p) => (
             <div key={p.id} className={`preset ${activePreset === p.id ? 'active' : ''}`} onClick={() => pickPreset(p.id)}>
@@ -116,7 +129,7 @@ export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
                 <span className="name">{p.name}</span>
                 <span className="row" style={{ gap: 6 }}>
                   <span className="muted small">{METHOD_INFO[p.cfg.method].name}</span>
-                  <button className="btn sm primary" title="Run this preset directly"
+                  <button className="btn sm primary" title={t('wiz.runPreset')}
                     onClick={(e) => { e.stopPropagation(); pickPreset(p.id); onRun(p.cfg); }}>▶</button>
                 </span>
               </div>
@@ -130,17 +143,42 @@ export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
   );
 }
 
+interface RunSummaryProps {
+  cfg: ReactorConfig;
+  name: string;
+  onRun: (c: ReactorConfig) => void;
+  /** required fields left blank (RUN is blocked while there are any) */
+  missing: ReturnType<typeof missingRequired>;
+  /** why RUN is disabled (undefined when it is not) */
+  blocked: string | undefined;
+  goToStep: (id: string) => void;
+}
+
 /** Son adım: özet + ÇALIŞTIR */
-function RunSummary({ cfg, name, onRun }: { cfg: ReactorConfig; name: string; onRun: (c: ReactorConfig) => void }) {
+function RunSummary({ cfg, name, onRun, missing, blocked, goToStep }: RunSummaryProps) {
+  const t = useT();
   const steps = stepsFor(cfg.method);
   return (
     <>
-      <h2>6 · Run</h2>
+      <h2>6 · {t('wiz.runTitle')}</h2>
       <p className="muted small">
-        <b>{name}</b> — {METHOD_INFO[cfg.method].name}. The simulation runs in a web worker; live charts, cross-section, and POPCON update simultaneously.
-        You can adjust heating/fueling/density sliders while it runs.
+        <b>{name}</b> — {METHOD_INFO[cfg.method].name}. {t('wiz.runIntro')}
       </p>
-      <button className="btn primary" style={{ fontSize: 15, padding: '10px 26px', margin: '8px 0 16px' }} onClick={() => onRun(cfg)}>▶ START SHOT</button>
+      {missing.length > 0 && (
+        <div className="diag-box" role="alert" style={{ margin: '8px 0' }}>
+          <b className="warn">{t('wiz.missingTitle')}</b> <span className="small muted">{t('wiz.missingHint')}</span>
+          <ul className="small" style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+            {missing.map(({ step, field }) => (
+              <li key={field.path}>
+                <a href="#" onClick={(e) => { e.preventDefault(); goToStep(step.id); }}>{field.label}</a>
+                <span className="muted"> · {step.title}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <button className="btn primary" style={{ fontSize: 15, padding: '10px 26px', margin: '8px 0 16px' }} disabled={!!blocked} title={blocked}
+        onClick={() => onRun(cfg)}>{t('wiz.start')}</button>
       <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
         {steps.map((s) => {
           const fields = s.fields.filter((f) => fieldVisible(cfg.method, f.path, cfg));
@@ -152,7 +190,7 @@ function RunSummary({ cfg, name, onRun }: { cfg: ReactorConfig; name: string; on
                 <tbody>
                   {fields.map((f) => {
                     const v = getPath(cfg, f.path) ?? f.def;
-                    const shown = typeof v === 'number' ? fmtNum(v / (f.scale ?? 1)) : typeof v === 'boolean' ? (v ? 'on' : 'off') : v === undefined || v === '' ? '—' : String(v);
+                    const shown = typeof v === 'number' ? fmtNum(v / (f.scale ?? 1)) : typeof v === 'boolean' ? (v ? t('field.on') : t('field.off')) : v === undefined || v === '' ? '—' : String(v);
                     return <tr key={f.path}><td>{f.label}</td><td className="num">{shown} <span className="muted small">{f.unit ?? ''}</span></td></tr>;
                   })}
                 </tbody>

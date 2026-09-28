@@ -20,6 +20,13 @@ const IDX = { Efus: 0, Ein: 1, Nn: 2 } as const;
 const NSTATE = 3;
 const TU = 1e-6; // µs → s
 const P_T = 0.68; // sıcaklık sıkışma üssü (kayıplı adyabatik)
+/**
+ * MagLIF durgunluk (sıkışma darbesi) genişliği σ [s]: Z'deki MagLIF'te yanma ~1–2 ns sürer
+ * (Gomez et al., PRL 113 (2014) 155003; PRL 125 (2020) 155002) — liner eylemsizliği belirler, sürücü
+ * akım süresi (~100 ns) değil. σ = 2 ns ile yanma FWHM'i ≈ 2 ns (yanma ∝ C^~7 daha dar). Yavaş liner /
+ * piston sıkıştırmaları için σ = 0.3 t_c korunur.
+ */
+const MAGLIF_STAGNATION_S = 2e-9;
 
 const MTF_DIAGS: DiagSpec[] = [
   { key: 'Ti', label: 'T (compressed)', unit: 'keV', group: 'Temperature' },
@@ -53,12 +60,13 @@ export class MTFModel extends PulsedBase {
     const tEnd = tc * 2;
     const atol = new Float64Array(NSTATE);
     atol.set([1e2, 1e2, 1e10]);
-    super({ seed: cfg.seed, tEnd, timeUnit: 'µs', dt0: tc / 200,
-      integratorOpts: { rtol: 1e-5, atol, dtMin: tc / 1e5, dtMax: tc / 40, nonNegative: true }, outputDt: tEnd / 1000 });
+    const width = cfg.method === 'maglif' ? MAGLIF_STAGNATION_S / TU : 0.3 * tc; // µs
+    super({ seed: cfg.seed, tEnd, timeUnit: 'µs', dt0: Math.min(tc / 200, width / 10),
+      integratorOpts: { rtol: 1e-5, atol, dtMin: tc / 1e5, dtMax: Math.min(tc / 40, width / 10), nonNegative: true }, outputDt: tEnd / 1000 });
     this.method = cfg.method;
     this.cfg = cfg;
     this.tc = tc;
-    this.width = 0.3 * tc;
+    this.width = width;
     this.V0 = Math.PI * cfg.r0_m * cfg.r0_m * cfg.L_m;
     const fs = FUEL_SPECIES[cfg.fuel];
     this.fracA = fs.fracA;

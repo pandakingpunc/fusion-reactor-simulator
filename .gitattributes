@@ -2,3 +2,5 @@
 *.otf binary
 *.pdf binary
 *.png binary
+# Golden regression files are machine-written with LF; keep them byte-identical on every OS
+test/golden/** text eol=lf

@@ -109,7 +109,7 @@ function update(dir: string, results: GoldenResult[], reason: string, only: stri
     if (!existsSync(file)) {
       added.push(r.id);
     } else {
-      const oldText = readFileSync(file, 'utf8');
+      const oldText = readFileSync(file, 'utf8').replace(/\r\n/g, '\n'); // a checkout may have CRLF
       if (oldText === text) { unchanged.push(r.id); console.log(`  ${r.id.padEnd(14)} unchanged`); continue; }
       let diffs: GoldenDiff[];
       let meta: string | undefined;

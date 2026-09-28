@@ -9,6 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "validate": "tsx src/cli/validate.cli.ts",
+    "golden": "tsx src/cli/golden.cli.ts",
+    "golden:update": "tsx src/cli/golden.cli.ts --update",
     "figures": "tsx src/cli/figures.cli.ts"
   },
   "dependencies": {

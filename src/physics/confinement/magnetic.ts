@@ -121,6 +121,8 @@ export class MagneticModel implements SimModel {
   private lastDiag: Record<string, number> = {};
   private ignited = false;
   private burning = false;
+  /** heating.autoOff: dış ısıtmanın kapanmaya başladığı an (Infinity = açık) */
+  private tAuxOff = Infinity;
   private warned = new Set<string>();
   private magnetInfo;
   /** kanal başına reaksiyon hızı [1/s] (termal + demet-hedef), son rhs çağrısı */
@@ -215,8 +217,11 @@ export class MagneticModel implements SimModel {
     const f = Math.min(1, t / Math.max(this.cfg.n_rampTime, 0.01));
     return n0 + (nt - n0) * f;
   }
+  /** Yardımcı ısıtma çarpanı: rampTime boyunca açılır; heating.autoOff ile Q ≥ 5'te aynı sürede kapanır */
   private auxRamp(t: number): number {
-    return Math.min(1, t / Math.max(this.cfg.heating.rampTime, 0.01));
+    const tr = Math.max(this.cfg.heating.rampTime, 0.01);
+    const up = Math.min(1, t / tr);
+    return this.tAuxOff === Infinity ? up : up * Math.max(0, 1 - (t - this.tAuxOff) / tr);
   }
 
   /** Füzyon hızı (profil-integre): reaksiyon/s, güçler; kanal başına termal hız this.Rch'ye yazılır */
@@ -602,6 +607,12 @@ export class MagneticModel implements SimModel {
       if (ignOn && !this.ignited) { this.ignited = true; ev.push({ t, kind: 'ignition', msg: `IGNITION: P_alpha ${dg.P_alpha.toFixed(0)} MW ≥ P_loss ${P_loss_total.toFixed(0)} MW` }); }
       if (ignOff && this.ignited) { this.ignited = false; ev.push({ t, kind: 'info', msg: 'Ignition condition lost' }); }
       if (dg.Q >= 1 && !this.burning) { this.burning = true; ev.push({ t, kind: 'burn_start', msg: `Q ≥ 1 (scientific breakeven)` }); }
+      // Ateşleme testi (heating.autoOff): Q ≥ 5'te dış ısıtma heating.rampTime içinde doğrusal kapanır;
+      // plazma P_α ile kendini taşıyabiliyorsa ateşlenir, taşıyamıyorsa söner.
+      if (c.heating.autoOff && this.tAuxOff === Infinity && dg.Q >= 5) {
+        this.tAuxOff = t;
+        ev.push({ t, kind: 'info', msg: `Ignition test: Q = ${dg.Q.toFixed(1)} ≥ 5 — external heating ramping off over ${c.heating.rampTime} s` });
+      }
       if (dg.Q < 1 && this.burning) { this.burning = false; ev.push({ t, kind: 'burn_end', msg: 'Q < 1' }); }
 
       // ---- uyarılar ----
@@ -668,6 +679,7 @@ export class MagneticModel implements SimModel {
       rng: this.rng.getState(), phase: ['normal', 'thermal_quench', 'current_quench', 'ended'].indexOf(this.phase),
       hmode: +this.hmode, ntm: +this.ntm, tNextELM: this.tNextELM, tNextSaw: this.tNextSaw, elmAvgPower: this.elmAvgPower, elmPartRate: this.elmPartRate,
       tauW_accum: this.tauW_accum, ignited: +this.ignited, burning: +this.burning, tauE_last: this.tauE_last,
+      tAuxOff: this.tAuxOff,
     };
   }
   restoreInternal(s: Record<string, number>): void {
@@ -675,7 +687,7 @@ export class MagneticModel implements SimModel {
     this.phase = (['normal', 'thermal_quench', 'current_quench', 'ended'] as Phase[])[s.phase] ?? 'normal';
     this.hmode = !!s.hmode; this.ntm = !!s.ntm; this.tNextELM = s.tNextELM; this.tNextSaw = s.tNextSaw;
     this.elmAvgPower = s.elmAvgPower; this.elmPartRate = s.elmPartRate ?? 0; this.tauW_accum = s.tauW_accum; this.ignited = !!s.ignited; this.burning = !!s.burning;
-    this.tauE_last = s.tauE_last; this.terminated = null; this.warned.clear(); this.lastDiag = {};
+    this.tauE_last = s.tauE_last; this.tAuxOff = s.tAuxOff ?? Infinity; this.terminated = null; this.warned.clear(); this.lastDiag = {};
   }
   geometryInfo(): Record<string, number> {
     const c = this.cfg;

@@ -34,6 +34,42 @@ describe('work arrays after an equilibrium swap', () => {
     expect(tiFlattened.length).toBeGreaterThanOrEqual(minSawteeth);
     expect(tiFlattened.every(Boolean)).toBe(true);
   }, 180000);
+
+  // The work arrays are persistent, so after a swap the stale ones are nonzero and finite: a
+  // positivity check alone cannot see them. Compare against a fresh evaluation on the new state.
+  it.each([
+    ['JET15', JET_15D, 3, 4],
+    ['ITER15', ITER_15D, 30, 10],
+  ] as [string, MagneticConfig, number, number][])('%s: right after a swap postStep sees the arrays of a fresh evaluation on the new geometry', (_id, cfg, tEnd, minSwaps) => {
+    const sim = new Simulation({ ...cfg, t_end: tEnd });
+    const m = sim.model as ProfileModel;
+    const post = m.postStep.bind(m);
+    const names = ['q', 'qF', 'dpsiF', 'IencF', 'sigma', 'jB', 'p', 'ni', 'chiE', 'chiI'] as const;
+    let seen = m.eqUpdates, checked = 0, worst = 0;
+    const stale: string[] = [];
+    m.postStep = (t, dt, y) => {
+      if (m.eqUpdates !== seen) {
+        seen = m.eqUpdates;
+        const before = names.map((k) => Float64Array.from(m.ctx.w[k]));
+        m.physics.evaluateWorkArrays(t, m.ctx.view(y));
+        names.forEach((k, j) => {
+          const a = before[j], b = m.ctx.w[k];
+          let scale = 0, diff = 0;
+          for (let i = 0; i < a.length; i++) { scale = Math.max(scale, Math.abs(b[i])); diff = Math.max(diff, Math.abs(a[i] - b[i])); }
+          const r = diff / scale;
+          if (r > 1e-12 && !stale.includes(k)) stale.push(k);
+          worst = Math.max(worst, r);
+        });
+        checked++;
+      }
+      return post(t, dt, y);
+    };
+    sim.runAll();
+    expect(checked).toBe(m.eqUpdates);
+    expect(checked).toBeGreaterThanOrEqual(minSwaps);
+    expect(stale).toEqual([]);
+    expect(worst).toBeLessThan(1e-12);
+  }, 120000);
 });
 
 describe('Grad–Shafranov updates during a shot', () => {
@@ -50,22 +86,45 @@ describe('Grad–Shafranov updates during a shot', () => {
     expect(r.engineering['GS updates rejected']).toBeLessThanOrEqual(1);
   }, 60000);
 
+  /**
+   * Table-mode (update) solves are replaced by `f(call)`: 'real' runs the solver, 'residual'
+   * returns it flagged as not converged, 'throw' raises. `call` counts updateEquilibrium calls
+   * (1-based); returns the times and the proposed step sizes of those calls.
+   */
+  const stubUpdates = (f: (call: number) => 'real' | 'residual' | 'throw') => {
+    const solve = GSSolver.prototype.solve;
+    let call = 0;
+    vi.spyOn(GSSolver.prototype, 'solve').mockImplementation(function (this: GSSolver, o: EquilibriumOptions) {
+      if (o.profile.kind !== 'table') return solve.call(this, o);
+      const what = f(call);
+      if (what === 'throw') throw new Error('GS: diverged');
+      const eq = solve.call(this, o);
+      return what === 'residual' ? { ...eq, converged: false, residual: 1e-2 } : eq;
+    });
+    const times: number[] = [], dts: number[] = [];
+    const update = ProfileModel.prototype.updateEquilibrium;
+    vi.spyOn(ProfileModel.prototype, 'updateEquilibrium').mockImplementation(function (this: ProfileModel, t: number, y: Float64Array) {
+      call++;
+      times.push(t); dts.push(this.ctx.dt);
+      return update.call(this, t, y);
+    });
+    return { times, dts };
+  };
+  /** spacing[k] = times[k+1] − times[k] lies in [want, want + max Δt]: the update is retried when it is due again, not earlier and not later */
+  const expectSpacing = (times: number[], dts: number[], want: (k: number) => number) => {
+    const slack = Math.max(...dts) + 1e-9;
+    for (let k = 0; k + 1 < times.length; k++) {
+      const gap = times[k + 1] - times[k];
+      expect(gap, `gap after attempt ${k + 1}`).toBeGreaterThanOrEqual(want(k) - 1e-9);
+      expect(gap, `gap after attempt ${k + 1}`).toBeLessThanOrEqual(want(k) + slack);
+    }
+  };
+
   it.each([
     ['a non-converged result', 'residual'],
     ['a solver exception', 'throw'],
-  ])('%s is rejected, retried later and reported loudly', (_name, mode) => {
-    const solve = GSSolver.prototype.solve;
-    vi.spyOn(GSSolver.prototype, 'solve').mockImplementation(function (this: GSSolver, o: EquilibriumOptions) {
-      if (o.profile.kind !== 'table') return solve.call(this, o);
-      if (mode === 'throw') throw new Error('GS: diverged');
-      return { ...solve.call(this, o), converged: false, residual: 1e-2 };
-    });
-    const times: number[] = [];
-    const update = ProfileModel.prototype.updateEquilibrium;
-    vi.spyOn(ProfileModel.prototype, 'updateEquilibrium').mockImplementation(function (this: ProfileModel, t: number, y: Float64Array) {
-      times.push(t);
-      return update.call(this, t, y);
-    });
+  ] as const)('%s is rejected, retried later and reported loudly', (_name, mode) => {
+    const { times, dts } = stubUpdates(() => mode);
     const sim = new Simulation({ ...JET_15D, t_end: 2 });
     const r = sim.runAll();
     const m = sim.model as ProfileModel;
@@ -74,14 +133,33 @@ describe('Grad–Shafranov updates during a shot', () => {
     expect(m.eqUpdates).toBe(0);
     const rejected = r.engineering['GS updates rejected'] as number;
     expect(rejected).toBe(times.length);
-    // eqTime does not advance on failure, so the update stays due; it is retried with a back-off
-    // (¼, ½, 1, 1, … intervals), neither every step nor never again
-    const interval = m.ps.eqUpdateInterval;
     expect(rejected).toBeGreaterThanOrEqual(4);
-    for (let k = 1; k < times.length; k++) expect(times[k] - times[k - 1]).toBeGreaterThanOrEqual(0.25 * interval * Math.min(2 ** (k - 1), 4) - 1e-9);
+    // eqTime advances only on success: nothing was accepted, so it is still the initial equilibrium
+    // and the update stays due; it is retried after ¼, ½, 1, 1, … intervals (not every step, not never)
+    const interval = m.ps.eqUpdateInterval;
+    expect(m.coupling.eqTime).toBe(0);
+    expectSpacing(times, dts, (k) => 0.25 * interval * Math.min(2 ** k, 4));
     expect(times[times.length - 1]).toBeGreaterThan(2 - 2 * interval);
     expect(r.warnings.some((w) => w.includes('Grad–Shafranov') && w.includes(`${rejected} of ${rejected}`))).toBe(true);
     expect(sim.events.filter((e) => e.kind === 'warning' && e.msg.includes('Grad–Shafranov')).length).toBe(1);
+  }, 60000);
+
+  it('after an accepted update a rejection leaves eqTime at the last accepted equilibrium', () => {
+    const { times, dts } = stubUpdates((call) => (call <= 1 ? 'real' : 'throw'));
+    const sim = new Simulation({ ...JET_15D, t_end: 2 });
+    const r = sim.runAll();
+    const m = sim.model as ProfileModel;
+    expect(m.eqUpdates).toBe(1);
+    expect(m.eqRejected).toBe(times.length - 1);
+    expect(m.eqRejected).toBeGreaterThanOrEqual(4);
+    expect(m.coupling.eqTime).toBe(times[0]); // the time of the one accepted update, not of a later rejected attempt
+    expect(sim.history.filter((h) => h.eq).length).toBe(2); // initial equilibrium and the accepted update
+    // after the acceptance the next attempt is due again a quarter interval later at the earliest
+    // (β_p or ℓ_i changed); every rejection then backs off ¼, ½, 1, 1, … intervals
+    const interval = m.ps.eqUpdateInterval;
+    expect(times[1] - times[0]).toBeGreaterThanOrEqual(0.25 * interval);
+    expectSpacing(times.slice(1), dts.slice(1), (k) => 0.25 * interval * Math.min(2 ** k, 4));
+    expect(r.warnings.some((w) => w.includes('Grad–Shafranov') && w.includes(`${m.eqRejected} of ${m.eqRejected + 1}`))).toBe(true);
   }, 60000);
 });
 

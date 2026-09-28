@@ -4,7 +4,7 @@
  */
 import { Geometry } from './geometry';
 
-export type ConfinementScaling = 'IPB98y2' | 'ITER89P' | 'ISS04' | 'ST_Valovic' | 'Bohm' | 'Pastukhov';
+export type ConfinementScaling = 'IPB98y2' | 'ITPA20' | 'ITPA20-IL' | 'ITER89P' | 'ISS04' | 'ST_Valovic' | 'Bohm' | 'Pastukhov';
 
 /**
  * ITER IPB98(y,2) ELMy H-mode ölçeklemesi — ITER Physics Basis, Nucl. Fusion 39 (1999) 2175,
@@ -18,6 +18,60 @@ export function tauIPB98y2(g: Geometry, Ip_MA: number, B: number, n: number, P_W
   const eps = g.a / g.R;
   return 0.0562 * Math.pow(Ip_MA, 0.93) * Math.pow(B, 0.15) * Math.pow(n19, 0.41) * Math.pow(P_MW, -0.69) *
     Math.pow(g.R, 1.97) * Math.pow(g.kappa, 0.78) * Math.pow(eps, 0.58) * Math.pow(M, 0.19);
+}
+
+/**
+ * Güç yasası biçimindeki H-mod ölçeklemeleri veri olarak (sonraki modeller / karşılaştırma için):
+ *  τ_E = C · I^αI · B^αB · n19^αn · P^αP · R^αR · κ_a^ακ · ε^αε · M^αM · (1+δ)^αδ
+ *  (I MA, B T, n19 10^19 m^-3 çizgi-ort., P MW kayıp gücü, R m, κ_a alan elongasyonu, ε = a/R, M amu)
+ */
+export interface ConfinementScalingParams {
+  /** ön çarpan [s] */
+  C: number;
+  exponents: { Ip: number; B: number; n19: number; P: number; R: number; kappa: number; eps: number; M: number; onePlusDelta: number };
+  /** kaynak */
+  ref: string;
+}
+
+/** IPB98(y,2) (yukarıdaki tauIPB98y2 ile aynı; o fonksiyon değişmeden kalır) */
+export const IPB98Y2_PARAMS: ConfinementScalingParams = {
+  C: 0.0562, exponents: { Ip: 0.93, B: 0.15, n19: 0.41, P: -0.69, R: 1.97, kappa: 0.78, eps: 0.58, M: 0.19, onePlusDelta: 0 },
+  ref: 'ITER Physics Basis, Nucl. Fusion 39 (1999) 2175, eq. (20)',
+};
+
+/** ITPA20 — güncellenmiş ITPA H-mod veritabanı (DB5.2.3) regresyonu: Verdoolaege et al., Nucl. Fusion 61 (2021) 076006 */
+export const ITPA20_PARAMS: ConfinementScalingParams = {
+  C: 0.053, exponents: { Ip: 0.98, B: 0.22, n19: 0.24, P: -0.669, R: 1.71, kappa: 0.8, eps: 0.35, M: 0.2, onePlusDelta: 0.36 },
+  ref: 'G. Verdoolaege et al., Nucl. Fusion 61 (2021) 076006 (ITPA20)',
+};
+
+/** ITPA20-IL — aynı çalışmanın ITER-benzeri alt kümesi (ε üssü yok): Verdoolaege et al. 2021 */
+export const ITPA20_IL_PARAMS: ConfinementScalingParams = {
+  C: 0.067, exponents: { Ip: 1.29, B: -0.13, n19: 0.15, P: -0.644, R: 1.19, kappa: 0.67, eps: 0, M: 0.3, onePlusDelta: 0.56 },
+  ref: 'G. Verdoolaege et al., Nucl. Fusion 61 (2021) 076006 (ITPA20-IL)',
+};
+
+export const CONFINEMENT_SCALINGS: Record<'IPB98y2' | 'ITPA20' | 'ITPA20-IL', ConfinementScalingParams> = {
+  IPB98y2: IPB98Y2_PARAMS, ITPA20: ITPA20_PARAMS, 'ITPA20-IL': ITPA20_IL_PARAMS,
+};
+
+/** Bir ConfinementScalingParams ölçeklemesini değerlendir [s]; girdiler tauIPB98y2 ile aynı birimlerde. */
+export function tauFromParams(s: ConfinementScalingParams, g: Geometry, Ip_MA: number, B: number, n: number, P_W: number, M: number): number {
+  const e = s.exponents;
+  const P_MW = Math.max(P_W / 1e6, 0.1);
+  const n19 = Math.max(n / 1e19, 0.01);
+  return s.C * Math.pow(Ip_MA, e.Ip) * Math.pow(B, e.B) * Math.pow(n19, e.n19) * Math.pow(P_MW, e.P) * Math.pow(g.R, e.R) *
+    Math.pow(g.kappa, e.kappa) * Math.pow(g.a / g.R, e.eps) * Math.pow(M, e.M) * Math.pow(1 + g.delta, e.onePlusDelta);
+}
+
+/** ITPA20 H-mod ölçeklemesi (Verdoolaege et al. 2021) */
+export function tauITPA20(g: Geometry, Ip_MA: number, B: number, n: number, P_W: number, M: number): number {
+  return tauFromParams(ITPA20_PARAMS, g, Ip_MA, B, n, P_W, M);
+}
+
+/** ITPA20-IL (ITER-benzeri alt küme) H-mod ölçeklemesi (Verdoolaege et al. 2021) */
+export function tauITPA20IL(g: Geometry, Ip_MA: number, B: number, n: number, P_W: number, M: number): number {
+  return tauFromParams(ITPA20_IL_PARAMS, g, Ip_MA, B, n, P_W, M);
 }
 
 /**

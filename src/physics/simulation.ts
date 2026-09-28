@@ -66,9 +66,9 @@ export interface SimulationOptions {
    */
   actuatorLog?: readonly ActuatorEntry[];
   /**
-   * Extra times at which a step must end (e.g. a fixed sampling grid). They change the step
-   * sequence, so they are part of a run's definition (see runFingerprint); times outside
-   * (0, t_end) are ignored.
+   * Extra times at which a step must end (e.g. a fixed sampling grid; advance() alone ends at step
+   * boundaries only). They change the step sequence, so they are part of a run's definition (see
+   * runFingerprint); times outside (0, t_end) are ignored.
    */
   breakpoints?: readonly number[];
 }
@@ -187,7 +187,9 @@ export class Simulation {
 
   /**
    * Advances simulation time by at least `simDt` (whole steps; see the file header) or to the end.
-   * Returns the new frames and events.
+   * Returns the new frames and events. The call does not cut a step at t + simDt, so to sample at
+   * fixed times (e.g. every 2 ms) pass those times as SimulationOptions.breakpoints: steps then end
+   * on them, and each advance(2 ms) from one grid point stops at the next.
    */
   advance(simDt: number): { frames: HistoryFrame[]; events: SimEvent[] } {
     const startFrames = this.history.length, startEv = this.events.length;

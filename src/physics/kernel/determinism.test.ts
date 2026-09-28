@@ -262,6 +262,30 @@ describe('user breakpoints', () => {
     // breakpoints are part of the run: without them the run differs
     expect(referenceRun(cfg).digest).not.toBe(ref.digest);
   }, 60000);
+
+  // The pattern of the ELM zoom window in src/cli/figures.cli.ts: advance() to t_z, then one
+  // advance(2 ms) per sample. advance() no longer cuts a step at its target, so without a grid the
+  // samples fall on step ends (ITER 1.5D: 32 samples in 1.5 s instead of 750); with the grid as
+  // breakpoints every sample lands on a grid point again.
+  it('a sampling grid as breakpoints gives one advance(dt) sample per grid point', () => {
+    const cfg = presetCfg('JET');
+    const T = (cfg as { t_end: number }).t_end;
+    const tz = 0.75 * T, dz = 0.3, dt = 0.002;
+    const grid = Array.from({ length: Math.round(dz / dt) + 1 }, (_, k) => tz + k * dt);
+    const sample = (sim: Simulation): number[] => {
+      while (sim.t < tz - 1e-9 && !sim.done) sim.advance(Math.max(Math.min(T / 200, tz - sim.t), 1e-6));
+      const ts = [sim.t];
+      while (sim.t < tz + dz - 1e-9 && !sim.done) { sim.advance(dt); ts.push(sim.t); }
+      return ts;
+    };
+    const ts = sample(new Simulation(cfg, { breakpoints: grid }));
+    expect(ts.length).toBe(grid.length);
+    for (let k = 0; k < grid.length; k++) expect(Math.abs(ts[k] - grid[k])).toBeLessThanOrEqual(1e-12);
+    // without the grid the samples are step ends: fewer, and off the grid
+    const coarse = sample(new Simulation(cfg));
+    expect(coarse.length).toBeLessThan(grid.length);
+    expect(coarse.some((t) => grid.every((g) => Math.abs(t - g) > 1e-12))).toBe(true);
+  }, 60000);
 });
 
 describe('configuration errors', () => {

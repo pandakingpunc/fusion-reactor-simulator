@@ -22,6 +22,9 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { PhysicalSolovev } from '../equilibrium/solovev';
 import { magneticAverages, surfaceMetrics, traceSurfaces } from '../equilibrium/fluxsurface';
 import type { ShapeBoundary } from '../equilibrium/miller';
+import { GSSolver } from '../equilibrium/gs';
+import { ITER_15D, PRESETS } from '../presets';
+import type { MagneticConfig } from '../types';
 import { Bicubic, CubicSpline } from '../numerics/interp';
 import { gaussLegendre } from '../numerics/quadrature';
 import { EquilibriumTables, geometryFromEquilibrium, TransportGeometry } from './geometry1d';
@@ -217,4 +220,46 @@ describe("transport geometry from an analytic Solov'ev equilibrium", () => {
     for (const i of CELLS) expect(rel(g.dV[i], ref(g.rhoF[i + 1]).V - (i ? ref(g.rhoF[i]).V : 0))).toBeLessThan(3e-4);
     for (const i of [0, 1, 2, 10, 25, 48, 49]) expect(rel(g.qEqC[i], ref(g.rhoC[i]).q)).toBeLessThan(3e-4);
   }, 60000);
+});
+/**
+ * The cell volumes on tables of the real Grad–Shafranov solver. The tables sit at ψ_N = (k/50)², so the last
+ * interval before the separatrix is wide in ρ̂ (0.955 → 1 for ITER15, 0.886 → 1 for MASTU15) and the ρ̂ of the outer
+ * nodes, a cumulative integral of q that diverges at the X-point, is too small there (ITER15 5e-4, MASTU15 1.2e-2 at
+ * ψ_N = 0.96 against a table of 8 times the surfaces). The exact-field tables above do not show it. V(ρ̂) splined
+ * through those nodes gave outer cell volumes 1.3 % off in ITER15 and 15.8 % in MASTU15 (measured against the 401-surface
+ * geometry, of which the 201-surface one differs by 0.03 % and 1.3 %), and 1.3 % and 15 % different from ∫V' dρ̂,
+ * the metric the fluxes use; the cell volume is now ∫V' dρ̂ over the cell (scaled once to the volume of the equilibrium).
+ */
+describe('cell volumes on real Grad–Shafranov tables (51 flux surfaces)', () => {
+  const mastu = { ...PRESETS.find((p) => p.id === 'MASTU')!.cfg, fidelity: '1.5D' } as MagneticConfig;
+  const N = 50;
+  const build = (cfg: MagneticConfig, nSurf: number) => {
+    const shape = { R: cfg.geometry.R, a: cfg.geometry.a, kappa: cfg.profiles?.lcfsKappa ?? cfg.geometry.kappa, delta: cfg.profiles?.lcfsDelta ?? cfg.geometry.delta };
+    const eq = new GSSolver(shape, { NR: 49 }).solve({ Ip: cfg.Ip_MA * 1e6, B0: cfg.B0, profile: { kind: 'shape', alphaM: 2, alphaN: 1.3, betaP: 0.1 }, tol: 1e-7, nSurf });
+    return { eq, g: geometryFromEquilibrium(eq, N, shape) };
+  };
+  /** Simpson integral of V' over the cell between faces i and i + 1 */
+  const simpson = (g: TransportGeometry, i: number) => ((g.VpF[i] + 4 * g.VpC[i] + g.VpF[i + 1]) * g.dRho) / 6;
+
+  // [case, config, largest |ΔV/∫V' − 1| (the volume scale factor, ρ̂ error of the table), largest |ΔV/ΔV(201 surfaces) − 1|]
+  it.each([
+    ['ITER15', ITER_15D, 2e-3, 3e-3],
+    ['MASTU15', mastu, 2e-2, 3.5e-2],
+  ] as [string, MagneticConfig, number, number][])('%s: ΔV = ∫V′ dρ̂ cell by cell, the cells add up to the volume, and they follow a table of four times the surfaces', (_id, cfg, tolCons, tolFine) => {
+    const coarse = build(cfg, 51), fine = build(cfg, 201);
+    const g = coarse.g;
+    let sum = 0, cons = 0, acc = 0, worst = 0;
+    for (let i = 0; i < N; i++) {
+      expect(g.dV[i]).toBeGreaterThan(0);
+      sum += g.dV[i];
+      cons = Math.max(cons, Math.abs(g.dV[i] / simpson(g, i) - 1));
+      const e = Math.abs(g.dV[i] / fine.g.dV[i] - 1);
+      if (e > acc) { acc = e; worst = i; }
+    }
+    expect(Math.abs(sum / coarse.eq.volume - 1)).toBeLessThan(1e-12);
+    expect(g.volume).toBe(coarse.eq.volume);
+    expect(g.VF[N] / g.volume - 1).toBeLessThan(1e-12);
+    expect(cons, 'ΔV vs ∫V′').toBeLessThan(tolCons);
+    expect(acc, `ΔV vs the 201-surface table, worst cell ${worst}`).toBeLessThan(tolFine);
+  }, 120000);
 });

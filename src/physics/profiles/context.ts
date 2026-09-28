@@ -39,8 +39,8 @@ export interface StepConstants {
   P_NBI: number; P_IC: number; P_EC: number;
   /** NBI shine-through fraction */
   shine: number;
-  /** beam-target reaction rate per cell [m⁻³ s⁻¹] */
-  btR: Float64Array;
+  /** beam-target reaction rate per channel of the fuel (FUEL_CHANNELS order) and cell [m⁻³ s⁻¹] */
+  btR: Float64Array[];
   /** effective beam energy for current drive [keV] */
   Eb: number;
   /** total synchrotron power [W] */
@@ -74,9 +74,16 @@ export interface DisruptionState {
 export interface CrashSnapshot { rho: number[]; Te: number[]; Ti: number[]; ne: number[]; q: number[] }
 export type CrashHook = (kind: 'sawtooth' | 'ELM', t: number, before: CrashSnapshot, after: CrashSnapshot) => void;
 
-/** Settings of a shot: defaults, the interval rule for equilibrium updates, then the user's */
+/**
+ * Settings of a shot: defaults, the interval rule for equilibrium updates, then the user's. A user
+ * setting that is `undefined` (or `null`) is blank, not a value: the setup wizard stores that for
+ * an emptied input, and it leaves the default (or, for the optional settings without one, the
+ * documented "blank" behaviour) in force. Spreading it would overwrite the default with undefined.
+ */
 export function profileSettings(cfg: MagneticConfig): ProfileSettings {
-  return { ...DEFAULT_PROFILE_SETTINGS, eqUpdateInterval: Math.min(Math.max(cfg.t_end / 20, 0.5), 20), ...(cfg.profiles ?? {}) };
+  const user: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(cfg.profiles ?? {})) if (v !== undefined && v !== null) user[k] = v;
+  return { ...DEFAULT_PROFILE_SETTINGS, eqUpdateInterval: Math.min(Math.max(cfg.t_end / 20, 0.5), 20), ...(user as Partial<ProfileSettings>) };
 }
 
 export class ProfileContext {
@@ -124,6 +131,23 @@ export class ProfileContext {
   bc: BoundaryValues = { Te: 0.1, Ti: 0.1, n: 1e19 };
   /** P_SOL, filtered global power balance [W] */
   PSOL = 0;
+  /**
+   * dW/dt of the loss power P_L = P_heat − P_rad,core − dW/dt: the rate of change of the stored
+   * energy including the energy the ELM crashes take out of it, low-pass filtered with τ_E [W]
+   */
+  dWdtS = 0;
+  /** energy taken out of the plasma by the ELM crashes since the last accepted step [J] */
+  crashE = 0;
+  /**
+   * energy content of the fast charged fusion products and of the NBI fast ions [J]: pools that
+   * relax towards the steady slowing-down content with τ_W (fastIons.ts), as in the 0D model
+   */
+  WfAlpha = 0;
+  WfBeam = 0;
+  /** ignition state (P_α ≥ P_rad + W/τ_E, with hysteresis): a diagnostic and the report's ignition time */
+  ignited = false;
+  /** heating.autoOff: the time at which the external heating starts to ramp down (Infinity = it stays on) */
+  tAuxOff = Infinity;
   /** particle outflux through the boundary Γ_b [1/s] */
   GammaB = 0;
   /**
@@ -220,9 +244,13 @@ export class ProfileContext {
     return true;
   }
 
-  /** Stored thermal energy W = Σ 3/2 (n_e T_e + n_i T_i) ΔV [J] (n_i from the work arrays) */
-  storedEnergy(st: ProfileState): number {
-    const g = this.tg, N = this.N, ni = this.w.ni;
+  /**
+   * Stored thermal energy W = Σ 3/2 (n_e T_e + n_i T_i) ΔV [J]: the one definition of W of the model
+   * (accepted step, diagnostics of a state no step produced, quench). ni: the ion density of the
+   * state (default: the work array of the current composition; ctx.w.ni0 for the old state of a step).
+   */
+  storedEnergy(st: ProfileState, ni: ArrayLike<number> = this.w.ni): number {
+    const g = this.tg, N = this.N;
     let W = 0;
     for (let i = 0; i < N; i++) W += 1.5 * (st.ne[i] * st.Te[i] + ni[i] * st.Ti[i]) * KEV * g.dV[i];
     return W;

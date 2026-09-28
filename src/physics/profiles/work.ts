@@ -4,8 +4,8 @@
  * allocated once per model and overwritten in place; after an equilibrium swap they are
  * re-evaluated on the new geometry before anything reads them.
  *
- * Units: densities m⁻³, power densities W m⁻³, reaction rates m⁻³ s⁻¹, ⟨j·B⟩ A T m⁻²,
- * diffusivities m² s⁻¹, T keV. "Cell" arrays have N entries at the cell centres, "face" arrays
+ * Units: densities m⁻³, power densities W m⁻³, reaction rates m⁻³ s⁻¹, energy densities J m⁻³,
+ * ⟨j·B⟩ A T m⁻², diffusivities m² s⁻¹, T keV. "Cell" arrays have N entries at the cell centres, "face" arrays
  * N + 1 entries at the cell faces ρ_f = f/N.
  */
 
@@ -13,10 +13,11 @@
 export const CELL_ARRAYS = [
   // composition (composition.ts)
   'ni', 'ni0', 'na', 'nb', 'nHe', 'nZ', 'ns', 'Zeff', 'ZeffMain', 'ionSum', 'Zimp', 'Zseed',
-  // fusion (sources/fusion.ts), beam-target and alpha heating
-  'Pfus', 'Pchg', 'Pneut', 'Rfus', 'Nfus', 'burnA', 'burnB', 'Pbt', 'PaE', 'PaI',
-  // auxiliary heating (sources/nbi.ts, sources/rf.ts)
-  'PnbiE', 'PnbiI', 'PicE', 'PicI', 'PecE', 'nbiDep', 'nbiTmp', 'nbiPart', 'nfast',
+  // fusion (sources/fusion.ts), beam-target and alpha heating; ash production; energy content P τ_W of the
+  // steady slowing-down distribution of the fast products and its time constant τ_W (fastIons.ts)
+  'Pfus', 'Pchg', 'Pneut', 'Rfus', 'Nfus', 'burnA', 'burnB', 'ash', 'Pbt', 'PaE', 'PaI', 'Walpha', 'tauWa',
+  // auxiliary heating (sources/nbi.ts, sources/rf.ts); the same for the NBI fast ions
+  'PnbiE', 'PnbiI', 'PicE', 'PicI', 'PecE', 'nbiDep', 'nbiTmp', 'nbiPart', 'nfast', 'Wbeam', 'tauWb',
   // ohmic heating, radiation, e–i exchange
   'Poh', 'Pbr', 'Pline', 'Psync', 'Prad', 'dPrad', 'nuEq',
   // heat and particle equation inputs

@@ -7,7 +7,8 @@
  * ends with the consequences estimated by disruptionReport (disruption.ts: quench times, halo
  * current, runaway avalanche, wall load).
  *
- * The disruption state (ctx.disruption) is part of the context checkpoint.
+ * The disruption state (ctx.disruption) is part of the context checkpoint. The ignition state ends
+ * with the onset (the quench frames are not ignited) and so does the energy content of the fast ions.
  *
  * APPROXIMATION: τ_TQ = 1 ms (a/2 m)(1 + ½ ln(1 + I_p/5 MA)), τ_CQ = 4 ms π a² κ per m² (ITER
  * Physics Basis order of magnitude, Nucl. Fusion 39 (1999) 2251, ch. 3); the profiles are scaled,
@@ -37,6 +38,11 @@ export class DisruptionEvents implements EventModel {
     if (cause !== 'none') {
       ctx.disruption = { cause, t, W: d.W * 1e6, Ip: s.Ip, text: diag };
       ctx.phase = 'thermal_quench';
+      // the burn ends with the thermal quench: the frames of the quench are not ignited (the quench diagnostics zero P_α)
+      ctx.ignited = false;
+      ctx.lastDiag.ignited = 0;
+      // and the fast ions are lost with the plasma (the quench diagnostics report no fast-ion energy; the 0D pools decay in 1 ms)
+      ctx.WfAlpha = 0; ctx.WfBeam = 0;
       ev.push({ t, kind: 'disruption', msg: `DISRUPTION: ${DISRUPTION_LABELS[cause]} — ${diag}` });
     }
   }

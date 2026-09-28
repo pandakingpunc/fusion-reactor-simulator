@@ -16,6 +16,7 @@
  * ASTRA (IPP 5/98, 2002); Citrin et al., TORAX (arXiv:2406.06718).
  */
 import { solveBlockTridiag2, solveTridiag } from '../numerics/linalg';
+import { asLinearAlgebraFailure } from './failures';
 import { TransportGeometry } from './geometry1d';
 
 const MU0 = 1.25663706212e-6;
@@ -103,7 +104,7 @@ export class HeatSolver {
         }
       }
     }
-    solveBlockTridiag2(A, B, C, d, this.u, N, this.Cp, this.dp);
+    try { solveBlockTridiag2(A, B, C, d, this.u, N, this.Cp, this.dp); } catch (e) { throw asLinearAlgebraFailure('heat', e); }
     for (let i = 0; i < N; i++) { Te[i] = this.u[2 * i]; Ti[i] = this.u[2 * i + 1]; }
   }
   /**
@@ -172,7 +173,7 @@ export class DensitySolver {
         b[i] += wr; a[i] -= wl;
       }
     }
-    solveTridiag(a, b, c, d, n, N, this.cp, this.dp);
+    try { solveTridiag(a, b, c, d, n, N, this.cp, this.dp); } catch (e) { throw asLinearAlgebraFailure('density', e); }
     // akılar
     this.GammaF[0] = 0;
     for (let f = 1; f <= N; f++) {
@@ -213,7 +214,7 @@ export class CurrentSolver {
       d[i] = m * h.psi0[i] - h.jniB[i] * g.dV[i];
       if (i === N - 1) d[i] += 2 * Math.PI * g.FF[N] * h.Ip; // (1/μ0) G ψ' = 2π F I_p
     }
-    solveTridiag(a, b, c, d, psi, N, this.cp, this.dp);
+    try { solveTridiag(a, b, c, d, psi, N, this.cp, this.dp); } catch (e) { throw asLinearAlgebraFailure('current', e); }
   }
   /** ψ' yüzeylerde (dış yüz I_p koşulundan) */
   dpsiF(psi: Float64Array, Ip: number, out: Float64Array): Float64Array {

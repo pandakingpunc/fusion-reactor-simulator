@@ -9,6 +9,7 @@
  * Silindirik yedek geometri (circularGeometry) birim testlerde analitik çözümler için.
  */
 import { CubicSpline } from '../numerics/interp';
+import { integrateGL } from '../numerics/quadrature';
 import type { EqProfiles } from '../equilibrium/gs';
 import type { TracedSurfaces } from '../equilibrium/fluxsurface';
 
@@ -77,19 +78,30 @@ export function geometryFromEquilibrium(eq: EquilibriumTables, N: number, geom: 
   const sp = (a: ArrayLike<number>) => new CubicSpline(x, a);
   const Su = sp(u), Sg1 = sp(g1), Sg2 = sp(g2), Sgr = sp(gr), SR2 = sp(P.avgR2inv), SF = sp(P.F), SB2 = sp(P.avgB2), Sft = sp(P.ft), Seps = sp(eps), SRg = sp(Rg), Sq = sp(P.q);
   const SRin = sp(P.Rin), SRout = sp(P.Rout);
-  // volume and poloidal area vanish as ρ̂² at the axis: spline them against ρ̂², the volume with the
-  // end slopes dV/d(ρ̂²) = V'/(2ρ̂) of the tables (a natural spline in ρ̂ put the volume of the
-  // innermost cell off by 1.3 % and of the outermost by 0.03 %; geometry.test.ts, Solov'ev check)
+  // the poloidal area vanishes as ρ̂² at the axis: spline it against ρ̂²
   const x2 = Float64Array.from(x, (r) => r * r);
-  const SV = new CubicSpline(x2, P.V, { d1Start: 0.5 * u[0], d1End: 0.5 * u[n - 1] }), SA = new CubicSpline(x2, P.area);
+  const SA = new CubicSpline(x2, P.area);
   const { rhoC, rhoF, dRho } = grids(N);
   const f = (S: CubicSpline, r: ArrayLike<number>) => Float64Array.from(r, (v) => S.eval(v));
-  const VpC = Float64Array.from(rhoC, (r) => Su.eval(r) * r);
-  const VpF = Float64Array.from(rhoF, (r) => Su.eval(r) * r);
-  const VF = Float64Array.from(rhoF, (r) => SV.eval(r * r));
-  VF[0] = 0; VF[N] = eq.volume;
+  const vp = (r: number) => Su.eval(r) * r;
+  const VpC = Float64Array.from(rhoC, vp);
+  const VpF = Float64Array.from(rhoF, vp);
+  // Cell volumes: the integral of V' over the cell, the metric the finite-volume fluxes use, so that ΔV = V'Δρ̂ (the
+  // continuum operator (1/V') ∂ρ(V' …) needs it). V(ρ̂) itself is the poorer function on the tables: they sit at
+  // ψ_N = (k/(n−1))², so their last interval spans ρ̂ ≈ 0.95 → 1 (ITER15) or 0.89 → 1 (MASTU15), and the ρ̂ of
+  // the outer nodes, a cumulative integral of q that diverges at the X-point, is too small on such a coarse table
+  // (ITER15 5e-4 at ψ_N = 0.96, MASTU15 1.2e-2). V is exact at the nodes, but paired with those ρ̂ it interpolated
+  // to cell volumes 1–2 % off in the outer cells of the large machines and 15 % off in MASTU15 (against tables of
+  // 8 times the surfaces), whereas ∫V' is within 0.1 % (MASTU15 2 %, mostly at the axis). The interpolated V' does
+  // not integrate to the tabulated volume exactly (ITER15 +0.06 %, MASTU15 +0.8 %, that of the ρ̂ error): one scale
+  // factor for all cells restores ΣΔV = V of the equilibrium. geometry.test.ts: real Grad–Shafranov tables.
   const dV = new Float64Array(N);
-  for (let i = 0; i < N; i++) dV[i] = VF[i + 1] - VF[i];
+  let sum = 0;
+  for (let i = 0; i < N; i++) { dV[i] = integrateGL(vp, rhoF[i], rhoF[i + 1], 3); sum += dV[i]; }
+  const vscale = sum > 0 ? eq.volume / sum : 1;
+  for (let i = 0; i < N; i++) dV[i] *= vscale;
+  const VF = new Float64Array(N + 1);
+  for (let i = 0; i < N; i++) VF[i + 1] = VF[i] + dV[i];
   const ftC = f(Sft, rhoC).map((v) => Math.min(Math.max(v, 0), 1));
   const epsC = f(Seps, rhoC).map((v) => Math.max(v, 1e-4));
   const AF = Float64Array.from(rhoF, (r) => SA.eval(r * r)); AF[0] = 0;

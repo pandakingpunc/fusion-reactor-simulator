@@ -9,14 +9,19 @@ import { MagneticConfig } from '../types';
 import { EquilibriumOptions, GSFailure, GSSolver } from '../equilibrium/gs';
 import { CURRENT_SCALE_LIMIT } from './coupling/equilibrium';
 import { ProfileModel } from './model';
-import { EquilibriumInitFailure, StepFailure } from './failures';
+import { runAllYielding } from '../../testing/yielding';
+import { EquilibriumInitFailure, LinearAlgebraFailure, NumericalFailure, StepFailure } from './failures';
+import { defaultSources } from './sources';
+import type { SourceModel } from './sources';
+import type { TransportModel } from './transport';
+import { ScalingTransport } from './transport/scaling';
 
 
 describe('work arrays after an equilibrium swap', () => {
   it.each([
     ['ITER15', ITER_15D, 400, 10],
     ['DEMO15', DEMO_15D, 500, 0],
-  ] as [string, MagneticConfig, number, number][])('%s: no postStep sees n_i = 0 and every sawtooth flattens T_i', (_id, cfg, tEnd, minSawteeth) => {
+  ] as [string, MagneticConfig, number, number][])('%s: no postStep sees n_i = 0 and every sawtooth flattens T_i', async (_id, cfg, tEnd, minSawteeth) => {
     const sim = new Simulation({ ...cfg, t_end: tEnd });
     const m = sim.model as ProfileModel;
     const post = m.postStep.bind(m);
@@ -28,7 +33,7 @@ describe('work arrays after an equilibrium swap', () => {
     };
     const tiFlattened: boolean[] = [];
     m.crashHook = (kind, _t, before, after) => { if (kind === 'sawtooth') tiFlattened.push(after.Ti[0] < before.Ti[0]); };
-    sim.runAll();
+    await runAllYielding(sim); // 8–12 s of wall time: yield to the event loop (src/testing/yielding.ts)
     expect(m.eqUpdates).toBeGreaterThan(10); // the shot crosses many equilibrium swaps
     expect(calls).toBeGreaterThan(1000);
     expect(zero).toBe(0);
@@ -262,9 +267,9 @@ describe('implicit step failures', () => {
     return { sim, m: sim.model as ProfileModel, t0: sim.t, y0: Array.from(sim.y) };
   };
 
-  it('an exception in every retry (linear algebra) ends the shot explicitly without advancing time', () => {
+  it('a numerical failure in every retry (linear algebra) ends the shot explicitly without advancing time', () => {
     const { sim, m, t0, y0 } = started();
-    stubStep(m, () => { throw new Error('solveTridiag: sıfır pivot'); });
+    stubStep(m, () => { throw new LinearAlgebraFailure('heat', new Error('solveTridiag: sıfır pivot')); });
     expect(() => sim.advance(0.2)).not.toThrow();
     expect(sim.t).toBe(t0);
     expect(Array.from(sim.y)).toEqual(y0);
@@ -274,6 +279,168 @@ describe('implicit step failures', () => {
     expect(m.stepFailure?.message).toContain('sıfır pivot');
     expect(sim.events.some((e) => e.kind === 'end' && e.msg.includes('Numerical failure'))).toBe(true);
     expect(sim.report().termination.reason).toBe('Numerical failure');
+  }, 60000);
+
+  it('a real singular system: NaN diffusivities make the heat solve singular, the retries fail, the shot ends as a numerical failure', () => {
+    const nan: TransportModel = { id: 'nan', predictive: true, diffusivities: (_c, _s, chiE, chiI) => { chiE.fill(NaN); chiI.fill(NaN); } };
+    let armed = false;
+    const m = new ProfileModel({ ...JET_15D, t_end: 1 }, { transport: { ...nan, diffusivities: (c, s, chiE, chiI) => (armed ? nan.diffusivities(c, s, chiE, chiI) : new ScalingTransport().diffusivities(c, s, chiE, chiI)) } });
+    const y = m.initialState();
+    m.diagnostics(0, y);
+    armed = true;
+    const y0 = Array.from(y);
+    expect(m.step(0, y, 0.1)).toBe(0);
+    expect(Array.from(y)).toEqual(y0);
+    expect(m.terminated?.reason).toBe('Numerical failure');
+    expect(m.stepFailure).toBeInstanceOf(StepFailure);
+    expect(m.stepFailure?.cause).toBeInstanceOf(LinearAlgebraFailure);
+    expect((m.stepFailure?.cause as LinearAlgebraFailure).system).toBe('heat');
+    expect(m.stepFailure?.message).toContain('singular heat system');
+  }, 60000);
+
+  it('a numerical failure of a plug-in at a large Δt is retried at a smaller one and the shot goes on', () => {
+    class PlugInSingular extends NumericalFailure { override readonly name = 'PlugInSingular'; }
+    let thrown = 0;
+    const stiff: SourceModel = { id: 'stiff', particles: (_c, _t, dt) => { if (dt > 1e-3) { thrown++; throw new PlugInSingular('too stiff for this Δt'); } } };
+    const m = new ProfileModel({ ...JET_15D, t_end: 0.2 }, { sources: [...defaultSources(), stiff] });
+    const y = m.initialState();
+    m.diagnostics(0, y);
+    m.ctx.dt = 0.02;
+    const t1 = m.step(0, y, 0.1);
+    expect(thrown).toBeGreaterThan(0);
+    expect(t1).toBeGreaterThan(0);
+    expect(t1).toBeLessThanOrEqual(1e-3 + 1e-12);
+    expect(m.terminated).toBeNull();
+    expect(m.stepFailure).toBeNull();
+    expect(m.forcedSteps).toBe(0);
+  }, 60000);
+
+  it('a Grad–Shafranov failure raised inside a step is a numerical failure too', () => {
+    let armed = false;
+    const gs: SourceModel = { id: 'gs', heat: () => { if (armed) throw new GSFailure('diverged', 'the equilibrium of the plug-in diverged', 3, 1e-2); } };
+    const m = new ProfileModel({ ...JET_15D, t_end: 0.2 }, { sources: [...defaultSources(), gs] });
+    const y = m.initialState();
+    m.diagnostics(0, y);
+    armed = true;
+    expect(m.step(0, y, 0.1)).toBe(0);
+    expect(m.terminated?.reason).toBe('Numerical failure');
+    expect(m.stepFailure?.message).toContain('Grad–Shafranov (diverged)');
+  }, 60000);
+
+  // A TypeError or ReferenceError of a module is a bug, not a solver failure: it used to end the shot as
+  // 'Numerical failure — try a coarser radial grid' with the stack hidden in the cause.
+  it.each([
+    ['a source', 'source'],
+    ['a transport model', 'transport'],
+    ['a source hook that runs once per attempt', 'prepare'],
+  ] as const)('a programming error in %s propagates and leaves the state as it was', (_label, where) => {
+    // armed after the first frame: the state evaluation of t = 0 runs the same hooks outside a step
+    let armed = false;
+    const boom = () => { if (!armed) return; const o = undefined as unknown as { length: number }; o.length; };
+    const modules = where === 'transport'
+      ? { transport: { ...new ScalingTransport(), id: 'buggy', predictive: false, diffusivities: () => { boom(); } } satisfies TransportModel }
+      : { sources: [...defaultSources(), where === 'prepare' ? { id: 'buggy', prepare: () => { boom(); } } : { id: 'buggy', heat: () => { boom(); } }] as SourceModel[] };
+    const m = new ProfileModel({ ...JET_15D, t_end: 0.2 }, modules);
+    const y = m.initialState();
+    m.diagnostics(0, y);
+    armed = true;
+    const y0 = Array.from(y);
+    expect(() => m.step(0, y, 0.1)).toThrow(TypeError);
+    expect(Array.from(y)).toEqual(y0);
+    expect(m.terminated).toBeNull();
+    expect(m.stepFailure).toBeNull();
+    expect(m.ctx.phase).toBe('normal');
+  }, 60000);
+
+  // The update after the accepted step (plug-in `accepted` hooks, the equilibrium update and the re-evaluation on its
+  // geometry) is outside the implicit attempts. An error there used to leave y advanced by the step while t stayed
+  // (and dW/dt, P_SOL and the fast-ion pools half updated): y and the context scalars of the update are put back, and
+  // stepping on continues as if the step had not been tried.
+  describe('a programming error in the update after the accepted step', () => {
+    type Trap = { armed: boolean; fired: number };
+    const boom = (trap: Trap) => { if (!trap.armed) return; trap.armed = false; trap.fired++; const o = undefined as unknown as { length: number }; o.length; };
+    const hooks = (where: 'accepted' | 'geometry', trap: Trap): SourceModel =>
+      where === 'accepted' ? { id: 'buggy', accepted: () => boom(trap) } : { id: 'buggy', geometryChanged: () => boom(trap) };
+    const scalars = (m: ProfileModel) => {
+      const c = m.ctx;
+      return { PSOL: c.PSOL, GammaB: c.GammaB, lastVloop: c.lastVloop, dWdtS: c.dWdtS, crashE: c.crashE, nsepGain: c.nsepGain, alphaRatio: c.alphaRatio, WfAlpha: c.WfAlpha, WfBeam: c.WfBeam, Pbound: c.Pbound };
+    };
+
+    it.each(['accepted', 'geometry'] as const)('a bug in the %s hook of a plug-in: y, the scalars of the context and the equilibrium are as before the step, and the run goes on bit for bit like one that never failed', (where) => {
+      const trap: Trap = { armed: false, fired: 0 };
+      const cfg: MagneticConfig = { ...JET_15D, t_end: 0.6, profiles: { ...JET_15D.profiles, eqUpdateInterval: 0.1 } };
+      const m = new ProfileModel(cfg, { sources: [...defaultSources(), hooks(where, trap)] });
+      const ref = new ProfileModel(cfg);
+      const ym = m.initialState(), yr = ref.initialState();
+      m.diagnostics(0, ym); ref.diagnostics(0, yr);
+      const advance = (mod: ProfileModel, y: Float64Array, t: number) => { const t1 = mod.step(t, y, cfg.t_end); mod.postStep(t1, t1 - t, y); return t1; };
+      let tm = 0, tr = 0, failed = false;
+      for (let k = 0; k < 300 && !failed; k++) {
+        // energy that an ELM has taken out and the step books into dW/dt: it must be there again after a failed step
+        m.ctx.crashE = ref.ctx.crashE = 2e5;
+        // the accepted hook fails at a step of the start-up ramp, the geometry hook at the first equilibrium update
+        trap.armed = where === 'geometry' || k >= 8;
+        const y0 = Array.from(ym), before = scalars(m), geo = m.ctx.geo, diag = m.ctx.lastDiag, updates = m.eqUpdates, t0 = tm;
+        try {
+          tm = advance(m, ym, tm);
+        } catch (e) {
+          failed = true;
+          expect(e).toBeInstanceOf(TypeError);
+          expect(trap.fired).toBe(1);
+          expect(tm).toBe(t0);
+          expect(Array.from(ym)).toEqual(y0);
+          expect(scalars(m)).toEqual(before);
+          expect(before.crashE).toBe(2e5);
+          expect(m.ctx.geo).toBe(geo);
+          expect(m.ctx.lastDiag).toBe(diag);
+          expect(m.eqUpdates).toBe(updates);
+          expect(m.terminated).toBeNull();
+          expect(m.ctx.phase).toBe('normal');
+          break;
+        }
+        tr = advance(ref, yr, tr);
+      }
+      expect(failed).toBe(true);
+      if (where === 'geometry') expect(m.eqUpdates).toBe(0); // it failed at the first update
+      trap.armed = false;
+      // the reference now takes the step that the failed model retries; both go on together through the equilibrium update
+      for (let k = 0; k < 40 && tm < cfg.t_end - 1e-9; k++) {
+        tm = advance(m, ym, tm); tr = advance(ref, yr, tr);
+        expect(tm).toBe(tr);
+        expect(Array.from(ym)).toEqual(Array.from(yr));
+        expect(m.ctx.lastDiag).toEqual(ref.ctx.lastDiag);
+      }
+      expect(m.eqUpdates).toBe(ref.eqUpdates);
+      if (where === 'geometry') expect(m.eqUpdates).toBeGreaterThanOrEqual(1);
+    }, 120000);
+
+    it('through Simulation.advance the caller sees the error; time, state and history are those before the failed step, and the shot goes on', () => {
+      const trap: Trap = { armed: false, fired: 0 };
+      const sim = new Simulation({ ...JET_15D, t_end: 0.5 });
+      sim.advance(0.1);
+      ((sim.model as ProfileModel).physics.sources as SourceModel[]).push(hooks('accepted', trap));
+      const t0 = sim.t, y0 = Array.from(sim.y), frames = sim.history.length;
+      trap.armed = true;
+      expect(() => sim.advance(0.1)).toThrow(TypeError);
+      expect(sim.t).toBe(t0);
+      expect(Array.from(sim.y)).toEqual(y0);
+      expect(sim.history.length).toBe(frames);
+      sim.advance(0.1);
+      expect(sim.t).toBeGreaterThan(t0);
+    }, 120000);
+  });
+
+  it('the same through Simulation.advance: the caller sees the error, not a terminated shot', () => {
+    const buggy: SourceModel = { id: 'buggy', heat: (_c, st) => { (st as unknown as { doesNotExist: { length: number } }).doesNotExist.length; } };
+    const sim = new Simulation({ ...JET_15D, t_end: 0.5 });
+    sim.advance(0.1);
+    const m = sim.model as ProfileModel;
+    (m.physics.sources as SourceModel[]).push(buggy);
+    const t0 = sim.t, y0 = Array.from(sim.y);
+    expect(() => sim.advance(0.2)).toThrow(/doesNotExist|undefined/);
+    expect(sim.t).toBe(t0);
+    expect(Array.from(sim.y)).toEqual(y0);
+    expect(m.terminated).toBeNull();
   }, 60000);
 
   it('the last-resort forced step never commits a non-finite state', () => {
@@ -305,9 +472,9 @@ describe('implicit step failures', () => {
 describe('reported confinement time', () => {
   const rel = (a: number, b: number) => Math.abs(a - b) / Math.abs(b);
 
-  it("'cgm' transport: τ_E is the actual W/P_loss, the scaling law is reported beside it", () => {
+  it("'cgm' transport: τ_E is the actual W/P_loss, the scaling law is reported beside it", async () => {
     const sim = new Simulation({ ...JET_15D, t_end: 0.3, profiles: { transportModel: 'cgm' } });
-    const r = sim.runAll();
+    const r = await runAllYielding(sim); // ~10 s of wall time (the model is slow on JET-size machines)
     expect(r.termination.natural).toBe(true);
     const frames = sim.history.filter((h) => h.t > 0);
     expect(frames.length).toBeGreaterThan(100);
@@ -385,9 +552,14 @@ describe('checkpoints and replays', () => {
   // density limit → thermal and current quench: the quench phases patch the last diagnostics in
   // place, so a checkpoint must carry all of them
   const disrupting = (): MagneticConfig => ({ ...JET_15D, t_end: 3, n_target: JET_15D.n_target * 3 });
+  // User breakpoints every 2.9 ms end steps off the output grid (3.75 ms): the step of the disruption onset then
+  // ends at a time that is not an output time and is recorded as an irregular frame. Without them the
+  // Δt of the density ramp is longer than the output interval, every step is cut at an output time and the onset
+  // frame is a regular one.
+  const grid = { breakpoints: Array.from({ length: 1034 }, (_, k) => (k + 1) * 2.9e-3) };
 
   it('a replay from a thermal- or current-quench frame reproduces the frames and the report', () => {
-    const ref = new Simulation(disrupting());
+    const ref = new Simulation(disrupting(), grid);
     ref.runAll();
     const refFrames = ref.history.map((h) => ({ t: h.t, y: h.y, d: { ...h.d }, prof: h.prof }));
     const refReport = JSON.stringify(ref.report());
@@ -404,7 +576,7 @@ describe('checkpoints and replays', () => {
     expect(onset).toBeGreaterThan(0);
     expect(ref.history[onset].t).toBeLessThan(ref.history[tq].t);
     for (const idx of [onset, tq, cq]) {
-      const sim = new Simulation(disrupting());
+      const sim = new Simulation(disrupting(), grid);
       sim.runAll();
       sim.rewindTo(idx);
       // the checkpoint restores the diagnostics and profiles of that frame

@@ -35,8 +35,8 @@ const schemaIsRequired = (schema as unknown as { isRequired?: (f: FieldDef) => b
 
 /**
  * Whether the wizard can hand the simulator a configuration with this number field blank. Fields with
- * a model default (`def`) are left out while BUG(ws2a) BLANK_DEFAULTS_FIXED stands (see knownBugs.ts;
- * pinned in wizardSmoke.test.ts), so that the property keeps covering everything else.
+ * a model default (`def`) are left out while BLANK_DEFAULTS_FIXED is false (see knownBugs.ts; the fix
+ * is tested in wizardSmoke.test.ts), so that the property keeps covering everything else.
  */
 export function canBlank(f: FieldDef): boolean {
   if ((f.type ?? 'number') !== 'number' || !schemaIsRequired || schemaIsRequired(f)) return false;

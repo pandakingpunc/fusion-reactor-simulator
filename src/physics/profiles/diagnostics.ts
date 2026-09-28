@@ -2,7 +2,8 @@
  * Diagnostics of the 1.5D model: the scalar time traces (PROFILE_DIAGS), the radial profiles of a
  * history frame, and the global power totals they are built from.
  */
-import { pLH_Martin } from '../transport';
+import { pLH_threshold } from '../transport';
+import { RHO_CORE } from '../radiation';
 import { greenwaldDensity } from '../limits';
 import { divertorHeatFlux, neutronWallLoad } from '../engineering';
 import { LAWSON_DT } from '../confinement/magneticReport';
@@ -28,7 +29,8 @@ export const PROFILE_DIAGS: DiagSpec[] = [
   { key: 'nG_frac', label: 'n̄/n_Greenwald', unit: '', group: 'Density' },
   { key: 'fHe', label: 'He ash fraction', unit: '', group: 'Density' },
   { key: 'P_fus', label: 'P_fusion', unit: 'MW', group: 'Power' },
-  { key: 'P_alpha', label: 'P_alpha (deposited)', unit: 'MW', group: 'Power' },
+  { key: 'P_alpha', label: 'P_alpha (charged fusion products, deposited)', unit: 'MW', group: 'Power' },
+  { key: 'P_beam_heat', label: 'P_beam (NBI ions, deposited)', unit: 'MW', group: 'Power' },
   { key: 'P_bt', label: 'P_fusion beam-target', unit: 'MW', group: 'Power' },
   { key: 'P_aux', label: 'P_auxiliary', unit: 'MW', group: 'Power' },
   { key: 'P_oh', label: 'P_ohmic', unit: 'MW', group: 'Power' },
@@ -38,6 +40,7 @@ export const PROFILE_DIAGS: DiagSpec[] = [
   { key: 'P_sync', label: 'P_synchrotron', unit: 'MW', group: 'Radiation' },
   { key: 'P_line', label: 'P_line', unit: 'MW', group: 'Radiation' },
   { key: 'P_rad', label: 'P_rad total', unit: 'MW', group: 'Radiation' },
+  { key: 'P_rad_core', label: 'P_rad core (ρ < 0.6)', unit: 'MW', group: 'Radiation' },
   { key: 'Q', label: 'Scientific Q', unit: '', group: 'Performance' },
   { key: 'triple', label: 'n·T·τ_E', unit: 'keV s m⁻³', group: 'Performance', log: true },
   { key: 'lawson', label: 'Lawson ratio', unit: '', group: 'Performance' },
@@ -45,6 +48,7 @@ export const PROFILE_DIAGS: DiagSpec[] = [
   { key: 'tauE_scal', label: 'τ_E scaling law (C_χ target)', unit: 's', group: 'Confinement' },
   { key: 'H_mode', label: 'Mode (1=H, 0=L)', unit: '', group: 'Confinement' },
   { key: 'P_LH', label: 'P_LH threshold', unit: 'MW', group: 'Confinement' },
+  { key: 'P_loss', label: 'P_L = P_heat − P_rad,core − dW/dt', unit: 'MW', group: 'Confinement' },
   { key: 'chi_mult', label: 'Transport multiplier C_χ', unit: 'm²/s', group: 'Confinement' },
   { key: 'betaN', label: 'β_N', unit: '', group: 'MHD' },
   { key: 'betaP', label: 'β_p', unit: '', group: 'MHD' },
@@ -60,6 +64,8 @@ export const PROFILE_DIAGS: DiagSpec[] = [
   { key: 'V_loop', label: 'Loop voltage', unit: 'V', group: 'Current' },
   { key: 'Ip', label: 'I_p', unit: 'MA', group: 'Current' },
   { key: 'W', label: 'W_plasma', unit: 'MJ', group: 'Energy' },
+  { key: 'Wf', label: 'W_fast ions (α + beam)', unit: 'MJ', group: 'Energy' },
+  { key: 'dWdt_s', label: 'dW/dt (smoothed, with ELM losses)', unit: 'MW', group: 'Energy' },
   { key: 'Zeff', label: 'Z_eff', unit: '', group: 'Impurities' },
   { key: 'cZ', label: 'c_Z (n_Z/n_e)', unit: '', group: 'Impurities', log: true },
   { key: 'S_fuel', label: 'Fueling', unit: '1e20 /s', group: 'Density' },
@@ -74,18 +80,29 @@ export interface PowerTotals {
   P_fus: number; P_chg: number; P_neut: number; P_bt: number;
   /** absorbed auxiliary heating (NBI + ICRH + ECRH) */
   P_aux_abs: number;
+  /** absorbed NBI heating (part of P_aux_abs) */
+  P_beam: number;
   P_oh: number;
   /** alpha (charged-product) heating, = P_chg */
   P_alpha: number;
   P_brems: number; P_line: number; P_sync: number; P_rad: number;
+  /** radiation of the core, ρ < RHO_CORE (all of the synchrotron radiation counts as core) */
+  P_rad_core: number;
   /** P_aux_abs + P_oh + P_alpha */
   P_heat: number;
+  /**
+   * energy content of the steady slowing-down distributions of the fast charged fusion products and of
+   * the NBI fast ions, P τ_W [J]: what the pools of fastIons.ts relax towards
+   */
+  Wss_alpha: number; Wss_beam: number;
 }
 
 /** Global quantities a diagnostics frame is written from */
 export interface GlobalTotals extends PowerTotals {
   /** stored energy [J], its rate of change [W] */
   W: number; dWdt: number;
+  /** energy content of the fast charged fusion products and of the NBI fast ions: the pools of fastIons.ts [J] */
+  W_alpha: number; W_beam: number;
   /** reported τ_E and the scaling-law τ_E [s] */
   tauE: number; tauScal: number;
   /** loss power [W], line-averaged density [m⁻³] */
@@ -101,11 +118,17 @@ export function powerTotals(ctx: ProfileContext, K: StepConstants): PowerTotals 
   const w = ctx.w, g = ctx.tg;
   const I = (a: Float64Array) => volumeIntegral(g, a);
   const P_fus = I(w.Pfus), P_chg = I(w.Pchg), P_neut = I(w.Pneut), P_bt = I(w.Pbt);
-  const P_aux_abs = I(w.PnbiE) + I(w.PnbiI) + I(w.PicE) + I(w.PicI) + I(w.PecE);
+  const P_beam = I(w.PnbiE) + I(w.PnbiI);
+  const P_aux_abs = P_beam + I(w.PicE) + I(w.PicI) + I(w.PecE);
   const P_oh = I(w.Poh), P_alpha = P_chg;
   const P_brems = I(w.Pbr), P_line = I(w.Pline), P_sync = K.Psync, P_rad = P_brems + P_line + P_sync;
+  // core radiation: bremsstrahlung and line radiation inside ρ < RHO_CORE (the cell that straddles it
+  // counts by its share), synchrotron entirely
+  let core = 0;
+  for (let i = 0; i < g.N; i++) core += Math.min(1, Math.max(0, (RHO_CORE - g.rhoF[i]) / g.dRho)) * (w.Pbr[i] + w.Pline[i]) * g.dV[i];
+  const P_rad_core = core + P_sync;
   const P_heat = P_aux_abs + P_oh + P_alpha;
-  return { P_fus, P_chg, P_neut, P_bt, P_aux_abs, P_oh, P_alpha, P_brems, P_line, P_sync, P_rad, P_heat };
+  return { P_fus, P_chg, P_neut, P_bt, P_aux_abs, P_beam, P_oh, P_alpha, P_brems, P_line, P_sync, P_rad, P_rad_core, P_heat, Wss_alpha: I(w.Walpha), Wss_beam: I(w.Wbeam) };
 }
 
 /**
@@ -121,9 +144,17 @@ export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: Globa
   let TeA = 0, TiA = 0;
   for (let i = 0; i < N; i++) { TeA += v.Te[i] * v.ne[i] * g.dV[i]; TiA += v.Ti[i] * w.ni[i] * g.dV[i]; }
   TeA /= Math.max(volumeIntegral(g, v.ne), 1); TiA /= Math.max(volumeIntegral(g, w.ni), 1);
+  // pressure: thermal ⟨n_e T_e + n_i T_i⟩ = (2/3) W/V, plus the fast ions (2/3) (W_α + W_beam)/V, the pools
+  // that build up with τ_W and cannot exceed the injected energy (fastIons.ts; isotropic, APPROXIMATION: the
+  // anisotropy of the beam ions is neglected, as in the 0D model). β_T and β_N are
+  // total; β_N,th (the drive of the NTMs is the bootstrap current of the thermal pressure gradient)
+  // and β_p (the equilibrium's pressure table is thermal) are thermal.
   const pAvg = X.W / (1.5 * g.volume);
-  const betaT = (2 * MU0 * pAvg) / (g.B0 * g.B0);
+  const Wfast = X.W_alpha + X.W_beam;
+  const betaThermal = (2 * MU0 * pAvg) / (g.B0 * g.B0);
+  const betaT = betaThermal + (2 * MU0 * ((2 / 3) * Wfast / g.volume)) / (g.B0 * g.B0);
   const betaN = (betaT * 100 * g.a * g.B0) / Math.max(Ip_MA, 0.01);
+  const betaN_th = (betaThermal * 100 * g.a * g.B0) / Math.max(Ip_MA, 0.01);
   const Bpa = (MU0 * Ip) / g.perimeter;
   const betaP = (2 * MU0 * pAvg) / (Bpa * Bpa);
   // ℓ_i(3) = 2∫B_p² dV/(μ0² I_p² R0), B_p² ≈ g2 ψ'²
@@ -136,7 +167,8 @@ export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: Globa
   const Q = X.P_fus / Math.max(P_in, 1e4);
   const triple = neAvg * TiA * X.tauE;
   const nG = greenwaldDensity(Math.max(Ip_MA, 0.01), g.a);
-  const P_LH = pLH_Martin(X.nbar, g.B0, g.surface, ctx.M);
+  // L–H threshold: Martin 2008 with the line-averaged density and the Ryter 2014 low-density branch, as in 0D
+  const P_LH = pLH_threshold(X.nbar, g.B0, g.surface, ctx.M, Math.max(Ip_MA, 0.01), g.a, g.R0);
   const rhoPed = 1 - ctx.ps.pedestalWidth;
   const iPed = Math.min(N - 1, Math.floor(rhoPed / g.dRho));
   const aMax = alphaMHD(g, w.p, w.qF, rhoPed - 0.02, w.alphaF);
@@ -152,16 +184,16 @@ export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: Globa
   ctx.lastDiag = {
     Ti: TiA, Te: TeA, Ti0: v.Ti[0], Te0: v.Te[0], Tped: v.Te[iPed], Tsep: ctx.bc.Te,
     ne: neAvg / 1e20, nbar: X.nbar / 1e20, ne0: v.ne[0] / 1e20, nG_frac: X.nbar / nG, fHe: s.NHe / Math.max(Ne, 1),
-    P_fus: X.P_fus / 1e6, P_alpha: X.P_alpha / 1e6, P_bt: X.P_bt / 1e6, P_aux: (K.P_NBI + K.P_IC + K.P_EC) / 1e6, P_oh: X.P_oh / 1e6,
-    P_cond: X.W / X.tauE / 1e6, P_SOL: ctx.PSOL / 1e6, P_brems: X.P_brems / 1e6, P_sync: X.P_sync / 1e6, P_line: X.P_line / 1e6, P_rad: X.P_rad / 1e6,
+    P_fus: X.P_fus / 1e6, P_alpha: X.P_alpha / 1e6, P_beam_heat: X.P_beam / 1e6, P_bt: X.P_bt / 1e6, P_aux: (K.P_NBI + K.P_IC + K.P_EC) / 1e6, P_oh: X.P_oh / 1e6,
+    P_cond: X.W / X.tauE / 1e6, P_SOL: ctx.PSOL / 1e6, P_brems: X.P_brems / 1e6, P_sync: X.P_sync / 1e6, P_line: X.P_line / 1e6, P_rad: X.P_rad / 1e6, P_rad_core: X.P_rad_core / 1e6,
     Q, triple, lawson: triple / LAWSON_DT, tauE: X.tauE, tauE_scal: X.tauScal, H_mode: ctx.hmode ? 1 : 0, P_LH: P_LH / 1e6, chi_mult: s.Cchi,
-    betaN, betaT: betaT * 100, betaP, q95: q95v, q0: w.qF[0], qmin, li, rho_q1: rho1, alpha_ped: aMax / aCrit,
+    betaN, betaN_th, betaT: betaT * 100, betaP, q95: q95v, q0: w.qF[0], qmin, li, rho_q1: rho1, alpha_ped: aMax / aCrit,
     w32: s.w32 / g.a, w21: s.w21 / g.a, NTM: s.w32 > 0.01 * g.a || s.w21 > 0.01 * g.a ? 1 : 0,
     f_bs: Ibs / Math.max(Ip, 1), f_cd: Icd / Math.max(Ip, 1), V_loop: Vloop, Ip: Ip_MA,
-    W: X.W / 1e6, Wf: 0, Zeff: ctx.volAvg(w.Zeff), cZ: s.cZ, S_fuel: s.Sfuel / 1e20,
+    W: X.W / 1e6, Wf: Wfast / 1e6, W_alpha: X.W_alpha / 1e6, W_beam: X.W_beam / 1e6, ignited: ctx.ignited ? 1 : 0, Zeff: ctx.volAvg(w.Zeff), cZ: s.cZ, S_fuel: s.Sfuel / 1e20,
     burnFrac: s.NTfuel > 0 ? s.NTburn / s.NTfuel : 0, fuelFracA: s.fA,
     q_div: qdiv, n_wall: nw, P_heat: X.P_heat / 1e6, P_charged: X.P_chg / 1e6, P_neutron: X.P_neut / 1e6,
-    Efus_MJ: s.Efus / 1e6, Ein_MJ: s.Ein / 1e6, Nn: s.Nn, P_loss: X.P_loss / 1e6, dWdt: X.dWdt / 1e6, P_bound: X.P_bound / 1e6,
+    Efus_MJ: s.Efus / 1e6, Ein_MJ: s.Ein / 1e6, Nn: s.Nn, P_loss: X.P_loss / 1e6, dWdt: X.dWdt / 1e6, dWdt_s: ctx.dWdtS / 1e6, P_bound: X.P_bound / 1e6,
   };
   // profiles
   const mer = w.mercF, bal = w.ballF;
@@ -203,9 +235,9 @@ export function stateDiagnostics(ctx: ProfileContext, st: ProfileState, K: StepC
   const tauScal = ctx.lastDiag.tauE_scal ?? tauPrev;
   const W = ctx.storedEnergy(st);
   const P = powerTotals(ctx, K);
-  const P_loss = lossPower(ctx, P.P_heat, P.P_rad);
+  const P_loss = lossPower(ctx, P.P_heat, P.P_rad_core, ctx.dWdtS);
   const tauE = predictive ? W / P_loss : tauPrev;
-  writeDiagnostics(ctx, st, { ...P, W, dWdt: 0, tauE, tauScal, P_loss, nbar: ctx.lineAvg(st.ne), P_bound: boundaryPower(ctx, st) });
+  writeDiagnostics(ctx, st, { ...P, W, dWdt: 0, W_alpha: ctx.WfAlpha, W_beam: ctx.WfBeam, tauE, tauScal, P_loss, nbar: ctx.lineAvg(st.ne), P_bound: boundaryPower(ctx, st) });
 }
 
 /** Diagnostics during the quench phases of a disruption: only the quantities the quench changes */
@@ -213,7 +245,7 @@ export function quenchDiagnostics(ctx: ProfileContext, st: ProfileState): void {
   const W = ctx.storedEnergy(st);
   Object.assign(ctx.lastDiag, {
     W: W / 1e6, Te: ctx.volAvg(st.Te), Ti: ctx.volAvg(st.Ti), Te0: st.Te[0], Ti0: st.Ti[0], Ip: st.s.Ip / 1e6,
-    P_fus: 0, P_alpha: 0, P_aux: 0, P_heat: 0, Q: 0, P_bt: 0, P_neutron: 0, P_charged: 0,
+    P_fus: 0, P_alpha: 0, P_beam_heat: 0, P_aux: 0, P_heat: 0, Q: 0, P_bt: 0, P_neutron: 0, P_charged: 0, Wf: 0, W_alpha: 0, W_beam: 0,
   });
 }
 

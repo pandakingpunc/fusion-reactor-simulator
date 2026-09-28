@@ -11,6 +11,7 @@ import type { ProfileContext } from '../context';
 import type { ProfileState } from '../state';
 import type { CheckpointAux, CheckpointRecord } from '../checkpoint';
 import { composition } from '../composition';
+import { heatingPowers } from '../control/actuators';
 import { currentProfiles } from '../qprofile';
 import { volumeIntegral } from '../sources/deposition';
 import type { EventModel } from './EventModel';
@@ -180,15 +181,30 @@ describe('sawtooth crashes', () => {
     expect(st.s.w21).toBe(0);
   });
 
-  it('seeds 3/2 and 2/1 NTM islands at high β_N', () => {
+  it('seeds 3/2 and 2/1 NTM islands at high thermal β_N', () => {
     const { ctx, st, d0 } = shot();
     peaked(st, ctx);
     setQ(ctx, st, qMono);
     composition(ctx, st.Te, st.ne, st.s);
     const lim = ctx.cfg.limits.betaN_limit, wd = 0.012 * (ctx.tg.a / 2);
-    expect(after(new SawtoothEvents(), ctx, 2, st, { ...d0, betaN: 0.8 * lim })).toHaveLength(1);
+    expect(after(new SawtoothEvents(), ctx, 2, st, { ...d0, betaN: 0.8 * lim, betaN_th: 0.8 * lim })).toHaveLength(1);
     expect(st.s.w32).toBeCloseTo(2.5 * wd, 15);
     expect(st.s.w21).toBeCloseTo(2 * wd, 15);
+  });
+
+  it('the seed follows the thermal β_N: fast-ion pressure alone (total β_N high, thermal low) seeds nothing, and the marginal levels are those of the thermal β_N', () => {
+    const lim = shot().ctx.cfg.limits.betaN_limit;
+    const seeded = (betaN: number, betaN_th: number) => {
+      const { ctx, st, d0 } = shot();
+      peaked(st, ctx);
+      setQ(ctx, st, qMono);
+      composition(ctx, st.Te, st.ne, st.s);
+      after(new SawtoothEvents(), ctx, 2, st, { ...d0, betaN, betaN_th });
+      return [st.s.w32 > 0, st.s.w21 > 0];
+    };
+    expect(seeded(0.9 * lim, 0.3 * lim)).toEqual([false, false]);
+    expect(seeded(0.9 * lim, 0.6 * lim)).toEqual([true, false]); // 3/2 above 0.5 β_lim, 2/1 above 0.75 β_lim
+    expect(seeded(0.9 * lim, 0.8 * lim)).toEqual([true, true]);
   });
 
   it('needs sawteeth enabled, q(0) < 1 with enough shear at q = 1, and 50 ms since the last crash (checkpointed)', () => {
@@ -248,21 +264,75 @@ describe('neoclassical tearing modes', () => {
 });
 
 describe('burn milestones', () => {
-  it('breakeven (Q ≥ 1) and ignition (P_α ≥ P_rad + P_cond with Q ≥ 5) are raised and cleared once, and checkpointed', () => {
+  const dOf = (d0: Diag, Q: number, P_alpha: number): Diag => ({ ...d0, Q, P_alpha, P_fus: 5 * P_alpha, P_rad: 10, P_cond: 30 });
+
+  it('breakeven (Q ≥ 1) is raised and cleared once, and checkpointed', () => {
     const { ctx, st, d0 } = shot();
     const burn = new BurnEvents();
-    const d = (Q: number, P_alpha: number): Diag => ({ ...d0, Q, P_alpha, P_fus: 5 * P_alpha, P_rad: 10, P_cond: 30 });
     const kinds = (t: number, x: Diag) => after(burn, ctx, t, st, x).map((e) => e.kind);
-    expect(kinds(1, d(0.5, 5))).toEqual([]);
-    expect(kinds(2, d(1.2, 10))).toEqual(['burn_start']);
-    expect(kinds(3, d(1.5, 12))).toEqual([]);
+    expect(kinds(1, dOf(d0, 0.5, 5))).toEqual([]);
+    expect(kinds(2, dOf(d0, 1.2, 10))).toEqual(['burn_start']);
+    expect(kinds(3, dOf(d0, 1.5, 12))).toEqual([]);
     const burning = saved(burn);
-    expect(kinds(4, d(8, 45))).toEqual(['ignition']);
-    expect(kinds(5, d(8, 38))).toEqual([]); // above 0.9 P_loss: still ignited
-    expect(kinds(6, d(8, 30))).toEqual(['info']); // lost
-    expect(kinds(7, d(0.8, 5))).toEqual(['burn_end']);
+    expect(kinds(4, dOf(d0, 0.8, 5))).toEqual(['burn_end']);
     burn.restore(burning.rec);
-    expect(kinds(8, d(0.8, 5))).toEqual(['burn_end']);
+    expect(kinds(5, dOf(d0, 0.8, 5))).toEqual(['burn_end']);
+  });
+
+  it('ignition (P_α ≥ P_rad + P_cond) does not need Q ≥ 5: raised and cleared once with hysteresis, shown in the diagnostics, checkpointed with the context', () => {
+    const { m, ctx, st, d0 } = shot();
+    const burn = new BurnEvents();
+    const kinds = (t: number, x: Diag) => after(burn, ctx, t, st, x).map((e) => e.kind);
+    expect(ctx.ignited).toBe(false);
+    expect(d0.ignited).toBe(0);
+    expect(kinds(1, dOf(d0, 0.5, 30))).toEqual([]); // 30 MW < P_rad + P_cond = 40 MW
+    expect(ctx.lastDiag.ignited).toBe(0);
+    expect(kinds(2, dOf(d0, 2, 45))).toEqual(['ignition', 'burn_start']); // Q = 2 only
+    expect(ctx.ignited).toBe(true);
+    expect(ctx.lastDiag.ignited).toBe(1);
+    const rec = m.saveInternal();
+    expect(rec.ignited).toBe(1);
+    expect(kinds(3, dOf(d0, 2, 38))).toEqual([]); // above 0.9 P_loss: still ignited
+    expect(kinds(4, dOf(d0, 2, 30))).toEqual(['info']); // lost
+    expect(ctx.lastDiag.ignited).toBe(0);
+    expect(kinds(5, dOf(d0, 2, 30))).toEqual([]);
+    m.restoreInternal(rec);
+    expect(ctx.ignited).toBe(true);
+    // no ignition without fusion power to speak of
+    const q = shot();
+    expect(after(new BurnEvents(), q.ctx, 1, q.st, { ...q.d0, Q: 0, P_alpha: 1e-3, P_fus: 0.5, P_rad: 0, P_cond: 0 }).map((e) => e.kind)).toEqual([]);
+  });
+
+  it('ignition test (heating.autoOff): at Q ≥ 5 the external heating ramps down once over heating.rampTime; without the option it stays on', () => {
+    const on = shot({ heating: { ...JET_15D.heating, autoOff: true } });
+    const burn = new BurnEvents();
+    const ramp = on.ctx.cfg.heating.rampTime;
+    const P0 = 1e6 * (JET_15D.heating.P_NBI_MW);
+    expect(heatingPowers(on.ctx, 100).P_NBI).toBeCloseTo(P0, 3);
+    expect(after(burn, on.ctx, 10, on.st, dOf(on.d0, 4.9, 1)).map((e) => e.kind)).toEqual(['burn_start']);
+    expect(on.ctx.tAuxOff).toBe(Infinity);
+    const ev = after(burn, on.ctx, 12, on.st, dOf(on.d0, 5.2, 1));
+    expect(ev.filter((e) => e.kind === 'info' && e.msg.startsWith('Ignition test: Q = 5.2'))).toHaveLength(1);
+    expect(on.ctx.tAuxOff).toBe(12);
+    expect(after(burn, on.ctx, 13, on.st, dOf(on.d0, 8, 1)).filter((e) => e.kind === 'info')).toEqual([]); // once
+    expect(on.ctx.tAuxOff).toBe(12);
+    expect(heatingPowers(on.ctx, 12).P_NBI).toBeCloseTo(P0, 3);
+    expect(heatingPowers(on.ctx, 12 + 0.5 * ramp).P_NBI).toBeCloseTo(0.5 * P0, 3);
+    expect(heatingPowers(on.ctx, 12 + ramp).P_NBI).toBe(0);
+    expect(heatingPowers(on.ctx, 12 + 3 * ramp).P_NBI).toBe(0);
+    expect(heatingPowers(on.ctx, 12 + 0.5 * ramp).P_IC).toBeCloseTo(0.5e6 * JET_15D.heating.P_ICRH_MW, 3);
+    // the start of the test is part of the checkpoint
+    const rec = on.m.saveInternal();
+    on.ctx.tAuxOff = Infinity;
+    on.m.restoreInternal(rec);
+    expect(on.ctx.tAuxOff).toBe(12);
+    // a record without the key (from elsewhere) leaves the heating on
+    on.m.restoreInternal({ ...rec, tAuxOff: undefined as unknown as number });
+    expect(on.ctx.tAuxOff).toBe(Infinity);
+    const off = shot();
+    after(new BurnEvents(), off.ctx, 12, off.st, dOf(off.d0, 8, 1));
+    expect(off.ctx.tAuxOff).toBe(Infinity);
+    expect(heatingPowers(off.ctx, 100).P_NBI).toBeCloseTo(P0, 3);
   });
 });
 
@@ -303,6 +373,19 @@ describe('disruptions', () => {
     expect(ctx.disruption.t).toBe(1);
     expect(ctx.disruption.W).toBe(8e6);
     expect(ctx.disruption.Ip).toBe(st.s.Ip);
+  });
+
+  it('the thermal quench ends the ignition state: the quench frames are not ignited', () => {
+    const { ctx, st, d0 } = shot();
+    ctx.ignited = true;
+    ctx.lastDiag.ignited = 1;
+    after(new DisruptionEvents(), ctx, 1, st, safe(d0));
+    expect(ctx.ignited).toBe(true); // no limit crossed
+    expect(ctx.lastDiag.ignited).toBe(1);
+    after(new DisruptionEvents(), ctx, 1, st, { ...safe(d0), nG_frac: 1.1 });
+    expect(ctx.phase).toBe('thermal_quench');
+    expect(ctx.ignited).toBe(false);
+    expect(ctx.lastDiag.ignited).toBe(0);
   });
 
   it('checks the limits in order (first match wins); tungsten only with a W impurity; no radiative collapse in the first 0.5 s', () => {

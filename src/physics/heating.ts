@@ -51,12 +51,62 @@ export function ionHeatingFraction(E0_keV: number, Ec_keV: number): number {
 /**
  * Spitzer yavaşlama süresi (elektronlar üzerinde) — NRL Formulary:
  *  τ_se = 6.27e8 · A_f · T_e[eV]^1.5 / (Z_f² · n_e[cm^-3] · lnΛ)   [s]
- * Termalleşme süresi: τ_th = (τ_se/3) · ln(1 + (E_0/E_c)^1.5)
+ * Hızlı iyonun enerji kaybı (Stix, Plasma Phys. 14 (1972) 367):
+ *  dE/dt = −(2E/τ_se) · [1 + (E_c/E)^{3/2}]
+ */
+export function spitzerSlowingDownTime(Te_keV: number, ne: number, A_fast: number, Z_fast: number): number {
+  const lnL = coulombLog(ne, Te_keV);
+  return (6.27e8 * A_fast * Math.pow(Math.max(Te_keV, 0.01) * 1e3, 1.5)) / (Z_fast * Z_fast * ne * 1e-6 * lnL);
+}
+
+/**
+ * Termalleşme süresi (E_0 → 0): τ_th = (τ_se/3) · ln(1 + (E_0/E_c)^1.5).
+ * Kararlı bir kaynağın hızlı-iyon YOĞUNLUĞU n_f = S · τ_th (demet-hedef füzyonu için).
  */
 export function slowingDownTime(Te_keV: number, ne: number, A_fast: number, Z_fast: number, E0_keV: number, Ec_keV: number): number {
-  const lnL = coulombLog(ne, Te_keV);
-  const tau_se = (6.27e8 * A_fast * Math.pow(Math.max(Te_keV, 0.01) * 1e3, 1.5)) / (Z_fast * Z_fast * ne * 1e-6 * lnL);
+  const tau_se = spitzerSlowingDownTime(Te_keV, ne, A_fast, Z_fast);
   return (tau_se / 3) * Math.log(1 + Math.pow(E0_keV / Math.max(Ec_keV, 1e-6), 1.5));
+}
+
+/**
+ * Kararlı yavaşlama dağılımının ENERJİ içeriği / kaynak gücü [s]:
+ *  τ_W = W_f / P_f = (1/E_0) ∫₀^{E_0} E dE / |dE/dt| = (τ_se/2) · (1 − G(E_0/E_c))
+ * (yukarıdaki Stix kayıp yasasının doğrudan integrali; G = ionHeatingFraction). 0D hızlı-iyon
+ * havuzu dW_f/dt = P_f − W_f/τ_W kararlı durumda doğru depolanan enerjiyi (hızlı-parçacık basıncı)
+ * ve doğru ısıtma gücünü (P_f) verir. APPROXIMATION: hız uzayı difüzyonu ve termal kuyruk ihmal,
+ * hızlı iyon kaybı yok.
+ */
+export function fastIonEnergyTime(Te_keV: number, ne: number, A_fast: number, Z_fast: number, E0_keV: number, Ec_keV: number): number {
+  const tau_se = spitzerSlowingDownTime(Te_keV, ne, A_fast, Z_fast);
+  return 0.5 * tau_se * (1 - ionHeatingFraction(E0_keV, Ec_keV));
+}
+
+/** Bir hızlı-iyon türü: doğuş enerjisi ve kaynak gücü (güç ağırlığı) */
+export interface FastSpecies {
+  A: number;
+  Z: number;
+  E0_keV: number;
+  /** kaynak gücü [W] (yalnız ağırlık olarak kullanılır) */
+  P: number;
+}
+
+/**
+ * Aynı havuzu besleyen hızlı türlerin (ör. D-³He'nin α ve p'si) güç-ağırlıklı Stix nicelikleri:
+ *  G = Σ P_k G_k / Σ P_k ,  τ_W = Σ P_k τ_W,k / Σ P_k  (kararlı durumda W = Σ P_k τ_W,k).
+ * E_c,k = criticalEnergy(T_e, A_k, ionSum). Tüm güçler sıfırsa eşit ağırlık.
+ */
+export function fastPoolMix(species: readonly FastSpecies[], Te_keV: number, ne: number, ionSum: number): { G: number; tauW: number } {
+  let wSum = 0, G = 0, tauW = 0;
+  const equal = species.every((s) => !(s.P > 0));
+  for (const s of species) {
+    const w = equal ? 1 : Math.max(s.P, 0);
+    if (w === 0) continue;
+    const Ec = criticalEnergy(Te_keV, s.A, ionSum);
+    G += w * ionHeatingFraction(s.E0_keV, Ec);
+    tauW += w * fastIonEnergyTime(Te_keV, ne, s.A, s.Z, s.E0_keV, Ec);
+    wSum += w;
+  }
+  return wSum > 0 ? { G: G / wSum, tauW: tauW / wSum } : { G: 0, tauW: 0 };
 }
 
 /** NBI shine-through — APPROXIMATION: exp(−n_e a σ_stop) ; σ_stop ~ 1e-20 m² /(E/100keV)^0.5 */

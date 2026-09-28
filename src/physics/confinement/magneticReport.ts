@@ -34,12 +34,16 @@ export function buildMagneticReport(ctx: MagneticReportContext, hist: HistoryFra
   const max = (arr: number[]) => arr.reduce((m, v) => (v > m ? v : m), -Infinity);
   const Ti0 = d('Ti0'), Ti = d('Ti'), Te = d('Te'), Q = d('Q'), Pf = d('P_fus');
   const Tmax = max(Ti0);
-  // süreler
+  // süreler. Ateşleme süresi: model kendi ateşleme durumunu ('ignited', histerezisli; 0D) veriyorsa
+  // o — olay günlüğüyle aynı ölçüt; vermiyorsa (1.5D) çerçeve ölçütü P_α ≥ P_rad + P_cond.
+  const hasIgnFlag = hist.some((h) => h.d.ignited !== undefined);
   let burnTime = 0, ignTime = 0;
   for (let i = 1; i < hist.length; i++) {
     const dt = hist[i].t - hist[i - 1].t;
     if (hist[i].d.Q >= 1) burnTime += dt;
-    if (hist[i].d.P_alpha >= hist[i].d.P_rad + hist[i].d.P_cond && hist[i].d.P_fus > 1 && hist[i].d.Q >= 5) ignTime += dt;
+    const ign = hasIgnFlag ? (hist[i].d.ignited ?? 0) > 0
+      : hist[i].d.P_alpha >= hist[i].d.P_rad + hist[i].d.P_cond && hist[i].d.P_fus > 1 && hist[i].d.Q >= 5;
+    if (ign) ignTime += dt;
   }
   const term = ctx.terminated ?? { t: last.t, natural: true, reason: 'In progress', diagnosis: '', fix: '' };
   const stableTime = ctx.tDisrupt > 0 && !term.natural ? ctx.tDisrupt : last.t;
@@ -90,7 +94,7 @@ export function buildMagneticReport(ctx: MagneticReportContext, hist: HistoryFra
     method: ctx.method, duration: last.t, timeUnit: 's',
     Tmax_keV: Tmax, Tmax_MC: U.keV_to_MC(Tmax), Timax_keV: max(Ti), Temax_keV: max(Te),
     stableTime_s: stableTime, burnTime_s: burnTime, ignitionTime_s: ignTime,
-    stableDefinition: 'Stable time = duration for which the plasma is sustained without disruption/extinction. Burn time = duration with Q ≥ 1 (P_fusion ≥ P_auxiliary+P_ohmic). Ignition time = duration with P_alpha ≥ P_rad + P_conduction (self-sustaining without external heating).',
+    stableDefinition: 'Stable time = duration for which the plasma is sustained without disruption/extinction. Burn time = duration with Q ≥ 1 (P_fusion ≥ P_auxiliary+P_ohmic). Ignition time = duration with P_alpha ≥ P_rad + P_conduction, where P_alpha is the heating by charged fusion products only (beam ions excluded): self-sustaining without external heating.',
     Q_sci_max: max(Q), Q_sci_avg: Qavg, Q_eng: eco.Q_eng,
     Q_eng_note: `Q_eng = P_electric,gross / P_recirculating = (${eco.P_gross_MW.toFixed(0)} MW) / (${eco.P_recirc_MW.toFixed(0)} MW). Scientific Q is measured at the plasma boundary (P_fusion/P_heating,absorbed), Q_eng at the wall plug: heating wall-plug efficiency ${(c.economics.wallPlugEff * 100).toFixed(0)}%, thermal efficiency ${(c.economics.thermalEff * 100).toFixed(0)}%.`,
     E_fusion_MJ: Efus, E_input_MJ: Ein,

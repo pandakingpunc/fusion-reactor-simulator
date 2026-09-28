@@ -5,15 +5,18 @@
  *  0 W_e   [J]  elektron termal enerjisi        1 W_i  [J] iyon termal enerjisi
  *  2 n_a   [m^-3] yakıt a (D)                   3 n_b  [m^-3] yakıt b (T / D / He3 / B11)
  *  4 n_He  [m^-3] kül (He4)                     5 n_Z  [m^-3] safsızlık
- *  6 W_f   [J]  hızlı alfa + NBI iyon enerjisi (yavaşlama gecikmesi)
- *  7 I_p   [A]                                  8 E_fus [J] toplam füzyon enerjisi
- *  9 E_in  [J] toplam yardımcı+ohmik enerji     10 N_n  nötron sayısı
- *  11 N_Tburn  yanan T atomu                    12 N_Tfuel  enjekte edilen T atomu
- *  13 S_fuel [m^-3 s^-1] gecikmeli besleme kaynağı (1. derece lag)
+ *  6 W_α   [J]  yüklü füzyon ürünleri havuzu    7 I_p   [A]
+ *  8 E_fus [J] toplam füzyon enerjisi           9 E_in  [J] toplam yardımcı+ohmik enerji
+ *  10 N_n  nötron sayısı                        11 N_Tburn  yanan T atomu
+ *  12 N_Tfuel  enjekte edilen T atomu           13 S_fuel [m^-3 s^-1] gecikmeli besleme (1. derece lag)
+ *  14 W_b  [J]  NBI hızlı iyon havuzu
  *
  * Güç dengesi (hacim ortalaması, sabit profil şekli):
- *  dW_e/dt = P_oh + P_aux,e + P_f,e − P_brems − P_sync − P_line − P_ei − W_e/τ_E
- *  dW_i/dt = P_aux,i + P_f,i + P_ei − W_i/τ_E
+ *  dW_e/dt = P_oh + P_aux,e + P_α,e + P_b,e − P_brems − P_sync − P_line − P_ei − W_e/τ_E
+ *  dW_i/dt = P_aux,i + P_α,i + P_b,i + P_ei − W_i/τ_E
+ *  dW_α/dt = P_charged − W_α/τ_W,α   dW_b/dt = P_NBI,abs − W_b/τ_W,b   (Stix yavaşlaması, heating.ts)
+ *  Her havuz kendi E_c'si, iyon payı G(E_0/E_c) ve enerji-içerik süresi τ_W ile yavaşlar;
+ *  P_alpha = W_α/τ_W,α yalnız füzyon ürünlerinin ısıtmasıdır, P_beam_heat = W_b/τ_W,b ayrı teşhis.
  *  dn/dt   = S − n/τ_p − yanma ;  dn_He/dt = R_fus − n_He/τ_He
  * APPROXIMATION: 0D. Profiller n∝(1−ρ²)^αn, T∝(1−ρ²)^αT ile sabit; pedestal, Shafranov kayması,
  * türbülans ve MHD sadece τ_E ölçeklemesi + eşik olayları (ELM/sawtooth/NTM/disruption) ile.
@@ -22,7 +25,7 @@ import { Geometry, plasmaVolume, plasmaSurface, crossSectionArea, q95 as q95fn, 
 import { FUEL_CHANNELS, FUEL_SPECIES, beamTargetReactivity, beamTargetDensity, burnPerReaction, pairDensity } from '../reactivity';
 import { bremsstrahlung, synchrotronTotal, coolingRate, meanCharge } from '../radiation';
 import { tauIPB98y2, tauITER89P, tauISS04, tauSTValovic, pLH_Martin, tauEquilibration } from '../transport';
-import { resistivity, ohmicPower, criticalEnergy, ionHeatingFraction, slowingDownTime, nbiShineThrough } from '../heating';
+import { resistivity, ohmicPower, criticalEnergy, ionHeatingFraction, slowingDownTime, nbiShineThrough, fastIonEnergyTime, fastPoolMix, FastSpecies } from '../heating';
 import { greenwaldDensity, betaToroidal, betaNormalized, betaPoloidal } from '../limits';
 import { disruptionReport, DisruptionCause, DISRUPTION_LABELS, DISRUPTION_FIXES } from '../disruption';
 import { checkMagnet, MAGNET_TECH, divertorHeatFlux, divertorHeatFluxStellarator, neutronWallLoad } from '../engineering';
@@ -31,8 +34,8 @@ import { RNG } from '../rng';
 import { U } from '../units';
 import { DiagSpec, HistoryFrame, MagneticConfig, ShotReport, SimEvent, SimModel, TerminationInfo } from '../types';
 
-const IDX = { We: 0, Wi: 1, na: 2, nb: 3, nHe: 4, nZ: 5, Wf: 6, Ip: 7, Efus: 8, Ein: 9, Nn: 10, NTburn: 11, NTfuel: 12, Sfuel: 13 } as const;
-const NSTATE = 14;
+const IDX = { We: 0, Wi: 1, na: 2, nb: 3, nHe: 4, nZ: 5, Wa: 6, Ip: 7, Efus: 8, Ein: 9, Nn: 10, NTburn: 11, NTfuel: 12, Sfuel: 13, Wb: 14 } as const;
+const NSTATE = 15;
 
 export { LAWSON_DT };
 
@@ -44,7 +47,8 @@ export const MAGNETIC_DIAGS: DiagSpec[] = [
   { key: 'nG_frac', label: 'n/n_Greenwald', unit: '', group: 'Density' },
   { key: 'fHe', label: 'He ash fraction', unit: '', group: 'Density' },
   { key: 'P_fus', label: 'P_fusion', unit: 'MW', group: 'Power' },
-  { key: 'P_alpha', label: 'P_alpha (deposited)', unit: 'MW', group: 'Power' },
+  { key: 'P_alpha', label: 'P_alpha (charged fusion products, deposited)', unit: 'MW', group: 'Power' },
+  { key: 'P_beam_heat', label: 'P_beam (NBI ions, deposited)', unit: 'MW', group: 'Power' },
   { key: 'P_bt', label: 'P_fusion beam-target', unit: 'MW', group: 'Power' },
   { key: 'P_aux', label: 'P_auxiliary', unit: 'MW', group: 'Power' },
   { key: 'P_oh', label: 'P_ohmic', unit: 'MW', group: 'Power' },
@@ -62,7 +66,7 @@ export const MAGNETIC_DIAGS: DiagSpec[] = [
   { key: 'q95', label: 'q95', unit: '', group: 'MHD' },
   { key: 'NTM', label: 'NTM (0/1)', unit: '', group: 'MHD' },
   { key: 'W', label: 'W_plasma', unit: 'MJ', group: 'Energy' },
-  { key: 'Wf', label: 'W_fast ions', unit: 'MJ', group: 'Energy' },
+  { key: 'Wf', label: 'W_fast ions (α + beam)', unit: 'MJ', group: 'Energy' },
   { key: 'triple', label: 'n·T·τ_E', unit: 'keV s m⁻³', group: 'Performance', log: true },
   { key: 'lawson', label: 'Lawson ratio', unit: '', group: 'Performance' },
   { key: 'Zeff', label: 'Z_eff', unit: '', group: 'Impurities' },
@@ -121,6 +125,9 @@ export class MagneticModel implements SimModel {
   private magnetInfo;
   /** kanal başına reaksiyon hızı [1/s] (termal + demet-hedef), son rhs çağrısı */
   private Rch: Float64Array;
+  /** yüklü ürünler (kanal sırasıyla) ve ait oldukları kanal; P alanı rhs'te doğuş gücüyle dolar */
+  private products: FastSpecies[];
+  private productChannel: number[];
 
   // canlı kontroller
   private ctrl: Record<string, number>;
@@ -138,6 +145,10 @@ export class MagneticModel implements SimModel {
     this.M = cfg.fuelFracA * fs.a.A + (1 - cfg.fuelFracA) * fs.b.A;
     this.rng = new RNG(cfg.seed);
     this.Rch = new Float64Array(FUEL_CHANNELS[cfg.fuel].length);
+    this.products = []; this.productChannel = [];
+    FUEL_CHANNELS[cfg.fuel].forEach((ch, j) => ch.products.forEach((pr) => {
+      this.products.push({ A: pr.A, Z: pr.Z, E0_keV: pr.E_MeV * 1000, P: 0 }); this.productChannel.push(j);
+    }));
     this.tEnd = cfg.t_end;
     this.outputDt = Math.max(cfg.t_end / 1500, 0.002);
     this.Ip0 = this.isStell ? 0 : cfg.Ip_MA * 1e6;
@@ -147,7 +158,7 @@ export class MagneticModel implements SimModel {
       fuelRate_1e20s: cfg.fueling.maxRate_1e20s,
     };
     const atol = new Float64Array(NSTATE);
-    atol.set([1e2, 1e2, 1e13, 1e13, 1e12, 1e11, 1e2, 1e2, 1e3, 1e3, 1e12, 1e12, 1e12, 1e14]);
+    atol.set([1e2, 1e2, 1e13, 1e13, 1e12, 1e11, 1e2, 1e2, 1e3, 1e3, 1e12, 1e12, 1e12, 1e14, 1e2]);
     this.integratorOpts = { rtol: 2e-5, atol, dtMin: 1e-6, dtMax: Math.min(0.05, cfg.t_end / 400), nonNegative: true };
     this.magnetInfo = checkMagnet(this.g, cfg.B0, cfg.magnet.tech, cfg.magnet.gap_m, cfg.magnet.coilThickness_m);
     if (this.magnetInfo.quench) {
@@ -291,7 +302,8 @@ export class MagneticModel implements SimModel {
     const T0 = this.isStell ? 0.5 : 1.0; // ohmik başlangıç plazması ~1 keV
     y[IDX.We] = 1.5 * n0 * U.keV_to_J(T0) * this.V;
     y[IDX.Wi] = 1.5 * this.ni(y, n0) * U.keV_to_J(T0 * 0.8) * this.V;
-    y[IDX.Wf] = 0;
+    y[IDX.Wa] = 0;
+    y[IDX.Wb] = 0;
     y[IDX.Ip] = this.Ip0;
     y[IDX.Sfuel] = 0;
     return y;
@@ -319,9 +331,10 @@ export class MagneticModel implements SimModel {
     const P_ECRH = this.ctrl.P_ECRH_MW * 1e6 * ramp * quenchFac;
     // Stix kritik enerji: Σ n_j Z_j²/(n_e A_j)
     const ionSum = (y[IDX.na] * fs.a.Z ** 2 / fs.a.A + y[IDX.nb] * fs.b.Z ** 2 / fs.b.A + y[IDX.nHe] * 4 / 4) / ne;
-    // NBI hızlı iyonları: enerji W_f havuzuna girer, oradan yavaşlayarak paylaşılır
+    // NBI hızlı iyonları (tür a, E_b): kendi havuzu W_b, kendi E_c'si, G'si ve τ_W'si
     const Ec_nbi = criticalEnergy(Te, fs.a.A, ionSum);
     const fi_nbi = ionHeatingFraction(c.heating.E_NBI_keV, Ec_nbi);
+    const tauW_b = Math.max(fastIonEnergyTime(Te, ne, fs.a.A, fs.a.Z, c.heating.E_NBI_keV, Ec_nbi), 1e-3);
     // Demet-hedef füzyonu: n_f = P_NBI τ_sd / (E_b V) (yarı-kararlı), R_bt = n_f n_hedef <σv>_bt V
     // (JET DTE2'de füzyon gücünün ~%30–50'si demet-hedef kaynaklıdır; Maslov 2023)
     if (P_NBI > 0 && c.fuel !== 'pB11') {
@@ -336,19 +349,21 @@ export class MagneticModel implements SimModel {
         fus.P_neutron += R * U.MeV_to_J(ch.Eneutron_MeV); if (ch.Eneutron_MeV > 0) fus.neutrons += R;
       });
     }
-    // Alfa (yüklü ürün) — E_α = 3.5 MeV (D-T); diğer yakıtlarda ortalama yüklü ürün enerjisi
-    const chans = FUEL_CHANNELS[c.fuel];
-    const E_alpha_keV = (chans[0].Echarged_MeV * 1000) / (c.fuel === 'pB11' ? 3 : 1);
-    const Ec_a = criticalEnergy(Te, 4, ionSum);
-    const fi_a = ionHeatingFraction(E_alpha_keV, Ec_a);
-    const tau_sd = Math.max(slowingDownTime(Te, ne, 4, 2, E_alpha_keV, Ec_a), 1e-3);
-    // Hızlı iyon havuzu: giriş = P_charged + P_NBI ; çıkış = W_f/τ_sd (ısıtma). Kayıp: hızlı iyon
-    // hapsetmesi mükemmel varsayılır (APPROXIMATION: ripple/TAE kaybı yok)
-    const P_fast_out = y[IDX.Wf] / tau_sd;
-    const fracNBI = P_NBI / Math.max(P_NBI + fus.P_charged, 1);
-    const fi_mix = fracNBI * fi_nbi + (1 - fracNBI) * fi_a;
-    const P_fast_i = P_fast_out * fi_mix;
-    const P_fast_e = P_fast_out * (1 - fi_mix);
+    // Yüklü füzyon ürünleri (termal + demet-hedef): havuz W_α. Ürün başına (α, p, T, ³He) Stix
+    // E_c, G ve τ_W, doğuş gücüyle ağırlıklı (heating.fastPoolMix).
+    for (let k = 0; k < this.products.length; k++) {
+      const pr = this.products[k];
+      pr.P = this.Rch[this.productChannel[k]] * U.keV_to_J(pr.E0_keV);
+    }
+    const mixA = fastPoolMix(this.products, Te, ne, ionSum);
+    const tauW_a = Math.max(mixA.tauW, 1e-3);
+    // Havuz çıkışları = plazmaya biriken ısıtma. APPROXIMATION: hızlı iyon hapsetmesi mükemmel
+    // (ripple/TAE kaybı yok).
+    const P_alpha = y[IDX.Wa] / tauW_a;
+    const P_beam = y[IDX.Wb] / tauW_b;
+    const P_fast_out = P_alpha + P_beam;
+    const P_fast_i = P_alpha * mixA.G + P_beam * fi_nbi;
+    const P_fast_e = P_alpha * (1 - mixA.G) + P_beam * (1 - fi_nbi);
     // ICRH/ECRH doğrudan
     const P_aux_i = P_ICRH * c.heating.f_ICRH_ion;
     const P_aux_e = P_ICRH * (1 - c.heating.f_ICRH_ion) + P_ECRH;
@@ -366,8 +381,9 @@ export class MagneticModel implements SimModel {
     tauE = Math.max(tauE, 1e-3);
     this.tauE_last = tauE;
     const W = y[IDX.We] + y[IDX.Wi];
-    // ELM ortalama gücü zaten IPB98 içinde: sürekli kayıptan düş
-    const P_cond_total = Math.max(W / tauE - this.elmAvgPower, 0);
+    // ELM ortalama gücü zaten IPB98 içinde: sürekli kayıptan düş (ELM'ler postStep'te ayrık atılır)
+    const P_transport = W / tauE;
+    const P_cond_total = Math.max(P_transport - this.elmAvgPower, 0);
     const P_cond_e = P_cond_total * (y[IDX.We] / Math.max(W, 1));
     const P_cond_i = P_cond_total * (y[IDX.Wi] / Math.max(W, 1));
     // ---- e-i eşitlenme ----
@@ -387,7 +403,8 @@ export class MagneticModel implements SimModel {
 
     d[IDX.We] = P_oh + P_aux_e + P_fast_e - rad.P_rad - P_ei - P_cond_e - quenchE;
     d[IDX.Wi] = P_aux_i + P_fast_i + P_ei - P_cond_i - quenchI;
-    d[IDX.Wf] = fus.P_charged + P_NBI - P_fast_out - (this.phase !== 'normal' ? y[IDX.Wf] / 1e-3 : 0);
+    d[IDX.Wa] = fus.P_charged - P_alpha - (this.phase !== 'normal' ? y[IDX.Wa] / 1e-3 : 0);
+    d[IDX.Wb] = P_NBI - P_beam - (this.phase !== 'normal' ? y[IDX.Wb] / 1e-3 : 0);
     d[IDX.Ip] = dIp;
 
     // ---- parçacık dengesi ----
@@ -441,7 +458,7 @@ export class MagneticModel implements SimModel {
     this.lastDiag = {
       Te, Ti, ne, ni, Zeff, P_fus: fus.P_total, P_bt: fus.P_bt, P_charged: fus.P_charged, P_neutron: fus.P_neutron, T0: fus.T0,
       P_brems: rad.P_brems, P_line: rad.P_line, P_sync: rad.P_sync, P_rad: rad.P_rad,
-      P_NBI: P_NBI_inj, P_ICRH, P_ECRH, P_oh, P_fast_out, P_heat, P_cond: P_cond_total, tauE, P_SOL, S_fuel: y[IDX.Sfuel] * V,
+      P_NBI: P_NBI_inj, P_ICRH, P_ECRH, P_oh, P_alpha, P_beam, P_heat, P_cond: P_transport, tauE, P_SOL, S_fuel: y[IDX.Sfuel] * V,
       P_aux_abs: P_NBI + P_ICRH + P_ECRH,
     };
   }
@@ -479,7 +496,10 @@ export class MagneticModel implements SimModel {
     const D = this.lastDiag;
     const c = this.cfg;
     const W = y[IDX.We] + y[IDX.Wi];
-    const p = D.ne * U.keV_to_J(D.Te) + D.ni * U.keV_to_J(D.Ti); // <nT> hacim ort. basınç (J/m³)
+    // hacim ort. basınç (J/m³): termal <n_e T_e + n_i T_i> + hızlı parçacıklar (2/3)(W_α + W_b)/V
+    // (izotropik kabul; demet iyonlarının anizotropisi ihmal — APPROXIMATION)
+    const Wfast = y[IDX.Wa] + y[IDX.Wb];
+    const p = D.ne * U.keV_to_J(D.Te) + D.ni * U.keV_to_J(D.Ti) + (2 / 3) * Wfast / this.V;
     const Ip_MA = y[IDX.Ip] / 1e6;
     const bT = betaToroidal(p, c.B0);
     const bN = this.isStell ? 0 : betaNormalized(bT, this.g.a, c.B0, Math.max(Ip_MA, 0.01));
@@ -495,11 +515,11 @@ export class MagneticModel implements SimModel {
     const na = y[IDX.na], nb = y[IDX.nb];
     return {
       Ti: D.Ti, Te: D.Te, Ti0: D.T0, ne: D.ne / 1e20, nG_frac: D.ne / nG, fHe: y[IDX.nHe] / D.ne,
-      P_fus: D.P_fus / 1e6, P_bt: D.P_bt / 1e6, P_alpha: D.P_fast_out / 1e6, P_aux: (D.P_NBI + D.P_ICRH + D.P_ECRH) / 1e6, P_oh: D.P_oh / 1e6,
+      P_fus: D.P_fus / 1e6, P_bt: D.P_bt / 1e6, P_alpha: D.P_alpha / 1e6, P_beam_heat: D.P_beam / 1e6, P_aux: (D.P_NBI + D.P_ICRH + D.P_ECRH) / 1e6, P_oh: D.P_oh / 1e6,
       P_brems: D.P_brems / 1e6, P_sync: D.P_sync / 1e6, P_line: D.P_line / 1e6, P_rad: D.P_rad / 1e6, P_cond: D.P_cond / 1e6,
       Q, tauE: D.tauE, H_mode: this.hmode ? 1 : 0, P_LH: P_LH / 1e6,
       betaN: bN, betaT: bT * 100, q95: this.isStell ? 0 : q95fn(this.g, c.B0, Math.max(Ip_MA, 0.01)), NTM: this.ntm ? 1 : 0,
-      W: W / 1e6, Wf: y[IDX.Wf] / 1e6, triple, lawson: triple / LAWSON_DT,
+      W: W / 1e6, Wf: Wfast / 1e6, W_alpha: y[IDX.Wa] / 1e6, W_beam: y[IDX.Wb] / 1e6, ignited: this.ignited ? 1 : 0, triple, lawson: triple / LAWSON_DT,
       Zeff: D.Zeff, cZ: y[IDX.nZ] / D.ne, Ip: Ip_MA, S_fuel: D.S_fuel / 1e20,
       burnFrac: y[IDX.NTfuel] > 0 ? y[IDX.NTburn] / y[IDX.NTfuel] : 0,
       q_div, n_wall: nw, fuelFracA: na / Math.max(na + nb, 1),
@@ -571,11 +591,14 @@ export class MagneticModel implements SimModel {
       this.tauW_accum = c.impurity.species === 'W' && (!c.events.elms || !c.events.sawteeth) ? 4 : 1;
 
       // ---- Ateşleme / yanma olayları ----
+      // Ateşleme (Lawson): yüklü füzyon ürünlerinin ısıtması tek başına radyasyon + taşınım kaybını
+      // karşılar, P_α ≥ P_rad + W/τ_E (P_cond, ELM ortalaması dahil); NBI ısıtması P_α'ya girmez.
+      // τ_E yardımcı ısıtma dahil P_loss ile hesaplandığından (güç bozulması) ölçüt korumacıdır:
+      // dış ısıtma kapatılırsa τ_E artar. Histerezis (ELM titreşimi olay yağmuruna yol açmasın):
+      // giriş P_α ≥ P_kayıp, çıkış P_α < 0.9 P_kayıp.
       const P_loss_total = dg.P_rad + dg.P_cond;
-      // Ateşleme: alfa ısıtması tüm kayıpları karşılıyor VE dış ısıtma baskın değil (Q ≥ 5, aksi halde geçici W artışı yanıltır)
-      // Histerezis (ELM titreşimi olay yağmuruna yol açmasın): giriş P_α ≥ P_kayıp, çıkış P_α < 0.9 P_kayıp
-      const ignOn = dg.P_alpha >= P_loss_total && dg.P_fus > 1 && dg.Q >= 5;
-      const ignOff = dg.P_alpha < 0.9 * P_loss_total || dg.Q < 4;
+      const ignOn = dg.P_alpha >= P_loss_total && dg.P_fus > 1;
+      const ignOff = dg.P_alpha < 0.9 * P_loss_total;
       if (ignOn && !this.ignited) { this.ignited = true; ev.push({ t, kind: 'ignition', msg: `IGNITION: P_alpha ${dg.P_alpha.toFixed(0)} MW ≥ P_loss ${P_loss_total.toFixed(0)} MW` }); }
       if (ignOff && this.ignited) { this.ignited = false; ev.push({ t, kind: 'info', msg: 'Ignition condition lost' }); }
       if (dg.Q >= 1 && !this.burning) { this.burning = true; ev.push({ t, kind: 'burn_start', msg: `Q ≥ 1 (scientific breakeven)` }); }

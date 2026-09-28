@@ -53,6 +53,8 @@ const MUTANTS = [
     find: 'dp[i] = (d[i] - a[i] * dp[i - 1]) / beta;', replace: 'dp[i] = (d[i] + a[i] * dp[i - 1]) / beta;', tests: [`${REF}/numericsProps.test.ts`] },
   { id: 'M14', file: 'src/physics/disruption.ts', what: 'current-quench time 4 ms/m² → 1 ms/m² (below the ITER database bound)',
     find: 'const tau_CQ = 4.0 * A;', replace: 'const tau_CQ = 1.0 * A;', tests: [`${REF}/disruption.test.ts`] },
+  { id: 'M15', file: 'src/physics/numerics/linalg.ts', what: 'dense LU refuses every matrix: singular test best === 0 → best >= 0',
+    find: 'if (best === 0) throw', replace: 'if (best >= 0) throw', tests: [`${REF}/numericsProps.test.ts`] },
 ];
 
 function parseArgs(argv) {

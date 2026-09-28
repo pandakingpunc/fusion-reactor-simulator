@@ -41,6 +41,22 @@ function gauss(A: ArrayLike<number>, b: ArrayLike<number>, n: number): Float64Ar
   return x;
 }
 
+/** whether partial-pivoting elimination of A (row-major n×n, copied) meets an all-zero pivot column */
+function hasZeroPivot(A: ArrayLike<number>, n: number): boolean {
+  const M = Float64Array.from(A);
+  for (let k = 0; k < n; k++) {
+    let p = k;
+    for (let i = k + 1; i < n; i++) if (Math.abs(M[i * n + k]) > Math.abs(M[p * n + k])) p = i;
+    if (M[p * n + k] === 0) return true;
+    if (p !== k) for (let j = 0; j < n; j++) { const t = M[k * n + j]; M[k * n + j] = M[p * n + j]; M[p * n + j] = t; }
+    for (let i = k + 1; i < n; i++) {
+      const l = M[i * n + k] / M[k * n + k];
+      for (let j = k; j < n; j++) M[i * n + j] -= l * M[k * n + j];
+    }
+  }
+  return false;
+}
+
 const maxAbs = (v: ArrayLike<number>) => { let m = 0; for (let i = 0; i < v.length; i++) m = Math.max(m, Math.abs(v[i])); return m; };
 const expectClose = (got: ArrayLike<number>, ref: ArrayLike<number>, tol: number, what: string) => {
   const scale = Math.max(maxAbs(ref), 1e-300);
@@ -116,19 +132,37 @@ describe('linear solvers vs dense Gaussian elimination', () => {
   });
 
   it('dense LU with partial pivoting on general random matrices (small residual)', () => {
+    const runs = 150;
+    let skipped = 0;
     forAll(system, ({ n, seed }) => {
       const r = mulberry32(seed);
       const A = Float64Array.from({ length: n * n }, () => sym(r));
       for (let i = 0; i < n; i++) A[i * n + i] += 0.5 * sym(r); // not dominant: pivoting matters
       const b = Float64Array.from({ length: n }, () => sym(r));
       let x: Float64Array;
-      try { x = solveDense(A, b, n); } catch { return; } // exactly singular draws are skipped
+      try {
+        x = solveDense(A, b, n);
+      } catch (e) {
+        // luFactor may refuse a matrix only when elimination meets an exactly zero pivot column (an
+        // event of probability ~0 for these continuous draws); any other throw is a failure
+        if (!hasZeroPivot(A, n)) throw e;
+        skipped++;
+        return;
+      }
       const res = new Float64Array(n);
       for (let i = 0; i < n; i++) { let s = -b[i]; for (let j = 0; j < n; j++) s += A[i * n + j] * x[j]; res[i] = s; }
       expect(maxAbs(res)).toBeLessThan(1e-9 * Math.max(1, maxAbs(x)) * n);
       const M = Float64Array.from(A), piv = luFactor(M, n);
       expectClose(luSolve(M, n, piv, b), x, 1e-12, 'luSolve');
-    }, { runs: 150, label: 'dense LU' });
+    }, { runs, label: 'dense LU' });
+    expect(skipped, 'draws skipped as exactly singular').toBeLessThanOrEqual(Math.floor(0.01 * runs));
+  });
+
+  it('dense LU refuses an exactly singular matrix', () => {
+    // rank 1: every row a multiple of (1, 2, 3); the second pivot column is exactly zero
+    const A = Float64Array.of(1, 2, 3, 2, 4, 6, -1, -2, -3);
+    expect(hasZeroPivot(A, 3)).toBe(true);
+    expect(() => solveDense(A, Float64Array.of(1, 2, 3), 3)).toThrow();
   });
 });
 

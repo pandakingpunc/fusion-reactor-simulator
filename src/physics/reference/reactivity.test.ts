@@ -201,15 +201,15 @@ describe('beam-target reactivity vs an independent 2000-interval quadrature', ()
   // (steady-state slowing-down distribution, T.H. Stix, Plasma Phys. 14 (1972) 367)
   function reference(fuel: FuelType, E0: number, Ec: number, Ti: number): number[] {
     const { a, b } = FUEL_SPECIES[fuel];
-    const keys: Record<FuelType, string[]> = { DT: ['DT'], DD: ['DD_pT', 'DD_nHe3'], DHe3: ['DHe3'], pB11: ['pB11'] };
+    const keys: Record<FuelType, string[]> = { DT: ['DT'], DD: ['DD_pT', 'DD_nHe3'], DHe3: ['DHe3', 'DD_pT', 'DD_nHe3'], pB11: ['pB11'] };
     const Emin = Math.max(1.5 * Ti, 1);
     if (E0 <= Emin) return keys[fuel].map(() => 0);
     const f = (E: number) => Math.sqrt(E) / (E ** 1.5 + Ec ** 1.5);
-    const Ecm = (E: number) => (fuel === 'DD' ? E / 2 : (E * b.A) / (a.A + b.A));
+    const Ecm = (k: string, E: number) => (k.startsWith('DD') ? E / 2 : (E * b.A) / (a.A + b.A));
     const sig = (k: string, E: number) => (k === 'pB11' ? pB11_sigma_m2(E) : crossSection(k as SigmaKey, E));
     const v = (E: number) => Math.sqrt((2 * E * keV_J) / (a.A * amu_kg));
     const den = simpsonLog(f, Emin, E0, 2000);
-    return keys[fuel].map((k) => simpsonLog((E) => sig(k, Ecm(E)) * v(E) * f(E), Emin, E0, 2000) / den);
+    return keys[fuel].map((k) => simpsonLog((E) => sig(k, Ecm(k, E)) * v(E) * f(E), Emin, E0, 2000) / den);
   }
 
   // Tolerances: the model integrates with 48 log-spaced midpoints. Measured worst cases over the

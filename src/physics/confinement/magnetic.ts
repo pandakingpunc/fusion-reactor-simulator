@@ -605,13 +605,13 @@ export class MagneticModel implements SimModel {
           this.tNextELM = t + (1 / f) * (0.7 + 0.6 * this.rng.next());
         }
       } else { this.elmAvgPower = 0; this.elmPartRate = 0; }
-      // ---- Testere dişi (sawtooth): τ_st ≈ 0.6 τ_E ; merkez T düşer, 0D'de ~%2 W dışa taşınır ----
+      // ---- Testere dişi (sawtooth): τ_st ≈ 0.6 τ_E ; çöküş q=1 içindeki enerjiyi ve parçacıkları
+      // dışarı KARIŞTIRIR. τ_E, τ_p, τ_He ölçeklemeleri testere dişi ortalamalı olduğundan 0D'de
+      // çöküş W'yi ve envanterleri korur (eski ~%2 W ve %3 kül/safsızlık atımı kaybı iki kez sayıyordu).
+      // Safsızlık birikimi üzerindeki etkisi tauW_accum ile (aşağıda) modellenir.
       if (c.events.sawteeth && !this.isStell && t >= this.tNextSaw) {
-        const drop = 0.02 * (0.8 + 0.4 * this.rng.next());
-        y[IDX.We] *= 1 - drop; y[IDX.Wi] *= 1 - drop;
-        // kül ve safsızlığı merkezden karıştırır → kaybı artırır
-        y[IDX.nHe] *= 0.97; y[IDX.nZ] *= 0.97;
-        ev.push({ t, kind: 'sawtooth', msg: `Sawtooth crash: ΔW ≈ ${(drop * 100).toFixed(1)}%`, value: drop });
+        const mixed = 0.02 * (0.8 + 0.4 * this.rng.next()); // q=1 içinden yeniden dağıtılan W payı (bilgi)
+        ev.push({ t, kind: 'sawtooth', msg: `Sawtooth crash: ≈ ${(mixed * 100).toFixed(1)}% of W redistributed from inside q = 1`, value: mixed });
         this.tNextSaw = t + Math.max(0.05, 0.6 * this.tauE_last * (0.8 + 0.4 * this.rng.next()));
         // NTM tohumu: β_N > β_onset ise sawtooth NTM tetikler (Sauter 2002: β_N,onset ~ 2 ITER'de).
         // Sürücü bootstrap akımıdır → termal β_N (hızlı iyonlar bootstrap akımı taşımaz); Troyon limiti toplam β_N ile.

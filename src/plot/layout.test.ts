@@ -92,8 +92,11 @@ describe('mathtext', () => {
     expect(num.map((x) => x.text).join('')).toBe('dq');
     expect(den.map((x) => x.text).join('')).toBe('dρ');
     for (const x of [...num, ...den]) expect(x.scale).toBeCloseTo(0.72, 6);
-    // advance: thin space + rule + thin space before the following text (a trailing space is dropped)
+    // advance: side bearing + rule + side bearing, before following text and at the end of the label
     expect(w('$\\frac{dq}{d\\rho}x$')).toBeCloseTo(0.05 + rule.rule!.w + 0.05 + fonts.width('x', 'italic'), 6);
+    expect(w('$\\frac{dq}{d\\rho}$')).toBeCloseTo(0.05 + rule.rule!.w + 0.05, 6);
+    expect(r.at(-1)).toMatchObject({ text: '', dx: expect.any(Number) }); // kept as a pen-only run
+    expect(r.at(-1)!.rule).toBeUndefined();
     // nested and in a superscript
     expect(() => parseMath('$x^{\\frac{1}{\\frac{a}{b}}}$', fonts)).not.toThrow();
   });
@@ -116,6 +119,7 @@ describe('mathtext', () => {
     const r = parseMath('$a\\,b\\;c\\!d\\quad e$', fonts);
     expect(r.map((x) => x.text).join('')).toBe('abcde');
     expect(r.map((x) => +(x.dx ?? 0).toFixed(4))).toEqual([0, 0.1667, 0.2778, -0.1667, 1]);
+    expect(w('$x\\,$')).toBeCloseTo(fonts.width('x', 'italic') + 3 / 18, 6); // a trailing space counts
   });
 
   it('binary operators and relations get medium / thick spaces, unary minus none', () => {

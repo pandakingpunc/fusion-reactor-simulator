@@ -28,6 +28,8 @@ export interface Run {
   /** a horizontal rule instead of text (text is ''): width w and thickness t in em of the base size, centred at `rise`; advances the pen by w */
   rule?: { w: number; t: number };
 }
+// A run with empty text and no rule is a pen move only (`dx`): the parser ends a label with one when
+// a move follows the last glyph (the right side bearing of a trailing \frac, a trailing \,).
 
 /** Text measurement (em at scale 1): the FontSet implements it. */
 export interface Measurer {
@@ -89,6 +91,8 @@ class Parser {
 
   run(): Run[] {
     this.parseGroup({ font: 'roman', scale: 1, rise: 0, math: false, upright: false }, false);
+    // a move after the last glyph still belongs to the label's advance (layout width, anchoring)
+    if (this.pending) { this.out.push({ text: '', font: 'roman', scale: 1, rise: 0, dx: this.pending }); this.pending = 0; }
     return this.out;
   }
 
@@ -224,7 +228,10 @@ class Parser {
 
   /**
    * Text-style fraction (TeX: numerator/denominator one script level smaller, rule on the math axis).
-   * The rule is emitted first and the wider part last, so the pen ends exactly at the fraction's end.
+   * Emitted as rule, narrower part, wider part (pen moves in between); the move from the wider part's
+   * end to the fraction's end (padding and side bearing) is left pending for what follows, and kept
+   * as a pen-only run when the fraction ends the label. Runs are therefore not in left-to-right order:
+   * the SVG back end places such labels explicitly.
    */
   private frac(st: State): void {
     const k = st.scale;
@@ -261,7 +268,7 @@ class Parser {
     this.emit(base.runs);
   }
 
-  /** accent glyph centred over the base (emitted first so that the pen ends at the base's end) */
+  /** accent glyph centred over the base (emitted first so that the pen ends at the base's end; the base follows with a backward move) */
   private accent(st: State, glyph: string): void {
     const k = st.scale;
     const base = this.sub(() => this.parseArg(st));

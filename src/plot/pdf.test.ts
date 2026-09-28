@@ -12,7 +12,7 @@ import { nodeFontSet } from './fontsNode';
 import { SVG_FONT_FAMILY } from './fonts';
 import { parseMath } from './mathtext';
 import { toPDF, toPDFDocument } from './pdf';
-import { toSVG } from './svg';
+import { needsExplicitPlacement, toSVG } from './svg';
 import { parseTTF, verifyChecksums } from './ttf';
 
 const fonts = nodeFontSet();
@@ -163,6 +163,73 @@ describe('PDF with embedded STIX Two subsets', () => {
   });
 });
 
+/** A glyph drawn at text-space x (pt, relative to the label's anchor point, unrotated). */
+interface PlacedGlyph { ch: string; x: number }
+
+/**
+ * Glyph positions of every text object (BT … ET) of a content stream, from the operators the PDF
+ * back end writes (Tm, Td, Tf, TJ displacements, Tj) and the embedded /W widths and ToUnicode CMaps:
+ * what a PDF viewer draws.
+ */
+function pdfGlyphs(content: string, embedded: EmbeddedFont[]): PlacedGlyph[][] {
+  const byRes = new Map(embedded.map((e) => [e.res, e]));
+  return [...content.matchAll(/ Tm ([\s\S]*?) ET/g)].map((bt) => {
+    const out: PlacedGlyph[] = [];
+    let line = 0, x = 0, size = 0, font: EmbeddedFont | undefined;
+    for (const m of bt[1].matchAll(/\/(F\d) (-?[\d.]+) Tf|(-?[\d.]+) (-?[\d.]+) Td|\[(-?[\d.]+)\] TJ|<([0-9A-F]+)> Tj/g)) {
+      if (m[1]) { font = byRes.get(m[1]); expect(font, `${m[1]} is not in /Font`).toBeDefined(); size = +m[2]; }
+      else if (m[3] !== undefined) { line += +m[3]; x = line; }
+      else if (m[5] !== undefined) x -= (+m[5] / 1000) * size;
+      else for (let k = 0; k < m[6].length; k += 4) {
+        const cid = parseInt(m[6].slice(k, k + 4), 16);
+        out.push({ ch: font!.toUni.get(cid)!, x });
+        x += (font!.widths[cid] / 1000) * size;
+      }
+    }
+    return out;
+  });
+}
+
+const attr = (a: string, k: string) => new RegExp(`(?:^|\\s)${k}="([^"]*)"`).exec(a)?.[1];
+const unesc = (s: string) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+
+/**
+ * Glyph positions of every <text> of an SVG as a viewer lays them out with the STIX Two advances:
+ * x/dx of each <tspan>, then text-anchor applied per anchored chunk (a chunk starts at the <text> and
+ * at every <tspan> with an absolute x) by the SVG 2 rule that Chromium implements: the chunk is
+ * shifted by (first glyph's x − the glyphs' left extent / centre / right extent).
+ * Reference: SVG 2 (W3C CR 2018) §11.5 "Text layout algorithm", step "Apply anchoring".
+ */
+function svgGlyphs(svg: string, relTo: number): PlacedGlyph[][] {
+  return [...svg.matchAll(/<text ([^>]*)>([\s\S]*?)<\/text>/g)].map((t) => {
+    const size = +attr(t[1], 'font-size')!, anchor = attr(t[1], 'text-anchor') ?? 'start';
+    const g: { ch: string; x: number; adv: number; chunk: boolean }[] = [];
+    let pen = +attr(t[1], 'x')!, chunk = true;
+    for (const s of t[2].matchAll(/<tspan([^>]*)>([^<]*)<\/tspan>/g)) {
+      const X = attr(s[1], 'x'), DX = attr(s[1], 'dx');
+      if (X !== undefined) { pen = +X; chunk = true; }
+      if (DX !== undefined) pen += +DX;
+      const fs = +(attr(s[1], 'font-size') ?? size);
+      const font = s[1].includes('font-style="italic"') ? 'italic' : s[1].includes('font-weight="bold"') ? 'bold' : 'roman';
+      for (const ch of unesc(s[2])) {
+        const adv = fonts.glyph(ch, font).w * fs;
+        g.push({ ch, x: pen, adv, chunk });
+        chunk = false;
+        pen += adv;
+      }
+    }
+    for (let i = 0; i < g.length;) {
+      let j = i + 1;
+      while (j < g.length && !g[j].chunk) j++;
+      const a = Math.min(...g.slice(i, j).map((c) => c.x)), b = Math.max(...g.slice(i, j).map((c) => c.x + c.adv));
+      const shift = g[i].x - (anchor === 'middle' ? (a + b) / 2 : anchor === 'end' ? b : a);
+      for (let k = i; k < j; k++) g[k].x += shift;
+      i = j;
+    }
+    return g.map((c) => ({ ch: c.ch, x: c.x - relTo }));
+  });
+}
+
 describe('SVG and PDF place text with the same (hmtx) metrics', () => {
   it('FontSet widths are hmtx advances', () => {
     const ttf = fonts.faces.roman!;
@@ -189,7 +256,55 @@ describe('SVG and PDF place text with the same (hmtx) metrics', () => {
       else for (let k = 0; k < m[4].length; k += 4) pen += (w[parseInt(m[4].slice(k, k + 4), 16)] / 1000) * size;
     }
     expect(Math.abs(pen)).toBeLessThan(0.01);
-    expect(svg).toContain(`<text x="${X}" y="${Y}" font-family="${SVG_FONT_FAMILY}" font-size="${SIZE}" fill="#000000" text-anchor="end"`);
+    // the label has rules, so the SVG places it run by run from the same layout (no viewer anchoring)
+    expect(svg).toMatch(new RegExp(`<text x="[\\d.]+" y="${Y}" font-family="${SVG_FONT_FAMILY}" font-size="${SIZE}" fill="#000000" text-anchor="start"`));
+  });
+
+  const B = '\\';
+  const LABELS = [
+    `$${B}frac{1}{n_e T_e V}$`, `$${B}hat{T}$`, `$${B}bar{x}$ (m)`, `$${B}frac{1}{n_e T_e V}$ = x`, `y = $${B}frac{dq}{d${B}rho}$`,
+    `$${B},x$`, `$x${B},$`, `$x${B}frac{a}{b}$`, `$n_e${B},(10^{20}${B},${B}mathrm{m^{-3}})$`, 'T_e (keV) ρ ≈ şğıİ', `$a${B}!b$`,
+    `$${B}tilde{n}_e / ${B}dot{x}$`, `$${B}overline{AB}_{${B}hat{x}}$`,
+  ];
+  for (const anchor of ['start', 'middle', 'end'] as const) {
+    it(`every glyph sits at the same x in SVG (as a viewer anchors it) and PDF: text-anchor ${anchor}`, () => {
+      const d = new DisplayList(400, 40 * LABELS.length, fonts);
+      LABELS.forEach((l, k) => d.text(parseMath(l, fonts), 200, 30 + 40 * k, 12, { anchor, rotate: k % 3 === 2 ? 90 : 0 }));
+      const p = readPdf(toPDF(d));
+      const c = text([...p.objs.values()].find((o) => o.stream && text(o.stream).includes(' Tj'))!.stream!);
+      const inPdf = pdfGlyphs(c, embeddedFonts(p)), inSvg = svgGlyphs(toSVG(d), 200);
+      expect(inPdf.length).toBe(LABELS.length);
+      expect(inSvg.length).toBe(LABELS.length);
+      LABELS.forEach((l, k) => {
+        expect(inSvg[k].map((g) => g.ch).join(''), l).toBe(inPdf[k].map((g) => g.ch).join(''));
+        inPdf[k].forEach((g, i) => expect(Math.abs(inSvg[k][i].x - g.x), `${l} '${g.ch}'`).toBeLessThan(0.03));
+      });
+    });
+  }
+
+  it('labels whose runs are not left to right are placed explicitly; plain labels keep text-anchor', () => {
+    for (const l of [`$${B}frac{1}{2}$`, `$${B}hat{T}$`, `$${B}bar{x}$`, `$a${B}!b$`, `$${B},x$`, `$x${B},$`]) expect(needsExplicitPlacement(parseMath(l, fonts)), l).toBe(true);
+    for (const l of ['T (keV)', `$n_e${B},(10^{20})$`, `$a = -b$`, 'ρ ≈ ş']) expect(needsExplicitPlacement(parseMath(l, fonts)), l).toBe(false);
+    const d = new DisplayList(100, 40, fonts);
+    d.text(parseMath(`$${B}hat{T}$`, fonts), 50, 20, 10, { anchor: 'middle' });
+    const s = toSVG(d);
+    expect(s).toContain('text-anchor="start"');
+    expect(s).not.toMatch(/text-anchor="(middle|end)"|<tspan [^>]*dx=/);
+    expect(s.match(/<tspan [^>]*x="/g)!.length).toBe(2); // accent and base both at absolute positions
+    expect(s).toContain('style="font-kerning:none;font-variant-ligatures:none"'); // the PDF does not kern either
+  });
+
+  it('a label that starts with a rule or a pen move declares every font it selects', () => {
+    for (const l of [`$${B}bar{x}$`, `$${B}overline{x}_e$`, `$${B},x$`, `$${B}frac{x}{y}$`, `$${B}bar{}$`]) {
+      const d = new DisplayList(100, 40, fonts);
+      d.text(parseMath(l, fonts), 20, 25, 12);
+      const p = readPdf(toPDF(d));
+      const page = [...p.objs.values()].find((o) => o.dict.includes('/Type /Page '))!.dict;
+      const declared = new Set([...(/\/Font << ([^>]*) >>/.exec(page)?.[1] ?? '').matchAll(/\/(F\d) /g)].map((m) => m[1]));
+      const c = text([...p.objs.values()].find((o) => o.stream && !o.dict.includes('/Length1') && text(o.stream).includes('BT'))!.stream!);
+      for (const m of c.matchAll(/\/(F\d) [\d.]+ Tf/g)) expect(declared.has(m[1]), `${l}: ${m[1]}`).toBe(true);
+      if (l.includes('x')) expect(declared).toEqual(new Set(['F2'])); // italic only: no roman face selected for the pen move
+    }
   });
 
   it('fraction and overbar rules sit at the same place in SVG and PDF', () => {

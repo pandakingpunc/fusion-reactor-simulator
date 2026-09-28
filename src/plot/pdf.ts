@@ -150,23 +150,25 @@ export function toPDFDocument(pages: readonly DisplayList[], o: PdfOptions = {})
           const mtx = `${n(co)} ${n(si)} ${n(-si)} ${n(co)} ${n(p.x)} ${n(Y(p.y))}`;
           c.push(`q ${n(p.color[0])} ${n(p.color[1])} ${n(p.color[2])} rg BT ${mtx} Tm ${n(dx0)} ${n(dy0)} Td`);
           let curFace: FontKey | null = null, curSize = -1, curRise = 0;
+          // Pen moves (run dx, rules) are collected and applied just before the next glyphs: as a TJ
+          // displacement once a font is selected, before the first glyph as a Td (which needs no font,
+          // so a label that starts with a rule or a move never selects a face it does not draw with).
+          // Moves after the last glyph are not needed: rules are drawn from the layout after ET.
+          let pen = 0;
+          const applyPen = () => {
+            if (Math.abs(pen) > 1e-9) c.push(curFace === null ? ` ${n(pen)} 0 Td` : ` [${n((-pen / curSize) * 1000)}] TJ`);
+            pen = 0;
+          };
           const setFont = (face: FontKey, size: number) => {
+            applyPen(); // a TJ displacement scales with the font size in effect: move before switching
             if (face !== curFace || size !== curSize) { c.push(` /${FONT_RES[face]} ${n(size)} Tf`); curFace = face; curSize = size; }
           };
           for (const r of p.runs) {
-            if (r.rule) {
-              // rules are drawn after ET; move the pen over them
-              const mv = ((r.dx ?? 0) + r.rule.w) * p.size;
-              if (Math.abs(mv) > 1e-9) { if (curFace === null) setFont('roman', p.size); c.push(` [${n((-mv / curSize) * 1000)}] TJ`); }
-              continue;
-            }
-            if (!r.text && !r.dx) continue;
+            pen += (r.dx ?? 0) * p.size;
+            if (r.rule) { pen += r.rule.w * p.size; continue; } // rules are drawn after ET; the pen moves over them
+            if (!r.text) continue; // a pen move only
             const size = p.size * r.scale;
             if (r.rise !== curRise) { c.push(` ${n(r.rise * p.size)} Ts`); curRise = r.rise; }
-            if (r.dx) {
-              if (curFace === null) setFont(fonts.glyph(String.fromCodePoint(r.text.codePointAt(0) ?? 32), r.font).face, size);
-              c.push(` [${n(((-r.dx * p.size) / curSize) * 1000)}] TJ`);
-            }
             // split the run into maximal pieces set in one face (fallback glyphs may come from STIX Two Math)
             let seg: number[] = [], segFace: FontKey | null = null;
             const flush = () => {

@@ -44,6 +44,21 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   step and set-points across a rewind; the determinism suites yield to the event loop between
   runs, so they no longer starve the test worker's RPC under coverage; the it.fails pin of the ELM
   frame bug became a regression test.
+- `golden:update --reason-file FILE` for reasons that do not fit on a Windows command line (the first
+  paragraph is the entry title, further blank-line separated paragraphs follow it); the entries of
+  `test/golden/CHANGES.md` list, per changed case, the moved keys (largest relative change first),
+  the added keys and the removed keys under their own labels. Before, the first moved keys were
+  printed behind "N keys added" and read as the added ones.
+- Validation: literature checks for the v4.0 physics. `MASTU.q95` (first MAST-U campaign 5 < q95 <
+  10, Berkery et al., PPCF 65 (2023) 045001; the preset is a documented known failure because of
+  its geometry), `DIIID.Palpha` (the charged D-D products are bounded by the record D-D gain Q_DD =
+  0.0015, Lazarus et al., Nucl. Fusion 37 (1997) 7), `ITER/JET/SPARC/DEMO.alphaShare` (P_alpha/P_fus
+  at most the 0.200 alpha share of D-T) and `ITER.nG` (line-averaged Greenwald fraction); the model
+  values in the known-failure texts are refreshed (35 checks pass, 7 are known failures).
+- Exit-status stress test of the spawned validate and golden CLIs (16 runs, in `npm test`, about 3 s;
+  a tripwire for the intermittent Windows exit code 0xC0000005 seen once) and the opt-in soak
+  `npm run stress:exit -- 300 8`; tests of the worker pool shutdown on every path and of the golden
+  change-log text (`src/regression/changes.ts`).
 
 ### Changed
 - The validation CLI moved to `src/cli/validate.cli.ts` (no Node-only entry point left in
@@ -78,6 +93,25 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 - 0D: the frame-weighted flat-top averages, maxima and the derived engineering numbers of the ELM
   presets move with the frame fix below (ITER P_fus 538 -> 523 MW, Q 10.4 -> 10.1; DEMO Q 20.7 ->
   20.1; SPARC -0.7 %, JET -0.5 %); the runs themselves are unchanged.
+- Worker pool (`src/cli/pool.ts`): `runPool` settles only after every worker thread it started has
+  stopped, on every path (success, task error, timeout, abort, SIGINT/SIGTERM), so a caller that ends
+  the process with `process.exit()` right after it cannot cut a thread short. This is a sound
+  invariant, not a demonstrated fix: one spawned validate run once ended with exit code 0xC0000005 on
+  Windows; the crash has not been reproduced (1600+ runs) and its cause is unknown, the pool change
+  removes one suspect (the tsx loader thread at process exit is another).
+- Coverage: the thresholds of `npm run coverage` are ratcheted to the measured levels, with new globs
+  for `src/physics/validation` and `src/regression`; the four type-only modules are excluded by name
+  (`TYPE_ONLY_MODULES` in `vite.config.ts`, kept exact by `src/coverageConfig.test.ts`), because V8
+  counted them as uncovered lines in a checkout path with a space or a non-ASCII letter and as an
+  empty file in a plain one, which put the two environments about 2.6 points apart on
+  `src/physics/**`.
+- ITPA20 and ITPA20-IL confinement scaling coefficients verified against Verdoolaege et al., Nucl.
+  Fusion 61 (2021) 076006 (eq. 5, eq. 7, tables 10 and 16): all agree with the printed values (the
+  ITPA20-IL n exponent is 0.15 in the code, 0.147 in the paper) and the published ITER predictions
+  (3.07 s / 2.90 s) are reproduced to 0.4 %. The Sauter (2016) q95 constants remain checked against
+  secondary sources only.
+- Removed the unused `checkLimits`, `LimitCheck` and `LimitInputs` from `src/physics/limits.ts` (no
+  model called them: limits are checked in `postStep()`).
 
 ### Fixed
 - The worker pool no longer hangs when a worker exits or crashes while running a task, or when a
@@ -106,6 +140,11 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 - 0D: frames recorded at type-I ELM crashes carried the diagnostics of the pre-crash state (T_e,
   P_fus, P_rad ... 2-4.5 % off their own state); they are now consistent with their state. The
   state, internal state, checkpoints and events of the run are unchanged.
+- Test harness: `npm run coverage` no longer exits 1 with all tests green ("[vitest-worker]: Timeout
+  calling onTaskUpdate"): the setup file waits a few real milliseconds before every test so that no
+  worker RPC call is pending while a long synchronous test runs. Root cause: the runner sends a task
+  update when a test starts and the 60 s birpc timer is served before I/O, so a test body that blocks
+  the worker for more than 60 s fails the run; documented in `src/vitest.setup.ts`.
 
 Physics results are unchanged by the 1.5D changes above: a full-precision dump of all 21 presets
 was byte-identical before and after them. The frame fix of the ELM presets is the exception (see

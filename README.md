@@ -44,7 +44,7 @@ Requirements: Node.js 18+.
 npm install
 npm run dev        # user interface (Vite) → http://localhost:5173
 npm test           # unit, CLI and fast golden-regression tests (vitest)
-npm run validate   # 21 presets, 19 literature checks, in parallel on a worker pool (~45 s)
+npm run validate   # 21 presets, 42 literature checks (7 documented known failures), on a worker pool (~45 s)
 npm run golden     # golden regression: 30 cases compared with test/golden (~12 s on 4 threads)
 npm run ci:local   # type check + tests + validate + golden, in sequence, stops at the first failure
 npm run figures    # paper figures → docs/figures/*.svg|pdf + captions.md (~1 MB, ~55 s)
@@ -60,7 +60,11 @@ takes `--threads N` (default: cores − 1).
   stdout before the JSON, so capture it silently:
   `npm run -s validate -- --json > results.json` (or `npx tsx src/cli/validate.cli.ts --json`).
 - `figures`: `--only popcon,mhd`, `--scan 7` (scan grid), `--formats pdf`, `--out DIR`.
-- `golden`: `--only NIF,ITER15`. See [Regression testing](#regression-testing).
+- `golden`: `--only NIF,ITER15`; `--update` with `--reason TEXT` or `--reason-file FILE`. See
+  [Regression testing](#regression-testing).
+- `npm run stress:exit -- 300 8` (opt-in soak): starts 300 `validate` and `golden` processes on
+  fixture inputs (independent of the physics), 8 at a time, and checks that each ends with its
+  documented exit code (0 or 1) and no signal. A short version of it is part of `npm test`.
 
 ## Validation summary
 
@@ -126,12 +130,18 @@ When a change is *meant* to move the numbers, re-record them and say why:
 ```bash
 npm run golden:update -- --reason "switch ELM model to …"        # all cases
 npm run golden:update -- --reason "…" --only ITER15,DEMO15       # a subset
+npm run golden:update -- --reason-file reason.txt                # a long reason from a file
 ```
 
 This rewrites the affected files and appends a dated entry listing the moved presets and keys to
 the append-only log [`test/golden/CHANGES.md`](test/golden/CHANGES.md). It refuses to run without
-`--reason`. A change of the file format is logged the same way: files of the previous schema are
-compared too, so a format-only re-record reads "0 keys moved" plus the keys it added.
+`--reason` or `--reason-file` (the two are mutually exclusive). In a `--reason-file` (UTF-8, LF or
+CRLF) the first paragraph is the title of the entry and the further blank-line separated
+paragraphs follow it, so a reason that does not fit on a Windows command line (`npm.cmd` rejects
+a long `--reason`) can still list every headline move and its cause. For each changed case the
+entry names the moved keys (largest relative change first), the added keys and the removed keys
+under their own labels. A change of the file format is logged the same way: files of the previous
+schema are compared too, so a format-only re-record reads "0 keys moved" plus the keys it added.
 
 ## Project layout
 

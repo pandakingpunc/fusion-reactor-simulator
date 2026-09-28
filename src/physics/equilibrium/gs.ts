@@ -132,7 +132,7 @@ const EXT_JACOBI_OMEGA = 0.8;
 /** per-worker LRU cache of factorised grids */
 const GRID_CACHE = new Map<string, GSGrid>();
 const GRID_CACHE_MAX_ENTRIES = 8;
-const GRID_CACHE_MAX_BYTES = 96 * 1024 * 1024;
+const GRID_CACHE_MAX_BYTES = 64 * 1024 * 1024;
 
 /**
  * Grid + Shortley–Weller operator. The operator depends only on the geometry; it is assembled for
@@ -251,7 +251,7 @@ export class GSGrid {
 
   /**
    * Shared (per worker) grid for these parameters: an LRU cache keyed by (R, a, κ, δ, NR, margin)
-   * holding at most 8 grids / 96 MB of LU storage. Grids are immutable after construction, so a
+   * holding at most 8 grids / 64 MB of LU storage (one NR = 129 ITER grid is ~38 MB). Grids are immutable after construction, so a
    * cached grid gives bitwise the same results as a fresh one.
    */
   static shared(geom: Geometry, opts: GSGridOptions = {}): GSGrid {

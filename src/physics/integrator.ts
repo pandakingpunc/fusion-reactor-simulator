@@ -7,6 +7,14 @@
  *
  * The controller state (proposed step size and counters) can be saved with snapshot() and put
  * back with restore(), so that a rewound simulation continues with exactly the same steps.
+ *
+ * FSAL ("first same as last"): the Dormand–Prince pair is constructed so that the last stage of a
+ * step, k7 = f(t + h, y_new), is the first stage of the next one, f(t, y). step() reuses it when the
+ * next step starts exactly where the previous one ended (same t, bitwise the same y) and nobody has
+ * called invalidate() in between, which the caller must do whenever f itself may have changed (a
+ * control, or model state that f reads). For a right-hand side that is a pure function of (t, y)
+ * this is bitwise identical to evaluating f again, and saves one evaluation in seven. `fsal = false`
+ * switches the reuse off.
  */
 import { NonFiniteStateError } from './kernel/errors';
 
@@ -56,6 +64,10 @@ export class DormandPrince {
   dt: number;
   nRejected = 0;
   nSteps = 0;
+  /** reuse the last stage of an accepted step as the first stage of the next (see the file header) */
+  fsal = true;
+  /** end time of the last accepted step while its k7 is reusable, NaN otherwise */
+  private fsalT = NaN;
 
   constructor(private n: number, private rhs: RHS, public opts: IntegratorOptions, dt0: number) {
     this.k1 = new Float64Array(n); this.k2 = new Float64Array(n); this.k3 = new Float64Array(n);
@@ -74,7 +86,23 @@ export class DormandPrince {
     this.dt = s.dt;
     this.nSteps = s.nSteps;
     this.nRejected = s.nRejected;
+    this.fsalT = NaN;
   }
+
+  /**
+   * True if step(t, y, ·) would reuse k7 of the last accepted step as its first stage: FSAL is on,
+   * the step ended at t and y is bitwise the state it produced (a postStep that changed y, a clamp
+   * that changed it or an outside write all make this false).
+   */
+  canReuseStage(t: number, y: Float64Array): boolean {
+    if (!this.fsal || this.fsalT !== t) return false; // NaN never equals t
+    const { n, ynew } = this;
+    for (let i = 0; i < n; i++) if (!Object.is(y[i], ynew[i])) return false;
+    return true;
+  }
+
+  /** Forgets the reusable stage: call when the right-hand side may have changed since the last step. */
+  invalidate(): void { this.fsalT = NaN; }
 
   /**
    * Takes one accepted step; y is updated in place and the new t is returned.
@@ -83,11 +111,14 @@ export class DormandPrince {
    * state: that raises NonFiniteStateError and leaves y unchanged.
    */
   step(t: number, y: Float64Array, tMax: number): number {
-    const { n, rhs, k1, k2, k3, k4, k5, k6, k7, ytmp, ynew } = this;
     const { rtol, atol, dtMin, dtMax } = this.opts;
     let h = Math.min(this.dt, dtMax, tMax - t);
     if (h <= 0) return t;
-    rhs(t, y, k1);
+    const reuse = this.canReuseStage(t, y);
+    if (reuse) { const k = this.k1; this.k1 = this.k7; this.k7 = k; } // k7 of the last step is f(t, y)
+    this.fsalT = NaN;
+    const { n, rhs, k1, k2, k3, k4, k5, k6, k7, ytmp, ynew } = this;
+    if (!reuse) rhs(t, y, k1);
     let hUsed = h, err = NaN;
     for (let iter = 0; iter < MAX_ATTEMPTS; iter++) {
       hUsed = h;
@@ -125,6 +156,7 @@ export class DormandPrince {
     for (let i = 0; i < n; i++) y[i] = ynew[i];
     this.clampNonNegative(y);
     this.dt = Math.max(dtMin, h);
+    this.fsalT = t + hUsed; // k7 belongs to this last candidate
     return t + hUsed;
   }
 
@@ -136,6 +168,7 @@ export class DormandPrince {
     const fac = Math.min(5, Math.max(0.2, 0.9 * Math.pow(Math.max(err, 1e-10), -0.2)));
     this.dt = Math.min(dtMax, Math.max(dtMin, h * fac));
     this.nSteps++;
+    this.fsalT = t + h; // k7 = f(t + h, ynew); canReuseStage() checks that y is still ynew (the clamp may have changed it)
     return t + h;
   }
 

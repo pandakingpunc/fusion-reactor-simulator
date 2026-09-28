@@ -248,11 +248,11 @@ describe.each(MAGNETIC)('magnetic 0D: %s (t_end = %s s)', (id, tEnd) => {
   });
 });
 
-// BUG(ws2a): a frame recorded right after an ELM or sawtooth crash stores the post-crash state y
-// but the diagnostics of the pre-crash state: MagneticModel.diagnostics() returns the cache filled by
-// the last rhs() call, and postStep() changes y afterwards without invalidating it. T_e, P_fus, P_rad …
-// of those frames are 2–4.5 % off their own state (ITER, DIII-D, MAST-U, JET, SPARC, JT-60SA); the
-// golden flat-top averages and the UI traces include them. Regular frames agree exactly.
+// A frame recorded right after an ELM crash stores the post-crash state y, and its diagnostics have to
+// describe that y as well. MagneticModel.diagnostics() returns the cache filled by the last rhs() call, and
+// postStep() changes y afterwards, so the model re-evaluates the cache at the crash (refreshDiagnostics; it
+// used to leave the pre-crash values: T_e, P_fus, P_rad … of those frames were 2–4.5 % off their own state on
+// ITER, DIII-D, MAST-U, JET, SPARC and JT-60SA, and the golden flat-top averages and the UI traces include them).
 describe('magnetic 0D: recorded diagnostics describe the recorded state', () => {
   const Y_KEYS = ['Te', 'Ti', 'ne', 'P_fus', 'P_rad', 'P_brems', 'W'];
   const compare = (r: Run, frames: HistoryFrame[]) => {
@@ -278,12 +278,14 @@ describe('magnetic 0D: recorded diagnostics describe the recorded state', () => 
     compare(r, r.H.filter((f) => !ev.has(f)));
   });
 
-  // DIII-D (not ITER): ITER has no ELMs in its first 3 s and, since ws2b, sawtooth crashes no longer
-  // change the state, so only a run with an ELM at t < 3 s still has frames to compare.
-  it.fails('frames recorded at ELM / sawtooth events (BUG(ws2a): pre-crash diagnostics)', () => {
-    const r = run('DIIID', 3);
+  // DIII-D and MAST-U (not ITER): ITER has no ELMs in its first 3 s and, since ws2b, sawtooth crashes no
+  // longer change the state, so only runs with ELMs at t < 2–3 s have crash frames to compare.
+  it.each([['DIIID', 3], ['MASTU', 2]] as [string, number][])('frames recorded at ELM / sawtooth events (%s): the diagnostics describe the post-crash state', (id, tEnd) => {
+    const r = run(id, tEnd);
     const frames = eventFrames(r);
-    expect(frames.length).toBeGreaterThan(0);
+    expect(frames.length).toBeGreaterThan(5);
+    // some of them are ELM crash frames, which change y: they are the ones the pre-crash cache got wrong
+    expect(r.events.filter((e) => e.kind === 'ELM').length).toBeGreaterThan(0);
     compare(r, frames);
   });
 });

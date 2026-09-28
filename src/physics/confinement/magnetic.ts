@@ -569,6 +569,17 @@ export class MagneticModel implements SimModel {
     return Math.max(0.7, 1 - 0.25 * Math.min(bp, 1.2));
   }
 
+  /**
+   * Re-evaluates the cache that diagnostics() reads (lastDiag) at a state that postStep() has just
+   * changed. rhs() also stores τ_E for the sawtooth timing later in postStep(), which must keep
+   * the value of the step's own last evaluation, so that one is put back.
+   */
+  private refreshDiagnostics(t: number, y: Float64Array): void {
+    const tauE = this.tauE_last;
+    this.rhs(t, y, new Float64Array(NSTATE));
+    this.tauE_last = tauE;
+  }
+
   diagnostics(t: number, y: Float64Array): Record<string, number> {
     const L = this.lastDiag;
     if (!L.Te) this.rhs(t, y, new Float64Array(NSTATE));
@@ -662,6 +673,9 @@ export class MagneticModel implements SimModel {
           // ELM parçacık da atar (~%1 n; pedestal yoğunluğunun birkaç %'i — Loarte 2003)
           y[IDX.na] *= 1 - frac * 0.3; y[IDX.nb] *= 1 - frac * 0.3; y[IDX.nZ] *= 1 - frac * 0.6; y[IDX.nHe] *= 1 - frac * 0.3;
           ev.push({ t, kind: 'ELM', msg: `Type-I ELM: ΔW = ${(frac * W / 1e6).toFixed(2)} MJ`, value: frac * W / 1e6 });
+          // the frame recorded after this step must describe the post-crash y (SimModel.diagnostics), not the cached rhs() of the pre-crash state;
+          // evaluated here, before a scheduled end of the shot can switch the heating off below (phase 'ended')
+          this.refreshDiagnostics(t, y);
           this.tNextELM = t + (1 / f) * (0.7 + 0.6 * this.rng.next());
         }
       } else { this.elmPartRate = 0; }

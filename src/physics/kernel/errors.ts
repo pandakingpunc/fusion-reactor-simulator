@@ -41,3 +41,16 @@ export class NonFiniteStateError extends SimulationError {
     this.t = t; this.h = h; this.index = index; this.value = value;
   }
 }
+
+/**
+ * A SimModel does not meet the kernel's contract: it provides neither its own step() nor the
+ * rhs() and integratorOpts the Dormand–Prince stepper needs.
+ */
+export class ModelContractError extends SimulationError {
+  /** the model's method */
+  readonly method: unknown;
+  constructor(method: unknown, detail: string) {
+    super(`model '${String(method)}' does not meet the SimModel contract: ${detail}`);
+    this.method = method;
+  }
+}

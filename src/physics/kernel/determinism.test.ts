@@ -12,7 +12,7 @@ import { canonicalString } from './canonical';
 import { UnknownMethodError } from './errors';
 import { runFingerprint } from './fingerprint';
 import {
-  Run, advanceRandomly, applyRandomControls, digestOf, expectSameRun, normalizeRng, presetCfg, referenceRun, rewindAt, runChunked,
+  Run, advanceRandomly, applyRandomControls, digestOf, expectSameRun, normalizeRng, presetCfg, referenceRun, rewindAt, runChunked, tick,
 } from './testkit';
 
 const SCHEDULES = 20;
@@ -28,10 +28,13 @@ const CHUNK_CASES: [string, string, number?][] = [
 
 describe('chunk invariance: any advance() schedule equals runAll() bitwise', () => {
   for (const [label, id, tEnd] of CHUNK_CASES) {
-    it(`${label}: ${SCHEDULES} seeded random chunk schedules`, () => {
+    it(`${label}: ${SCHEDULES} seeded random chunk schedules`, async () => {
       const cfg = presetCfg(id, tEnd);
       const ref = referenceRun(cfg);
-      for (let s = 1; s <= SCHEDULES; s++) expectSameRun(runChunked(cfg, 1000 + s), ref, `${id} schedule ${s}`);
+      for (let s = 1; s <= SCHEDULES; s++) {
+        expectSameRun(runChunked(cfg, 1000 + s), ref, `${id} schedule ${s}`);
+        await tick();
+      }
     }, 120000);
   }
 
@@ -51,13 +54,15 @@ describe('chunk invariance: any advance() schedule equals runAll() bitwise', () 
 describe('exact rewind', () => {
   /** presets whose model checkpoint (saveInternal) is complete */
   for (const [id, tEnd] of [['JET'], ['DIIID', 2], ['NIF'], ['Z'], ['TAE'], ['MIRROR']] as [string, number?][]) {
-    it(`${id}: rewind at 25/50/75 % and replay equals the uninterrupted run bitwise`, () => {
+    it(`${id}: rewind at 25/50/75 % and replay equals the uninterrupted run bitwise`, async () => {
       const cfg = presetCfg(id, tEnd);
       const ref = normalizeRng(referenceRun(cfg));
       for (const p of [0.25, 0.5, 0.75]) {
         const sim = rewindAt(cfg, p, 77);
+        await tick();
         advanceRandomly(sim, 78);
         expectSameRun(normalizeRng(sim), ref, `${id} rewound at ${p * 100} %`);
+        await tick();
       }
     }, 120000);
   }
@@ -66,19 +71,22 @@ describe('exact rewind', () => {
   // warning issued before the rewind point is not issued again after it: the event list is bitwise
   // the same as well as the physics. (Regression test for the pin flipped by the ws2b merge.)
   for (const [id, tEnd] of [['ITER', 30], ['W7X']] as [string, number?][]) {
-    it(`${id}: rewind at 25/50/75 % replays the run and its event list bitwise`, () => {
+    it(`${id}: rewind at 25/50/75 % replays the run and its event list bitwise`, async () => {
       const cfg = presetCfg(id, tEnd);
       const ref = normalizeRng(referenceRun(cfg));
       for (const p of [0.25, 0.5, 0.75]) {
         const sim = rewindAt(cfg, p, 91);
+        await tick();
         advanceRandomly(sim, 92);
         expectSameRun(normalizeRng(sim), ref, `${id} rewound at ${p * 100} %`);
+        await tick();
       }
     }, 120000);
 
-    it(`${id}: rewind at 50 % replays the event list bitwise (the model checkpoints its warning flags)`, () => {
+    it(`${id}: rewind at 50 % replays the event list bitwise (the model checkpoints its warning flags)`, async () => {
       const cfg = presetCfg(id, tEnd);
       const sim = rewindAt(cfg, 0.5, 93);
+      await tick();
       advanceRandomly(sim, 94);
       expectSameRun(normalizeRng(sim), normalizeRng(referenceRun(cfg)), `${id} rewound at 50 %`);
     }, 120000);
@@ -126,12 +134,13 @@ describe('exact rewind', () => {
     ['JET at B0 = 30 T (magnet quench at t = 0)', () => ({ ...presetCfg('JET'), B0: 30 }) as ReactorConfig],
   ];
   for (const [label, mk] of ENDED) {
-    it(`${label}: rewinding to the final frame and running again changes nothing, report included`, () => {
+    it(`${label}: rewinding to the final frame and running again changes nothing, report included`, async () => {
       const cfg = mk();
       const ref = new Simulation(cfg);
       const refReport = canonicalString(ref.runAll());
       const term = ref.model.terminated;
       expect(term).not.toBeNull();
+      await tick();
       const sim = new Simulation(cfg);
       sim.runAll();
       sim.rewindTo(sim.history.length - 1);
@@ -145,7 +154,7 @@ describe('exact rewind', () => {
     }, 60000);
   }
 
-  it('a disrupted shot rewound before, at and after the disruption replays the physics and the report bitwise', () => {
+  it('a disrupted shot rewound before, at and after the disruption replays the physics and the report bitwise', async () => {
     const cfg = { ...presetCfg('JET'), n_target: 3e20 } as ReactorConfig;
     const ref = new Simulation(cfg);
     const refReport = canonicalString(ref.runAll());
@@ -160,6 +169,7 @@ describe('exact rewind', () => {
       advanceRandomly(sim, 160 + i);
       expect(canonicalString(sim.report()), `report after a rewind to frame ${i}`).toBe(refReport);
       expectSameRun(normalizeRng(sim), normalizeRng(ref), `disrupted JET rewound to frame ${i} of ${n}`);
+      await tick();
     }
   }, 60000);
 
@@ -180,13 +190,15 @@ describe('exact rewind', () => {
 
 describe('actuator log', () => {
   for (const [id, tEnd] of [['JET'], ['ITER', 30], ['TAE']] as [string, number?][]) {
-    it(`${id}: replaying the log of a run with random interventions reproduces it bitwise`, () => {
+    it(`${id}: replaying the log of a run with random interventions reproduces it bitwise`, async () => {
       const cfg = presetCfg(id, tEnd);
       const sim = new Simulation(cfg);
       applyRandomControls(sim, 31, 0.25);
       expect(sim.actuatorLog.length).toBeGreaterThan(3);
+      await tick();
       const plain = referenceRun(cfg);
       expect(digestOf(sim)).not.toBe(plain.digest); // the interventions did change the run
+      await tick();
       const replay = Simulation.replay(cfg, sim.actuatorLog);
       expectSameRun(replay, sim, `${id} replay`);
       expect(replay.actuatorLog).toEqual(sim.actuatorLog);
@@ -210,7 +222,7 @@ describe('actuator log', () => {
     expect(sim.actuatorLog[0].patch.P_NBI_MW).toBe(20);
   });
 
-  it('rewind truncates the log; the log of the final branch replays the final run', () => {
+  it('rewind truncates the log; the log of the final branch replays the final run', async () => {
     const cfg = presetCfg('JET');
     const sim = new Simulation(cfg);
     sim.advance(1.0);
@@ -226,6 +238,7 @@ describe('actuator log', () => {
     advanceRandomly(sim, 55);
     const log = sim.actuatorLog;
     expect(log.map((e) => Object.keys(e.patch)[0])).toEqual(['P_NBI_MW', 'H98']);
+    await tick();
     const replay = Simulation.replay(cfg, log);
     expectSameRun(normalizeRng(replay), normalizeRng(sim), 'JET replay of the final branch');
   }, 60000);

@@ -462,7 +462,8 @@ export class MagneticModel implements SimModel {
     // ---- parçacık dengesi ----
     const tau_p = Math.max(c.transport.tau_p_over_tau_E * tauE, 1e-3);
     const tau_He = Math.max(c.transport.tau_He_over_tau_E * tauE, 1e-3);
-    // ELM/sawtooth parçacık atımı τ_p ve τ_He'nin (zaman-ortalamalı) PARÇASIdır: sürekli kaybı o kadar azalt
+    // ELM parçacık atımı τ_p ve τ_He'nin (zaman-ortalamalı) PARÇASIdır: sürekli kaybı o kadar azalt
+    // (testere dişi çöküşü 0D'de parçacık atmaz; ölçeklemeler onu zaten içerir)
     const lossP = Math.max(1 / tau_p - this.elmPartRate, 0.3 / tau_p);
     const lossHe = Math.max(1 / tau_He - this.elmPartRate, 0.3 / tau_He);
     // yanma: a+b kanalı 1 a + 1 b, a+a kanalı 2 a tüketir (D-D yakıtında iki yuvadan oranla);

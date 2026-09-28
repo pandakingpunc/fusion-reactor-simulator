@@ -156,8 +156,9 @@ export function pLH_threshold(nbar: number, B: number, S: number, M: number, Ip_
 }
 
 /**
- * Elektron-iyon sıcaklık eşitlenme süresi (Spitzer; NRL Formulary):
+ * Elektron-iyon sıcaklık eşitlenme süresi (Spitzer; NRL Formulary), tek iyon türü:
  *  ν_ie = 3.2e-9 · Z² · lnΛ / (μ · T_e[eV]^1.5) · n_e[cm^-3]  [s^-1]  (enerji eşitlenme hızı)
+ * @deprecated Çok türlü plazma için equilibrationRate (Σ n_j Z_j²/A_j, hesaplanan lnΛ); 0D model onu kullanır.
  */
 export function tauEquilibration(ne: number, Te_keV: number, mu_amu: number, Zeff: number, lnLambda = 17): number {
   const ne_cm3 = ne * 1e-6;

@@ -61,10 +61,14 @@ interface MainRun { sim: Simulation; model: ProfileModel; report: ShotReport; av
 /** ITER 1.5D: çöküş kancaları + t0 = 0.75·t_son'da 1.5 s'lik 2 ms örneklemeli pencere */
 async function runIter15(): Promise<MainRun> {
   const t0 = performance.now();
-  const sim = new Simulation(ITER_15D);
+  const tEnd = ITER_15D.t_end; // = ProfileModel.tEnd
+  const tz = 0.75 * tEnd, dz = 1.5, dtz = 0.002;
+  // The v4 kernel is chunk invariant: advance() ends on integrator step boundaries only. The 2 ms
+  // zoom grid (tz included) is therefore passed as breakpoints, so steps end on it and each
+  // advance(dtz) from one grid point stops at the next (see SimulationOptions.breakpoints).
+  const zoomGrid = Array.from({ length: Math.round(dz / dtz) + 1 }, (_, k) => tz + k * dtz);
+  const sim = new Simulation(ITER_15D, { breakpoints: zoomGrid });
   const model = sim.model as ProfileModel;
-  const tEnd = model.tEnd;
-  const tz = 0.75 * tEnd, dz = 1.5;
   let saw: CrashRecord | undefined, elm: CrashRecord | undefined;
   model.crashHook = (kind, t, before, after) => {
     if (kind === 'sawtooth' && !saw && t > 0.5 * tEnd) saw = { t, before, after };
@@ -75,7 +79,7 @@ async function runIter15(): Promise<MainRun> {
   while (!sim.done) {
     if (!zoomDone && sim.t >= tz - 1e-9) {
       while (sim.t < tz + dz - 1e-9 && !sim.done) {
-        sim.advance(0.002);
+        sim.advance(dtz);
         const d = sim.model.diagnostics(sim.t, sim.y);
         zoom.t.push(sim.t); zoom.W.push(d.W); zoom.Tped.push(d.Tped);
       }

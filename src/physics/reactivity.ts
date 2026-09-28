@@ -2,7 +2,7 @@
  * Füzyon reaktivitesi <σv>(T) — Maxwell dağılımı.
  *
  * Kaynak: H.-S. Bosch & G.M. Hale, "Improved formulas for fusion cross-sections
- * and thermal reactivities", Nuclear Fusion 34 (1994) 611, Tablo VII.
+ * and thermal reactivities", Nucl. Fusion 32 (1992) 611, Tablo VII.
  *   <σv> = C1 · θ · sqrt(ξ / (m_r c² T³)) · exp(−3ξ)      [cm³/s], T [keV]
  *   θ = T / (1 − T(C2 + T(C4 + T·C6)) / (1 + T(C3 + T(C5 + T·C7))))
  *   ξ = (B_G² / (4θ))^(1/3)
@@ -21,7 +21,7 @@ interface BHCoeffs {
   Tmax: number;
 }
 
-/** Bosch-Hale 1994, Tablo VII */
+/** Bosch-Hale 1992, Tablo VII */
 const BH: Record<'DT' | 'DD_pT' | 'DD_nHe3' | 'DHe3', BHCoeffs> = {
   // T(d,n)4He
   DT: {
@@ -79,7 +79,7 @@ export const sigmav = {
 };
 
 /**
- * Bosch-Hale 1994 Tablo IV — tesir kesiti:
+ * Bosch-Hale 1992 Tablo IV — tesir kesiti:
  *   σ(E) = S(E) / (E · exp(B_G/√E))   [mb],  E = kütle-merkezi enerjisi [keV]
  *   S(E) = (A1 + E(A2 + E(A3 + E(A4 + E A5)))) / (1 + E(B1 + E(B2 + E(B3 + E B4))))
  * Geçerlilik: D-T 0.5–550 keV, D-D 0.5–5000 keV, D-He3 0.3–900 keV.

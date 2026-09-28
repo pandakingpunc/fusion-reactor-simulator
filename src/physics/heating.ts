@@ -59,16 +59,6 @@ export function slowingDownTime(Te_keV: number, ne: number, A_fast: number, Z_fa
   return (tau_se / 3) * Math.log(1 + Math.pow(E0_keV / Math.max(Ec_keV, 1e-6), 1.5));
 }
 
-export interface HeatingConfig {
-  P_NBI: number; // W
-  E_NBI_keV: number; // demet enerjisi (D için ~100 keV JET, 1 MeV ITER)
-  P_ICRH: number; // W
-  P_ECRH: number; // W
-  /** ICRH iyon payı (azınlık ısıtma ~0.7 iyon; APPROXIMATION) */
-  f_ICRH_ion: number;
-  /** NBI kırılma (shine-through) kaybı, düşük yoğunlukta artar */
-}
-
 /** NBI shine-through — APPROXIMATION: exp(−n_e a σ_stop) ; σ_stop ~ 1e-20 m² /(E/100keV)^0.5 */
 export function nbiShineThrough(ne: number, a: number, E_keV: number): number {
   const sigma = 4e-20 / Math.sqrt(Math.max(E_keV, 10) / 100);

@@ -19,15 +19,6 @@ export const C = {
   me_c2_keV: 510.99895, // keV
 } as const;
 
-/** Füzyon reaksiyon enerjileri (MeV) — kaynak: Bosch & Hale 1994, Tablo I ve NRL Formulary */
-export const FUSION = {
-  DT: { Etot: 17.589, Echarged: 3.5, Eneutron: 14.1, products: 'He4 (3.5 MeV) + n (14.1 MeV)' },
-  DD_pT: { Etot: 4.03, Echarged: 4.03, Eneutron: 0, products: 'T (1.01 MeV) + p (3.02 MeV)' },
-  DD_nHe3: { Etot: 3.27, Echarged: 0.82, Eneutron: 2.45, products: 'He3 (0.82 MeV) + n (2.45 MeV)' },
-  DHe3: { Etot: 18.35, Echarged: 18.35, Eneutron: 0, products: 'He4 (3.6 MeV) + p (14.7 MeV)' },
-  pB11: { Etot: 8.68, Echarged: 8.68, Eneutron: 0, products: '3 He4 (8.68 MeV total)' },
-} as const;
-
 /** Safsızlık iyonlarının atom numaraları ve kütleleri */
 export const IMPURITIES = {
   Be: { Z: 4, A: 9.012, name: 'Beryllium' },

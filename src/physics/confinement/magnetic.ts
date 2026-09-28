@@ -18,7 +18,7 @@
  * APPROXIMATION: 0D. Profiller n∝(1−ρ²)^αn, T∝(1−ρ²)^αT ile sabit; pedestal, Shafranov kayması,
  * türbülans ve MHD sadece τ_E ölçeklemesi + eşik olayları (ELM/sawtooth/NTM/disruption) ile.
  */
-import { Geometry, plasmaVolume, plasmaSurface, crossSectionArea, q95 as q95fn, profileIntegral, poloidalField } from '../geometry';
+import { Geometry, plasmaVolume, plasmaSurface, crossSectionArea, q95 as q95fn, profileIntegral } from '../geometry';
 import { FUEL_CHANNELS, FUEL_SPECIES, beamTargetReactivity } from '../reactivity';
 import { bremsstrahlung, synchrotronTotal, coolingRate, meanCharge } from '../radiation';
 import { tauIPB98y2, tauITER89P, tauISS04, tauSTValovic, pLH_Martin, tauEquilibration } from '../transport';
@@ -28,7 +28,6 @@ import { disruptionReport, DisruptionCause, DISRUPTION_LABELS, DISRUPTION_FIXES 
 import { checkMagnet, MAGNET_TECH, divertorHeatFlux, divertorHeatFluxStellarator, neutronWallLoad } from '../engineering';
 import { buildMagneticReport, LAWSON_DT } from './magneticReport';
 import { RNG } from '../rng';
-import { C } from '../constants';
 import { U } from '../units';
 import { DiagSpec, HistoryFrame, MagneticConfig, ShotReport, SimEvent, SimModel, TerminationInfo } from '../types';
 
@@ -418,7 +417,7 @@ export class MagneticModel implements SimModel {
     const cZ_target = this.ctrl.cZ;
     const tauZ = tau_p * this.tauW_accum;
     const P_SOL = Math.max(P_heat - rad.P_rad, 0);
-    const S_W = c.impurity.species === 'W' ? (c.impurity.W_source_frac * P_SOL) / (U.keV_to_J(5000) * V) : 0; // 5 keV başına 1 W atomu·frac
+    const S_W = c.impurity.species === 'W' ? (c.impurity.W_source_frac * P_SOL) / (U.keV_to_J(5000) * V) : 0; // APPROXIMATION: P_SOL başına 1 W atomu / 5 MeV (× W_source_frac)
     d[IDX.nZ] = (cZ_target * ne) / tau_p - y[IDX.nZ] * Math.max(1 / tauZ - 2 * this.elmPartRate, 0.3 / tauZ) + S_W;
     if (this.phase !== 'normal') { d[IDX.na] = -y[IDX.na] / 0.05; d[IDX.nb] = -y[IDX.nb] / 0.05; d[IDX.nHe] = -y[IDX.nHe] / 0.05; d[IDX.nZ] = 0; d[IDX.Sfuel] = -y[IDX.Sfuel] / 0.01; }
 

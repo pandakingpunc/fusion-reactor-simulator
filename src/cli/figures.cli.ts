@@ -33,15 +33,23 @@ import { computeVerification, figVerification, slope } from '../plot/figures/ver
 import { CrashRecord, ElmZoom, figMHD } from '../plot/figures/mhd';
 import { figScan } from '../plot/figures/scan';
 import { defaultThreads, runPool } from './pool';
+import { defineCli, parseArgsOrExit } from './args';
 import type { RunResult, RunTask } from './presetRunner.worker';
 
 const ALL = ['equilibrium', 'profiles', 'timetraces', 'popcon', 'validation', 'lawson', 'verification', 'mhd', 'scan'] as const;
 type FigId = (typeof ALL)[number];
 
-function arg(name: string): string | undefined {
-  const i = process.argv.indexOf(name);
-  return i >= 0 ? process.argv[i + 1] : undefined;
-}
+const CLI = defineCli({
+  name: 'npm run figures --',
+  summary: 'Generates the paper figures (SVG + PDF) and captions.md from the ITER 1.5D shot and pooled validation/scan runs.',
+  flags: {
+    out: { type: 'string', default: 'docs/figures', metavar: 'DIR', help: 'output folder' },
+    only: { type: 'list', choices: ALL, metavar: 'FIG,…', help: 'only these figures' },
+    threads: { type: 'int', min: 1, help: 'worker threads (default: cores − 1)' },
+    scan: { type: 'int', default: 11, min: 3, max: 101, help: 'scan grid size N (N×N runs)' },
+    formats: { type: 'list', default: ['svg', 'pdf'], choices: ['svg', 'pdf'], help: 'output formats' },
+  },
+});
 const deflate = (d: Uint8Array) => new Uint8Array(deflateSync(d, { level: 9 }));
 const tick = () => new Promise<void>((r) => setImmediate(r));
 /** mathtext etiketi → düz metin (markdown tablosu için) */
@@ -91,12 +99,13 @@ function save(fig: Figure, name: string, out: string, formats: string[], written
 }
 
 async function main() {
-  const out = resolve(arg('--out') ?? 'docs/figures');
-  const only = (arg('--only')?.split(',') as FigId[] | undefined) ?? [...ALL];
+  const args = parseArgsOrExit(CLI);
+  const out = resolve(args.out);
+  const only = (args.only as FigId[] | undefined) ?? [...ALL];
   const want = (f: FigId) => only.includes(f);
-  const threads = Number(arg('--threads') ?? defaultThreads());
-  const NS = Math.max(3, Number(arg('--scan') ?? 11));
-  const formats = (arg('--formats') ?? 'svg,pdf').split(',');
+  const threads = args.threads ?? defaultThreads();
+  const NS = args.scan;
+  const formats = args.formats;
   mkdirSync(out, { recursive: true });
   const T0 = performance.now();
 

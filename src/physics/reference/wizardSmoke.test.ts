@@ -156,15 +156,14 @@ describe('blank wizard fields', () => {
     expectSameRun(oneStep(lcfs(undefined, undefined)), oneStep(lcfs(g.kappa, g.delta)));
   });
 
-  // BUG(ws2a): see BLANK_DEFAULTS_FIXED in src/testing/knownBugs.ts. On v4/integration a blank number
-  // input stores undefined and RUN is allowed for fields with a model default (`def`), but ProfileModel
-  // lets the undefined override DEFAULT_PROFILE_SETTINGS. One output step of each single-field blank over
-  // every magnetic preset (0D and 1.5D; v4/integration af38dbe): 131 of 261 fail — "solveBlockTridiag2:
-  // tekil blok" for χ shape, χ_i/χ_e, D/χ_e, stiffness, R/L_T crit, ECRH ρ and width, ICRH width, NBI
-  // R_tan, n_sep; "Invalid array length" for N_ρ; T_ped = undefined for the pedestal width. The other
-  // `def` fields run with undefined in place of the default. Same on this lane's base 3d04e96.
-  // Reproduction: setPath(ITER15, 'profiles.DoverChi', undefined), then advance one output step.
-  pinUntil(BLANK_DEFAULTS_FIXED)('BUG(ws2a) blank 1.5D fields with a model default run exactly as that default (MAST-U 1.5D)', () => {
+  // Was BUG(ws2a), fixed in profiles/context.ts (see BLANK_DEFAULTS_FIXED in src/testing/knownBugs.ts). A
+  // blank number input stores undefined and RUN is allowed for fields with a model default (`def`);
+  // ProfileModel used to let the undefined override DEFAULT_PROFILE_SETTINGS: one output step of each
+  // single-field blank over every magnetic preset (0D and 1.5D; v4/integration af38dbe) failed 131 of 261
+  // times — "solveBlockTridiag2: tekil blok" for χ shape, χ_i/χ_e, D/χ_e, stiffness, R/L_T crit, ECRH ρ and
+  // width, ICRH width, NBI R_tan, n_sep; "Invalid array length" for N_ρ; T_ped = undefined for the pedestal
+  // width. Reproduction: setPath(ITER15, 'profiles.DoverChi', undefined), then advance one output step.
+  pinUntil(BLANK_DEFAULTS_FIXED)('blank 1.5D fields with a model default run exactly as that default (MAST-U 1.5D; was BUG(ws2a))', () => {
     const fields = wizardFields('spherical_tokamak').filter((f) => (f.type ?? 'number') === 'number' && f.def !== undefined);
     expect(fields.length).toBeGreaterThan(10);
     const base = setPath(presetCfg('MASTU'), 'fidelity', '1.5D');

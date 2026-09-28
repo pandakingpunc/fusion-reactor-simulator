@@ -20,11 +20,11 @@ import { DormandPrince } from '../physics/integrator';
 export const INTEGRATOR_FIXED = typeof (DormandPrince.prototype as unknown as Record<string, unknown>).snapshot === 'function';
 
 /**
- * BUG(ws2a): a blank 1.5D profile field that has a model default (FieldDef.def) is not replaced by that
- * default. ProfileModel builds its settings as `{ ...DEFAULT_PROFILE_SETTINGS, …, ...cfg.profiles }`
- * (src/physics/profiles/model.ts; profiles/context.ts on v4/ws3), so an explicit `undefined` — what the
- * wizard stores for a blank input on v4/integration (ws10 a146877), and what setPath writes — overrides
- * the default. Pinned in wizardSmoke.test.ts; while it stands, the wizard case generator does not blank
- * these fields. Set to true in the commit that fixes it.
+ * BUG(ws2a): a blank 1.5D profile field that has a model default (FieldDef.def) was not replaced by that
+ * default. ProfileModel built its settings as `{ ...DEFAULT_PROFILE_SETTINGS, …, ...cfg.profiles }`
+ * (src/physics/profiles/context.ts), so an explicit `undefined` — what the wizard stores for a blank
+ * input on v4/integration (ws10 a146877), and what setPath writes — overrode the default. Fixed by
+ * profileSettings() ignoring undefined and null settings; the pin in wizardSmoke.test.ts is now a
+ * regression test and the wizard case generator blanks these fields again.
  */
-export const BLANK_DEFAULTS_FIXED = false;
+export const BLANK_DEFAULTS_FIXED = true;

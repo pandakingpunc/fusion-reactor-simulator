@@ -12,6 +12,8 @@ import { N_SCALARS, SCALAR_NAMES, StateLayout } from './state';
 import { CELL_ARRAYS, FACE_ARRAYS, allocateWorkArrays } from './work';
 import { createTransportModel } from './transport';
 import { ScalingTransport } from './transport/scaling';
+import { DEFAULT_PROFILE_SETTINGS } from './defaults';
+import { profileSettings } from './context';
 import type { ProfileContext, StepConstants } from './context';
 import type { ProfileState } from './state';
 import type { CheckpointAux, CheckpointRecord } from './checkpoint';
@@ -62,6 +64,33 @@ describe('state layout and work arrays', () => {
     const w = allocateWorkArrays(7);
     for (const k of CELL_ARRAYS) expect(w[k].length).toBe(7);
     for (const k of FACE_ARRAYS) expect(w[k].length).toBe(8);
+  });
+});
+
+describe('profile settings', () => {
+  it('a blank setting (undefined or null) leaves the default in force, a value overrides it', () => {
+    const blank = { nRho: undefined, DoverChi: undefined, pedestalWidth: null, chiShape: undefined } as unknown as MagneticConfig['profiles'];
+    const ps = profileSettings(cfg(1, { profiles: { ...blank, stiffness: 3.5, eccdEff: 0 } }));
+    expect(ps.nRho).toBe(DEFAULT_PROFILE_SETTINGS.nRho);
+    expect(ps.DoverChi).toBe(DEFAULT_PROFILE_SETTINGS.DoverChi);
+    expect(ps.pedestalWidth).toBe(DEFAULT_PROFILE_SETTINGS.pedestalWidth);
+    expect(ps.chiShape).toBe(DEFAULT_PROFILE_SETTINGS.chiShape);
+    expect(ps.stiffness).toBe(3.5);
+    expect(ps.eccdEff).toBe(0); // zero is a value, not a blank
+  });
+
+  it('the optional settings without a default stay unset when blank (LCFS shape from the geometry, two-point T_sep)', () => {
+    const ps = profileSettings(cfg(1, { profiles: { lcfsKappa: undefined, lcfsDelta: undefined, Tsep_keV: undefined } }));
+    expect(ps.lcfsKappa).toBeUndefined();
+    expect(ps.lcfsDelta).toBeUndefined();
+    expect(ps.Tsep_keV).toBeUndefined();
+    expect(profileSettings(cfg(1, { profiles: { Tsep_keV: 0.1 } })).Tsep_keV).toBe(0.1);
+  });
+
+  it('the equilibrium update interval follows the shot length unless set', () => {
+    expect(profileSettings(cfg(100)).eqUpdateInterval).toBe(5);
+    expect(profileSettings(cfg(100, { profiles: { eqUpdateInterval: undefined } })).eqUpdateInterval).toBe(5);
+    expect(profileSettings(cfg(100, { profiles: { eqUpdateInterval: 2 } })).eqUpdateInterval).toBe(2);
   });
 });
 

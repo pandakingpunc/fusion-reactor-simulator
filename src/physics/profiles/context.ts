@@ -74,9 +74,16 @@ export interface DisruptionState {
 export interface CrashSnapshot { rho: number[]; Te: number[]; Ti: number[]; ne: number[]; q: number[] }
 export type CrashHook = (kind: 'sawtooth' | 'ELM', t: number, before: CrashSnapshot, after: CrashSnapshot) => void;
 
-/** Settings of a shot: defaults, the interval rule for equilibrium updates, then the user's */
+/**
+ * Settings of a shot: defaults, the interval rule for equilibrium updates, then the user's. A user
+ * setting that is `undefined` (or `null`) is blank, not a value: the setup wizard stores that for
+ * an emptied input, and it leaves the default (or, for the optional settings without one, the
+ * documented "blank" behaviour) in force. Spreading it would overwrite the default with undefined.
+ */
 export function profileSettings(cfg: MagneticConfig): ProfileSettings {
-  return { ...DEFAULT_PROFILE_SETTINGS, eqUpdateInterval: Math.min(Math.max(cfg.t_end / 20, 0.5), 20), ...(cfg.profiles ?? {}) };
+  const user: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(cfg.profiles ?? {})) if (v !== undefined && v !== null) user[k] = v;
+  return { ...DEFAULT_PROFILE_SETTINGS, eqUpdateInterval: Math.min(Math.max(cfg.t_end / 20, 0.5), 20), ...(user as Partial<ProfileSettings>) };
 }
 
 export class ProfileContext {

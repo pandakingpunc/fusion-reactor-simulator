@@ -135,7 +135,10 @@ work as for sources.
 disruption check: `afterStep(ctx, t, st, d, ev)` after every accepted step of the normal phase,
 with the diagnostics `d` of that step. A model that changes `y` sets `ctx.diagStale = true` (the
 next frame re-evaluates the diagnostics) and may cap `ctx.dt`; it conserves what it claims to
-conserve (the sawtooth crash conserves particles and electron and ion energy exactly).
+conserve (the sawtooth crash conserves particles and electron and ion energy exactly). A model that
+takes energy out of the thermal plasma between two steps (an ELM crash, a pellet) adds it to
+`ctx.crashE` [J], so that the dW/dt of the loss power counts it as a loss of energy and not as a
+fall in confinement (`acceptStep` takes it off at the next accepted step).
 
 **Checkpointable** (`checkpoint.ts`): every module with state beyond `y` implements `save(rec, aux)`
 and `restore(rec, aux)` (the context part also carries the last diagnostics and, in the quench

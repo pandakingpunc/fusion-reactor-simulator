@@ -3,7 +3,7 @@
  * (enforced by the `Dict` type in tr.ts and by i18n.test.ts).
  *
  * Key prefixes: app.* top bar · run.* run screen · ctrl.* live controls · geom.* geometry summary ·
- * chart.* time chart · field.* wizard fields · err.* drawing errors · rep.* report ·
+ * chart.* time chart · field.* wizard fields · wiz.* wizard · err.* drawing errors · rep.* report ·
  * cmp.* comparison · common.* shared words.
  * Placeholders are written {name} and filled by t(key, params).
  * Physics symbols (P_NBI, T_max, Q_eng …) are not translated and stay in the components.
@@ -110,6 +110,27 @@ export const en = {
   'field.off': 'off',
   'field.outOfRange': 'Outside the recommended range ({min}–{max})',
   'field.empty': 'Empty — no value is passed to the model',
+  'field.required': 'Required — enter a value (the run is blocked while it is empty)',
+
+  'wiz.steps': 'Setup steps',
+  'wiz.cfgName': 'Configuration name',
+  'wiz.back': '◀ Back',
+  'wiz.next': 'Next ▶',
+  'wiz.run': 'RUN ▶',
+  'wiz.presets': 'Presets',
+  'wiz.devices': '{n} devices',
+  'wiz.runPreset': 'Run this preset directly',
+  'wiz.modified': '(modified)',
+  'wiz.methodTitle': 'Confinement method',
+  'wiz.methodNote': 'Each method runs its own physics module. Changing the method loads its reference preset.',
+  'wiz.noSettingsMethod': 'No settings for this method at this step.',
+  'wiz.noSettings': 'No settings at this step.',
+  'wiz.runTitle': 'Run',
+  'wiz.runIntro': 'The simulation runs in a web worker; live charts, cross-section, and POPCON update simultaneously. You can adjust heating/fueling/density sliders while it runs.',
+  'wiz.start': '▶ START SHOT',
+  'wiz.missingTitle': 'Required values are empty',
+  'wiz.missingHint': 'The model has no default for these fields. Enter a value before running:',
+  'wiz.missingBlocked': 'Fill in the empty required fields first: {fields}',
 
   'err.viewTitle': 'This view could not be drawn',
   'err.panelTitle': 'This panel could not be drawn',

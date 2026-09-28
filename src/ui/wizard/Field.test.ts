@@ -30,15 +30,38 @@ const commit = (text: string) => { fireEvent.change(box(), { target: { value: te
 describe('numeric wizard field', () => {
   const def: FieldDef = { path: 'n_target', label: 'Target n_e', unit: '10²⁰ m⁻³', scale: 1e20, min: 0.01, max: 20 };
 
-  it('a blank input yields undefined instead of 0 or NaN', () => {
+  it('a blank input yields undefined instead of 0 or NaN, and a required field says the run is blocked', () => {
     const spy = vi.fn();
     render(React.createElement(Bound, { def, initial: 1.1e20, spy }));
     expect(box().value).toBe('1.1');
+    expect(box().getAttribute('aria-invalid')).toBeNull();
     commit('');
     expect(spy).toHaveBeenCalledTimes(1);
     expect(spy).toHaveBeenLastCalledWith(undefined);
     expect(box().value).toBe('');
-    expect(screen.getByText('Empty — no value is passed to the model')).toBeTruthy();
+    const hint = screen.getByText('Required — enter a value (the run is blocked while it is empty)');
+    expect(hint.className).toBe('hint warn');
+    expect(box().getAttribute('aria-invalid')).toBe('true');
+  });
+
+  it('where blank is a documented setting, the field keeps its own hint without a warning', () => {
+    const tsep: FieldDef = { path: 'profiles.Tsep_keV', label: '1.5D · separatrix T_e', unit: 'keV', min: 0.02, max: 0.5, optional: true, hint: 'Blank = two-point model (Eich λ_q)' };
+    const spy = vi.fn();
+    render(React.createElement(Bound, { def: tsep, initial: undefined, spy }));
+    expect(box().value).toBe('');
+    const hint = () => screen.getByText('Blank = two-point model (Eich λ_q)');
+    expect(hint().className).toBe('hint ');
+    expect(box().getAttribute('aria-invalid')).toBeNull();
+    commit('0,1');
+    expect(spy).toHaveBeenLastCalledWith(0.1);
+    commit('');
+    expect(spy).toHaveBeenLastCalledWith(undefined);
+    expect(hint().className).toBe('hint ');
+  });
+
+  it('an optional field without a hint says plainly that nothing is passed', () => {
+    render(React.createElement(Bound, { def: { ...def, optional: true }, initial: undefined, spy: vi.fn() }));
+    expect(screen.getByText('Empty — no value is passed to the model').className).toBe('hint ');
   });
 
   it('a blank input on a field with a documented default shows the default again', () => {

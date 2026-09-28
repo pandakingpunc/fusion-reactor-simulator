@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { FieldDef } from './schema';
+import { FieldDef, isRequired } from './schema';
 import { useT } from '../state/store';
 
 interface Props { def: FieldDef; value: unknown; onChange: (v: unknown) => void }
@@ -62,14 +62,21 @@ function NumberField({ def, value, onChange }: { def: FieldDef; value: number | 
     setRev((r) => r + 1);
   };
   const out = shown !== undefined && ((def.min !== undefined && shown < def.min) || (def.max !== undefined && shown > def.max));
-  const hint = out ? t('field.outOfRange', { min: def.min!, max: def.max! }) : shown === undefined ? t('field.empty') : def.hint;
+  // blank: a required field blocks the run (warning); where blank is a documented setting, its hint explains it
+  const missing = shown === undefined && isRequired(def);
+  const warn = out || missing;
+  const hint = out ? t('field.outOfRange', { min: def.min!, max: def.max! })
+    : missing ? t('field.required')
+    : shown === undefined ? def.hint ?? t('field.empty')
+    : def.hint;
   return (
     <label className="field">
       <span className="lbl">
         <span>{def.label}</span>
         {def.unit && <span className="unit">{def.unit}</span>}
       </span>
-      <input type="text" inputMode="decimal" className="num" value={text} style={out ? { borderColor: 'var(--warn)' } : undefined}
+      <input type="text" inputMode="decimal" className="num" value={text} style={warn ? { borderColor: 'var(--warn)' } : undefined}
+        aria-invalid={missing || undefined} aria-required={isRequired(def) || undefined}
         onChange={(e) => setText(e.target.value)} onBlur={(e) => commit(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') commit((e.target as HTMLInputElement).value); }} />
       {def.min !== undefined && def.max !== undefined && (
@@ -77,7 +84,7 @@ function NumberField({ def, value, onChange }: { def: FieldDef; value: number | 
           value={shown !== undefined ? Math.min(def.max, Math.max(def.min, shown)) : def.min}
           onChange={(e) => { const v = parseFloat(e.target.value); setText(fmtEdit(v)); onChange(v * scale); }} />
       )}
-      {hint && <span className={`hint ${out || shown === undefined ? 'warn' : ''}`}>{hint}</span>}
+      {hint && <span className={`hint ${warn ? 'warn' : ''}`}>{hint}</span>}
     </label>
   );
 }

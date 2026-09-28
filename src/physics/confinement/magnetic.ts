@@ -455,7 +455,10 @@ export class MagneticModel implements SimModel {
     // The τ_E scaling contains the ELM losses: their average leaves in the discrete crashes of postStep
     // and is taken off the continuous conduction. Diagnostics: P_transport = W/τ_E (all of it),
     // P_cond = the continuous conduction applied here, P_ELM = the ELM average applied here.
-    const P_transport = W / tauE;
+    // A trial stage of a stiff step can have W < 0 (a cold, radiating post-disruption plasma); it
+    // conducts nothing, as when the conduction was clipped at zero. A negative loss there fed the
+    // stage error and held the current quench at ~2e-5 s steps (DEMO with 4.6 % W: 18 000 steps).
+    const P_transport = Math.max(W, 0) / tauE;
     const P_ELM = this.elmsActive() ? ELM_POWER_FRACTION * P_transport : 0;
     const P_cond_total = P_transport - P_ELM;
     const P_cond_e = P_cond_total * (y[IDX.We] / Math.max(W, 1));

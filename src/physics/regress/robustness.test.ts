@@ -9,13 +9,15 @@
  *    step into a thermal quench, h ≈ 10 τ_TQ) reach W ~ 1e100 J; P_sync ∝ T_e^2 then overflowed, the
  *    error norm became NaN and the Dormand–Prince controller of this branch turned it into a NaN step
  *    size (t = NaN, the shot never ended). The temperatures are now evaluated within [0.01, 1e4] keV.
+ *  - A trial stage with W < 0 conducts nothing (the loss used to be clipped at zero): a negative
+ *    conduction on such stages held the current quench of a cold plasma at ~2e-5 s steps.
  *  - ITER with p-¹¹B fuel ends in an orderly radiative-collapse disruption: the density rises towards
  *    its target, the boron-dominated bremsstrahlung and the Be/Ar line radiation exceed the heating
  *    once T_e falls below 2 keV, and the thermal and current quench complete.
  */
 import { describe, expect, it } from 'vitest';
 import { MagneticModel } from '../confinement/magnetic';
-import { ITER } from '../presets';
+import { DEMO, ITER } from '../presets';
 import { Simulation } from '../simulation';
 
 describe('0D magnetic model: finite rates for any finite state', () => {
@@ -52,6 +54,19 @@ describe('0D magnetic model: non-negative state', () => {
     const sim = new Simulation({ ...ITER, fuel: 'pB11', t_end: 30 });
     sim.runAll();
     for (const f of sim.history) f.y.forEach((v, i) => { if (i !== 15 && v < 0) expect.fail(`t = ${f.t}: y[${i}] = ${v}`); });
+  });
+});
+
+describe('0D magnetic model: current quench of a cold, radiating plasma', { timeout: 60_000 }, () => {
+  // DEMO with 4.6 % tungsten (a wizard combination found by lane ws2a's smoke test) disrupts at t = 0;
+  // the current quench then sits at T_e ≈ 10 eV. A negative conduction loss on trial stages with
+  // W < 0 fed the error estimate and held it at ~2e-5 s steps: 18 000 steps for 0.67 s.
+  it('DEMO with 4.6 % W: the quench completes in a few thousand steps', () => {
+    const sim = new Simulation({ ...DEMO, impurity: { ...DEMO.impurity, concentration: 0.0462 } });
+    sim.runAll();
+    expect(sim.events.find((e) => e.kind === 'disruption')!.t).toBeLessThan(0.01);
+    expect(sim.model.terminated?.reason).toMatch(/tungsten/i);
+    expect(sim.nSteps).toBeLessThan(8000);
   });
 });
 

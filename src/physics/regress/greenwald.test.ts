@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { MagneticModel } from '../confinement/magnetic';
-import { greenwaldDensity, lineAverageFactor } from '../limits';
+import { checkLimits, greenwaldDensity, lineAverageFactor } from '../limits';
 import { computePopcon } from '../popcon';
 import { DEMO, ITER } from '../presets';
 
@@ -41,5 +41,20 @@ describe('Greenwald fraction of the 0D model', () => {
   it('POPCON reports the Greenwald limit on its volume-averaged density axis', () => {
     const g = computePopcon(ITER, { nx: 4, ny: 4 });
     expect(g.nG * lineAverageFactor(ITER.transport.alpha_n)).toBeCloseTo(greenwaldDensity(ITER.Ip_MA, ITER.geometry.a), -10);
+  });
+});
+
+// checkLimits is dead code kept as a deprecated export only so that lane ws2a's reference test compiles
+// in either merge order; its Greenwald entry takes the line-averaged density it is given.
+describe('deprecated checkLimits', () => {
+  it('Greenwald entry n̄/n_G for the line-averaged density; flags agree with the normalised values', () => {
+    const nbar = 0.9 * greenwaldDensity(ITER.Ip_MA, ITER.geometry.a);
+    const checks = checkLimits({
+      g: ITER.geometry, B0: ITER.B0, Ip_MA: ITER.Ip_MA, ne: nbar, pressure_Pa: 2e5, P_rad_W: 5e7, P_heat_W: 1.5e8,
+      betaN_limit: 3, q95_limit: 2, greenwald_frac_limit: 1.2, W_conc: 1e-5, W_conc_limit: 1e-4,
+    });
+    expect(checks.map((c) => c.name)).toEqual(['Greenwald', 'Troyon', 'q95', 'Radiative', 'Tungsten']);
+    expect(checks[0].value).toBeCloseTo(0.9 / 1.2, 12);
+    for (const c of checks) expect(c.ok).toBe(c.value < 1);
   });
 });

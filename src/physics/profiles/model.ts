@@ -109,6 +109,9 @@ export const PROFILE_DIAGS: DiagSpec[] = [
 
 type Phase = 'normal' | 'thermal_quench' | 'current_quench' | 'ended';
 
+/** Quantities held fixed over one implicit step (evaluated from the old state) */
+interface StepConstants { P_NBI: number; P_IC: number; P_EC: number; shine: number; btR: Float64Array; Eb: number; Psync: number; S_nbi: number }
+
 /** Profil modelinin kullanılabilir olduğu yapılandırmalar */
 export function supportsProfiles(cfg: MagneticConfig): boolean {
   return cfg.method !== 'stellarator';
@@ -218,6 +221,11 @@ export class ProfileModel implements SimModel {
 
   get currentDt(): number { return this.dt; }
 
+  /**
+   * Switches the transport geometry. The work arrays depend only on N, so they are allocated once
+   * and keep their values; after a swap mid-shot the caller re-evaluates them on the new geometry
+   * (evaluateWorkArrays) before anything reads them.
+   */
   private setGeometry(tg: TransportGeometry): void {
     this.tg = tg;
     this.heat = new HeatSolver(tg);
@@ -228,8 +236,8 @@ export class ProfileModel implements SimModel {
       'Pfus', 'Pchg', 'Pneut', 'Rfus', 'Nfus', 'burnA', 'burnB', 'Pbt', 'PaE', 'PaI', 'PnbiE', 'PnbiI', 'PicE', 'PicI', 'PecE',
       'Poh', 'Pbr', 'Pline', 'Psync', 'Prad', 'dPrad', 'nuEq', 'Qe', 'Qi', 'Le', 'Li', 'Sn', 'sigma', 'jB', 'jbsB', 'jcdB', 'jniB',
       'q', 'nbiDep', 'nbiTmp', 'nbiPart', 'nfast', 'TeIt', 'TiIt', 'neIt', 'chiNeo', 'zero', 'p', 'nuE', 'nuI'];
-    for (const k of names) this.w[k] = new Float64Array(N);
-    for (const k of ['chiE', 'chiI', 'chiEp', 'chiIp', 'D', 'v', 'qF', 'dpsiF', 'IencF', 'alphaF', 'mercF', 'ballF']) this.w[k] = new Float64Array(N1);
+    for (const k of names) this.w[k] ??= new Float64Array(N);
+    for (const k of ['chiE', 'chiI', 'chiEp', 'chiIp', 'D', 'v', 'qF', 'dpsiF', 'IencF', 'alphaF', 'mercF', 'ballF']) this.w[k] ??= new Float64Array(N1);
     this.depEC = gaussianDeposition(tg, this.ps.ecrhRho, this.ps.ecrhWidth);
     this.depIC = gaussianDeposition(tg, 0, this.ps.icrhWidth);
     this.depGas = edgeDeposition(tg, 0.04);
@@ -329,7 +337,7 @@ export class ProfileModel implements SimModel {
 
   // ------------------------------------------------------------------ kaynaklar ve katsayılar
   /** Adım başına sabit tutulan (eski durumdan) büyüklükler */
-  private stepConstants(t: number, Te: Float64Array, Ti: Float64Array, ne: Float64Array, s: Float64Array) {
+  private stepConstants(t: number, Te: Float64Array, Ti: Float64Array, ne: Float64Array, s: Float64Array): StepConstants {
     const c = this.cfg, w = this.w, N = this.N, g = this.tg;
     const fs = FUEL_SPECIES[c.fuel];
     // ısıtma yalnız disruption söndürme fazlarında kesilir ('ended' planlı bitişte son kare tutarlı kalsın)
@@ -756,7 +764,7 @@ export class ProfileModel implements SimModel {
     this.lastK = K;
     return { ok: finite && (conv || dt < 1e-4) && change < 0.35, change };
   }
-  private lastK: { P_NBI: number; P_IC: number; P_EC: number; shine: number; btR: Float64Array; Eb: number; Psync: number; S_nbi: number } | null = null;
+  private lastK: StepConstants | null = null;
 
   private q95(): number {
     const w = this.w, g = this.tg;
@@ -977,7 +985,7 @@ export class ProfileModel implements SimModel {
     const since = t - this.eqTime;
     const due = since >= this.ps.eqUpdateInterval || ((dBp > 0.1 || dLi > 0.05) && since > 0.25 * this.ps.eqUpdateInterval);
     if (!due || this.phase !== 'normal') return;
-    this.updateEquilibrium(y);
+    this.updateEquilibrium(t, y);
     this.eqTime = t;
     this.eqBetaP = d.betaP ?? this.eqBetaP; this.eqLi = d.li ?? this.eqLi;
     this.eqUpdates++;
@@ -986,8 +994,8 @@ export class ProfileModel implements SimModel {
   eqUpdates = 0;
   eqStats = { it: 0, res: 0 };
 
-  /** Taşınım profillerinden (p, I) tablo modunda GS; geometriyi yenile */
-  updateEquilibrium(y: Float64Array): void {
+  /** Taşınım profillerinden (p, I) tablo modunda GS; geometriyi yenile (t: y'nin zamanı) */
+  updateEquilibrium(t: number, y: Float64Array): void {
     const g = this.tg, w = this.w, N = this.N, v = this.views(y);
     const P = this.eq.prof;
     const niB = this.bc.n * (w.ni[N - 1] / Math.max(v.ne[N - 1], 1));
@@ -1019,7 +1027,8 @@ export class ProfileModel implements SimModel {
       if (eq.converged || eq.residual < 1e-4) {
         this.eq = eq;
         this.setGeometry(geometryFromEquilibrium(eq, N, this.geomB));
-        this.currentProfiles(v.psi, Ip);
+        // postStep (ELM, sawtooth) runs next and reads n_i, q, p: evaluate them on the new geometry
+        this.evaluateWorkArrays(t, y);
       }
     } catch {
       /* denge yakınsamazsa önceki geometri korunur */
@@ -1209,13 +1218,7 @@ export class ProfileModel implements SimModel {
       this.diagStale = false;
       const tauPrev = this.lastDiag.tauE ?? 0.1;
       const v = this.views(y);
-      this.composition(v.Te, v.ne, v.s);
-      this.currentProfiles(v.psi, v.s[S.Ip]);
-      const K = this.stepConstants(t, v.Te, v.Ti, v.ne, v.s);
-      this.lastK = K;
-      this.transportCoefficients(v.Te, v.Ti, v.ne, v.s);
-      this.plasmaSources(v.Te, v.Ti, v.ne, K);
-      this.currentSources(v.Te, v.Ti, v.ne, v.psi, K);
+      const K = this.evaluateWorkArrays(t, y);
       const g = this.tg, I = (a: Float64Array) => volumeIntegral(g, a);
       let W = 0;
       for (let i = 0; i < this.N; i++) W += 1.5 * (v.ne[i] * v.Te[i] + this.w.ni[i] * v.Ti[i]) * KEV * g.dV[i];
@@ -1230,6 +1233,24 @@ export class ProfileModel implements SimModel {
     return { ...this.lastDiag };
   }
   private diagStale = false;
+
+  /**
+   * Evaluates every work array (composition, q and current profiles, sources, transport
+   * coefficients, pressure) from the state y without taking a step. Used for diagnostics of a
+   * state no step produced (first frame, after an MHD crash) and after an equilibrium swap, so
+   * that postStep and the MHD events never read arrays of the old geometry.
+   */
+  private evaluateWorkArrays(t: number, y: Float64Array): StepConstants {
+    const v = this.views(y);
+    this.composition(v.Te, v.ne, v.s);
+    this.currentProfiles(v.psi, v.s[S.Ip]);
+    const K = this.stepConstants(t, v.Te, v.Ti, v.ne, v.s);
+    this.lastK = K;
+    this.transportCoefficients(v.Te, v.Ti, v.ne, v.s);
+    this.plasmaSources(v.Te, v.Ti, v.ne, K);
+    this.currentSources(v.Te, v.Ti, v.ne, v.psi, K);
+    return K;
+  }
 
   profiles(_y: Float64Array): Record<string, number[]> { return this.lastProf; }
 

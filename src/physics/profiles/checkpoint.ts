@@ -4,8 +4,8 @@
  * A checkpoint holds everything the continuation of the shot depends on besides y. Every part of
  * the model that keeps such state (the shared context, the equilibrium coupling, the step
  * controller, each event model, and any source or transport model with state) implements
- * Checkpointable. Numbers go into the record that
- * Simulation stores in the history frame (Record<string, number>; each part uses its own keys);
+ * Checkpointable. Numbers go into the record that Simulation stores in the history frame
+ * (Record<string, number>; each part uses its own keys);
  * references and strings (equilibrium and geometry with the GS warm start, disruption text, ELM
  * times, issued warnings) stay in a model-side store under the record's `ck` key. Restoring a
  * checkpoint prunes the store of checkpoints after it: their frames are discarded by the rewind.

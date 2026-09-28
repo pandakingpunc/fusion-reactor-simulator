@@ -33,8 +33,9 @@ export class SawtoothEvents implements EventModel {
     if (!(rmix > r1)) return;
     const Te0 = v.Te[0];
     const before = ctx.crashHook ? ctx.crashSnapshot(v) : null;
-    // particles first; then each temperature with the densities after the crash as weights and the
-    // energy before it as the target (the scalars changed over the step: n_i from the composition now)
+    // n_i of the state at the crash (w.ni predates the inventory update of the accepted step); then
+    // particles first, and each temperature with the densities after the crash as weights and the
+    // energy before it as the target
     composition(ctx, v.Te, v.ne, v.s);
     const neBefore = Float64Array.from(v.ne), niBefore = Float64Array.from(w.ni);
     flattenConserving(g, v.ne, null, r1, rmix);

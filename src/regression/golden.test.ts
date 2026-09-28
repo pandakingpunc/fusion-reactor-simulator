@@ -1,13 +1,17 @@
 /// <reference types="node" />
 /**
- * Golden regression: comparator self-test.
+ * Golden regression: comparator self-test and a fast subset of the golden suite
+ * (the full suite is `npm run golden`).
  */
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   FAST_CASES, GOLDEN_CASES, GoldenSnapshot, REL_TOL_OTHER_NODE, REL_TOL_SAME_NODE, caseConfig, compareSnapshots, flattenScalars,
   formatDiffTable, goldenCase, parseSnapshot, relDiff, runGoldenCase, sampleIndices, serializeSnapshot, toleranceFor,
 } from './golden';
 import { PRESETS } from '../physics/presets';
+
+const goldenFile = (id: string) => new URL(`../../test/golden/${id}.json`, import.meta.url);
 
 /** deep copy with every object's keys in reverse insertion order */
 function reverseKeys<T>(v: T): T {
@@ -108,4 +112,15 @@ describe('golden cases', () => {
     expect(new Set(GOLDEN_CASES.map((c) => c.id)).size).toBe(GOLDEN_CASES.length);
     for (const id of FAST_CASES) expect(() => goldenCase(id)).not.toThrow();
   });
+});
+
+describe('golden regression (fast subset; full suite: npm run golden)', { timeout: 30_000 }, () => {
+  for (const id of FAST_CASES) {
+    it(`${id} matches test/golden/${id}.json`, () => {
+      const stored = parseSnapshot(readFileSync(goldenFile(id), 'utf8'));
+      const fresh = runGoldenCase(goldenCase(id));
+      const diffs = compareSnapshots(stored, fresh, toleranceFor(stored.meta.node));
+      expect(diffs, `golden mismatch — if intended, run npm run golden:update -- --reason "…"\n${formatDiffTable([{ case: id, diffs }])}`).toEqual([]);
+    });
+  }
 });

@@ -42,3 +42,19 @@ Node v24.19.0 · `npm run golden:update` · all cases
 Node v24.19.0 · `npm run golden:update` · --only ITER-DHe3,ITER-pB11,SPARC15-DHe3,SPARC15-pB11,DIIID15,MASTU15,TAE-pB11,MIRROR-DHe3
 
 - Added (8): ITER-DHe3, ITER-pB11, SPARC15-DHe3, SPARC15-pB11, DIIID15, MASTU15, TAE-pB11, MIRROR-DHe3
+
+## 2026-09-28 13:42 UTC — ws3 1.5D integrity: Grad-Shafranov updates that did not converge were dropped silently (JET15 14 of 17, DIIID15 5 of 9, DEMO15 5 of 30, MASTU15 7 of 7) and are now retried (relaxation 0.5, then the pressure table filtered at the GS grid scale with relaxation 0.3) and accepted (JET15 17/17, DIIID15 9/9, DEMO15 30/30, MASTU15 6 accepted + 4 rejected and reported), so the transport geometry follows the plasma: JET15, DIIID15, DEMO15, MASTU15 move. All 1.5D cases gain the report counts 'GS updates accepted / needing a retry / rejected', 'Forced transport steps' and the diagnostic tauE_scal. The work-array refresh after an equilibrium swap, explicit step-retry exhaustion, the full rewind checkpoint, cgm tau_E = W/P_loss and the initial-GS guard move no golden number (ITER15 and the SPARC15 cases only gain keys).
+
+Node v24.19.0 · `npm run golden:update` · all cases
+
+- Changed (9):
+  - ITER15: 0 keys moved; 10 keys added (history 5, scalars 4, flatTop 1)
+  - JET15: 2213 keys moved; max rel. diff 1.76e+0; 10 keys added (history 5, scalars 4, flatTop 1) — equilibrium.frames, equilibrium.last.Raxis, equilibrium.last.Zaxis, equilibrium.last.betaP, equilibrium.last.li, equilibrium.last.q95, equilibrium.last.surfaces.RatZmax[0], equilibrium.last.surfaces.RatZmax[1], equilibrium.last.surfaces.RatZmax[2], equilibrium.last.surfaces.RatZmax[3], equilibrium.last.surfaces.RatZmax[4], equilibrium.last.surfaces.RatZmax[5], … (+2201 more)
+  - SPARC15: 0 keys moved; 10 keys added (history 5, scalars 4, flatTop 1)
+  - SPARC15-short: 0 keys moved; 10 keys added (history 5, scalars 4, flatTop 1)
+  - DEMO15: 1148 keys moved; max rel. diff 1.00e+0; 10 keys added (history 5, scalars 4, flatTop 1) — equilibrium.frames, equilibrium.last.Raxis, equilibrium.last.Zaxis, equilibrium.last.betaP, equilibrium.last.li, equilibrium.last.q95, equilibrium.last.surfaces.RatZmax[0], equilibrium.last.surfaces.RatZmax[1], equilibrium.last.surfaces.RatZmax[2], equilibrium.last.surfaces.RatZmax[3], equilibrium.last.surfaces.RatZmax[4], equilibrium.last.surfaces.RatZmax[5], … (+1136 more)
+  - SPARC15-DHe3: 0 keys moved; 10 keys added (history 5, scalars 4, flatTop 1)
+  - SPARC15-pB11: 0 keys moved; 10 keys added (history 5, scalars 4, flatTop 1)
+  - DIIID15: 2166 keys moved; max rel. diff 1.55e+0; 10 keys added (history 5, scalars 4, flatTop 1) — equilibrium.frames, equilibrium.last.Raxis, equilibrium.last.Zaxis, equilibrium.last.betaP, equilibrium.last.li, equilibrium.last.q95, equilibrium.last.surfaces.RatZmax[0], equilibrium.last.surfaces.RatZmax[1], equilibrium.last.surfaces.RatZmax[2], equilibrium.last.surfaces.RatZmax[3], equilibrium.last.surfaces.RatZmax[4], equilibrium.last.surfaces.RatZmax[5], … (+2154 more)
+  - MASTU15: 2211 keys moved; max rel. diff 1.99e+0; 11 keys added (history 5, scalars 4, events 1, flatTop 1) — equilibrium.frames, equilibrium.last.Raxis, equilibrium.last.Zaxis, equilibrium.last.betaP, equilibrium.last.li, equilibrium.last.q95, equilibrium.last.surfaces.RatZmax[0], equilibrium.last.surfaces.RatZmax[1], equilibrium.last.surfaces.RatZmax[2], equilibrium.last.surfaces.RatZmax[3], equilibrium.last.surfaces.RatZmax[4], equilibrium.last.surfaces.RatZmax[5], … (+2199 more)
+- Unchanged (21): ITER, JET, SPARC, DIIID, JT60SA, MASTU, W7X, DEMO, NIF, DIRECT, Z, GF, FRXL, ZAP, TAE, MIRROR, MUON, ITER-DHe3, ITER-pB11, TAE-pB11, MIRROR-DHe3

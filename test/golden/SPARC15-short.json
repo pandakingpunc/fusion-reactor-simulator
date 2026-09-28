@@ -86,6 +86,7 @@
     "qmin": 1.016014473102551,
     "rho_q1": -1,
     "tauE": 0.51009103245708,
+    "tauE_scal": 0.51009103245708,
     "triple": 1.385978790473176e+21,
     "w21": 0,
     "w32": 0
@@ -524,6 +525,13 @@
       "missing": 0,
       "nonFinite": 0
     },
+    "tauE_scal": {
+      "max": 0.8147028880293994,
+      "mean": 0.576614489282742,
+      "min": 0.1,
+      "missing": 0,
+      "nonFinite": 0
+    },
     "triple": {
       "max": 1.5307697043996583e+21,
       "mean": 986210715250113400000,
@@ -634,6 +642,10 @@
     "engineering.Divertor q_max (MW/m²)": 94.3,
     "engineering.Driven-current fraction (avg.)": 0,
     "engineering.EROI": 0.8,
+    "engineering.Forced transport steps": 0,
+    "engineering.GS updates accepted": 17,
+    "engineering.GS updates needing a retry": 0,
+    "engineering.GS updates rejected": 0,
     "engineering.Gross P_electric (MW)": 78,
     "engineering.Loop voltage (avg., V)": 0.034,
     "engineering.Magnetic energy (GJ)": 3.86,

@@ -54,11 +54,11 @@ describe('heating.autoOff (ignition test)', { timeout: 60_000 }, () => {
     expect(report.ignitionTime_s).toBe(0);
   });
 
-  it('ITER at H98 = 1.4 ignites after the heating is off; IGNITION only when P_alpha ≥ P_rad + P_cond', () => {
+  it('ITER at H98 = 1.4 ignites after the heating is off; IGNITION only when P_alpha ≥ P_rad + P_transport', () => {
     // (NTMs off: a sawtooth-seeded NTM would end the burn early; He ash ends it after ~1 min anyway)
     const r = runWithEventDiag({ ...cfg, H98: 1.4, events: { ...cfg.events, ntm: false } });
     expect(r.atIgnition.length).toBeGreaterThan(0);
-    for (const d of r.atIgnition) expect(d.P_alpha).toBeGreaterThanOrEqual(d.P_rad + d.P_cond);
+    for (const d of r.atIgnition) expect(d.P_alpha).toBeGreaterThanOrEqual(d.P_rad + d.P_transport);
     expect(r.report.ignitionTime_s).toBeGreaterThan(20);
   });
 

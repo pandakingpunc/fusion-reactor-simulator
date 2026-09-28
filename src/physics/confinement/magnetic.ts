@@ -38,6 +38,8 @@ import { DiagSpec, HistoryFrame, MagneticConfig, ShotReport, SimEvent, SimModel,
 
 const IDX = { We: 0, Wi: 1, na: 2, nb: 3, nHe: 4, nZ: 5, Wa: 6, Ip: 7, Efus: 8, Ein: 9, Nn: 10, NTburn: 11, NTfuel: 12, Sfuel: 13, Wb: 14, dWs: 15 } as const;
 const NSTATE = 16;
+/** ELM-averaged share of the transport loss W/τ_E (Loarte et al. 2003: 20–40 % of P_SOL) */
+const ELM_POWER_FRACTION = 0.3;
 /** upper bound of the temperatures at which the rates are evaluated [keV] (see temps()) */
 const T_EVAL_MAX_KEV = 1e4;
 
@@ -62,7 +64,9 @@ export const MAGNETIC_DIAGS: DiagSpec[] = [
   { key: 'P_line', label: 'P_line', unit: 'MW', group: 'Radiation' },
   { key: 'P_rad', label: 'P_rad total', unit: 'MW', group: 'Radiation' },
   { key: 'P_rad_core', label: 'P_rad core (ρ < 0.6)', unit: 'MW', group: 'Radiation' },
-  { key: 'P_cond', label: 'P_conduction (W/τ_E)', unit: 'MW', group: 'Power' },
+  { key: 'P_cond', label: 'P_conduction (continuous, W/τ_E − ⟨P_ELM⟩)', unit: 'MW', group: 'Power' },
+  { key: 'P_transport', label: 'P_transport (W/τ_E, incl. ELMs)', unit: 'MW', group: 'Power' },
+  { key: 'P_ELM', label: 'P_ELM (ELM-averaged loss)', unit: 'MW', group: 'Power' },
   { key: 'P_ei', label: 'P_ei (electron → ion)', unit: 'MW', group: 'Power' },
   { key: 'Q', label: 'Scientific Q', unit: '', group: 'Performance' },
   { key: 'tauE', label: 'τ_E', unit: 's', group: 'Confinement' },
@@ -120,7 +124,6 @@ export class MagneticModel implements SimModel {
   private ntm = false;
   private tNextELM = Infinity;
   private tNextSaw = 0.3;
-  private elmAvgPower = 0; // ELM ortalama gücü (sürekli kayıptan düşülür)
   private elmDW = 0;
   private elmPartRate = 0; // ELM'lerin ortalama parçacık atım hızı [1/s]
   private tauW_accum = 1; // W birikim çarpanı
@@ -195,6 +198,10 @@ export class MagneticModel implements SimModel {
     return im.seedSpecies && im.seedConcentration ? meanCharge(im.seedSpecies, Math.max(Te, 0.1)) : 0;
   }
   private seedC(): number { return this.cfg.impurity.seedConcentration ?? 0; }
+  /** Type-I ELMs in progress: H-mode, ELMs enabled, a tokamak, before any disruption. */
+  private elmsActive(): boolean {
+    return this.phase === 'normal' && this.hmode && this.cfg.events.elms && !this.isStell;
+  }
   /** n_e = Σ Z_j n_j ; tohum safsızlığı n_s = c_s n_e → n_e = n_e,main / (1 − Z_s c_s) */
   private ne(y: Float64Array, Te: number): number {
     const fs = FUEL_SPECIES[this.cfg.fuel];
@@ -442,9 +449,12 @@ export class MagneticModel implements SimModel {
     tauE = Math.max(tauE, 1e-3);
     this.tauE_last = tauE;
     const W = y[IDX.We] + y[IDX.Wi];
-    // ELM ortalama gücü zaten IPB98 içinde: sürekli kayıptan düş (ELM'ler postStep'te ayrık atılır)
+    // The τ_E scaling contains the ELM losses: their average leaves in the discrete crashes of postStep
+    // and is taken off the continuous conduction. Diagnostics: P_transport = W/τ_E (all of it),
+    // P_cond = the continuous conduction applied here, P_ELM = the ELM average applied here.
     const P_transport = W / tauE;
-    const P_cond_total = Math.max(P_transport - this.elmAvgPower, 0);
+    const P_ELM = this.elmsActive() ? ELM_POWER_FRACTION * P_transport : 0;
+    const P_cond_total = P_transport - P_ELM;
     const P_cond_e = P_cond_total * (y[IDX.We] / Math.max(W, 1));
     const P_cond_i = P_cond_total * (y[IDX.Wi] / Math.max(W, 1));
     // ---- e-i eşitlenme (NRL): ν_eq = 3.2e-9 lnΛ Σ n_j Z_j²/A_j / T_e^1.5, lnΛ(n_e, T_e) ----
@@ -521,7 +531,7 @@ export class MagneticModel implements SimModel {
     this.lastDiag = {
       Te, Ti, ne, ni, Zeff, P_fus: fus.P_total, P_bt: fus.P_bt, P_charged: fus.P_charged, P_neutron: fus.P_neutron, T0: fus.T0,
       P_brems: rad.P_brems, P_line: rad.P_line, P_sync: rad.P_sync, P_rad: rad.P_rad,
-      P_NBI: P_NBI_inj, P_ICRH, P_ECRH, P_oh, P_alpha, P_beam, P_heat, P_cond: P_transport, P_loss: P_loss_scaling, dWdt: dWdt_s, P_rad_core: rad.P_rad_core, P_ei, tauE, P_SOL, S_fuel: y[IDX.Sfuel] * V,
+      P_NBI: P_NBI_inj, P_ICRH, P_ECRH, P_oh, P_alpha, P_beam, P_heat, P_cond: P_cond_total, P_transport, P_ELM, P_loss: P_loss_scaling, dWdt: dWdt_s, P_rad_core: rad.P_rad_core, P_ei, tauE, P_SOL, S_fuel: y[IDX.Sfuel] * V,
       P_aux_abs: P_NBI + P_ICRH + P_ECRH,
     };
   }
@@ -586,7 +596,7 @@ export class MagneticModel implements SimModel {
       Ti: D.Ti, Te: D.Te, Ti0: D.T0, ne: D.ne / 1e20, nbar: nbar / 1e20, nG_frac: nbar / nG, fHe: y[IDX.nHe] / D.ne,
       P_fus: D.P_fus / 1e6, P_bt: D.P_bt / 1e6, P_alpha: D.P_alpha / 1e6, P_beam_heat: D.P_beam / 1e6, P_aux: (D.P_NBI + D.P_ICRH + D.P_ECRH) / 1e6, P_oh: D.P_oh / 1e6,
       P_brems: D.P_brems / 1e6, P_sync: D.P_sync / 1e6, P_line: D.P_line / 1e6, P_rad: D.P_rad / 1e6, P_cond: D.P_cond / 1e6,
-      Q, tauE: D.tauE, H_mode: this.hmode ? 1 : 0, P_ELM: this.elmAvgPower / 1e6, P_LH: P_LH / 1e6, P_loss: D.P_loss / 1e6, dWdt: D.dWdt / 1e6, P_rad_core: D.P_rad_core / 1e6, P_ei: D.P_ei / 1e6,
+      P_transport: D.P_transport / 1e6, Q, tauE: D.tauE, H_mode: this.hmode ? 1 : 0, P_ELM: D.P_ELM / 1e6, P_LH: P_LH / 1e6, P_loss: D.P_loss / 1e6, dWdt: D.dWdt / 1e6, P_rad_core: D.P_rad_core / 1e6, P_ei: D.P_ei / 1e6,
       betaN: bN, betaN_th: bN_th, betaT: bT * 100, q95: this.isStell ? 0 : q95ForMethod(this.method, this.g, c.B0, Math.max(Ip_MA, 0.01)), NTM: this.ntm ? 1 : 0,
       W: W / 1e6, Wf: Wfast / 1e6, W_alpha: y[IDX.Wa] / 1e6, W_beam: y[IDX.Wb] / 1e6, ignited: this.ignited ? 1 : 0, triple, lawson: triple / LAWSON_DT,
       Zeff: D.Zeff, cZ: y[IDX.nZ] / D.ne, Ip: Ip_MA, S_fuel: D.S_fuel / 1e20,
@@ -622,19 +632,20 @@ export class MagneticModel implements SimModel {
           this.tNextELM = t + 0.05;
         } else if (this.hmode && P_L < 0.7 * dg.P_LH) {
           this.hmode = false; ev.push({ t, kind: 'HL', msg: `H→L back-transition: P_L ${P_L.toFixed(1)} MW < 0.7·P_LH ${(0.7 * dg.P_LH).toFixed(1)} MW — τ_E collapsed` });
-          this.tNextELM = Infinity; this.elmAvgPower = 0; this.elmPartRate = 0;
+          this.tNextELM = Infinity; this.elmPartRate = 0;
         }
       }
-      // ---- ELM'ler (Type-I): ΔW ≈ 3% W (pedestal enerjisinin ~%10'u), f_ELM = 0.3 P_tr/ΔW ----
-      // ELM ortalama gücü taşınım kaybının (W/τ_E, ölçekleme ELM'leri içerir) bir kesridir:
-      // P_ELM ≈ 0.2–0.4 P_SOL (Loarte et al., Plasma Phys. Control. Fusion 45 (2003) 1549). Eskiden
-      // 0.3 P_heat idi; güçlü ışınımda W/τ_E'yi aşıp sürekli iletimi sıfıra kırpıyordu.
-      if (this.hmode && c.events.elms && !this.isStell) {
+      // ---- Type-I ELMs: ΔW ≈ 3 % of W (~10 % of the pedestal energy), f_ELM = P_ELM/ΔW ----
+      // The ELM-averaged power is a fraction of the transport loss W/τ_E (the scaling contains the
+      // ELMs): P_ELM ≈ 0.2–0.4 P_SOL (A. Loarte et al., Plasma Phys. Control. Fusion 45 (2003) 1549).
+      // rhs() takes it off the continuous conduction (see elmsActive); here it sets the crash rate.
+      // It used to be 0.3 P_heat, which in a strongly radiating plasma exceeded W/τ_E and clipped
+      // the continuous conduction to zero.
+      if (this.elmsActive()) {
         this.elmDW = 0.03 * W;
-        const P_tr = dg.P_cond * 1e6; // W/τ_E
-        const f = (0.3 * P_tr) / Math.max(this.elmDW, 1e5);
-        this.elmAvgPower = 0.3 * P_tr;
-        this.elmPartRate = f * 0.03 * 0.3; // ortalama kesirli parçacık atım hızı
+        const P_ELM = ELM_POWER_FRACTION * dg.P_transport * 1e6;
+        const f = P_ELM / Math.max(this.elmDW, 1e5);
+        this.elmPartRate = f * 0.03 * 0.3; // mean fractional particle exhaust rate [1/s]
         if (t >= this.tNextELM) {
           const frac = 0.03 * (0.7 + 0.6 * this.rng.next());
           y[IDX.We] *= 1 - frac; y[IDX.Wi] *= 1 - frac;
@@ -643,7 +654,7 @@ export class MagneticModel implements SimModel {
           ev.push({ t, kind: 'ELM', msg: `Type-I ELM: ΔW = ${(frac * W / 1e6).toFixed(2)} MJ`, value: frac * W / 1e6 });
           this.tNextELM = t + (1 / f) * (0.7 + 0.6 * this.rng.next());
         }
-      } else { this.elmAvgPower = 0; this.elmPartRate = 0; }
+      } else { this.elmPartRate = 0; }
       // ---- Testere dişi (sawtooth): τ_st ≈ 0.6 τ_E ; çöküş q=1 içindeki enerjiyi ve parçacıkları
       // dışarı KARIŞTIRIR. τ_E, τ_p, τ_He ölçeklemeleri testere dişi ortalamalı olduğundan 0D'de
       // çöküş W'yi ve envanterleri korur (eski ~%2 W ve %3 kül/safsızlık atımı kaybı iki kez sayıyordu).
@@ -664,13 +675,14 @@ export class MagneticModel implements SimModel {
       // ---- W birikimi: ELM/sawtooth yoksa merkez birikimi (neoklasik pinch) ----
       this.tauW_accum = c.impurity.species === 'W' && (!c.events.elms || !c.events.sawteeth) ? 4 : 1;
 
-      // ---- Ateşleme / yanma olayları ----
-      // Ateşleme (Lawson): yüklü füzyon ürünlerinin ısıtması tek başına radyasyon + taşınım kaybını
-      // karşılar, P_α ≥ P_rad + W/τ_E (P_cond, ELM ortalaması dahil); NBI ısıtması P_α'ya girmez.
-      // τ_E yardımcı ısıtma dahil P_loss ile hesaplandığından (güç bozulması) ölçüt korumacıdır:
-      // dış ısıtma kapatılırsa τ_E artar. Histerezis (ELM titreşimi olay yağmuruna yol açmasın):
-      // giriş P_α ≥ P_kayıp, çıkış P_α < 0.9 P_kayıp.
-      const P_loss_total = dg.P_rad + dg.P_cond;
+      // ---- Ignition / burn events ----
+      // Ignition (Lawson): the heating by charged fusion products alone covers radiation and
+      // transport, P_α ≥ P_rad + W/τ_E, where W/τ_E = P_transport is the continuous conduction P_cond
+      // plus the ELM-averaged loss; NBI heating is not part of P_α. τ_E is evaluated at the loss power
+      // including the external heating (power degradation), so the test is conservative: τ_E rises
+      // when the heating is switched off. Hysteresis (so that ELM ripple does not flood the event
+      // log): on at P_α ≥ P_loss, off at P_α < 0.9 P_loss.
+      const P_loss_total = dg.P_rad + dg.P_transport;
       const ignOn = dg.P_alpha >= P_loss_total && dg.P_fus > 1;
       const ignOff = dg.P_alpha < 0.9 * P_loss_total;
       if (ignOn && !this.ignited) { this.ignited = true; ev.push({ t, kind: 'ignition', msg: `IGNITION: P_alpha ${dg.P_alpha.toFixed(0)} MW ≥ P_loss ${P_loss_total.toFixed(0)} MW` }); }
@@ -705,7 +717,7 @@ export class MagneticModel implements SimModel {
       if (cause !== 'none') {
         this.disruptCause = cause; this.tDisrupt = t; this.Wd = W;
         this.phase = this.isStell ? 'current_quench' : 'thermal_quench';
-        this.elmAvgPower = 0; this.tNextELM = Infinity;
+        this.tNextELM = Infinity;
         ev.push({ t, kind: 'disruption', msg: `${this.isStell ? 'RADIATIVE COLLAPSE' : 'DISRUPTION'}: ${DISRUPTION_LABELS[cause]} — ${diag}` });
         this.diagText = diag;
       }
@@ -746,7 +758,7 @@ export class MagneticModel implements SimModel {
   saveInternal(): Record<string, number> {
     return {
       rng: this.rng.getState(), phase: ['normal', 'thermal_quench', 'current_quench', 'ended'].indexOf(this.phase),
-      hmode: +this.hmode, ntm: +this.ntm, tNextELM: this.tNextELM, tNextSaw: this.tNextSaw, elmAvgPower: this.elmAvgPower, elmPartRate: this.elmPartRate,
+      hmode: +this.hmode, ntm: +this.ntm, tNextELM: this.tNextELM, tNextSaw: this.tNextSaw, elmPartRate: this.elmPartRate,
       tauW_accum: this.tauW_accum, ignited: +this.ignited, burning: +this.burning, tauE_last: this.tauE_last,
       tAuxOff: this.tAuxOff,
     };
@@ -755,7 +767,7 @@ export class MagneticModel implements SimModel {
     this.rng.setState(s.rng);
     this.phase = (['normal', 'thermal_quench', 'current_quench', 'ended'] as Phase[])[s.phase] ?? 'normal';
     this.hmode = !!s.hmode; this.ntm = !!s.ntm; this.tNextELM = s.tNextELM; this.tNextSaw = s.tNextSaw;
-    this.elmAvgPower = s.elmAvgPower; this.elmPartRate = s.elmPartRate ?? 0; this.tauW_accum = s.tauW_accum; this.ignited = !!s.ignited; this.burning = !!s.burning;
+    this.elmPartRate = s.elmPartRate ?? 0; this.tauW_accum = s.tauW_accum; this.ignited = !!s.ignited; this.burning = !!s.burning;
     this.tauE_last = s.tauE_last; this.tAuxOff = s.tAuxOff ?? Infinity; this.terminated = null; this.warned.clear(); this.lastDiag = {};
   }
   geometryInfo(): Record<string, number> {

@@ -12,15 +12,15 @@ import { Simulation } from '../simulation';
 
 describe('ELM-averaged power', { timeout: 60_000 }, () => {
   for (const [name, cfg] of [['ITER', { ...ITER, t_end: 120 }], ['ITER D-³He', { ...ITER, fuel: 'DHe3' as const, t_end: 100 }]] as const) {
-    it(`${name}: is 30 % of the transport loss W/τ_E, never all of it`, () => {
+    it(`${name}: is 30 % of the transport loss W/τ_E (P_transport), never all of it`, () => {
       const sim = new Simulation(cfg);
       sim.runAll();
       const elmy = sim.history.filter((f) => f.d.H_mode === 1 && f.d.P_ELM > 0);
       expect(elmy.length).toBeGreaterThan(20);
       for (const f of elmy) {
-        expect(f.d.P_ELM).toBeLessThan(f.d.P_cond);
-        expect(f.d.P_ELM / f.d.P_cond).toBeGreaterThan(0.2);
-        expect(f.d.P_ELM / f.d.P_cond).toBeLessThan(0.4);
+        expect(f.d.P_ELM).toBeLessThan(f.d.P_transport);
+        expect(f.d.P_ELM / f.d.P_transport).toBeGreaterThan(0.2);
+        expect(f.d.P_ELM / f.d.P_transport).toBeLessThan(0.4);
       }
     });
   }

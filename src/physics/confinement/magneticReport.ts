@@ -106,7 +106,7 @@ export function buildMagneticReport(ctx: MagneticReportContext, hist: HistoryFra
     method: ctx.method, duration: last.t, timeUnit: 's',
     Tmax_keV: Tmax, Tmax_MC: U.keV_to_MC(Tmax), Timax_keV: max(dp('Ti')), Temax_keV: max(dp('Te')),
     stableTime_s: stableTime, burnTime_s: burnTime, ignitionTime_s: ignTime,
-    stableDefinition: 'Stable time = duration for which the plasma is sustained without disruption/extinction. Burn time = duration with Q ≥ 1 (P_fusion ≥ P_auxiliary+P_ohmic). Ignition time = duration with P_alpha ≥ P_rad + P_conduction, where P_alpha is the heating by charged fusion products only (beam ions excluded): self-sustaining without external heating.',
+    stableDefinition: 'Stable time = duration for which the plasma is sustained without disruption/extinction. Burn time = duration with Q ≥ 1 (P_fusion ≥ P_auxiliary+P_ohmic). Ignition time = duration with P_alpha ≥ P_rad + W/τ_E (conduction plus ELM losses), where P_alpha is the heating by charged fusion products only (beam ions excluded): self-sustaining without external heating.',
     Q_sci_max: max(Q), Q_sci_avg: Qavg, Q_eng: eco.Q_eng,
     Q_eng_note: `Q_eng = P_electric,gross / P_recirculating = (${eco.P_gross_MW.toFixed(0)} MW) / (${eco.P_recirc_MW.toFixed(0)} MW). Scientific Q is measured at the plasma boundary (P_fusion/P_heating,absorbed), Q_eng at the wall plug: heating wall-plug efficiency ${(c.economics.wallPlugEff * 100).toFixed(0)}%, thermal efficiency ${(c.economics.thermalEff * 100).toFixed(0)}%.`,
     E_fusion_MJ: Efus, E_input_MJ: Ein,

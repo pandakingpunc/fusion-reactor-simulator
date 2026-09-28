@@ -68,7 +68,7 @@ describe('separate alpha and beam pools (0D magnetic model)', { timeout: 60_000 
   it('whenever a frame counts as ignited, the charged-product heating covers radiation + transport', () => {
     for (const id of ['ITER', 'DIIID'] as const) {
       for (const f of run(id).history) {
-        if ((f.d.ignited ?? 0) > 0) expect(f.d.P_alpha).toBeGreaterThanOrEqual(0.9 * (f.d.P_rad + f.d.P_cond));
+        if ((f.d.ignited ?? 0) > 0) expect(f.d.P_alpha).toBeGreaterThanOrEqual(0.9 * (f.d.P_rad + f.d.P_transport));
       }
     }
   });
@@ -85,7 +85,12 @@ describe('separate alpha and beam pools (0D magnetic model)', { timeout: 60_000 
   it('β_T and β_N include the fast-particle pressure (2/3)(W_α + W_beam)/V', () => {
     const sim = run('ITER');
     const V = sim.model.geometryInfo().V, B = ITER.B0;
-    const f = sim.history[sim.history.length - 1].d;
+    // diagnostics of the final state itself: a frame recorded right after an ELM crash carries the
+    // rhs diagnostics of the pre-crash state (kernel behaviour, see the ws2b report)
+    const last = sim.history[sim.history.length - 1];
+    const probe = new MagneticModel(ITER);
+    probe.restoreInternal(last.internal);
+    const f = probe.diagnostics(last.t, Float64Array.from(last.y));
     expect(f.Wf).toBeGreaterThan(0);
     const p = (2 / 3) * (f.W + f.Wf) * 1e6 / V;
     expect(f.betaT / ((2 * MU0 * p) / (B * B) * 100)).toBeCloseTo(1, 9);

@@ -11,7 +11,7 @@
 import type { SimEvent } from '../../types';
 import type { ProfileContext } from '../context';
 import type { ProfileState } from '../state';
-import type { CheckpointRecord } from '../checkpoint';
+import { recNum, type CheckpointRecord } from '../checkpoint';
 import { composition } from '../composition';
 import { flattenConserving, kadomtsevMixingRadius, rhoOfQ, shearAt } from '../mhd';
 import { currentProfiles } from '../qprofile';
@@ -58,5 +58,5 @@ export class SawtoothEvents implements EventModel {
   }
 
   save(rec: CheckpointRecord): void { rec.lastSaw = this.lastSaw; }
-  restore(rec: Readonly<CheckpointRecord>): void { this.lastSaw = rec.lastSaw; }
+  restore(rec: Readonly<CheckpointRecord>): void { this.lastSaw = recNum(rec, 'lastSaw', -1e9); }
 }

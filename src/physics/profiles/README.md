@@ -116,8 +116,13 @@ and `restore(rec, aux)` (the context part also carries the last diagnostics and,
 phases, the profiles). Numbers go into `rec` under keys unique over all modules (they are
 stored in the history frames, so existing key names never change); references and strings go
 into `aux`. `restore` must accept a record without `aux` (from elsewhere) and missing keys
-(`recNum` defaults). Event models, sources and the transport model take part as soon as they
-implement the hooks; other parts are listed in `ProfileModel.checkpointParts`.
+(`recNum` defaults). `CheckpointStore.save` enforces what can be checked: a key written by two parts
+(or the reserved `ck`), a non-numeric record value and an `aux` key written twice throw a
+`CheckpointContractError` naming the parts. A plug-in prefixes its record keys with its own id
+(`myModel_…`); what a part puts into `aux` is a copy or immutable (`ElmEvents` copies its ELM
+times), or the checkpoint changes when the part goes on. Event models, sources and the transport
+model take part as soon as they implement the hooks; other parts are listed in
+`ProfileModel.checkpointParts`.
 
 ## Rules
 
@@ -170,6 +175,7 @@ implement the hooks; other parts are listed in `ProfileModel.checkpointParts`.
 | `geometry.test.ts` | transport geometry of an analytic Solov'ev equilibrium |
 | `sources/sources.test.ts` | NBI chord cache vs direct deposition, beam-target table vs the integral |
 | `transport/transport.test.ts` | 'cgm' smoke test (ITER15 ramp-up) |
+| `checkpoint.test.ts` | the checkpoint contract: key collisions, numeric records, restore from a record with missing keys |
 | `integrity.test.ts` | equilibrium swaps (fresh work arrays), GS failures, the current-scale gate and retry timing, step failures (numerical failures retried, programming errors propagate), reported τ_E, initial equilibrium, replays from quench frames |
 | `profiles.test.ts` | solver verification (analytic), neoclassical, MHD helpers, integration runs |
 

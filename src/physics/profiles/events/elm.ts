@@ -9,7 +9,7 @@
 import type { SimEvent } from '../../types';
 import type { ProfileContext } from '../context';
 import type { ProfileState } from '../state';
-import type { CheckpointAux, CheckpointRecord } from '../checkpoint';
+import { recNum, type CheckpointAux, type CheckpointRecord } from '../checkpoint';
 import { elmCrash } from '../mhd';
 import type { EventModel } from './EventModel';
 
@@ -48,7 +48,8 @@ export class ElmEvents implements EventModel {
     aux.elmTimes = this.elmTimes.slice();
   }
   restore(rec: Readonly<CheckpointRecord>, aux: Readonly<CheckpointAux> | undefined): void {
-    this.lastElm = rec.lastElm;
-    this.elmTimes = aux ? (aux.elmTimes as number[]).slice() : [];
+    this.lastElm = recNum(rec, 'lastElm', -1e9);
+    const times = aux?.elmTimes;
+    this.elmTimes = Array.isArray(times) ? (times as number[]).slice() : [];
   }
 }

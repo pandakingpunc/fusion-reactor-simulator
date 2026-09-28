@@ -10,6 +10,14 @@
  * times, issued warnings) stay in a model-side store under the record's `ck` key. Restoring a
  * checkpoint prunes the store of checkpoints after it: their frames are discarded by the rewind.
  * A record without a stored entry (from elsewhere) restores the numbers only.
+ *
+ * The contract, which CheckpointStore.save enforces where it can be checked:
+ *  - record keys are unique over all parts (a part that writes a key another part wrote, or the
+ *    reserved `ck`, is an error, not an overwrite) and their values are numbers; a plug-in prefixes
+ *    its keys with its own id (`myModel_…`); the same holds for the keys of `aux`;
+ *  - `restore` accepts a record with missing keys (recNum defaults) and no aux;
+ *  - what a part puts into `aux` is a copy or an immutable value: a checkpoint must not change when
+ *    the part goes on and mutates its own arrays.
  */
 import type { DisruptionCause } from '../disruption';
 import { PHASES, ProfileContext } from './context';
@@ -29,15 +37,54 @@ export function recNum(rec: Readonly<CheckpointRecord>, k: string, dflt: number)
   return Number.isFinite(rec[k]) ? rec[k] : dflt;
 }
 
+/** A checkpointable part broke the contract above (a key written twice, a non-numeric record value). */
+export class CheckpointContractError extends Error {
+  override readonly name = 'CheckpointContractError';
+}
+
+/** Name of a part in an error message: its id (sources, transport models, event models), else its class, else its position */
+function partName(p: Partial<Checkpointable>, index: number): string {
+  const id = (p as { id?: unknown }).id;
+  if (typeof id === 'string') return `'${id}'`;
+  const cls = p.constructor?.name;
+  return cls && cls !== 'Object' ? cls : `part ${index}`;
+}
+
 export class CheckpointStore {
   /** references and strings of each checkpoint, by the record's `ck` */
   private store = new Map<number, CheckpointAux>();
   private next = 0;
 
+  /**
+   * Record and aux of every part, in the order of `parts`. A key written by two parts, or by a part
+   * and the store (`ck`), and a record value that is not a number throw a CheckpointContractError
+   * naming the parts: a plug-in that reused 'dt' or 'rng' would otherwise corrupt every rewind.
+   */
   save(parts: readonly Partial<Checkpointable>[]): CheckpointRecord {
-    const ck = this.next++;
+    const ck = this.next;
     const rec: CheckpointRecord = { ck }, aux: CheckpointAux = {};
-    for (const p of parts) p.save?.(rec, aux);
+    const recOwner = new Map<string, string>([['ck', 'the checkpoint store']]);
+    const auxOwner = new Map<string, string>();
+    parts.forEach((p, i) => {
+      if (!p.save) return;
+      const name = partName(p, i);
+      const own: CheckpointRecord = {}, ownAux: CheckpointAux = {};
+      p.save(own, ownAux);
+      for (const k of Object.keys(own)) {
+        const prev = recOwner.get(k);
+        if (prev !== undefined) throw new CheckpointContractError(`checkpoint record key '${k}' is written by ${prev} and by ${name}: keys must be unique over all parts (prefix a plug-in's keys with its id)`);
+        if (typeof own[k] !== 'number') throw new CheckpointContractError(`checkpoint record key '${k}' of ${name} is not a number (${typeof own[k]}): references and strings go into aux`);
+        recOwner.set(k, name);
+        rec[k] = own[k];
+      }
+      for (const k of Object.keys(ownAux)) {
+        const prev = auxOwner.get(k);
+        if (prev !== undefined) throw new CheckpointContractError(`checkpoint aux key '${k}' is written by ${prev} and by ${name}: keys must be unique over all parts`);
+        auxOwner.set(k, name);
+        aux[k] = ownAux[k];
+      }
+    });
+    this.next = ck + 1;
     this.store.set(ck, aux);
     return rec;
   }
@@ -85,7 +132,7 @@ export function contextCheckpoint(ctx: ProfileContext): Checkpointable {
     },
     restore(st, aux) {
       const num = (k: string, dflt: number) => recNum(st, k, dflt);
-      ctx.rng.setState(st.rng);
+      if (Number.isFinite(st.rng)) ctx.rng.setState(st.rng);
       ctx.phase = PHASES[st.phase] ?? 'normal';
       ctx.hmode = !!st.hmode;
       ctx.dt = num('dt', 1e-3); ctx.PSOL = num('PSOL', 0); ctx.GammaB = num('GammaB', 0);

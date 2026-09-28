@@ -138,6 +138,52 @@ describe('interpolation', () => {
   });
 });
 
+describe('bicubic spline order of accuracy', () => {
+  it('converges at fourth order in value and third order in gradient away from the natural edges', () => {
+    const F = (x: number, y: number) => Math.exp(-x * x - 2 * y * y) * (1 + 0.3 * x);
+    const Fx = (x: number, y: number) => Math.exp(-x * x - 2 * y * y) * (0.3 - 2 * x * (1 + 0.3 * x));
+    const Fy = (x: number, y: number) => -4 * y * F(x, y);
+    let s = 1;
+    const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+    // interior sample points (≥ 1 from the edges of [−2, 2] × [−3, 3], where f'' ≠ 0 breaks the natural end condition)
+    const pts = Array.from({ length: 300 }, () => [-1 + 2 * rnd(), -1.5 + 3 * rnd()]);
+    const e0: number[] = [], e1: number[] = [];
+    for (const n of [21, 41, 81]) {
+      const nx = n, ny = (3 * (n - 1)) / 2 + 1, hx = 4 / (nx - 1), hy = 6 / (ny - 1);
+      const f = new Float64Array(nx * ny);
+      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) f[j * nx + i] = F(-2 + i * hx, -3 + j * hy);
+      const bi = new Bicubic(f, nx, ny, -2, -3, hx, hy);
+      const o = new Float64Array(3);
+      let a = 0, b = 0;
+      for (const [x, y] of pts) {
+        bi.evalGrad(x, y, o);
+        a = Math.max(a, Math.abs(o[0] - F(x, y)));
+        b = Math.max(b, Math.abs(o[1] - Fx(x, y)), Math.abs(o[2] - Fy(x, y)));
+      }
+      e0.push(a); e1.push(b);
+    }
+    for (let i = 0; i < 2; i++) {
+      expect(Math.log2(e0[i] / e0[i + 1])).toBeGreaterThan(3.7);
+      expect(Math.log2(e1[i] / e1[i + 1])).toBeGreaterThan(2.7);
+    }
+    expect(e0[2]).toBeLessThan(2e-6);
+  });
+
+  it('reproduces bilinear functions exactly (zero second derivatives are natural)', () => {
+    const nx = 9, ny = 7;
+    const f = new Float64Array(nx * ny);
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) f[j * nx + i] = 1 + 2 * i * 0.5 - 3 * j * 0.25 + 0.7 * (i * 0.5) * (j * 0.25);
+    const bi = new Bicubic(f, nx, ny, 0, 0, 0.5, 0.25);
+    const o = new Float64Array(3);
+    for (const [x, y] of [[0.3, 0.2], [2.1, 1.3], [3.9, 0.05]]) {
+      bi.evalGrad(x, y, o);
+      expect(o[0]).toBeCloseTo(1 + 2 * x - 3 * y + 0.7 * x * y, 12);
+      expect(o[1]).toBeCloseTo(2 + 0.7 * y, 12);
+      expect(o[2]).toBeCloseTo(-3 + 0.7 * x, 12);
+    }
+  });
+});
+
 describe('roots', () => {
   it('Brent finds roots to machine precision', () => {
     expect(brent((x) => Math.cos(x) - x, 0, 1)).toBeCloseTo(0.7390851332151607, 14);

@@ -8,6 +8,8 @@ export default defineConfig({
   build: { target: 'es2022' },
   test: {
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'bench/**/*.test.ts'],
+    // yields to the event loop after each test so long synchronous suites cannot starve Vitest's RPC
+    setupFiles: ['src/vitest.setup.ts'],
     // `npm run coverage` (vitest run --coverage). Code that runs only in child processes or worker
     // threads (the CLI entry points *.cli.ts, *.worker.ts) is not seen by V8 coverage of the test
     // process, so it is excluded: counted, it read as 0 % however well the end-to-end tests
@@ -17,7 +19,7 @@ export default defineConfig({
       include: ['src/**'],
       exclude: [
         'src/**/*.test.ts', 'src/**/*.test.tsx', 'src/**/testdata/**',
-        'src/main.tsx', 'src/App.tsx', 'src/**/*.d.ts',
+        'src/main.tsx', 'src/App.tsx', 'src/**/*.d.ts', 'src/vitest.setup.ts',
         'src/**/*.cli.ts', 'src/**/*.worker.ts',
       ],
       reporter: ['text-summary', 'json-summary', 'html'],

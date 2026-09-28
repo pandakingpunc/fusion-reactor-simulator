@@ -60,3 +60,28 @@ describe('pinned wizard counterexamples', () => {
     smoke(c);
   });
 });
+
+describe('pinned wizard findings beyond one output step', () => {
+  // BUG(ws2a): "Max. fueling rate" = 0 (the control's minimum) lets the density decay without end while
+  // the heating stays on: W7-X passes T_e = 1 MeV at t ≈ 0.66 s (n_e ≈ 2e15 m⁻³) and reaches n_e ≈ 1e11 m⁻³,
+  // T_e ≈ 5e5 keV at t ≈ 1 s; nothing terminates
+  // the shot, the integrator is then pinned at dtMin (20 000 steps per 20 ms output step, the UI worker
+  // stalls) and the state overflows to NaN at t ≈ 1.39 s after ~30 s of wall time. A density-collapse
+  // termination (or a floor) is missing. Checked cheaply here through the unphysical temperature.
+  it.fails('BUG(ws2a) density collapse — W7-X without fuelling keeps T_e, T_i below 1 MeV up to 1.05 s', () => {
+    const sim = new Simulation(buildConfig({ method: 'stellarator', preset: 'W7X', edits: { 'fueling.maxRate_1e20s': 0 } }));
+    while (sim.t < 1.05 && !sim.done) sim.advance(0.05);
+    for (const f of sim.history) {
+      if (!(f.d.Te < 1000 && f.d.Ti < 1000)) expect.fail(`t = ${f.t}: T_e = ${f.d.Te} keV, T_i = ${f.d.Ti} keV, n_e = ${f.d.ne}e20 m⁻³`);
+    }
+  });
+
+  // BUG(ws2a): the geometry controls allow a minor radius larger than the major radius (a ∈ [0.1, 4] m,
+  // R ∈ [0.3, 12] m, no cross-check). In 1.5D the kernels then throw internal, Turkish-language errors
+  // ("GS: eksende ψ ≤ 0 — çözüm ıraksadı", "solveTridiag: sıfır pivot") instead of the wizard or the
+  // model rejecting the impossible torus with a clear message.
+  it.fails('BUG(ws2a) 1.5D with a > R — no internal solver error (MAST-U, a = 2 m, R = 0.85 m)', () => {
+    const c: WizardCase = { method: 'spherical_tokamak', preset: 'MASTU', edits: { fidelity: '1.5D', 'geometry.a': 2 } };
+    expect(() => { const sim = new Simulation(buildConfig(c)); sim.advance(sim.model.outputDt); }).not.toThrow();
+  });
+});

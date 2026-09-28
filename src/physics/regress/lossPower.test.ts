@@ -28,14 +28,15 @@ describe('loss power P_L = P_heat − P_rad,core − dW/dt', { timeout: 60_000 }
     }
   });
 
-  it('H-mode τ_E is IPB98(y,2) evaluated at P_L', () => {
+  it('H-mode τ_E is IPB98(y,2) evaluated at P_L and the line-averaged density', () => {
     const cfg = JET, g = cfg.geometry;
     const M = cfg.fuelFracA * 2.014 + (1 - cfg.fuelFracA) * 3.016;
     let n = 0;
     // (the frame recorded at the L→H event carries diagnostics evaluated just before the switch)
     const lhTimes = sim.events.filter((e) => e.kind === 'LH' || e.kind === 'HL').map((e) => e.t);
     for (const f of sim.history.filter((h) => h.d.H_mode === 1 && h.d.NTM === 0 && !lhTimes.includes(h.t))) {
-      const ref = cfg.H98 * tauIPB98y2(g, cfg.Ip_MA, cfg.B0, f.d.ne * 1e20, f.d.P_loss * 1e6, M);
+      // IPB98(y,2) is fitted to the LINE-averaged density
+      const ref = cfg.H98 * tauIPB98y2(g, cfg.Ip_MA, cfg.B0, f.d.nbar * 1e20, f.d.P_loss * 1e6, M);
       expect(f.d.tauE / ref).toBeCloseTo(1, 9);
       n++;
     }

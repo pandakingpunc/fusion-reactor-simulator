@@ -13,7 +13,8 @@ import { MagneticConfig } from '../types';
 function tauAndRef(cfg: MagneticConfig, H: number) {
   const m = new MagneticModel(cfg);
   const d = m.diagnostics(5, m.initialState());
-  return { tau: d.tauE, ref: tauISS04(cfg.geometry, cfg.B0, d.ne * 1e20, d.P_loss * 1e6, cfg.stellarator.iota23, 1) * H, m };
+  // ISS04 is fitted to the line-averaged density
+  return { tau: d.tauE, ref: tauISS04(cfg.geometry, cfg.B0, d.nbar * 1e20, d.P_loss * 1e6, cfg.stellarator.iota23, 1) * H, m };
 }
 
 describe('stellarator H_ISS04', () => {

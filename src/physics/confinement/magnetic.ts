@@ -102,6 +102,8 @@ export class MagneticModel implements SimModel {
 
   private cfg: MagneticConfig;
   private g: Geometry;
+  /** n̄/⟨n⟩ (profil üssü α_n'den) */
+  private fLine: number;
   private V: number;
   private S: number;
   private A: number;
@@ -150,6 +152,7 @@ export class MagneticModel implements SimModel {
     this.S = plasmaSurface(this.g);
     this.A = crossSectionArea(this.g);
     this.eps = this.g.a / this.g.R;
+    this.fLine = lineAverageFactor(cfg.transport.alpha_n);
     const fs = FUEL_SPECIES[cfg.fuel];
     this.M = cfg.fuelFracA * fs.a.A + (1 - cfg.fuelFracA) * fs.b.A;
     this.rng = new RNG(cfg.seed);
@@ -318,8 +321,10 @@ export class MagneticModel implements SimModel {
     return { P_brems, P_line, P_sync, P_rad: P_brems + P_line + P_sync, P_rad_core };
   }
 
-  private tauE(ne: number, P_loss: number, hmode: boolean): number {
+  /** τ_E ölçeklemesi; IPB98(y,2), ITER89-P, ST ve ISS04 çizgi-ortalamalı yoğunluğa fit edilmiştir: n̄ = f_line ⟨n_e⟩ */
+  private tauE(neVol: number, P_loss: number, hmode: boolean): number {
     const c = this.cfg;
+    const ne = this.fLine * neVol;
     if (this.isStell) return tauISS04(this.g, c.B0, ne, P_loss, c.stellarator.iota23, this.ctrl.H_ISS04);
     const Ip = Math.max(this.Ip0 / 1e6, 0.05);
     if (hmode) {
@@ -557,7 +562,7 @@ export class MagneticModel implements SimModel {
     const Q = D.P_fus / Math.max(P_in, 1e4);
     const triple = D.ne * D.Ti * D.tauE;
     // Greenwald (ve Sudo) limitleri çizgi-ortalamalı yoğunluk içindir: n̄ = f_line(α_n) ⟨n_e⟩
-    const nbar = lineAverageFactor(c.transport.alpha_n) * D.ne;
+    const nbar = this.fLine * D.ne;
     const nG = this.isStell ? this.sudoLimit(D) : greenwaldDensity(Math.max(Ip_MA, 0.01), this.g.a);
     // L-H eşiği: Martin 2008 (çizgi-ort. yoğunlukla) + Ryter 2014 düşük yoğunluk kolu
     const P_LH = this.isStell ? 0 : pLH_threshold(nbar, c.B0, this.S, this.M, Math.max(Ip_MA, 0.01), this.g.a, this.g.R);

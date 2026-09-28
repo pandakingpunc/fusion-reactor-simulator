@@ -54,9 +54,11 @@ export function computePopcon(cfg: MagneticConfig, o: { nx?: number; ny?: number
   const im = cfg.impurity;
   const cs = im.seedConcentration ?? 0;
   const Wprof = ((1 + aN) * (1 + aT)) / (1 + aN + aT); // ⟨nT⟩ = Wprof·⟨n⟩⟨T⟩
+  // ölçeklemeler çizgi-ortalamalı yoğunlukla (n̄ = f_line ⟨n_e⟩)
+  const fLine = lineAverageFactor(aN);
   const tauOf = (ne: number, P: number) => stell
-    ? tauISS04(g, cfg.B0, ne, P, cfg.stellarator.iota23, stellaratorHISS04(cfg.stellarator, cfg.H98))
-    : (cfg.scaling === 'ST_Valovic' ? tauSTValovic : tauIPB98y2)(g, cfg.Ip_MA, cfg.B0, ne, P, M) * cfg.H98;
+    ? tauISS04(g, cfg.B0, fLine * ne, P, cfg.stellarator.iota23, stellaratorHISS04(cfg.stellarator, cfg.H98))
+    : (cfg.scaling === 'ST_Valovic' ? tauSTValovic : tauIPB98y2)(g, cfg.Ip_MA, cfg.B0, fLine * ne, P, M) * cfg.H98;
 
   const Paux = new Float64Array(NX * NY), Pfus = new Float64Array(NX * NY), Q = new Float64Array(NX * NY);
   const betaN = new Float64Array(NX * NY), PLH_ok = new Uint8Array(NX * NY), fHeA = new Float64Array(NX * NY);
@@ -106,7 +108,7 @@ export function computePopcon(cfg: MagneticConfig, o: { nx?: number; ny?: number
       const k = i * NY + j;
       Paux[k] = Pa; Pfus[k] = Pf; Q[k] = Pa > 0 ? Pf / Pa : Infinity; fHeA[k] = fHe;
       betaN[k] = cfg.Ip_MA > 0 ? betaNormalized(betaToroidal(W / (1.5 * V), cfg.B0), g.a, cfg.B0, cfg.Ip_MA) : 0;
-      PLH_ok[k] = P_loss >= pLH_threshold(ne * lineAverageFactor(aN), cfg.B0, S, M, cfg.Ip_MA, g.a, g.R) ? 1 : 0;
+      PLH_ok[k] = P_loss >= pLH_threshold(fLine * ne, cfg.B0, S, M, cfg.Ip_MA, g.a, g.R) ? 1 : 0;
     }
   }
   return { n, T, nx: NX, ny: NY, Paux, Pfus, Q, betaN, PLH_ok, fHe: fHeA, nG };

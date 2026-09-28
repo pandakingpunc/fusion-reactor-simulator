@@ -152,12 +152,16 @@ export class SimController {
 
   readonly step = (simDt: number): void => this.send({ type: 'step', simDt });
 
-  /** rewind to history frame `index`; frames still in flight from the old branch are ignored from now on */
+  /**
+   * Rewind to history frame `index`; frames still in flight from the old branch are ignored from now on.
+   * The report belongs to the abandoned branch and is cleared with it, so a completed run is never
+   * re-archived under the new branch before that branch completes.
+   */
   readonly rewind = (index: number): void => {
     const s = this.state;
     if (!s.meta) return;
     const branchId = s.branchId + 1;
-    this.patch({ branchId });
+    this.patch({ branchId, report: null });
     this.send({ type: 'rewind', index, branchId });
   };
 

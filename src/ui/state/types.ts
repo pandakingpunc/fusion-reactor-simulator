@@ -31,6 +31,7 @@ export interface SimState {
   dt: number;
   nSteps: number;
   controls: Record<string, number>;
+  /** end-of-shot report of the current branch (cleared when a rewind abandons the branch) */
   report: ShotReport | null;
   error: string | null;
   speed: number;

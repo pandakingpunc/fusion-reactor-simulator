@@ -23,6 +23,22 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   optional time weighting).
 - Tests for the flag parser, worker pool, CLI exit codes, flat-top averaging and the golden
   comparator and snapshot content (95 tests in total).
+- 1.5D profile model: the model is split into focused modules (state layout, shared context,
+  composition, boundary, sources, transport, control, solver, equilibrium coupling, events,
+  diagnostics, checkpoints) with `SourceModel`, `TransportModel` and `EventModel` plug-in
+  interfaces; `model.ts` is a thin orchestrator. `ProfileModel` takes optional `{ transport,
+  sources, events }` modules; `SourceModel`/`TransportModel` get an optional `accepted()` hook
+  (once per accepted step, for state that evolves per step), `SourceModel` an optional
+  `particles()` hook (a particle source added into `w.Sn` once per implicit attempt) and
+  `TransportModel` a `geometryChanged()` hook; sources and transport models with state take part
+  in checkpoints. Developer note: `src/physics/profiles/README.md`. The split is bit-identical.
+- 1.5D diagnostic `P_bound` (power conducted and convected across the separatrix; the discrete
+  energy balance dW/dt = P_heat - P_rad - P_bound closes to 1.5e-5 of P_heat over an ITER15
+  flat-top) and `tauE_scal` (the scaling-law tau_E beside the actual W/P_loss in 'cgm' mode).
+- 1.5D tests: energy balance and convection against analytic cases, NBI chord cache and
+  beam-target table against their direct integrals, 'cgm' smoke test, unit tests of every event
+  model, transport geometry against an analytic Solov'ev equilibrium, plug-in hook tests, replays
+  from disruption quench frames, and regression tests for every integrity fix below.
 
 ### Changed
 - The validation CLI moved to `src/cli/validate.cli.ts` (no Node-only entry point left in
@@ -32,11 +48,39 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 - `figures`: invalid `--scan`, `--only`, `--formats` or `--threads` values are rejected with exit
   code 2 instead of being clamped or ignored.
 - README translated to English and extended with a regression-testing section.
+- 1.5D: transport-geometry cell volumes are splined from V(rho^2) with the V' end slopes (the
+  innermost cell was 1.3 % too small); the flat-top central q(0) of the 1.5D cases moves by -2 to
+  -4 % (DEMO15 +15 %) and ITER15 shows 38 instead of 25 sawtooth crashes in 400 s.
+- 1.5D: in the predictive 'cgm' transport mode tau_E, P_cond, the triple product and the
+  particle, He-ash and impurity times use the actual W/P_loss.
+- 1.5D: ion heat convected in through the separatrix when particles flow in scales with n_i/n_e as
+  at every other face, so one heat step conserves energy exactly in both flow directions (only
+  MASTU15 has boundary inflow).
 
 ### Fixed
 - The worker pool no longer hangs when a worker exits or crashes while running a task, or when a
   task cannot be sent to a worker (not structured-cloneable): it rejects with an error naming the
   task, and an invalid thread count raises a typed error.
+- 1.5D: ELMs and sawteeth right after a Grad-Shafranov update no longer run with zero ion
+  density; the work arrays are re-evaluated on the new geometry before the MHD events.
+- 1.5D: Grad-Shafranov updates that do not converge are retried (relaxation 0.5, then the
+  pressure table filtered at the grid scale) instead of being dropped silently, and rejected
+  updates are counted, warned about and retried after a back-off; the shot report gives accepted,
+  retried and rejected counts (JET15 accepts 15 of 16 attempts, was 3 of 17). An update whose
+  current table had to be rescaled by more than 50 % to meet I_p is rejected (MASTU15 no longer
+  ends in a beta-limit disruption after mapping the table through a stale geometry). A typed
+  solver failure is reported once with its iterations and residual; invalid input is not retried.
+- 1.5D: when the implicit step runs out of retries, time no longer advances without a matching
+  state and a non-finite state is never committed; linear-algebra errors no longer crash the run.
+  An unrecoverable step ends the shot as 'Numerical failure'.
+- 1.5D: the initial Grad-Shafranov solve is retried when it fails; an unconverged result is
+  reported; if no equilibrium can be computed (including a > R) the model raises the typed
+  `EquilibriumInitFailure`, or the shot ends at t = 0 as 'Equilibrium failure' with a diagnosis.
+- 1.5D: rewinding restores the full model state (equilibrium and geometry, controller and filter
+  states, disruption state, ELM history, last diagnostics); a replay across equilibrium updates
+  and from disruption quench frames is bit-identical, including the shot report.
+- 1.5D: sawtooth crashes conserve particles and the electron and ion thermal energy exactly (a
+  crash used to lose 3-4e-4 of the electron energy).
 
 Physics results are unchanged: a full-precision dump of all 21 presets is byte-identical before
 and after these changes.

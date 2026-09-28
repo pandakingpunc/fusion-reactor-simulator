@@ -61,6 +61,18 @@ describe('simulation worker host (protocol v2)', () => {
     expect(h.take()[0]).toMatchObject({ type: 'rewound', index: 0, branchId: 2 });
   });
 
+  it('a rewind to the final frame of a finished shot completes the new branch at once', () => {
+    const h = harness();
+    h.init(TAE);
+    h.host.handle({ type: 'step', simDt: TAE.t_end });
+    const [first] = ofType(h.take(), 'done');
+    h.host.handle({ type: 'rewind', index: 1e9, branchId: 1 });
+    const ms = h.take();
+    expect(ms.map((m) => m.type)).toEqual(['rewound', 'done']);
+    expect(ms[1]).toMatchObject({ id: 7, branchId: 1 });
+    expect(ofType(ms, 'done')[0].report).toEqual(first.report);
+  });
+
   it('refuses a configuration it cannot integrate, with the reason instead of a stack trace', () => {
     const h = harness();
     h.init({ ...TAE, t_end: undefined as unknown as number }, 4); // a blank "Duration" field

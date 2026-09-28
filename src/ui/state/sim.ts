@@ -163,10 +163,13 @@ export class SimController {
    * Rewind to history frame `index`; frames still in flight from the old branch are ignored from now on.
    * The report belongs to the abandoned branch and is cleared with it, so a completed run is never
    * re-archived under the new branch before that branch completes.
+   * Rewinding a finished run to its final frame (scrubber or chart click at the right edge) changes
+   * nothing: the run keeps its branch and its report, as there would be nothing left to simulate.
    */
   readonly rewind = (index: number): void => {
     const s = this.state;
     if (!s.meta) return;
+    if (s.status === 'done' && index >= s.frames.length - 1) return;
     const branchId = s.branchId + 1;
     this.patch({ branchId, report: null });
     this.send({ type: 'rewind', index, branchId });

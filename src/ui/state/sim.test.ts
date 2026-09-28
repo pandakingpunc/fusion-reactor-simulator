@@ -191,6 +191,22 @@ describe('completedShotKey', () => {
     expect(completedShotKey(h.s())).toBe('1:1');
   });
 
+  it('rewinding a finished run to its final frame keeps its branch and its report', () => {
+    const h = loaded();
+    h.w.advance(TAE.t_end);
+    h.w.deliver();
+    h.tick();
+    const done = h.s();
+    const sent = h.w.sent.length;
+    h.ctrl.rewind(done.frames.length - 1); // scrubber released at the end
+    h.ctrl.rewind(done.frames.length + 10); // chart clicked past the last frame
+    expect(h.w.sent.length).toBe(sent);
+    expect(h.s()).toBe(done);
+    expect(completedShotKey(h.s())).toBe('1:0');
+    h.ctrl.rewind(done.frames.length - 2); // one frame earlier is a real rewind
+    expect(h.w.last('rewind')).toEqual({ type: 'rewind', index: done.frames.length - 2, branchId: 1 });
+  });
+
   it('a stale done from an abandoned branch cannot complete the new branch', () => {
     const s = { ...initialSimState, status: 'paused' as const, runId: 1, branchId: 1, cfg: TAE, meta: {} as never };
     const after = reduceSim(s, { type: 'done', id: 1, branchId: 0, report: {} as never });

@@ -186,6 +186,14 @@ export function createSimHost(post: (m: FromWorker) => void): SimHost {
           const index = Math.max(0, Math.min(msg.index, sim.history.length - 1));
           sim.rewindTo(index);
           post({ type: 'rewound', id: runId, branchId, index, t: sim.t, controls: sim.model.getControls() });
+          // Rewinding to the final frame of a finished shot leaves nothing to simulate: the new branch is
+          // complete at once (otherwise play/step would do nothing and the page would wait forever).
+          // The final frame's internal state predates the end-of-shot bookkeeping that Simulation.advance()
+          // does on reaching t_end, so a zero-length advance redoes it before the report is taken.
+          if (sim.done) {
+            sim.advance(0);
+            post({ type: 'done', id: runId, branchId, report: sim.report() });
+          }
           break;
         }
         case 'control':

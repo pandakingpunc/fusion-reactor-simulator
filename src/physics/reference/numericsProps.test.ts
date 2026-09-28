@@ -15,7 +15,8 @@ import { Bicubic, CubicSpline, Pchip, findInterval, lerpTable } from '../numeric
 import { brent, invertMonotone } from '../numerics/roots';
 import { DormandPrince } from '../integrator';
 import { Rand, forAll, gen, mulberry32 } from '../../testing/prop';
-import { INTEGRATOR_FIXED, pinUntil } from '../../testing/knownBugs';
+import { INTEGRATOR_FIXED } from '../../testing/knownBugs';
+import { pinUntil } from '../../testing/pinUntil';
 
 /** dense Gaussian elimination with partial pivoting; A row-major n×n (copied) */
 function gauss(A: ArrayLike<number>, b: ArrayLike<number>, n: number): Float64Array {

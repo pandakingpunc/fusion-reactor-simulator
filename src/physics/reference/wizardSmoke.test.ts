@@ -9,11 +9,12 @@
  */
 import { describe, expect, it } from 'vitest';
 import { Simulation } from '../simulation';
-import type { Method } from '../types';
-import { METHOD_INFO } from '../../ui/wizard/schema';
-import { WizardCase, buildConfig, showCase, wizardCase } from '../../testing/wizardCases';
-import { forAll } from '../../testing/prop';
-import { INTEGRATOR_FIXED, pinUntil } from '../../testing/knownBugs';
+import type { MagneticConfig, Method, ReactorConfig } from '../types';
+import { METHOD_INFO, PRESETS, setPath } from '../../ui/wizard/schema';
+import { NONE, WizardCase, buildConfig, canBlank, fieldArbitrary, showCase, wizardCase, wizardFields } from '../../testing/wizardCases';
+import { forAll, mulberry32 } from '../../testing/prop';
+import { BLANK_DEFAULTS_FIXED, INTEGRATOR_FIXED } from '../../testing/knownBugs';
+import { pinUntil } from '../../testing/pinUntil';
 
 /**
  * Integrator steps allowed for one output step: typical cases need ~20, the largest regular ones
@@ -98,5 +99,73 @@ describe('pinned wizard findings beyond one output step', () => {
   it.fails('BUG(ws2a) 1.5D with a > R — no internal solver error (MAST-U, a = 2 m, R = 0.85 m)', () => {
     const c: WizardCase = { method: 'spherical_tokamak', preset: 'MASTU', edits: { fidelity: '1.5D', 'geometry.a': 2 } };
     expect(() => { const sim = new Simulation(buildConfig(c)); sim.advance(sim.model.outputDt); }).not.toThrow();
+  });
+});
+
+describe('blank wizard fields', () => {
+  const presetCfg = (id: string): ReactorConfig => {
+    const p = PRESETS.find((x) => x.id === id);
+    if (!p) throw new Error(`unknown preset ${id}`);
+    return p.cfg;
+  };
+  /** frames recorded over one output step (a throw propagates) */
+  const oneStep = (cfg: ReactorConfig) => {
+    const sim = new Simulation(cfg);
+    sim.advance(sim.model.outputDt);
+    return sim.history;
+  };
+  /** two runs record the same frames with the same finite diagnostics (within 1e-12 relative) */
+  const expectSameRun = (got: Simulation['history'], want: Simulation['history']) => {
+    expect(got.length, 'frames').toBe(want.length);
+    want.forEach((w, i) => {
+      const g = got[i];
+      expect(g.t, `t of frame ${i}`).toBe(w.t);
+      for (const [k, v] of Object.entries(w.d)) {
+        const x = g.d[k];
+        const ok = Number.isFinite(v) && Number.isFinite(x) && Math.abs(x - v) <= 1e-12 * Math.max(Math.abs(v), 1e-300);
+        if (!ok) expect.fail(`frame ${i} (t = ${w.t}): ${k} = ${x}, expected ${v}`);
+      }
+    });
+  };
+
+  it('the generator leaves blank exactly the number fields the wizard can leave blank', () => {
+    const r = mulberry32(0x5eed2a);
+    for (const method of ['tokamak', 'stellarator'] as Method[]) {
+      for (const f of wizardFields(method)) {
+        if ((f.type ?? 'number') !== 'number') continue;
+        const arb = fieldArbitrary(f);
+        let blanks = 0;
+        for (let i = 0; i < 200; i++) if (arb.generate(r) === NONE) blanks++;
+        if (canBlank(f)) expect(blanks, `${f.path}: blanks in 200 draws`).toBeGreaterThan(20);
+        else expect(blanks, `${f.path}: blanks in 200 draws`).toBe(0);
+      }
+    }
+  });
+
+  // blank is a documented setting of these fields (their wizard hints): it runs as the value it stands for
+  it('documented blanks: seeding c_s blank = 0 (ITER), LCFS κ and δ blank = geometry κ and δ (ITER 1.5D)', () => {
+    const iter = presetCfg('ITER');
+    expect((iter as MagneticConfig).impurity.seedSpecies).toBeTruthy();
+    expectSameRun(oneStep(setPath(iter, 'impurity.seedConcentration', undefined)), oneStep(setPath(iter, 'impurity.seedConcentration', 0)));
+    const iter15 = presetCfg('ITER15'), g = (iter15 as MagneticConfig).geometry;
+    const lcfs = (k: unknown, d: unknown) => setPath(setPath(iter15, 'profiles.lcfsKappa', k), 'profiles.lcfsDelta', d);
+    expectSameRun(oneStep(lcfs(undefined, undefined)), oneStep(lcfs(g.kappa, g.delta)));
+  });
+
+  // BUG(ws2a): see BLANK_DEFAULTS_FIXED in src/testing/knownBugs.ts. On v4/integration a blank number
+  // input stores undefined and RUN is allowed for fields with a model default (`def`), but ProfileModel
+  // lets the undefined override DEFAULT_PROFILE_SETTINGS. One output step of each single-field blank over
+  // every magnetic preset (0D and 1.5D; v4/integration af38dbe): 131 of 261 fail — "solveBlockTridiag2:
+  // tekil blok" for χ shape, χ_i/χ_e, D/χ_e, stiffness, R/L_T crit, ECRH ρ and width, ICRH width, NBI
+  // R_tan, n_sep; "Invalid array length" for N_ρ; T_ped = undefined for the pedestal width. The other
+  // `def` fields run with undefined in place of the default. Same on this lane's base 3d04e96.
+  // Reproduction: setPath(ITER15, 'profiles.DoverChi', undefined), then advance one output step.
+  pinUntil(BLANK_DEFAULTS_FIXED)('BUG(ws2a) blank 1.5D fields with a model default run exactly as that default (MAST-U 1.5D)', () => {
+    const fields = wizardFields('spherical_tokamak').filter((f) => (f.type ?? 'number') === 'number' && f.def !== undefined);
+    expect(fields.length).toBeGreaterThan(10);
+    const base = setPath(presetCfg('MASTU'), 'fidelity', '1.5D');
+    const blank = fields.reduce((c, f) => setPath(c, f.path, undefined), base);
+    const dflt = fields.reduce((c, f) => setPath(c, f.path, f.def), base);
+    expectSameRun(oneStep(blank), oneStep(dflt));
   });
 });

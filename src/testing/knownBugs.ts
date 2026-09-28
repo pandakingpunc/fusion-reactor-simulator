@@ -3,11 +3,11 @@
  *
  * A pin is an `it.fails` test: it passes while the bug is present and turns red once the bug is fixed,
  * so the fixer flips it to `it` and the test becomes a regression test. When the fix lands on another
- * lane's branch first, this lane's tests must pass on both sides of the merge; `pinUntil(fixed)` picks
- * `it` or `it.fails` from a switch that is decided WITHOUT running the pinned reproduction (keying the
- * pin on its own reproduction would make it pass whatever the code does).
+ * lane's branch first, this lane's tests must pass on both sides of the merge; pinUntil(fixed)
+ * (./pinUntil.ts) picks `it` or `it.fails` from a switch below, which is decided WITHOUT running the
+ * pinned reproduction (keying the pin on its own reproduction would make it pass whatever the code does).
+ * This module does not import vitest, so the wizard case generator can use it outside the test runner.
  */
-import { it } from 'vitest';
 import { DormandPrince } from '../physics/integrator';
 
 /**
@@ -19,7 +19,12 @@ import { DormandPrince } from '../physics/integrator';
  */
 export const INTEGRATOR_FIXED = typeof (DormandPrince.prototype as unknown as Record<string, unknown>).snapshot === 'function';
 
-/** `it` where the fix is present (a regression test), `it.fails` where the bug is still expected */
-export function pinUntil(fixed: boolean): typeof it {
-  return (fixed ? it : it.fails) as typeof it;
-}
+/**
+ * BUG(ws2a): a blank 1.5D profile field that has a model default (FieldDef.def) is not replaced by that
+ * default. ProfileModel builds its settings as `{ ...DEFAULT_PROFILE_SETTINGS, …, ...cfg.profiles }`
+ * (src/physics/profiles/model.ts; profiles/context.ts on v4/ws3), so an explicit `undefined` — what the
+ * wizard stores for a blank input on v4/integration (ws10 a146877), and what setPath writes — overrides
+ * the default. Pinned in wizardSmoke.test.ts; while it stands, the wizard case generator does not blank
+ * these fields. Set to true in the commit that fixes it.
+ */
+export const BLANK_DEFAULTS_FIXED = false;

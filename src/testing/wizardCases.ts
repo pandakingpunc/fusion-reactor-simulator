@@ -3,20 +3,45 @@
  * start from any preset of a method (the preset list or the method card), then change any subset of
  * the fields the wizard shows for that method, each to a value its control can produce:
  *  - number fields: anywhere in [min, max] (UI units × scale); integer-step fields on the slider
- *    lattice min + k·step; ranges spanning ≥ 2 decades are drawn log-uniformly;
- *  - select fields: any option; the empty option (e.g. seeding "none") is recorded as NONE and
- *    written as undefined, as Field.tsx does;
+ *    lattice min + k·step; ranges spanning ≥ 2 decades are drawn log-uniformly; a field the wizard
+ *    lets the user leave blank (see canBlank) is also blank (NONE) in a quarter of its edits;
+ *  - select fields: any option; the empty option (e.g. seeding "none") is recorded as NONE;
  *  - bool fields: on/off.
+ * NONE is written as undefined, as Field.tsx does for the empty option and a blank number input.
  * Fields are applied in schema order and only while visible (fieldVisible), exactly like the UI,
  * where e.g. the 1.5D fields appear only after "Model fidelity" is set to 1.5D.
  * Shrinking drops edits first (back to the preset value), then simplifies the remaining values.
  */
 import type { Method, ReactorConfig } from '../physics/types';
+import * as schema from '../ui/wizard/schema';
 import { FieldDef, PRESETS, fieldVisible, setPath, stepsFor } from '../ui/wizard/schema';
 import { Arbitrary, gen } from './prop';
+import { BLANK_DEFAULTS_FIXED } from './knownBugs';
 
-/** the empty select option ("none"); an absent edit is plain undefined */
+/** the empty select option ("none") or a blank number input; an absent edit is plain undefined */
 export const NONE = '<none>';
+
+/** share of the edits of a blankable number field that leave it blank */
+export const P_BLANK = 0.25;
+
+/**
+ * schema.isRequired, present since ws10's d34d302 (v4/integration): together with a146877 a blank
+ * number input unsets the value (undefined) and RUN is blocked only while a required field (no `def`,
+ * not `optional`) is blank. Before these commits a blank input reverted to the previous value, so no
+ * blank ever reached the configuration. Read through the namespace so that this file compiles against
+ * both schema versions.
+ */
+const schemaIsRequired = (schema as unknown as { isRequired?: (f: FieldDef) => boolean }).isRequired;
+
+/**
+ * Whether the wizard can hand the simulator a configuration with this number field blank. Fields with
+ * a model default (`def`) are left out while BUG(ws2a) BLANK_DEFAULTS_FIXED stands (see knownBugs.ts;
+ * pinned in wizardSmoke.test.ts), so that the property keeps covering everything else.
+ */
+export function canBlank(f: FieldDef): boolean {
+  if ((f.type ?? 'number') !== 'number' || !schemaIsRequired || schemaIsRequired(f)) return false;
+  return BLANK_DEFAULTS_FIXED || f.def === undefined;
+}
 
 export interface WizardCase {
   method: Method;
@@ -30,6 +55,14 @@ export function wizardFields(method: Method): FieldDef[] {
   const out: FieldDef[] = [];
   for (const step of stepsFor(method)) for (const f of step.fields) if (!seen.has(f.path)) { seen.add(f.path); out.push(f); }
   return out;
+}
+
+/** `inner`, or NONE with probability p; NONE does not shrink, a value shrinks as `inner` does */
+function orBlank(inner: Arbitrary<unknown>, p: number): Arbitrary<unknown> {
+  return {
+    generate: (r) => (r() < p ? NONE : inner.generate(r)),
+    shrink: (v) => (v === NONE ? [] : inner.shrink(v)),
+  };
 }
 
 /** the values one field's control can produce, in configuration units */
@@ -46,7 +79,8 @@ export function fieldArbitrary(f: FieldDef): Arbitrary<unknown> {
     ui = { generate: (r) => lo + step * k.generate(r), *shrink(v) { for (const c of k.shrink(Math.round((v - lo) / step))) yield lo + step * c; } };
   } else if (lo > 0 && hi / lo >= 100) ui = gen.logFloat(lo, hi);
   else ui = gen.float(lo, hi, { target: Math.max(lo, Math.min(hi, 0)) });
-  return { generate: (r) => ui.generate(r) * scale, *shrink(v) { for (const c of ui.shrink((v as number) / scale)) yield c * scale; } };
+  const value: Arbitrary<unknown> = { generate: (r) => ui.generate(r) * scale, *shrink(v) { for (const c of ui.shrink((v as number) / scale)) yield c * scale; } };
+  return canBlank(f) ? orBlank(value, P_BLANK) : value;
 }
 
 /**

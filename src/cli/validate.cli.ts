@@ -14,14 +14,18 @@
  *   --markdown         a Markdown table of the checks with the model values instead of the report
  *   --list             print the selected checks without running anything (with --markdown: as a table)
  *   --timeout S        fail a preset whose run takes longer than S seconds
+ *   --checks FILE      use the checks of this JSON file (an array of ReferenceCheck objects) instead of
+ *                      the built-in table; the same integrity rules apply. For tests and for trying out
+ *                      new references before they go into references.ts
  * Exit codes: 0 no unexpected failure; 1 a check or run failed, or no check was executed (the selection
  * has none); 2 usage error (unknown flag or preset id, bad --threads); 130 interrupted (Ctrl-C).
  */
+import { readFileSync } from 'node:fs';
 import { PRESETS } from '../physics/presets';
-import { REFERENCE_CHECKS, type CheckKind } from '../physics/validation/references';
+import { REFERENCE_CHECKS, type CheckKind, type ReferenceCheck, type Tolerance } from '../physics/validation/references';
 import { readMetric } from '../physics/validation/metrics';
 import {
-  type CheckOutcome, evaluateCheck, fmt, fmtRange, formatOutcomeLine, markdownTable, selectChecks, tally,
+  type CheckOutcome, evaluateCheck, fmt, fmtRange, fmtReference, formatOutcomeLine, markdownTable, parseChecks, selectChecks, tally,
 } from '../physics/validation/evaluate';
 import { PoolAbortError, PoolConfigError, type PoolProgress, defaultThreads, runPool } from './pool';
 import { defineCli, exitUsage, parseArgsOrExit } from './args';
@@ -42,6 +46,10 @@ const CLI = defineCli({
     markdown: { type: 'bool', help: 'print a Markdown table of the checks and model values instead of the report' },
     list: { type: 'bool', help: 'list the selected checks without running the presets (Markdown with --markdown)' },
     timeout: { type: 'number', min: 1, metavar: 'S', help: 'fail a preset whose run takes longer than S seconds (default: no limit)' },
+    checks: {
+      type: 'string', metavar: 'FILE',
+      help: 'use the checks of this JSON file (an array of checks with the fields of references.ts) instead of the built-in table',
+    },
   },
   epilog: 'With --json, stdout is a single JSON document. Plain `npm run` writes its own "> script" banner to\n' +
     'stdout first, so run it silently to capture the JSON:\n' +
@@ -58,7 +66,8 @@ interface CheckResult {
   value: number | null;
   unit: string;
   expected: { lo: number; hi: number };
-  reference: { value: number; uncertainty?: number; source: string; doi?: string };
+  reference: { value: number; uncertainty?: number; band?: readonly [number, number]; source: string; doi?: string };
+  tolerance: Tolerance;
   status: CheckOutcome['status'];
   /** value within the accepted range (status pass or xpass) */
   pass: boolean;
@@ -85,7 +94,8 @@ async function main() {
   const args = parseArgsOrExit(CLI);
   if (args.json && args.markdown) exitUsage(CLI.name, '--json and --markdown are mutually exclusive');
   const kinds = args.kind as CheckKind[] | undefined;
-  const checks = selectChecks(REFERENCE_CHECKS, args.only, kinds);
+  const table = args.checks === undefined ? REFERENCE_CHECKS : loadChecks(args.checks);
+  const checks = selectChecks(table, args.only, kinds);
   if (args.list) {
     printList(checks, args.json, args.markdown);
     return;
@@ -197,8 +207,11 @@ function toJson(o: CheckOutcome): CheckResult {
   return {
     id: c.id, preset: c.preset, metric: c.metric, kind: c.kind, value: o.value, unit: c.unit,
     expected: { lo: c.accept[0], hi: c.accept[1] },
-    reference: { value: c.value, ...(c.uncertainty !== undefined ? { uncertainty: c.uncertainty } : {}), source: c.source, ...(c.doi ? { doi: c.doi } : {}) },
-    status: o.status, pass: o.status === 'pass' || o.status === 'xpass', ref: c.ref,
+    reference: {
+      value: c.value, ...(c.uncertainty !== undefined ? { uncertainty: c.uncertainty } : {}), ...(c.band ? { band: c.band } : {}),
+      source: c.source, ...(c.doi ? { doi: c.doi } : {}),
+    },
+    tolerance: c.tolerance, status: o.status, pass: o.status === 'pass' || o.status === 'xpass', ref: c.ref,
     ...(c.knownFailure ? { knownFailure: c.knownFailure } : {}), ...(o.error ? { error: o.error } : {}),
   };
 }
@@ -210,10 +223,25 @@ function printList(checks: ReturnType<typeof selectChecks>, json: boolean, markd
     process.stdout.write(markdownTable(checks) + '\n');
   } else {
     for (const c of checks) {
-      console.log(`  ${c.id.padEnd(14)} ${c.kind.padEnd(10)} ${c.metric} = ${fmt(c.value)}${c.uncertainty !== undefined ? ` ± ${fmt(c.uncertainty)}` : ''}` +
-        `${c.unit ? ` ${c.unit}` : ''}, accepted ${fmtRange(c)}  [${c.ref}]${c.knownFailure ? '  (known failure)' : ''}`);
+      console.log(`  ${c.id.padEnd(14)} ${c.kind.padEnd(10)} ${c.metric} = ${fmtReference(c)}, accepted ${fmtRange(c)}  [${c.ref}]` +
+        `${c.knownFailure ? '  (known failure)' : ''}`);
     }
     console.log(`\n${checks.length} checks`);
+  }
+}
+
+/** --checks FILE: a JSON check table; a missing, unreadable or invalid file is a usage error (exit 2) */
+function loadChecks(file: string): ReferenceCheck[] {
+  let data: unknown;
+  try {
+    data = JSON.parse(readFileSync(file, 'utf8'));
+  } catch (e) {
+    exitUsage(CLI.name, `--checks: cannot read ${file}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  try {
+    return parseChecks(data, PRESETS.map((p) => p.id));
+  } catch (e) {
+    exitUsage(CLI.name, `--checks ${file}: ${e instanceof Error ? e.message : String(e)}`);
   }
 }
 

@@ -52,10 +52,17 @@ export class CheckpointStore {
 /**
  * Checkpoint part of the shared context: RNG, phase and mode, time step, boundary and controller
  * state (P_SOL filter, Γ_b, n_sep gain), α_ped/α_crit, loop voltage, τ_E used by the fueling loop
- * of the next step, the disruption state; the equilibrium/geometry pair, the issued warnings and
- * the disruption cause and text by reference. Actuator set-points (applyControl) are deliberately
- * not part of it: after a rewind the latest controls stay in force. The output state
- * (termination, pending events, stale flag) is reset.
+ * of the next step, the disruption state; the equilibrium/geometry pair, the issued warnings, the
+ * disruption cause and text and the last diagnostics by reference or copy. Actuator set-points
+ * (applyControl) are deliberately not part of it: after a rewind the latest controls stay in
+ * force. The output state (termination, pending events, stale flag) is reset.
+ *
+ * The last diagnostics and profiles are part of it because the quench phases of a disruption
+ * patch them in place on top of the values of the last normal step (quenchDiagnostics): they
+ * cannot be rebuilt from y there, and a frame or report after a replay from a quench frame would
+ * otherwise lack most keys. The diagnostics are a copy (that patching mutates them), the profiles
+ * are kept by reference (a step replaces them, never mutates them) and only in the quench phases,
+ * where nothing else refreshes them; in the normal phase the next step rewrites both.
  */
 export function contextCheckpoint(ctx: ProfileContext): Checkpointable {
   return {
@@ -63,6 +70,8 @@ export function contextCheckpoint(ctx: ProfileContext): Checkpointable {
       aux.geo = ctx.geo;
       aux.warned = [...ctx.warned];
       aux.disruptCause = ctx.disruption.cause; aux.diagText = ctx.disruption.text;
+      aux.lastDiag = { ...ctx.lastDiag };
+      if (ctx.phase !== 'normal') aux.lastProf = ctx.lastProf;
       Object.assign(rec, {
         rng: ctx.rng.getState(), phase: PHASES.indexOf(ctx.phase), hmode: +ctx.hmode,
         dt: ctx.dt, PSOL: ctx.PSOL, GammaB: ctx.GammaB, TeB: ctx.bc.Te, TiB: ctx.bc.Ti, nB: ctx.bc.n, nsepGain: ctx.nsepGain,
@@ -82,16 +91,19 @@ export function contextCheckpoint(ctx: ProfileContext): Checkpointable {
       const D = ctx.disruption;
       D.t = num('tDisrupt', 0); D.W = num('Wd', 0); D.Ip = num('IpD', 0);
       ctx.terminated = null; ctx.pending = []; ctx.diagStale = false;
-      // τ_E of the last diagnostics feeds the fueling loop of the next step; the rest is rebuilt from y
-      ctx.lastDiag = Number.isFinite(st.tauE) ? { tauE: st.tauE } : {};
       if (aux) {
         const geo = aux.geo as ProfileContext['geo'];
         if (geo !== ctx.geo) ctx.adoptGeometry(geo);
         ctx.warned = new Set(aux.warned as string[]);
         D.cause = aux.disruptCause as DisruptionCause; D.text = aux.diagText as string;
+        ctx.lastDiag = { ...(aux.lastDiag as Record<string, number>) };
+        if (aux.lastProf) ctx.lastProf = aux.lastProf as ProfileContext['lastProf'];
       } else {
-        // a record from elsewhere (no stored references): keep the current equilibrium and disruption text
+        // a record from elsewhere (no stored references): keep the current equilibrium and disruption
+        // text; τ_E of the last diagnostics feeds the fueling loop of the next step, the rest is
+        // rebuilt from y by the next diagnostics call
         ctx.warned.clear();
+        ctx.lastDiag = Number.isFinite(st.tauE) ? { tauE: st.tauE } : {};
       }
     },
   };

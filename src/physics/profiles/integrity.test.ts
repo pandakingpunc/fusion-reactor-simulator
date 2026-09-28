@@ -288,3 +288,61 @@ describe('initial equilibrium', () => {
     expect(() => new Simulation(JET_15D)).toThrow(EquilibriumInitFailure);
   });
 });
+
+describe('checkpoints and replays', () => {
+  const rel = (a: number, b: number) => Math.abs(a - b) / Math.max(Math.abs(b), 1e-300);
+
+  // density limit → thermal and current quench: the quench phases patch the last diagnostics in
+  // place, so a checkpoint must carry all of them
+  const disrupting = (): MagneticConfig => ({ ...JET_15D, t_end: 3, n_target: JET_15D.n_target * 3 });
+
+  it('a replay from a thermal- or current-quench frame reproduces the frames and the report', () => {
+    const ref = new Simulation(disrupting());
+    ref.runAll();
+    const refFrames = ref.history.map((h) => ({ t: h.t, y: h.y, d: { ...h.d }, prof: h.prof }));
+    const refReport = JSON.stringify(ref.report());
+    expect(ref.report().termination.reason).toContain('disruption');
+    const nKeys = Object.keys(refFrames[refFrames.length - 1].d).length;
+    expect(nKeys).toBeGreaterThan(50);
+    // regular frames (they carry profiles): replaying from an irregular frame (the disruption
+    // onset) also depends on the kernel's output clock, which is not part of the model checkpoint
+    const inPhase = (ph: number) => ref.history.findIndex((h) => h.internal.phase === ph && !!h.prof);
+    const tq = inPhase(1), cq = inPhase(2);
+    expect(tq).toBeGreaterThan(0);
+    expect(cq).toBeGreaterThan(tq);
+    for (const idx of [tq, cq]) {
+      const sim = new Simulation(disrupting());
+      sim.runAll();
+      sim.rewindTo(idx);
+      // the checkpoint restores the diagnostics and profiles of that frame
+      expect(sim.model.diagnostics(sim.t, sim.y)).toEqual(refFrames[idx].d);
+      expect(sim.model.profiles?.(sim.y)).toEqual(sim.history[idx].prof ?? sim.model.profiles?.(sim.y));
+      sim.advance(3);
+      expect(sim.history.length).toBe(refFrames.length);
+      for (let k = idx + 1; k < refFrames.length; k++) {
+        const f = sim.history[k];
+        expect(f.t).toBe(refFrames[k].t);
+        expect(f.y).toEqual(refFrames[k].y);
+        expect(Object.keys(f.d).length, `frame ${k}`).toBe(Object.keys(refFrames[k].d).length);
+        for (const key of Object.keys(refFrames[k].d)) expect(rel(f.d[key], refFrames[k].d[key]), `frame ${k} ${key}`).toBeLessThan(1e-12);
+        if (refFrames[k].prof) expect(f.prof).toEqual(refFrames[k].prof);
+      }
+      expect(Object.keys(sim.history[sim.history.length - 1].d).length).toBe(nKeys);
+      expect(JSON.stringify(sim.report())).toBe(refReport);
+    }
+  }, 60000);
+
+  it('a rewind restores the diagnostics of a normal-phase frame, regular or not', () => {
+    const sim = new Simulation({ ...ITER_15D, t_end: 120 }); // ELM frames from t = 11 s
+    sim.runAll();
+    const irregular = sim.history.findIndex((h, k) => k > 0 && !h.prof);
+    const regular = sim.history.findIndex((h, k) => k > irregular && !!h.prof);
+    expect(irregular).toBeGreaterThan(0);
+    expect(sim.history[irregular].t).toBeGreaterThan(5);
+    for (const idx of [regular, irregular]) {
+      const want = { ...sim.history[idx].d };
+      sim.rewindTo(idx);
+      expect(sim.model.diagnostics(sim.t, sim.y)).toEqual(want);
+    }
+  }, 60000);
+});

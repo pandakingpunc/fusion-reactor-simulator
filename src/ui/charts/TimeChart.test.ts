@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
-import { act } from 'react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { TimeChart } from './TimeChart';
 import { installDomStubs } from '../testing/dom';

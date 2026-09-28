@@ -90,10 +90,18 @@ on a shot they can both run (`lossPower.test.ts`, `ignition.test.ts`, `fastIons.
   hysteresis 0.9; the state `ctx.ignited` is the `ignited` diagnostic and what the report's ignition time follows.
   It ends at the onset of a disruption (the quench frames are not ignited). With `heating.autoOff` the external
   heating ramps down over `heating.rampTime` once Q ≥ 5 (`ctx.tAuxOff`, `events/burn.ts`).
-- **Fast-ion pressure**: the energy content of the NBI ions (`w.Wbeam`, P_beam τ_W) and of the charged fusion products
-  (`w.Walpha`, Σ P_k τ_W,k), τ_W = τ_se (1 − G)/2 from the Stix loss law, at least 1 ms. β_T and β_N use the total
-  pressure; `betaN_th` (thermal) seeds the NTMs and β_p (the equilibrium's pressure table) stays thermal. The
-  diagnostics `W_alpha`, `W_beam`, `Wf`, `P_beam_heat`, `P_rad_core` and `dWdt_s` show the parts.
+- **Fast-ion pressure**: the energy content of the NBI ions and of the charged fusion products is a pool per species
+  (`ctx.WfBeam`, `ctx.WfAlpha`, `fastIons.ts`) that obeys the 0D equation dW/dt = P − W/τ_W: it builds up with the
+  time constant τ_W = τ_se (1 − G)/2 of the Stix loss law (at least 1 ms) and decays after the source stops, so it
+  never exceeds the injected energy (W' − W ≤ P Δt). Each accepted step advances it with the exact solution for
+  constant P and τ_W (W' = W_ss + (W − W_ss) e^{−Δt/τ_W}). The steady content W_ss = P τ_W per cell (`w.Wbeam`,
+  `w.Walpha`) and the time constant per cell (`w.tauWb`, `w.tauWa`; independent of the source power, so the pool also
+  decays after the beam is off or the burn stops) are computed by the sources; the pool's τ_W is W_ss/P, or the volume
+  mean while the source is off. The pools are part of the checkpoint and end at the onset of a disruption. β_T and
+  β_N use the total pressure; `betaN_th` (thermal) seeds the NTMs and β_p (the equilibrium's pressure table) stays
+  thermal. The diagnostics `W_alpha`, `W_beam`, `Wf`, `P_beam_heat`, `P_rad_core` and `dWdt_s` show the parts. A
+  content that jumped to W_ss at once was 4.6 times the injected energy in a JET15 shot with a 500 keV beam and ended
+  it in a spurious Troyon-limit disruption.
 
 ## Plug-in interfaces
 
@@ -196,8 +204,9 @@ model take part as soon as they implement the hooks; other parts are listed in
   table (ITER15 5e-4, MASTU15 1.2e-2 at ψ_N = 0.96, against 8 times the surfaces). That is a property of the tables
   (`equilibrium/gs.ts`), not of the geometry: the metrics of the outer cells of a spherical tokamak sit at a ρ̂ that is
   up to 1 % of the minor radius off. A finer table (`nSurf`) moves ρ̂ and the cell volumes by less than 0.1 % (ITER15).
-- The charged fusion products and the NBI ions heat instantaneously and locally; their energy content (pressure) is the
-  steady slowing-down distribution of the local source, with no fast-ion transport or loss.
+- The charged fusion products and the NBI ions heat instantaneously and locally (the 0D model delays the heating with
+  the same pools); only their pressure follows the pool dynamics above, with no fast-ion transport or loss. The pool
+  is scalar: its τ_W is the source-weighted mean over the cells, not a profile.
 - `ProfileModel` still carries the `rhs`/`integratorOpts` stub that `SimModel` requires, although
   it advances with `step()` only.
 - `'cgm'` is uncalibrated; its outermost face uses the gradient between the last two cells, not
@@ -215,12 +224,12 @@ model take part as soon as they implement the hooks; other parts are listed in
 | `geometry.test.ts` | transport geometry of an analytic Solov'ev equilibrium; cell volumes on real Grad–Shafranov tables (ITER15, MASTU15) |
 | `sources/sources.test.ts` | NBI chord cache vs direct deposition, beam-target table vs the integral |
 | `sources/fusion.test.ts` | reaction rates, burn-up, ash, beam-target rates and charged-product heating per channel against independent evaluations, for every fuel |
-| `lossPower.test.ts` | core radiation, the loss power P_L, the smoothed dW/dt with the ELM losses (with a replay from an ELM frame), the L–H threshold with the low-density branch, one stored energy |
+| `lossPower.test.ts` | core radiation, the loss power P_L, the scaling-mode τ_E and C_χ target at P_L (exact, every step), the smoothed dW/dt with the ELM losses (with a replay from an ELM frame), the L–H threshold with the low-density branch, one stored energy |
 | `ignition.test.ts` | ignition and the ignition test (`heating.autoOff`) on an ITER15 shot, with replays from before and inside the ramp |
-| `fastIons.test.ts` | fast-ion pressure in β, β_N,th, W_beam cell by cell |
+| `fastIons.test.ts` | fast-ion pressure in β, β_N,th, the steady content per cell; the pools: exact relaxation, W ≤ ∫P dt after every step, JET15 with 300 and 500 keV beams to their scheduled end, decay after the beam is off, replay from a start-up frame, disruption |
 | `checkpoint.test.ts` | the checkpoint contract: key collisions, numeric records, restore from a record with missing keys |
 | `transport/transport.test.ts` | 'cgm' smoke test (ITER15 ramp-up; runs through `runAllYielding`) |
-| `integrity.test.ts` | equilibrium swaps (fresh work arrays), GS failures, the current-scale gate and retry timing, step failures (numerical failures retried, programming errors propagate), reported τ_E, initial equilibrium, replays from quench frames |
+| `integrity.test.ts` | equilibrium swaps (fresh work arrays), GS failures, the current-scale gate and retry timing, step failures (numerical failures retried, programming errors propagate with the state put back, also from the update after the accepted step), reported τ_E, initial equilibrium, replays from quench frames |
 | `profiles.test.ts` | solver verification (analytic), neoclassical, MHD helpers, integration runs |
 
 Tests that run for more than a few seconds of wall time use `runAllYielding` (`src/testing/yielding.ts`): it advances in

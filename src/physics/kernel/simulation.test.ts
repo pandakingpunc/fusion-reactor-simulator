@@ -70,12 +70,12 @@ class SwitchingModel extends ToyModel {
   k = 1;
   constructor(private readonly reportK: boolean) { super(); }
   rhs(_t: number, y: Float64Array, d: Float64Array): void { d[0] = -this.k * y[0]; }
-  postStep(t: number, dt: number, y: Float64Array): SimEvent[] {
+  override postStep(t: number, dt: number, y: Float64Array): SimEvent[] {
     this.k = 1 + 2 * (Math.floor(t / 0.13) % 2);
     return super.postStep(t, dt, y);
   }
-  saveInternal(): Record<string, number> { return this.reportK ? { k: this.k } : {}; }
-  restoreInternal(s: Record<string, number>): void { super.restoreInternal(s); if (this.reportK) this.k = s.k; }
+  override saveInternal(): Record<string, number> { return this.reportK ? { k: this.k } : {}; }
+  override restoreInternal(s: Record<string, number>): void { super.restoreInternal(s); if (this.reportK) this.k = s.k; }
 }
 
 const anyCfg = (): ReactorConfig => presetCfg('NIF');

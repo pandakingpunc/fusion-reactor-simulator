@@ -3,7 +3,7 @@ import { circularGeometry } from './geometry1d';
 import { CurrentSolver, DensitySolver, HeatInputs, HeatSolver } from './fvsolver';
 import { bootstrapJB, sauterCoefficients, sigmaNeo, sigmaSpitzer } from './neoclassical';
 import { flattenConserving, kadomtsevMixingRadius, qFromDpsi, rhoOfQ } from './mhd';
-import { volumeIntegral } from './sources';
+import { volumeIntegral } from './sources/deposition';
 import { Simulation } from '../simulation';
 import { ITER, JET } from '../presets';
 import { MagneticConfig } from '../types';

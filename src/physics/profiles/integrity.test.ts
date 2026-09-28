@@ -10,9 +10,6 @@ import { EquilibriumOptions, GSSolver } from '../equilibrium/gs';
 import { ProfileModel } from './model';
 import { EquilibriumInitFailure, StepFailure } from './failures';
 
-/** Work arrays are private; the tests read them through this view only. */
-type Internals = { w: Record<string, Float64Array> };
-const internals = (m: ProfileModel) => m as unknown as Internals;
 
 describe('work arrays after an equilibrium swap', () => {
   it.each([
@@ -25,7 +22,7 @@ describe('work arrays after an equilibrium swap', () => {
     let calls = 0, zero = 0;
     m.postStep = (t, dt, y) => {
       calls++;
-      if (internals(m).w.ni.some((v) => !(v > 0))) zero++;
+      if (m.ctx.w.ni.some((v) => !(v > 0))) zero++;
       return post(t, dt, y);
     };
     const tiFlattened: boolean[] = [];
@@ -123,7 +120,7 @@ describe('implicit step failures', () => {
 
   it('exhausted retries advance time only with the state of the step that took that Δt', () => {
     const { sim, m } = started();
-    (m as unknown as { dt: number }).dt = 0.01; // twelve halvings by 0.4 stay above the Δt floor
+    m.ctx.dt = 0.01; // twelve reductions by 0.4 stay above the Δt floor
     const dts: number[] = [];
     stubStep(m, (_t, dt, yOld, y) => { dts.push(dt); y.set(yOld); y[0] = yOld[0] + dt; return { ok: false, change: 1 }; });
     const y = Float64Array.from(sim.y), Te0 = y[0], t0 = sim.t;

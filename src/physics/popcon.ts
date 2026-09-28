@@ -13,7 +13,7 @@
  */
 import { MagneticConfig } from './types';
 import { plasmaSurface, plasmaVolume, profileIntegral } from './geometry';
-import { tauIPB98y2, tauISS04, tauSTValovic, pLH_Martin } from './transport';
+import { tauIPB98y2, tauISS04, tauSTValovic, pLH_threshold } from './transport';
 import { FUEL_CHANNELS, FUEL_SPECIES, pairDensity } from './reactivity';
 import { bremsstrahlung, coolingRate, meanCharge, synchrotronTotal } from './radiation';
 import { greenwaldDensity, betaToroidal, betaNormalized, lineAverageFactor } from './limits';
@@ -102,7 +102,7 @@ export function computePopcon(cfg: MagneticConfig, o: { nx?: number; ny?: number
       const k = i * NY + j;
       Paux[k] = Pa; Pfus[k] = Pf; Q[k] = Pa > 0 ? Pf / Pa : Infinity; fHeA[k] = fHe;
       betaN[k] = cfg.Ip_MA > 0 ? betaNormalized(betaToroidal(W / (1.5 * V), cfg.B0), g.a, cfg.B0, cfg.Ip_MA) : 0;
-      PLH_ok[k] = P_loss + Prad >= pLH_Martin(ne, cfg.B0, S, M) ? 1 : 0;
+      PLH_ok[k] = P_loss + Prad >= pLH_threshold(ne * lineAverageFactor(aN), cfg.B0, S, M, cfg.Ip_MA, g.a, g.R) ? 1 : 0;
     }
   }
   return { n, T, nx: NX, ny: NY, Paux, Pfus, Q, betaN, PLH_ok, fHe: fHeA, nG };

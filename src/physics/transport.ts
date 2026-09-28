@@ -72,6 +72,27 @@ export function pLH_Martin(n: number, B: number, S: number, M: number): number {
 }
 
 /**
+ * L-H eşiğinin minimum olduğu çizgi-ortalamalı yoğunluk [m^-3] — Ryter et al., Nucl. Fusion 54
+ * (2014) 083003 (çok-makineli ölçekleme):
+ *  n̄_e,min [10^19 m^-3] = 0.7 · I_p[MA]^0.34 · B[T]^0.62 · a[m]^-0.95 · (R/a)^0.4
+ */
+export function nLHmin(Ip_MA: number, B: number, a: number, R: number): number {
+  return 0.7 * Math.pow(Math.max(Ip_MA, 0.01), 0.34) * Math.pow(B, 0.62) * Math.pow(a, -0.95) * Math.pow(R / a, 0.4) * 1e19;
+}
+
+/**
+ * L-H geçiş eşiği, düşük yoğunluk kolu dahil: n̄ ≥ n̄_min için Martin (2008) (bit bit aynı);
+ * n̄ < n̄_min için eşik yeniden yükselir (Ryter 2014): P_LH = P_Martin(n̄_min) · n̄_min / n̄.
+ * APPROXIMATION: düşük yoğunluk kolunun biçimi (∝ 1/n̄) — derleme yükselişi gösterir, genel bir
+ * ölçekleme vermez. n: ÇİZGİ-ortalamalı yoğunluk [m^-3] (Martin'in tanımı).
+ */
+export function pLH_threshold(nbar: number, B: number, S: number, M: number, Ip_MA: number, a: number, R: number): number {
+  const nmin = nLHmin(Ip_MA, B, a, R);
+  if (nbar >= nmin) return pLH_Martin(nbar, B, S, M);
+  return pLH_Martin(nmin, B, S, M) * (nmin / Math.max(nbar, 1e17));
+}
+
+/**
  * Elektron-iyon sıcaklık eşitlenme süresi (Spitzer; NRL Formulary):
  *  ν_ie = 3.2e-9 · Z² · lnΛ / (μ · T_e[eV]^1.5) · n_e[cm^-3]  [s^-1]  (enerji eşitlenme hızı)
  */

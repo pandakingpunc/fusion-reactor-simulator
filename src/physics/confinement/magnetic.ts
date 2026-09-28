@@ -24,7 +24,7 @@
 import { Geometry, plasmaVolume, plasmaSurface, crossSectionArea, q95 as q95fn, profileIntegral } from '../geometry';
 import { FUEL_CHANNELS, FUEL_SPECIES, beamTargetReactivity, beamTargetDensity, burnPerReaction, pairDensity } from '../reactivity';
 import { bremsstrahlung, synchrotronTotal, coolingRate, meanCharge } from '../radiation';
-import { tauIPB98y2, tauITER89P, tauISS04, tauSTValovic, pLH_Martin, tauEquilibration } from '../transport';
+import { tauIPB98y2, tauITER89P, tauISS04, tauSTValovic, pLH_threshold, tauEquilibration } from '../transport';
 import { resistivity, ohmicPower, criticalEnergy, ionHeatingFraction, slowingDownTime, nbiShineThrough, fastIonEnergyTime, fastPoolMix, FastSpecies } from '../heating';
 import { greenwaldDensity, betaToroidal, betaNormalized, betaPoloidal, lineAverageFactor } from '../limits';
 import { disruptionReport, DisruptionCause, DISRUPTION_LABELS, DISRUPTION_FIXES } from '../disruption';
@@ -518,7 +518,8 @@ export class MagneticModel implements SimModel {
     // Greenwald (ve Sudo) limitleri çizgi-ortalamalı yoğunluk içindir: n̄ = f_line(α_n) ⟨n_e⟩
     const nbar = lineAverageFactor(c.transport.alpha_n) * D.ne;
     const nG = this.isStell ? this.sudoLimit(D) : greenwaldDensity(Math.max(Ip_MA, 0.01), this.g.a);
-    const P_LH = this.isStell ? 0 : pLH_Martin(D.ne, c.B0, this.S, this.M);
+    // L-H eşiği: Martin 2008 (çizgi-ort. yoğunlukla) + Ryter 2014 düşük yoğunluk kolu
+    const P_LH = this.isStell ? 0 : pLH_threshold(nbar, c.B0, this.S, this.M, Math.max(Ip_MA, 0.01), this.g.a, this.g.R);
     let q_div = 0;
     if (this.isStell) q_div = divertorHeatFluxStellarator(this.g, c.B0, c.stellarator.iota23, D.P_SOL, c.divertor.f_rad_div);
     else q_div = divertorHeatFlux(this.g, Math.max(y[IDX.Ip], 1e5), D.P_SOL, c.divertor.f_rad_div, c.divertor.flux_expansion).q_div_MWm2;

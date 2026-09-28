@@ -41,6 +41,8 @@ import { CurrentSolver, DensitySolver, HeatInputs, HeatSolver } from './fvsolver
 import { NbiChord, edgeDeposition, gaussianDeposition, volumeIntegral } from './sources';
 import { BeamTargetTable } from './beamtarget';
 import { chiNeoIon, nuStarE, nuStarI, sauterCoefficients, sigmaNeo, bootstrapJB, BootstrapCoeffs } from './neoclassical';
+import { ProfileState, ScalarView, StateLayout } from './state';
+import { WorkArrays, allocateWorkArrays } from './work';
 import { alphaCritical, alphaMHD, elmCrash, flattenConserving, kadomtsevMixingRadius, mreRate, qFromDpsi, rhoOfQ, shearAt, stabilityProfiles } from './mhd';
 
 const KEV = 1.602176634e-16; // J/keV
@@ -51,10 +53,6 @@ const AMU = 1.66053906660e-27;
 export interface CrashSnapshot { rho: number[]; Te: number[]; Ti: number[]; ne: number[]; q: number[] }
 
 export { DEFAULT_PROFILE_SETTINGS };
-
-// skaler durum indeksleri (y[4N + k])
-const S = { NHe: 0, cZ: 1, fA: 2, Efus: 3, Ein: 4, Nn: 5, NTburn: 6, NTfuel: 7, Cchi: 8, Sfuel: 9, Ip: 10, w32: 11, w21: 12, Pelm: 13, CI: 14 } as const;
-const NSCAL = 15;
 
 // implicit step retry policy (see ProfileModel.step)
 const STEP_SHRINK = 0.4;
@@ -187,7 +185,8 @@ export class ProfileModel implements SimModel {
   private tauW_accum = 1;
 
   // çalışma dizileri
-  private w: Record<string, Float64Array> = {};
+  private readonly w: WorkArrays;
+  private readonly layout: StateLayout;
   private lastDiag: Record<string, number> = {};
   private lastProf: Record<string, number[]> = {};
   private sauter: BootstrapCoeffs[] = [];
@@ -203,11 +202,13 @@ export class ProfileModel implements SimModel {
     this.method = cfg.method;
     this.ps = { ...DEFAULT_PROFILE_SETTINGS, eqUpdateInterval: Math.min(Math.max(cfg.t_end / 20, 0.5), 20), ...(cfg.profiles ?? {}) };
     this.N = Math.max(16, Math.round(this.ps.nRho));
+    this.w = allocateWorkArrays(this.N);
     const g0 = cfg.geometry;
     this.geomB = { R: g0.R, a: g0.a, kappa: this.ps.lcfsKappa ?? g0.kappa, delta: this.ps.lcfsDelta ?? g0.delta };
     this.tEnd = cfg.t_end;
     this.outputDt = Math.max(cfg.t_end / 800, 0.002);
-    this.nState = 4 * this.N + NSCAL;
+    this.layout = new StateLayout(this.N);
+    this.nState = this.layout.size;
     const fs = FUEL_SPECIES[cfg.fuel];
     this.M = cfg.fuelFracA * fs.a.A + (1 - cfg.fuelFracA) * fs.b.A;
     this.rng = new RNG(cfg.seed);
@@ -301,13 +302,6 @@ export class ProfileModel implements SimModel {
     this.heat = new HeatSolver(tg);
     this.dens = new DensitySolver(tg);
     this.cur = new CurrentSolver(tg);
-    const N = this.N, N1 = N + 1;
-    const names = ['ni', 'ni0', 'na', 'nb', 'nHe', 'nZ', 'ns', 'Zeff', 'ZeffMain', 'ionSum', 'Zimp', 'Zseed',
-      'Pfus', 'Pchg', 'Pneut', 'Rfus', 'Nfus', 'burnA', 'burnB', 'Pbt', 'PaE', 'PaI', 'PnbiE', 'PnbiI', 'PicE', 'PicI', 'PecE',
-      'Poh', 'Pbr', 'Pline', 'Psync', 'Prad', 'dPrad', 'nuEq', 'Qe', 'Qi', 'Le', 'Li', 'Sn', 'sigma', 'jB', 'jbsB', 'jcdB', 'jniB',
-      'q', 'nbiDep', 'nbiTmp', 'nbiPart', 'nfast', 'TeIt', 'TiIt', 'neIt', 'chiNeo', 'zero', 'p', 'nuE', 'nuI'];
-    for (const k of names) this.w[k] ??= new Float64Array(N);
-    for (const k of ['chiE', 'chiI', 'chiEp', 'chiIp', 'D', 'v', 'qF', 'dpsiF', 'IencF', 'alphaF', 'mercF', 'ballF']) this.w[k] ??= new Float64Array(N1);
     this.depEC = gaussianDeposition(tg, this.ps.ecrhRho, this.ps.ecrhWidth);
     this.depIC = gaussianDeposition(tg, 0, this.ps.icrhWidth);
     this.depGas = edgeDeposition(tg, 0.04);
@@ -319,10 +313,7 @@ export class ProfileModel implements SimModel {
   }
 
   // ------------------------------------------------------------------ yardımcılar
-  private views(y: Float64Array) {
-    const N = this.N;
-    return { Te: y.subarray(0, N), Ti: y.subarray(N, 2 * N), ne: y.subarray(2 * N, 3 * N), psi: y.subarray(3 * N, 4 * N), s: y.subarray(4 * N) };
-  }
+  private views(y: Float64Array): ProfileState { return this.layout.view(y); }
   private crashSnap(v: { Te: Float64Array; Ti: Float64Array; ne: Float64Array }): CrashSnapshot {
     return { rho: Array.from(this.tg.rhoC), Te: Array.from(v.Te), Ti: Array.from(v.Ti), ne: Array.from(v.ne, (x) => x * 1e-20), q: Array.from(this.w.q) };
   }
@@ -352,16 +343,16 @@ export class ProfileModel implements SimModel {
   }
 
   /** Bileşim: yarı-nötrallikten yakıt yoğunlukları, Z_eff, iyon toplamı */
-  private composition(Te: ArrayLike<number>, ne: ArrayLike<number>, s: ArrayLike<number>): void {
+  private composition(Te: ArrayLike<number>, ne: ArrayLike<number>, s: ScalarView): void {
     const w = this.w, N = this.N;
     const fs = FUEL_SPECIES[this.cfg.fuel];
     const im = this.cfg.impurity;
     const seed = this.seedSpecies();
     const cs = seed ? im.seedConcentration! : 0;
     const Ne = volumeIntegral(this.tg, ne);
-    const fHe = Math.min(Math.max(s[S.NHe] / Math.max(Ne, 1), 0), 0.3);
-    const cZ = Math.max(s[S.cZ], 0);
-    const fA = Math.min(Math.max(s[S.fA], 0), 1);
+    const fHe = Math.min(Math.max(s.NHe / Math.max(Ne, 1), 0), 0.3);
+    const cZ = Math.max(s.cZ, 0);
+    const fA = Math.min(Math.max(s.fA, 0), 1);
     const AZ = IMPURITIES[im.species]?.A ?? 20;
     const As = seed ? IMPURITIES[seed].A : 20;
     for (let i = 0; i < N; i++) {
@@ -407,7 +398,7 @@ export class ProfileModel implements SimModel {
 
   // ------------------------------------------------------------------ kaynaklar ve katsayılar
   /** Adım başına sabit tutulan (eski durumdan) büyüklükler */
-  private stepConstants(t: number, Te: Float64Array, Ti: Float64Array, ne: Float64Array, s: Float64Array): StepConstants {
+  private stepConstants(t: number, Te: Float64Array, Ti: Float64Array, ne: Float64Array, s: ScalarView): StepConstants {
     const c = this.cfg, w = this.w, N = this.N, g = this.tg;
     const fs = FUEL_SPECIES[c.fuel];
     // ısıtma yalnız disruption söndürme fazlarında kesilir ('ended' planlı bitişte son kare tutarlı kalsın)
@@ -488,14 +479,14 @@ export class ProfileModel implements SimModel {
   }
 
   /** Taşınım katsayıları yüzeylerde (mevcut iterasyon) */
-  private transportCoefficients(Te: Float64Array, Ti: Float64Array, ne: Float64Array, s: Float64Array): void {
+  private transportCoefficients(Te: Float64Array, Ti: Float64Array, ne: Float64Array, s: ScalarView): void {
     const w = this.w, g = this.tg, N = this.N, ps = this.ps;
-    const Cchi = Math.max(s[S.Cchi], 1e-4);
+    const Cchi = Math.max(s.Cchi, 1e-4);
     const rhoPed = 1 - ps.pedestalWidth;
     // NTM ada bölgeleri
     const islands: [number, number][] = [];
     const a = g.a;
-    for (const [key, qv] of [[S.w32, 1.5], [S.w21, 2]] as const) {
+    for (const [key, qv] of [['w32', 1.5], ['w21', 2]] as const) {
       const wi = s[key];
       if (wi > 0.002 * a) {
         const rs = rhoOfQ(g, w.qF, qv);
@@ -692,15 +683,15 @@ export class ProfileModel implements SimModel {
       acc += ((g.PhiB * rm) / (Math.PI * Math.max(qm, 0.3))) * (r1 - r0);
       psi[i] = acc;
     }
-    s[S.NHe] = 0;
-    s[S.cZ] = c.impurity.concentration;
-    s[S.fA] = c.fuelFracA;
-    s[S.Cchi] = 0.5; s[S.CI] = 0.5;
-    s[S.Ip] = Math.max(c.Ip_MA, 0.05) * 1e6;
-    s[S.Sfuel] = 0;
+    s.NHe = 0;
+    s.cZ = c.impurity.concentration;
+    s.fA = c.fuelFracA;
+    s.Cchi = 0.5; s.CI = 0.5;
+    s.Ip = Math.max(c.Ip_MA, 0.05) * 1e6;
+    s.Sfuel = 0;
     this.bc = { Te: 0.05, Ti: 0.05, n: fsep * n0 };
     this.composition(Te, ne, s);
-    this.currentProfiles(psi, s[S.Ip]);
+    this.currentProfiles(psi, s.Ip);
     return y;
   }
 
@@ -789,11 +780,11 @@ export class ProfileModel implements SimModel {
     // eski bileşim + akım profilleri
     this.composition(o.Te, o.ne, o.s);
     w.ni0.set(w.ni);
-    this.currentProfiles(o.psi, o.s[S.Ip]);
+    this.currentProfiles(o.psi, o.s.Ip);
     // sınır koşulları (gecikmeli P_SOL). n_sep: kenar/SOL tarafından belirlenir — gaz beslemesinin
     // asıl etkisi ayırıcı yoğunluğudur; hedef n̄'ye bağlanır (çekirdek yoğunluğu çöküşüne karşı sağlam)
     const q95 = this.q95();
-    const Tsep = this.separatrixT(this.PSOL, q95, o.s[S.Ip]);
+    const Tsep = this.separatrixT(this.PSOL, q95, o.s.Ip);
     // gaz beslemesi ayırıcı yoğunluğunu yükseltir: n_sep = f_sep n̄_hedef × kazanç (kazanç afterStep'te
     // integral denetleyiciyle güncellenir)
     const nT = this.nTarget(t);
@@ -815,8 +806,8 @@ export class ProfileModel implements SimModel {
       S_cmd = Math.max(0, Math.min(Smax, (Math.max(this.GammaB, 0) - S_nbi + kp * g.volume * (this.nTarget(t) - nbar)) / eff));
     }
     const lag = 1 - Math.exp(-dt / this.fuelingDelay());
-    s[S.Sfuel] = o.s[S.Sfuel] + (S_cmd - o.s[S.Sfuel]) * lag;
-    const Sfuel = s[S.Sfuel] * eff; // plazmaya giren [1/s]
+    s.Sfuel = o.s.Sfuel + (S_cmd - o.s.Sfuel) * lag;
+    const Sfuel = s.Sfuel * eff; // plazmaya giren [1/s]
     const absorbed = Math.max(volumeIntegral(g, w.nbiDep), 1e-6);
     for (let i = 0; i < N; i++) {
       let sh: number;
@@ -847,7 +838,7 @@ export class ProfileModel implements SimModel {
       this.composition(v.Te, v.ne, s);
       // 2) kaynaklar
       this.plasmaSources(v.Te, v.Ti, v.ne, K);
-      this.currentProfiles(v.psi, s[S.Ip]);
+      this.currentProfiles(v.psi, s.Ip);
       this.currentSources(v.Te, v.Ti, v.ne, v.psi, K);
       for (let i = 0; i < N; i++) {
         const Pe = w.PnbiE[i] + w.PicE[i] + w.PecE[i] + w.PaE[i] + w.Poh[i] - w.Prad[i];
@@ -861,7 +852,7 @@ export class ProfileModel implements SimModel {
       this.heat.solve(heatIn, v.Te, v.Ti);
       for (let i = 0; i < N; i++) { if (!(v.Te[i] > 0.005)) v.Te[i] = 0.005; if (!(v.Ti[i] > 0.005)) v.Ti[i] = 0.005; }
       // 4) akım
-      this.cur.solve({ dt, psi0: o.psi, sigma: w.sigma, jniB: w.jniB, Ip: s[S.Ip] }, v.psi);
+      this.cur.solve({ dt, psi0: o.psi, sigma: w.sigma, jniB: w.jniB, Ip: s.Ip }, v.psi);
       // yakınsama
       let dmax = 0;
       for (let i = 0; i < N; i++) {
@@ -872,7 +863,7 @@ export class ProfileModel implements SimModel {
     }
     // son tutarlılık
     this.composition(v.Te, v.ne, s);
-    this.currentProfiles(v.psi, s[S.Ip]);
+    this.currentProfiles(v.psi, s.Ip);
     let change = 0, finite = true;
     for (let i = 0; i < N; i++) {
       if (!isFinite(v.Te[i]) || !isFinite(v.Ti[i]) || !isFinite(v.ne[i]) || !isFinite(v.psi[i])) finite = false;
@@ -922,14 +913,14 @@ export class ProfileModel implements SimModel {
     this.GammaB = this.dens.GammaF[N];
     this.lastVloop = (2 * Math.PI * (v.psi[N - 1] - o.psi[N - 1])) / dt;
     // ELM ortalama gücü (üstel hafıza τ = 1 s)
-    s[S.Pelm] = o.s[S.Pelm] * Math.exp(-dt / 1.0);
+    s.Pelm = o.s.Pelm * Math.exp(-dt / 1.0);
     // P_SOL: küresel güç dengesinden (anlık sınır akısından değil — T_sep ↔ akı geri beslemesi
     // adım-adım salınım üretir), τ ≈ 20 ms gecikmeli
     const PsolTarget = Math.max(P_heat - P_rad - dWdt, 0.05 * P_heat, 1e5);
     this.PSOL += (PsolTarget - this.PSOL) * (1 - Math.exp(-dt / 0.02));
     void P_bound;
     // τ_E ölçeklemesi
-    const Ip_MA = s[S.Ip] / 1e6;
+    const Ip_MA = s.Ip / 1e6;
     const nbar = this.lineAvg(v.ne);
     const P_loss = this.lossPower(P_heat, P_rad);
     const gS: Geometry = { R: g.R0, a: g.a, kappa: this.kappaA, delta: this.geomB.delta };
@@ -938,7 +929,7 @@ export class ProfileModel implements SimModel {
     else tauS = c.H89 * tauITER89P(gS, Math.max(Ip_MA, 0.05), g.B0, nbar, P_loss, this.M);
     // NTM kuşak modeli: ΔW/W ≈ −4 Σ ρ_s² w/a
     let fNTM = 1;
-    for (const [key, qv] of [[S.w32, 1.5], [S.w21, 2]] as const) {
+    for (const [key, qv] of [['w32', 1.5], ['w21', 2]] as const) {
       const rs = rhoOfQ(g, w.qF, qv);
       if (rs > 0 && s[key] > 0) fNTM -= 4 * rs * rs * (s[key] / g.a);
     }
@@ -959,10 +950,10 @@ export class ProfileModel implements SimModel {
       const tauI = 0.3 * tauScal;
       // anti-windup: integral terimi difüzyon tahmini C_est = a²κ_a/(6τ(1+c/2)) çevresinde sınırlı
       const Cest = (g.a * g.a * this.kappaA) / (6 * tauScal * (1 + 0.5 * ps.chiShape));
-      const CI = o.s[S.CI] * Math.exp(Math.max(-0.5, Math.min(0.5, (dt / tauI) * err)));
-      s[S.CI] = Math.min(Math.max(CI, 0.1 * Cest), 10 * Cest);
-      s[S.Cchi] = Math.min(Math.max(s[S.CI] * Math.exp(Math.max(-1.5, Math.min(1.5, 1.5 * err))), 1e-4), 1e4);
-    } else { s[S.CI] = o.s[S.CI]; s[S.Cchi] = 1; }
+      const CI = o.s.CI * Math.exp(Math.max(-0.5, Math.min(0.5, (dt / tauI) * err)));
+      s.CI = Math.min(Math.max(CI, 0.1 * Cest), 10 * Cest);
+      s.Cchi = Math.min(Math.max(s.CI * Math.exp(Math.max(-1.5, Math.min(1.5, 1.5 * err))), 1e-4), 1e4);
+    } else { s.CI = o.s.CI; s.Cchi = 1; }
     // ayırıcı yoğunluk kazancı (yalnız gaz beslemesi — pellet/NBI çekirdeği doğrudan besler):
     // n̄ hedefin altındaysa n_sep yükselir (τ ≈ τ_p), [0.5, 2.5]
     if (this.phase === 'normal' && (c.fueling.method === 'gas' || c.fueling.method === 'mixed')) {
@@ -974,17 +965,17 @@ export class ProfileModel implements SimModel {
     const Ne = volumeIntegral(g, v.ne);
     const tauHe = Math.max(c.transport.tau_He_over_tau_E * tauT, 1e-2);
     const ashPerRx = c.fuel === 'pB11' ? 3 : c.fuel === 'DD' ? 0.5 : 1;
-    s[S.NHe] = Math.max(0, o.s[S.NHe] + dt * (Rfus * ashPerRx - o.s[S.NHe] / tauHe));
+    s.NHe = Math.max(0, o.s.NHe + dt * (Rfus * ashPerRx - o.s.NHe / tauHe));
     const tau_p = Math.max(c.transport.tau_p_over_tau_E * tauT, 1e-2);
     this.tauW_accum = c.impurity.species === 'W' && (!c.events.elms || !c.events.sawteeth) ? 4 : 1;
     const S_W = c.impurity.species === 'W' ? (c.impurity.W_source_frac * this.PSOL) / (5000 * KEV) : 0;
     const tauZ = tau_p * this.tauW_accum;
-    s[S.cZ] = Math.max(0, o.s[S.cZ] + dt * ((this.ctrl.cZ - o.s[S.cZ]) / tauZ + S_W / Math.max(Ne, 1)));
+    s.cZ = Math.max(0, o.s.cZ + dt * ((this.ctrl.cZ - o.s.cZ) / tauZ + S_W / Math.max(Ne, 1)));
     const fs = FUEL_SPECIES[c.fuel];
     let burnA = 0, burnAll = 0;
     for (let i = 0; i < N; i++) { burnA += w.burnA[i] * g.dV[i]; burnAll += (w.burnA[i] + w.burnB[i]) * g.dV[i]; }
     const eff = this.fuelingEfficiency();
-    const Sf = s[S.Sfuel] * eff;
+    const Sf = s.Sfuel * eff;
     const S_nbi = K.S_nbi;
     const wA = c.fueling.method === 'nbi' ? 1 : c.fuelFracA;
     // demet izotop karışımı: 'nbi' beslemede saf tür a (D); aksi halde yakıt karışımını izler
@@ -993,16 +984,16 @@ export class ProfileModel implements SimModel {
     const Nfuel = volumeIntegral(g, w.na) + volumeIntegral(g, w.nb);
     if (!FUEL_CHANNELS[c.fuel][0].sameSpecies && Nfuel > 0) {
       const Sa = Sf * wA + S_nbi * wBeam, Stot = Sf + S_nbi;
-      const dfA = (Sa - burnA - o.s[S.fA] * (Stot - burnAll)) / Nfuel;
-      s[S.fA] = Math.min(Math.max(o.s[S.fA] + dt * dfA, 0.01), 0.99);
-    } else s[S.fA] = o.s[S.fA];
+      const dfA = (Sa - burnA - o.s.fA * (Stot - burnAll)) / Nfuel;
+      s.fA = Math.min(Math.max(o.s.fA + dt * dfA, 0.01), 0.99);
+    } else s.fA = o.s.fA;
     // sayaçlar
-    s[S.Efus] = o.s[S.Efus] + P_fus * dt;
-    s[S.Ein] = o.s[S.Ein] + (K.P_NBI + K.P_IC + K.P_EC + P_oh) * dt;
-    s[S.Nn] = o.s[S.Nn] + Nn * dt;
-    if (c.fuel === 'DT') { s[S.NTburn] = o.s[S.NTburn] + Rfus * dt; s[S.NTfuel] = o.s[S.NTfuel] + Sf * (1 - wA) * dt; }
+    s.Efus = o.s.Efus + P_fus * dt;
+    s.Ein = o.s.Ein + (K.P_NBI + K.P_IC + K.P_EC + P_oh) * dt;
+    s.Nn = o.s.Nn + Nn * dt;
+    if (c.fuel === 'DT') { s.NTburn = o.s.NTburn + Rfus * dt; s.NTfuel = o.s.NTfuel + Sf * (1 - wA) * dt; }
     // NTM adaları (MRE, açık Euler alt adımlarla)
-    for (const [key, m, qv] of [[S.w32, 3, 1.5], [S.w21, 2, 2]] as const) {
+    for (const [key, m, qv] of [['w32', 3, 1.5], ['w21', 2, 2]] as const) {
       let wv = o.s[key];
       if (wv <= 0 || !c.events.ntm) { s[key] = 0; continue; }
       const rs = rhoOfQ(g, w.qF, qv);
@@ -1032,7 +1023,7 @@ export class ProfileModel implements SimModel {
   private writeDiagnostics(t: number, y: Float64Array, X: Record<string, number>): void {
     const N = this.N, w = this.w, g = this.tg, c = this.cfg, s = this.views(y).s;
     const v = this.views(y);
-    const Ip = s[S.Ip], Ip_MA = Ip / 1e6;
+    const Ip = s.Ip, Ip_MA = Ip / 1e6;
     const K = this.lastK!;
     const neAvg = this.volAvg(v.ne);
     let TeA = 0, TiA = 0;
@@ -1068,17 +1059,17 @@ export class ProfileModel implements SimModel {
     const Ne = volumeIntegral(g, v.ne);
     this.lastDiag = {
       Ti: TiA, Te: TeA, Ti0: v.Ti[0], Te0: v.Te[0], Tped: v.Te[iPed], Tsep: this.bc.Te,
-      ne: neAvg / 1e20, nbar: X.nbar / 1e20, ne0: v.ne[0] / 1e20, nG_frac: X.nbar / nG, fHe: s[S.NHe] / Math.max(Ne, 1),
+      ne: neAvg / 1e20, nbar: X.nbar / 1e20, ne0: v.ne[0] / 1e20, nG_frac: X.nbar / nG, fHe: s.NHe / Math.max(Ne, 1),
       P_fus: X.P_fus / 1e6, P_alpha: X.P_alpha / 1e6, P_bt: X.P_bt / 1e6, P_aux: (K.P_NBI + K.P_IC + K.P_EC) / 1e6, P_oh: X.P_oh / 1e6,
       P_cond: X.W / X.tauE / 1e6, P_SOL: this.PSOL / 1e6, P_brems: X.P_brems / 1e6, P_sync: X.P_sync / 1e6, P_line: X.P_line / 1e6, P_rad: X.P_rad / 1e6,
-      Q, triple, lawson: triple / LAWSON_DT, tauE: X.tauE, tauE_scal: X.tauScal, H_mode: this.hmode ? 1 : 0, P_LH: P_LH / 1e6, chi_mult: s[S.Cchi],
+      Q, triple, lawson: triple / LAWSON_DT, tauE: X.tauE, tauE_scal: X.tauScal, H_mode: this.hmode ? 1 : 0, P_LH: P_LH / 1e6, chi_mult: s.Cchi,
       betaN, betaT: betaT * 100, betaP, q95, q0: w.qF[0], qmin, li, rho_q1: rho1, alpha_ped: aMax / aCrit,
-      w32: s[S.w32] / g.a, w21: s[S.w21] / g.a, NTM: s[S.w32] > 0.01 * g.a || s[S.w21] > 0.01 * g.a ? 1 : 0,
+      w32: s.w32 / g.a, w21: s.w21 / g.a, NTM: s.w32 > 0.01 * g.a || s.w21 > 0.01 * g.a ? 1 : 0,
       f_bs: Ibs / Math.max(Ip, 1), f_cd: Icd / Math.max(Ip, 1), V_loop: Vloop, Ip: Ip_MA,
-      W: X.W / 1e6, Wf: 0, Zeff: this.volAvg(w.Zeff), cZ: s[S.cZ], S_fuel: s[S.Sfuel] / 1e20,
-      burnFrac: s[S.NTfuel] > 0 ? s[S.NTburn] / s[S.NTfuel] : 0, fuelFracA: s[S.fA],
+      W: X.W / 1e6, Wf: 0, Zeff: this.volAvg(w.Zeff), cZ: s.cZ, S_fuel: s.Sfuel / 1e20,
+      burnFrac: s.NTfuel > 0 ? s.NTburn / s.NTfuel : 0, fuelFracA: s.fA,
       q_div: qdiv, n_wall: nw, P_heat: X.P_heat / 1e6, P_charged: X.P_chg / 1e6, P_neutron: X.P_neut / 1e6,
-      Efus_MJ: s[S.Efus] / 1e6, Ein_MJ: s[S.Ein] / 1e6, Nn: s[S.Nn], P_loss: X.P_loss / 1e6, dWdt: X.dWdt / 1e6,
+      Efus_MJ: s.Efus / 1e6, Ein_MJ: s.Ein / 1e6, Nn: s.Nn, P_loss: X.P_loss / 1e6, dWdt: X.dWdt / 1e6,
     };
     // profiller
     const mer = w.mercF, bal = w.ballF;
@@ -1184,7 +1175,7 @@ export class ProfileModel implements SimModel {
     };
     const pT = Array.from(P.rhoTor, pAt);
     const jT = Array.from(P.rhoTor, jRAt);
-    const Ip = v.s[S.Ip];
+    const Ip = v.s.Ip;
     const base: EquilibriumOptions = { Ip, B0: this.cfg.B0, profile: { kind: 'table', psiN: P.psiN, p: pT, jR: jT }, psiInit: this.eq.psi, tol: 1e-5, maxIter: 40, relax: 0.9 };
     const passes = gridScalePasses(this.gsSolver.grid.dR / this.geomB.a, 1 / (P.psiN.length - 1));
     const stages: GsStage[] = [
@@ -1262,8 +1253,8 @@ export class ProfileModel implements SimModel {
         // tip-I ELM: pedestal + iç komşu bölge (~0.15 ρ) etkilenir (Loarte et al., PPCF 45 (2003) 1549)
         const dW = elmCrash(g, v.Te, v.Ti, v.ne, w.ni, this.bc.Te, this.bc.Ti, this.bc.n, rhoPed, fW, 0.5 * fW, 0.15);
         if (before) this.crashHook!('ELM', t, before, this.crashSnap(v));
-        s[S.NHe] *= 1 - 0.1 * fW; s[S.cZ] *= 1 - 0.1 * fW;
-        s[S.Pelm] += dW / 1.0; // üstel ortalama (τ = 1 s) içine enerji darbesi
+        s.NHe *= 1 - 0.1 * fW; s.cZ *= 1 - 0.1 * fW;
+        s.Pelm += dW / 1.0; // üstel ortalama (τ = 1 s) içine enerji darbesi
         this.lastElm = t;
         this.elmTimes.push(t); if (this.elmTimes.length > 20) this.elmTimes.shift();
         this.dt = Math.min(this.dt, Math.max(0.01 * (d.tauE ?? 0.1), 5e-4));
@@ -1289,7 +1280,7 @@ export class ProfileModel implements SimModel {
                 if (w.qF[f] < 1.01) w.dpsiF[f] = (g.PhiB * g.rhoF[f]) / (Math.PI * 1.01);
               }
               for (let i = iMix - 1; i >= 0; i--) v.psi[i] = v.psi[i + 1] - w.dpsiF[i + 1] * g.dRho;
-              this.currentProfiles(v.psi, s[S.Ip]);
+              this.currentProfiles(v.psi, s.Ip);
               if (before) this.crashHook!('sawtooth', t, before, this.crashSnap(v));
               this.lastSaw = t;
               this.dt = Math.min(this.dt, 5e-3);
@@ -1298,20 +1289,20 @@ export class ProfileModel implements SimModel {
               // NTM tohumu
               if (c.events.ntm) {
                 const wd = 0.012 * (g.a / 2);
-                if (rhoOfQ(g, w.qF, 1.5) > 0 && s[S.w32] < 2.5 * wd && d.betaN > 0.5 * c.limits.betaN_limit) s[S.w32] = 2.5 * wd;
-                if (rhoOfQ(g, w.qF, 2) > 0 && s[S.w21] < 2 * wd && d.betaN > 0.75 * c.limits.betaN_limit) s[S.w21] = 2 * wd;
+                if (rhoOfQ(g, w.qF, 1.5) > 0 && s.w32 < 2.5 * wd && d.betaN > 0.5 * c.limits.betaN_limit) s.w32 = 2.5 * wd;
+                if (rhoOfQ(g, w.qF, 2) > 0 && s.w21 < 2 * wd && d.betaN > 0.75 * c.limits.betaN_limit) s.w21 = 2 * wd;
               }
             }
           }
         }
       }
       // NTM başlangıç / sönüm olayları
-      for (const [key, name] of [[S.w32, '3/2'], [S.w21, '2/1']] as const) {
+      for (const [key, name] of [['w32', '3/2'], ['w21', '2/1']] as const) {
         const on = s[key] > 0.02 * g.a;
-        const flag = key === S.w32 ? this.ntmOn32 : this.ntmOn21;
+        const flag = key === 'w32' ? this.ntmOn32 : this.ntmOn21;
         if (on && !flag) ev.push({ t, kind: 'NTM_onset', msg: `NTM ${name} island grew to w/a = ${(s[key] / g.a).toFixed(3)} (β_N = ${d.betaN.toFixed(2)}) — local profile flattening, τ_E degrading` });
         if (!on && flag) ev.push({ t, kind: 'NTM_gone', msg: `NTM ${name} island decayed` });
-        if (key === S.w32) this.ntmOn32 = on; else this.ntmOn21 = on;
+        if (key === 'w32') this.ntmOn32 = on; else this.ntmOn21 = on;
       }
       // ateşleme / yanma
       const P_loss_total = d.P_rad + d.P_cond;
@@ -1330,11 +1321,11 @@ export class ProfileModel implements SimModel {
       if (d.nG_frac > c.limits.greenwald_limit) { cause = 'density_limit'; diag = `n̄/n_G reached ${d.nG_frac.toFixed(2)}`; }
       else if (d.betaN > c.limits.betaN_limit) { cause = 'beta_limit'; diag = `β_N ${d.betaN.toFixed(2)} > ${c.limits.betaN_limit}`; }
       else if (d.q95 < c.limits.q95_limit) { cause = 'q95_limit'; diag = `q95 = ${d.q95.toFixed(2)} < ${c.limits.q95_limit}`; }
-      else if (s[S.w21] > 0.1 * g.a) { cause = 'ntm_locked_mode'; diag = `2/1 island w/a = ${(s[S.w21] / g.a).toFixed(3)} > 0.10 — mode locked to the wall`; }
+      else if (s.w21 > 0.1 * g.a) { cause = 'ntm_locked_mode'; diag = `2/1 island w/a = ${(s.w21 / g.a).toFixed(3)} > 0.10 — mode locked to the wall`; }
       else if (d.cZ > c.limits.W_conc_limit && c.impurity.species === 'W') { cause = 'tungsten_accumulation'; diag = `c_W = ${d.cZ.toExponential(1)} > ${c.limits.W_conc_limit.toExponential(1)}`; }
       else if (d.P_rad > d.P_heat && t > 0.5 && d.Te < 2) { cause = 'radiative_collapse'; diag = `P_rad ${d.P_rad.toFixed(1)} MW > P_heat ${d.P_heat.toFixed(1)} MW, ⟨T_e⟩ fell to ${d.Te.toFixed(2)} keV`; }
       if (cause !== 'none') {
-        this.disruptCause = cause; this.tDisrupt = t; this.Wd = d.W * 1e6; this.IpD = s[S.Ip];
+        this.disruptCause = cause; this.tDisrupt = t; this.Wd = d.W * 1e6; this.IpD = s.Ip;
         this.phase = 'thermal_quench'; this.diagText = diag;
         ev.push({ t, kind: 'disruption', msg: `DISRUPTION: ${DISRUPTION_LABELS[cause]} — ${diag}` });
       }
@@ -1344,7 +1335,7 @@ export class ProfileModel implements SimModel {
         ev.push({ t, kind: 'quench', msg: `Thermal quench complete (${((t - this.tDisrupt) * 1e3).toFixed(1)} ms) → current quench starting` });
       }
     } else if (this.phase === 'current_quench') {
-      if (s[S.Ip] < 0.03 * this.IpD) {
+      if (s.Ip < 0.03 * this.IpD) {
         this.phase = 'ended';
         const rep = disruptionReport({ cause: this.disruptCause, t: this.tDisrupt, g: this.geomB, Ip_MA: this.IpD / 1e6, W_th_J: this.Wd, B0: c.B0 });
         this.terminated = {
@@ -1376,12 +1367,12 @@ export class ProfileModel implements SimModel {
       v.Ti[i] = 0.005 + (v.Ti[i] - 0.005) * fT;
       v.ne[i] *= fN;
     }
-    if (this.phase === 'current_quench') s[S.Ip] *= Math.exp(-dt / tauCQ);
+    if (this.phase === 'current_quench') s.Ip *= Math.exp(-dt / tauCQ);
     this.composition(v.Te, v.ne, s);
     let W = 0;
     for (let i = 0; i < N; i++) W += 1.5 * (v.ne[i] * v.Te[i] + this.w.ni[i] * v.Ti[i]) * KEV * g.dV[i];
     Object.assign(this.lastDiag, {
-      W: W / 1e6, Te: this.volAvg(v.Te), Ti: this.volAvg(v.Ti), Te0: v.Te[0], Ti0: v.Ti[0], Ip: s[S.Ip] / 1e6,
+      W: W / 1e6, Te: this.volAvg(v.Te), Ti: this.volAvg(v.Ti), Te0: v.Te[0], Ti0: v.Ti[0], Ip: s.Ip / 1e6,
       P_fus: 0, P_alpha: 0, P_aux: 0, P_heat: 0, Q: 0, P_bt: 0, P_neutron: 0, P_charged: 0,
     });
     this.dt = dt;
@@ -1428,7 +1419,7 @@ export class ProfileModel implements SimModel {
   private evaluateWorkArrays(t: number, y: Float64Array): StepConstants {
     const v = this.views(y);
     this.composition(v.Te, v.ne, v.s);
-    this.currentProfiles(v.psi, v.s[S.Ip]);
+    this.currentProfiles(v.psi, v.s.Ip);
     const K = this.stepConstants(t, v.Te, v.Ti, v.ne, v.s);
     this.lastK = K;
     this.transportCoefficients(v.Te, v.Ti, v.ne, v.s);

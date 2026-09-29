@@ -232,14 +232,20 @@ describe('beam-target reactivity vs an independent 2000-interval quadrature', ()
     }, { runs: 80, label: 'beam-target quadrature' });
   });
 
-  // BUG(ws2a): the 48-point grid cannot resolve the narrow 148 keV p-¹¹B resonance (Γ ≈ 5 keV):
-  // beamTargetReactivity('pB11', 200, 10, 0.5) is 31 % off the resolved integral. Latent today —
-  // neither the 0D nor the 1.5D model calls it for p-¹¹B — but the function advertises the channel.
-  it.fails('p-¹¹B agrees within the quadrature tolerance (BUG(ws2a): unresolved 148 keV resonance)', () => {
-    for (const [E0, Ec, Ti] of [[200, 10, 0.5], [170, 50, 1], [500, 100, 5]]) {
+  // The 48-point grid of the other fuels cannot resolve the narrow 148 keV p-¹¹B resonance (Γ ≈ 5 keV): with it
+  // beamTargetReactivity('pB11', 200, 10, 0.5) was 31 % off the resolved integral (ws2a). The function now integrates p-¹¹B
+  // on 1500 cells (fixed in v4.0, ws2c); neither the 0D nor the 1.5D model calls it for p-¹¹B — but the function advertises
+  // the channel, and the grid must resolve the resonance for beams from below to well above it.
+  it('p-¹¹B agrees within the quadrature tolerance, beam energies below, at and above the 148 keV (c.m.) resonance', () => {
+    for (const [E0, Ec, Ti] of [[200, 10, 0.5], [170, 50, 1], [500, 100, 5], [161, 30, 0.3], [1000, 200, 20]]) {
       const got = beamTargetReactivity('pB11', E0, Ec, Ti)[0], ref = reference('pB11', E0, Ec, Ti)[0];
-      expect(rel(got, ref), `E0 = ${E0} keV`).toBeLessThan(TOL.pB11);
+      expect(rel(got, ref), `E0 = ${E0} keV`).toBeLessThan(0.005);
     }
+    forAll(gen.record({ E0: gen.logFloat(100, 3000), Ec: gen.logFloat(5, 3000), Ti: gen.logFloat(0.05, 50) }), ({ E0, Ec, Ti }) => {
+      const got = beamTargetReactivity('pB11', E0, Ec, Ti)[0], ref = reference('pB11', E0, Ec, Ti)[0];
+      if (ref === 0) expect(got).toBe(0);
+      else expect(rel(got, ref)).toBeLessThan(0.005);
+    }, { runs: 40, label: 'p-11B beam-target quadrature' });
   });
 });
 

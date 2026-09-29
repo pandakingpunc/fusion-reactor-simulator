@@ -109,7 +109,11 @@ export function crossSection(ch: keyof typeof BH_SIGMA, E_cm_keV: number): numbe
  *   <σv>_bt = ∫ σ(E_cm) v_b(E) f(E) dE / ∫ f(E) dE ,  E_cm = E_lab · m_t/(m_b + m_t)
  * The target is the second reactant of the channel: species a in the a+a channels (D-D, the D-D side branches of D-³He)
  * (E_cm = E_lab/2), species b in the others. For the target density see beamTargetDensity.
- * APPROXIMATION: the target ions are at rest (E_b ≫ T_i), the beam is isotropic, 48-point log grid.
+ * APPROXIMATION: the target ions are at rest (E_b ≫ T_i), the beam is isotropic, 48-point log grid (1500 points for p-¹¹B:
+ * its cross-section has the 148 keV resonance of width Γ ≈ 5 keV, 3 % of the beam energy at the resonance, which the 48 cells
+ * of a decade-wide range do not resolve: 31 % error at E_0 = 200 keV; the midpoint rule with 1500 cells is within 0.1 % of
+ * a 2000-interval Simpson reference, reference/reactivity.test.ts). Neither model calls it for p-¹¹B today (no beam-target
+ * fusion is booked for that fuel), so the finer grid costs nothing at run time.
  * Returns an array of m³/s per channel (in FUEL_CHANNELS order).
  */
 export function beamTargetReactivity(fuel: FuelType, E0_lab_keV: number, Ec_keV: number, Ti_keV: number): number[] {
@@ -119,7 +123,7 @@ export function beamTargetReactivity(fuel: FuelType, E0_lab_keV: number, Ec_keV:
   const keys: Record<FuelType, (keyof typeof BH_SIGMA | 'pB11')[]> = { DT: ['DT'], DD: ['DD_pT', 'DD_nHe3'], DHe3: ['DHe3', 'DD_pT', 'DD_nHe3'], pB11: ['pB11'] };
   const Emin = Math.max(1.5 * Ti_keV, 1);
   if (E0_lab_keV <= Emin) return chans.map(() => 0);
-  const N = 48;
+  const N = fuel === 'pB11' ? 1500 : 48;
   const lnMin = Math.log(Emin), lnMax = Math.log(E0_lab_keV);
   const num = chans.map(() => 0);
   let den = 0;

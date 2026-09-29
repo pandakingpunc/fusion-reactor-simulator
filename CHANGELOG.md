@@ -68,8 +68,26 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   the checkpoint contract, the atomic step, failure classification and cell volumes on real
   Grad-Shafranov tables; `SingularMatrixError` of every solver of `numerics/linalg.ts`, and the 0D
   ignition state through a disruption. Long 1.5D tests use `runAllYielding` (`src/testing/yielding.ts`).
+- Multi-page PDF: `toPDFDocument(pages)` and `figuresToPDF(figs)` write one PDF page per figure with
+  one embedded font subset per face shared by all pages (page-level graphics-state and image
+  resources).
+- Exact 256-entry viridis, magma, inferno, plasma and cividis colormap tables (matplotlib's
+  published data) replace the nine-anchor approximation; cividis and plasma are new. Colour bars
+  draw the table.
+- Min/max (M4) decimation of long time series (`decimateIndices`, `decimateFrames`) that keeps the
+  frames around events and gaps; figure exports thin histories above 6000 frames.
+- New figure builders: UQ violin plot (Gaussian KDE, Silverman bandwidth; a non-positive reference
+  on a log axis is omitted) and tornado plot, radius-time heat map (`figRhoT`, export kind
+  'rhot'), Pareto fronts (NSGA-II non-dominated sorting, attainment staircase), and
+  reference-uncertainty bands and interval error bars for the validation figure.
+- Every figure builder is exercised on deterministic synthetic data with the SHA-256 of the SVG and
+  PDF pinned (`src/plot/figures/testdata/builders.sha256.json`); line coverage of
+  `src/plot/figures` rises from 4-15 % to 96.5 %.
 
 ### Changed
+- Figure caption and run log: the 'GS updates' number counts accepted Grad-Shafranov updates, and
+  the Fig. 1 caption now also reports retried and rejected updates and forced transport steps
+  (`eqRetried`, `eqRejected`, `forcedSteps`).
 - The validation CLI moved to `src/cli/validate.cli.ts` (no Node-only entry point left in
   `src/physics`). Exit codes: 0 all executed checks passed; 1 a check or run failed, or no check was
   executed (previously reported as passed); 2 usage error (unknown flag or preset id, invalid

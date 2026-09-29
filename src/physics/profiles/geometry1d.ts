@@ -40,6 +40,25 @@ function grids(N: number) {
 }
 
 /**
+ * The radial grid of a transport geometry: N cells between the faces ρ_f (ρ_0 = 0 the axis, ρ_N = 1 the separatrix),
+ * the cell centres inside them, and the mean cell width. A geometry that replaces another one (the Grad–Shafranov
+ * update of a running shot) is built on the grid of the geometry it replaces, so the transport equations keep the
+ * grid they were set up on whatever it is: a geometry built without one is on the uniform grid.
+ */
+export type RadialGridArrays = Pick<TransportGeometry, 'rhoC' | 'rhoF' | 'dRho'>;
+
+/** The grid `g` for N cells (copied: a geometry owns its arrays), or a RangeError if it is not a grid of N cells */
+function ownGrid(g: RadialGridArrays, N: number) {
+  const { rhoC, rhoF } = g;
+  if (rhoF.length !== N + 1 || rhoC.length !== N) throw new RangeError(`geometryFromEquilibrium: the grid has ${rhoC.length} cells and ${rhoF.length} faces, ${N} cells were asked for`);
+  if (rhoF[0] !== 0 || rhoF[N] !== 1) throw new RangeError(`geometryFromEquilibrium: the faces of the grid run from ${rhoF[0]} to ${rhoF[N]}, not from 0 to 1`);
+  for (let i = 0; i < N; i++) {
+    if (!(rhoF[i + 1] > rhoF[i]) || !(rhoC[i] > rhoF[i] && rhoC[i] < rhoF[i + 1])) throw new RangeError(`geometryFromEquilibrium: the grid is not increasing in cell ${i}`);
+  }
+  return { rhoC: Float64Array.from(rhoC), rhoF: Float64Array.from(rhoF), dRho: g.dRho };
+}
+
+/**
  * What the transport geometry is built from: the flux-surface tables (on the ψ_N levels, axis
  * first) and the global values of a Grad–Shafranov equilibrium. An Equilibrium is one; tests
  * build them from analytic equilibria.
@@ -53,8 +72,11 @@ export interface EquilibriumTables {
   rhoTorB: number; B0: number; R0: number; volume: number; perimeter: number;
 }
 
-/** Dengeden taşınım geometrisi */
-export function geometryFromEquilibrium(eq: EquilibriumTables, N: number, geom: { a: number; kappa: number; delta: number }): TransportGeometry {
+/**
+ * Dengeden taşınım geometrisi. `grid`: the radial grid of the geometry (the faces, the centres and the mean cell width of
+ * the model that the geometry is for); undefined: N uniform cells.
+ */
+export function geometryFromEquilibrium(eq: EquilibriumTables, N: number, geom: { a: number; kappa: number; delta: number }, grid?: RadialGridArrays): TransportGeometry {
   const P = eq.prof;
   const n = P.psiN.length;
   const PhiB = eq.PhiB, dpsi = eq.psiAxis;
@@ -81,7 +103,7 @@ export function geometryFromEquilibrium(eq: EquilibriumTables, N: number, geom: 
   // the poloidal area vanishes as ρ̂² at the axis: spline it against ρ̂²
   const x2 = Float64Array.from(x, (r) => r * r);
   const SA = new CubicSpline(x2, P.area);
-  const { rhoC, rhoF, dRho } = grids(N);
+  const { rhoC, rhoF, dRho } = grid ? ownGrid(grid, N) : grids(N);
   const f = (S: CubicSpline, r: ArrayLike<number>) => Float64Array.from(r, (v) => S.eval(v));
   const vp = (r: number) => Su.eval(r) * r;
   const VpC = Float64Array.from(rhoC, vp);

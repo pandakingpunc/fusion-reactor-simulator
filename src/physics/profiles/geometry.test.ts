@@ -220,6 +220,52 @@ describe("transport geometry from an analytic Solov'ev equilibrium", () => {
     for (const i of CELLS) expect(rel(g.dV[i], ref(g.rhoF[i + 1]).V - (i ? ref(g.rhoF[i]).V : 0))).toBeLessThan(3e-4);
     for (const i of [0, 1, 2, 10, 25, 48, 49]) expect(rel(g.qEqC[i], ref(g.rhoC[i]).q)).toBeLessThan(3e-4);
   }, 60000);
+
+  describe('on a given radial grid (a geometry that replaces another one is built on its grid)', () => {
+    const shape = { a: SHAPE.epsilon * R0, kappa: SHAPE.kappa, delta: SHAPE.delta };
+    const centres = (faces: Float64Array) => Float64Array.from({ length: N }, (_, i) => 0.5 * (faces[i] + faces[i + 1]));
+    // cells 10 % narrower at the edge than at the axis (packed towards the edge, as a pedestal grid is)
+    const packed = Float64Array.from({ length: N + 1 }, (_, i) => i / N - (0.1 * Math.sin((2 * Math.PI * i) / N)) / (2 * Math.PI));
+    const arrays = (t: TransportGeometry) => Object.entries(t).filter(([, v]) => v instanceof Float64Array) as [string, Float64Array][];
+
+    it('the arrays of the uniform grid of the same N give the geometry without a grid, bit for bit', () => {
+      const same = geometryFromEquilibrium(an.tables(), N, shape, g);
+      for (const [k, v] of arrays(g)) expect(Array.from(same[k as keyof TransportGeometry] as Float64Array), k).toEqual(Array.from(v));
+      expect(same.dRho).toBe(g.dRho);
+    });
+
+    it('the faces, centres and mean cell width are the grid that was given (copied: the geometry owns its arrays)', () => {
+      const faces = Float64Array.from(packed), cs = centres(faces);
+      const gp = geometryFromEquilibrium(an.tables(), N, shape, { rhoC: cs, rhoF: faces, dRho: 1 / N });
+      expect(Array.from(gp.rhoF)).toEqual(Array.from(packed));
+      expect(Array.from(gp.rhoC)).toEqual(Array.from(centres(packed)));
+      expect(gp.dRho).toBe(1 / N);
+      expect(gp.rhoF[1]).not.toBe(g.rhoF[1]);
+      faces[3] += 1e-3; cs[3] += 1e-3;
+      expect(gp.rhoF[3]).toBe(packed[3]);
+      expect(gp.rhoC[3]).toBe(centres(packed)[3]);
+    });
+
+    it('cell volumes add up to the plasma volume; V, the surface area and q are those of the equilibrium at the radii of the grid', () => {
+      const faces = Float64Array.from(packed), gp = geometryFromEquilibrium(an.tables(), N, shape, { rhoC: centres(faces), rhoF: faces, dRho: 1 / N });
+      expect(rel(gp.dV.reduce((a, b) => a + b, 0), gp.volume)).toBeLessThan(1e-14);
+      for (let i = 0; i < N; i++) expect(gp.dV[i]).toBeGreaterThan(0);
+      for (const f of [5, 20, 35, 45, 49]) {
+        expect(rel(gp.VF[f], ref(faces[f]).V), `V at face ${f}`).toBeLessThan(1e-4);
+        expect(rel(gp.VpF[f] * gp.gradRhoF[f], ref(faces[f]).S), `S at face ${f}`).toBeLessThan(2e-4);
+      }
+      for (const i of [3, 25, 47]) expect(rel(gp.qEqC[i], ref(gp.rhoC[i]).q), `q at centre ${i}`).toBeLessThan(3e-4);
+    });
+
+    it('refuses a grid that is not one of N cells from the axis to the separatrix', () => {
+      const tb = an.tables();
+      const ok = { rhoC: centres(packed), rhoF: packed, dRho: 1 / N };
+      expect(() => geometryFromEquilibrium(tb, N + 1, shape, ok)).toThrow(RangeError);
+      expect(() => geometryFromEquilibrium(tb, N, shape, { ...ok, rhoF: Float64Array.from(packed, (v, i) => (i === N ? 1.01 : v)) })).toThrow(RangeError);
+      expect(() => geometryFromEquilibrium(tb, N, shape, { ...ok, rhoF: Float64Array.from(packed, (v, i) => (i === 7 ? packed[6] : v)) })).toThrow(RangeError);
+      expect(() => geometryFromEquilibrium(tb, N, shape, { ...ok, rhoC: Float64Array.from(ok.rhoC, (v, i) => (i === 7 ? packed[9] : v)) })).toThrow(RangeError);
+    });
+  });
 });
 /**
  * The cell volumes on tables of the real Grad–Shafranov solver. The tables sit at ψ_N = (k/50)², so the last

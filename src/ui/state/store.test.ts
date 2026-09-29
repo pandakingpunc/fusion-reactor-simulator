@@ -51,6 +51,41 @@ describe('app store actions', () => {
     expect(store.getState().shots.map((s) => s.id)).toEqual([1, 3, 4]);
   });
 
+  it('opens a shot that did not come from a live run: it is added once per source and shown in the Report', () => {
+    const store = createAppStore({ cfgName: 'TAE' });
+    const { actions } = store;
+    actions.archiveShot('1:0', shot());
+    actions.openShot({ ...shot(MIRROR), name: 'From the archive', sourceKey: 'archive:abc', archiveId: 'abc' });
+    expect(store.getState()).toMatchObject({ tab: 'report', viewId: 2 });
+    expect(store.getState().shots.map((s) => [s.id, s.name])).toEqual([[1, 'TAE #1'], [2, 'From the archive']]);
+    actions.setTab('compare');
+    actions.openShot({ ...shot(MIRROR), name: 'From the archive again', sourceKey: 'archive:abc' });
+    expect(store.getState().shots).toHaveLength(2);
+    expect(store.getState()).toMatchObject({ tab: 'report', viewId: 2 });
+    // a shot without a source key is always new
+    actions.openShot({ ...shot(), name: 'No source' });
+    actions.openShot({ ...shot(), name: 'No source' });
+    expect(store.getState().shots.map((s) => s.id)).toEqual([1, 2, 3, 4]);
+    expect(store.getState().viewId).toBe(4);
+  });
+
+  it('a new completion, or removing the shown shot, returns the Report to the live or latest run', () => {
+    const store = createAppStore({ cfgName: 'TAE' });
+    const { actions } = store;
+    actions.openShot({ ...shot(), name: 'Opened', sourceKey: 'import:x' });
+    expect(store.getState().viewId).toBe(1);
+    actions.archiveShot('5:0', shot());
+    expect(store.getState().viewId).toBeNull();
+    actions.viewShot(1);
+    expect(store.getState().viewId).toBe(1);
+    actions.removeShot(2); // another shot: the view stays
+    expect(store.getState().viewId).toBe(1);
+    actions.removeShot(1);
+    expect(store.getState().viewId).toBeNull();
+    actions.viewShot(null);
+    expect(store.getState().viewId).toBeNull();
+  });
+
   it('loads an archived shot back into the wizard', () => {
     const store = createAppStore({ tab: 'compare' });
     store.actions.editShot({ ...shot(MIRROR), id: 9, name: 'Tandem mirror #12' });

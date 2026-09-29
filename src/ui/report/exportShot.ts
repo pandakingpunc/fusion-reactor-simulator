@@ -2,6 +2,7 @@
 import { ReactorConfig, ShotReport, SimEvent } from '../../physics/types';
 import { UiFrame } from '../../worker/protocol';
 import { DiagSpec } from '../../physics/types';
+import type { RunProvenance } from '../persist/types';
 
 function download(name: string, text: string, mime: string) {
   const blob = new Blob([text], { type: mime });
@@ -11,8 +12,13 @@ function download(name: string, text: string, mime: string) {
   setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
 }
 
-export function exportJSON(name: string, cfg: ReactorConfig, report: ShotReport, events: SimEvent[]) {
-  download(`${safe(name)}_report.json`, JSON.stringify({ name, exportedAt: new Date().toISOString(), cfg, report, events }, null, 2), 'application/json');
+/**
+ * The run file (src/ui/persist/runRecord.ts): configuration, report, events and the run's fingerprint, so that importing it
+ * re-simulates the run and can show a verified reproduction. Written by a separate chunk that is loaded on demand.
+ */
+export async function exportJSON(name: string, cfg: ReactorConfig, report: ShotReport, events: SimEvent[], prov?: RunProvenance) {
+  const { buildRunRecord, serializeRunRecord } = await import('../persist/runRecord');
+  download(`${safe(name)}_run.json`, serializeRunRecord(buildRunRecord({ name, cfg, report, events, prov })), 'application/json');
 }
 
 export function exportCSV(name: string, frames: UiFrame[], specs: DiagSpec[], timeUnit: string) {

@@ -151,6 +151,18 @@ describe('SimController', () => {
     expect(h.w.last('init')).toMatchObject({ id: 2, speed: 5, autoPlay: false });
   });
 
+  it('counts the live interventions of a run, and a new run starts at none', () => {
+    const h = loaded();
+    expect(h.s().interventions).toBe(0);
+    h.ctrl.control({ kappa_conf: 20 });
+    h.ctrl.control({ P_NBI_MW: 5 });
+    expect(h.s().interventions).toBe(2);
+    h.ctrl.rewind(0);
+    expect(h.s().interventions).toBe(2); // a rewind does not forget them: the count is what the run may have been given
+    h.ctrl.restart();
+    expect(h.s().interventions).toBe(0);
+  });
+
   it('runs background full runs in their own worker with progress', async () => {
     const h = setup();
     const progress: number[] = [];

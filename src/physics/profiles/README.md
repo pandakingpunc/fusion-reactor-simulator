@@ -17,14 +17,14 @@ current equilibrium and transport geometry, work arrays, plasma and controller s
 | `work.ts` | work arrays `ctx.w` (cell arrays of N, face arrays of N + 1), allocated once |
 | `context.ts` | `ProfileContext`, `StepConstants` (held fixed over a step), `onGeometry` cache hooks |
 | `geometry1d.ts` | the radial grid (uniform, or packed towards the edge: `GridSpec`, `buildGrid`, `cellIndex`, `faceValue`, …) and the transport geometry on it, ρ̂ = √(Φ/Φ_b), from equilibrium tables (`EquilibriumTables`) |
-| `fvsolver.ts` | implicit finite-volume solvers (heat, density, current) with the reference state and explicit rate of a TR-BDF2 stage, their right-hand sides (`residual`, `rate`) and error-estimate filter, `boundaryLoss` (P_bound) |
+| `fvsolver.ts` | implicit finite-volume solvers (heat, density, current) with the reference state and explicit rate of a TR-BDF2 stage, their right-hand sides (`residual`, `rate`) and error-estimate filter, `boundaryLoss` (P_bound), the Pereverzev–Corrigan term of the heat solve; the current diffusion in the Hinton–Hazeltine form with the moving-coordinate term |
 | `composition.ts` | quasi-neutral composition; He ash, impurity and fuel-mix inventories |
 | `qprofile.ts` | ψ → ψ′, q, enclosed current, ⟨j·B⟩; q95 |
 | `boundary/sol.ts` | separatrix values (two-point T_sep, n_sep), lagged P_SOL |
 | `sources/` | `SourceModel` plug-ins: `nbi`, `rf`, `fusion`, `radiation`, `exchange`; `current.ts` (σ_neo, bootstrap, ohmic); `deposition.ts` (profiles, NBI chord). `fusion` evaluates every channel of the fuel with the helpers the 0D model uses (`pairDensity`, `burnPerReaction`, the products of `FUEL_CHANNELS`) |
 | `transport/` | `TransportModel` plug-ins: `scaling`, `cgm`; `coefficients.ts` adds barrier (`pedestal.ts`), D and pinch, NTM islands, neoclassical floor |
-| `control/` | heating (with the ignition-test ramp-down) and density programmes, fueling feedback, loss power P_L, τ_E scaling and the C_χ controller |
-| `solver/` | `pipeline.ts` (evaluation order), `coupledStep.ts` (the TR-BDF2 step: Picard with Anderson mixing, error control, event localisation, failures), `trbdf2.ts` (method constants, error estimate, controller), `localise.ts` (dense output and event crossing), `acceptStep.ts` (update after an accepted step) |
+| `control/` | heating (with the ignition-test ramp-down) and density programmes, the plasma-current programme I_p(t) (`plasmaCurrent.ts`), fueling feedback, loss power P_L, τ_E scaling and the C_χ controller |
+| `solver/` | `pipeline.ts` (evaluation order), `coupledStep.ts` (the TR-BDF2 step: the stage solver, error control, event localisation, failures), `newtonStage.ts` (Newton–Raphson on a stage; the block-tridiagonal LU, the coloured Jacobian and the damped Newton iteration are `numerics/blockTridiagN.ts` and `numerics/newton.ts`), `trbdf2.ts` (method constants, error estimate, controller), `localise.ts` (dense output and event crossing), `acceptStep.ts` (update after an accepted step) |
 | `coupling/equilibrium.ts` | Grad–Shafranov coupling: initial solve, update policy, guarded updates (`eqguard.ts`) |
 | `events/` | `EventModel` plug-ins: `LH`, `ELM`, `sawtooth`, `NTM`, `burn`, `warnings`, `disruption`; `triggers.ts` (the margins of the ELM and sawtooth thresholds the stepper localises) |
 | `diagnostics.ts` | time traces (`PROFILE_DIAGS` are the ones the UI shows), profiles, power totals |
@@ -45,11 +45,12 @@ step at one Δt) does:
 3. stage 1, the trapezoidal rule to t + γΔt (γ = 2 − √2), and stage 2, BDF2 from the old and the intermediate state to
    t + Δt. Both are backward-Euler-like solves over the same interval dΔt (d = 1 − √2/2): stage 1 with the old state as
    reference and its rate as an explicit source, stage 2 with the reference aU_γ + bU_n (a = 1.207, b = −0.207) and no
-   source (`HeatInputs.U0e`, `Xe`, `DensityInputs.X`, `CurrentInputs.rate0`). Within a stage, Picard iterations on the
-   iterate, accelerated by Anderson mixing of (T_e, T_i, n_e) (depth 4, at most 12 iterations, converged at a relative
-   change of 0.1 rtol): transport coefficients → density solve → composition → every source's `heat` → q profile → current
-   sources (σ, bootstrap, every source's `current`, ohmic) → `assembleHeatSources` → heat solve (T_e, T_i together) →
-   current solve. Stage 2 starts from the extrapolated stage 1;
+   source (`HeatInputs.U0e`, `Xe`, `DensityInputs.X`, `CurrentInputs.rate0`). The current diffusion of a stage has the plasma current at the end
+   of the stage as its boundary condition (`ProfileContext.ipAt`, "Current diffusion"). Within a stage the nonlinear system is solved by
+   Picard iterations on the iterate, accelerated by Anderson mixing of (T_e, T_i, n_e) (depth 4, at most 12 iterations, converged at a
+   relative change of 0.1 rtol): transport coefficients → density solve → composition → every source's `heat` → q profile → current
+   sources (σ, bootstrap, every source's `current`, ohmic) → `assembleHeatSources` → heat solve (T_e, T_i together) → current solve; or, for a
+   predictive transport model, by Newton–Raphson on the four fields together ("Newton"). Stage 2 starts from the extrapolated stage 1;
 4. P_bound from the last heat solve, final composition and q profile; the scaled error estimate of the step.
 
 The error estimate accepts the step or repeats it with a smaller Δt (rejection: an attempt that is not a failure). A **failed**
@@ -157,7 +158,41 @@ the other events are not localised.
 **Picard and Anderson.** The frozen-coefficient Picard iteration oscillates where χ depends steeply on the gradient (the critical-gradient
 model: the differential diffusivity is 20 times χ near the threshold): a third of the attempts of ITER15 `cgm` failed, the mean step was
 0.35 ms and the 10 s ramp-up took 30 s. Anderson mixing (`numerics/anderson.ts`) of the iterate converges in three to six iterations per
-stage: under 3 % of the attempts are repeated and the 10 s run takes about 5 s.
+stage: under 3 % of the attempts are repeated and the 10 s run takes about 3 s. It is the fast path of the `scaling` model, whose χ is a smooth
+function of the gradient, and stays that (bit for bit) whatever else changes.
+
+**Newton** (`ProfileSettings.nonlinearSolver`: `'auto'`, the default, uses it for a predictive model, `'newton'` for every model, `'picard'`
+and `'pc'` never). A stage is a root of F(z) = 0 for z = (T_e, T_i, n_e, ψ) of the N cells: the balance of each field over the stage interval,
+F = (content − reference)/Δ − explicit rate − R(z), where R is the right-hand side of the finite-volume solvers (`residual`, `rate`) with every
+coefficient evaluated at z (`solver/newtonStage.ts`). A fixed point of the Picard iteration is a root of F and the other way round (a test
+solves a stage both ways and finds the same state to 3·10⁻⁹). F is a function of z alone: the evaluation runs in the order of the dependencies
+(composition, q profile, transport coefficients, fluxes, sources), where the Picard iteration reads the q profile and the composition of the
+iterate before (the transport model reads `w.qF`): a stale read makes F depend on the evaluations that came before and its finite differences
+noise. Every row of F depends on its cell and the two neighbours, so the Jacobian is 4 × 4 block-tridiagonal and is built by coloured finite
+differences (cells i ≡ c mod 3 perturbed together, one field at a time: 12 evaluations of F, `numerics/blockTridiagN.ts`, checked against the
+column-by-column Jacobian to 2·10⁻⁵ of a row and against dense LU for the solve) and factored by block LU with pivoting inside the blocks.
+The iteration (`numerics/newton.ts`) takes the Newton step with a backtracking line search on ½‖F‖² (Armijo, c = 10⁻⁴), a limit of 50 % of
+a value per iteration and the positivity bounds of T and n; it stops when the applied step is below the Picard tolerance (0.1 rtol, at
+most 2·10⁻³). The Jacobian is kept while the residual contracts by half per iteration (the chord method) and the second stage of an attempt
+starts from the one of the first (same interval, close states); an **attempt starts without one**, so a step is a function of its inputs
+and chunk invariance and exact rewind hold without checkpointing any cache. Quadratic convergence is visible until the step reaches the
+accuracy of the Jacobian (a few 10⁻³ of a row on the stages tested, where the differences meet the kinks of the physics): the applied steps of a smooth
+stage are 4.8·10⁻³, 1.5·10⁻³, 1.2·10⁻⁶, 6.6·10⁻¹⁰, 6·10⁻¹³ (`newtonStage.test.ts`).
+
+**Pereverzev–Corrigan fallback** (Pereverzev and Corrigan, Comput. Phys. Commun. 179 (2008) 579). A Newton solve that does not converge (a line
+search that finds no descent, a singular Jacobian, more than 12 iterations: 1.5 % of the stages of ITER15 `cgm` over 40 s: 9 of 510 in the first 5 s, none up to 25 s, then 2 to 3 % once the H-mode with its sawteeth and ELMs is on)
+is repeated from where the stage started by the Picard iteration with the heat solve stabilised: the conduction gets an extra diffusivity
+c χ (c = 10) taken implicitly and c χ ∇T\* (T\* the iterate) taken off again explicitly (`HeatInputs.pcFactor`), so that a fixed point solves the
+original equations. The frozen-χ iteration multiplies the error of the gradient by 1 − χ_d/((1 + c) χ), χ_d = d(χ∇T)/d∇T, and diverges where
+χ_d > 2 χ; with the term it contracts where χ_d < 2 (1 + c) χ (a test: on a steep critical-gradient χ the plain iteration cycles between two
+states and the stabilised one converges). `'pc'` uses it alone: on ITER15 `cgm` it costs less than Picard with Anderson mixing.
+
+What it costs, ITER15 `cgm`, CPU seconds on a shared machine (steps taken, attempts repeated by the error test or failed): 10 s of the
+ramp-up: Picard 3.0 (1099; 17 + 4), PC-Picard 2.3 (997; 35 + 5), Newton 3.5 (950; 16 + 3); 40 s (through the L–H transition and sawteeth): Picard 7.6
+(3788; 371 + 118), PC-Picard 5.4 (3461; 624 + 114), Newton 13.2 (3051; 476 + 15). Newton takes about 3 iterations per stage, the
+Jacobians (12 evaluations of the physics each, 0.8 per stage) are two thirds of its cost. It is the most robust of the three (a
+eighth of the failed attempts of Picard) and 1.2 to 1.8 times as costly; the state at a given time differs between the solvers by the
+L–H and sawtooth timing that a small change of the trajectory moves (Q at 40 s 0.18 / 0.22 / 0.19), not by the solution of a stage.
 
 **What the error estimate does not see.** The quantities that are updated once per accepted step and held fixed within it (C_χ and its
 integral term, P_SOL and the boundary values, the fueling command, the source deposition, the inventories, the fast-ion pools) are first
@@ -189,6 +224,54 @@ Between nRho 50 and 100 the changes are 0.6 % (Q), 0.7 % (f_bs), 0.1 % (ℓ_i) a
 backward-Euler stepper (1101 to 1131 with the time-step limit and the grid), varies by 0.4 % over the tolerances and the limits and 2 % over the
 grid. The scatter of the flat-top means between neighbouring runs (0.1 to 0.4 %) is that of the sawtooth and ELM sequences, which the Richardson
 fit reads as oscillatory convergence (the GCI of the finest runs is about 1 % for Q, f_bs, ℓ_i and T_ped in the tolerance and the Δt series).
+
+## Current diffusion and the plasma-current programme
+
+**Equation** (`fvsolver.ts`, `CurrentSolver`). The poloidal flux ψ (per radian, increasing outwards) on ρ̂ = √(Φ/Φ_b) obeys the flux-averaged
+parallel Ohm's law in the form of Hinton and Hazeltine (Rev. Mod. Phys. 48 (1976) 239),
+
+    σ∥ F ⟨R⁻²⟩ ∂ψ/∂t|Φ = (F² / (μ0 V′)) ∂ρ̂( V′ g2 ∂ρ̂ψ / F ) − ⟨j_ni·B⟩,      V′ = dV/dρ̂, g2 = ⟨|∇ρ̂|²/R²⟩,
+
+whose right-hand side is ⟨j·B⟩ − ⟨j_ni·B⟩. With B = F∇φ + ∇ψ×∇φ the current is μ0 j = ∇F×∇φ − Δ\*ψ ∇φ and j·B = −F Δ\*ψ/(μ0 R²) +
+F′|∇ψ|²/(μ0 R²) (F′ = dF/dψ): the toroidal current and the poloidal current, both with the sign that the form has. It is conservative in the
+flux X/F, X = V′ g2 ∂ρ̂ψ = 2π μ0 I(ρ̂) with I the enclosed current, so the equation multiplied by V′/F² is integrated over the cells and the boundary
+condition is X/F = 2π μ0 I_p/F at ρ̂ = 1. Before this stage the code had (1/(μ0 V′)) ∂ρ̂(V′ F g2 ∂ρ̂ψ), which has the F′ term of the poloidal
+current with the wrong sign: the two agree for a constant F and differ by 2 F′ ⟨|∇ψ|²/R²⟩/μ0 in ⟨j·B⟩. On the analytic Solov'ev equilibrium
+of `geometry.test.ts` ⟨j·B⟩ = F p′ + F FF′⟨R⁻²⟩/μ0 + FF′ g2 ψ′²/(F μ0) is reproduced to 5·10⁻⁵ by the new form and missed by 1.2 % by the old
+one. The moves in the flat-top numbers of the 1.5D shots are in the golden ledger.
+
+**Skin time.** With a uniform σ in a cylinder the equation is the one of the poloidal field with the edge field held by I_p: the current relaxes with
+the time constant τ_R/λ₁² = μ0 σ a²/14.68 (λ₁ = 3.832 the first zero of J1, not the 2.405 of a cylinder whose wall current density is held), and
+after a step of I_p the enclosed current is I(x, t)/I_p = x² − Σ a_n x J1(λ_n x) e^{−λ_n² t/τ_R} with a_n = 2/(λ_n J2(λ_n)).
+`currentDiffusion.test.ts` steps the solver with TR-BDF2 and finds the series to 2·10⁻³ of I_p at 0.02, 0.1 and 0.5 τ_R, the relaxation
+time to 2 %, and second-order convergence in Δt.
+
+**The plasma-current programme** (`control/plasmaCurrent.ts`). I_p is the boundary condition and enters the stages at their ends: I_p(t + γΔt) in
+the first stage of a TR-BDF2 step, I_p(t + Δt) in the second, I_p(t) of the old state in the explicit rate; the state scalar `Ip` holds the value
+at the end of the last accepted step. A programme is a function of t alone (so a chunked run, a rewind and a replay see the same values), given
+
+- as data: `ProfileSettings.IpWaveform`, points [t (s), I_p (MA)] in increasing time, linearly interpolated, constant beyond the ends, at least
+  0.05 MA (`currentWaveform`); it is part of the configuration and so of the run fingerprint;
+- as a function: `ProfileModules.plasmaCurrent(t) → A` (`new ProfileModel(cfg, { plasmaCurrent })`), which takes precedence and is not part of the
+  fingerprint (the caller owns its determinism).
+
+`MagneticConfig.Ip_MA` is what the initial equilibrium is solved for and should equal the programme at t = 0; the Grad–Shafranov updates use the I_p
+of the state; the current quench of a disruption overrides the programme. Without a programme the code path is the one it was, bit for bit. Not
+done: the equilibrium coupling updates by the interval, β_p and ℓ_i, not by a change of I_p, so a fast ramp runs on a geometry that is up to an
+update interval old (a request to the coupling lane: an update when |ΔI_p|/I_p exceeds 10 %); the setup wizard does not offer the waveform.
+
+**The moving coordinate.** The grid is ρ̂ = √(Φ/Φ_b): if the toroidal flux Φ_b through the boundary changes, a flux surface (Φ fixed) moves
+in ρ̂ with dρ̂/dt = −ρ̂ Φ̇_b/(2Φ_b), the equation above holds at fixed Φ and at fixed ρ̂ ∂ψ/∂t|ρ̂ = ∂ψ/∂t|Φ + (ρ̂ Φ̇_b/(2Φ_b)) ∂ρ̂ψ.
+`CurrentInputs.PhiBdotRel` (Φ̇_b/Φ_b) adds that term, implicitly, in `solve` and in `rate` (the gradient at a cell centre is the mean of the
+two face gradients, the outer one the boundary value); with a flux frozen into the plasma (σ → ∞) the solution follows ψ0(ρ̂ e^{εt/2}) as it must
+(`currentDiffusion.test.ts`). **The model passes 0.** Φ_b changes only with the shape and the toroidal field, which the fixed-boundary model does
+not change; the successive equilibria differ in Φ_b by 10⁻⁴ to 10⁻³, of either sign from one update to the next (ITER15 100 s: ±5·10⁻⁴; JET15:
+up to ±1.2·10⁻³ with the V′ of a face changing by 0.5 to 1.7 %), which is the accuracy of the Grad–Shafranov solver and not a rate: taking (Φ_b,new −
+Φ_b,old)/Δt_update for Φ̇_b would feed noise into the current diffusion at the level of 10⁻³ of ψ per second. A free-boundary or shape-programme
+coupling supplies the rate. The V′ of the conservative form is not inside the time derivative of ψ (as it is in the heat and particle equations,
+whose contents n V′ change with V′), so the current equation has no V̇′ term; those of the heat and particle equations are not implemented: the
+geometry is piecewise constant between adoptions, a jump at an adoption (V′ of a face by up to 1.7 %, the total volume fixed) would be a conservative
+remap of the contents, which the coupling lane's interpolation of the geometry in time would replace.
 
 ## Definitions shared with the 0D model
 
@@ -343,8 +426,9 @@ model take part as soon as they implement the hooks; other parts are listed in
   the same pools); only their pressure follows the pool dynamics above, with no fast-ion transport or loss. The pool
   is scalar: its τ_W is the source-weighted mean over the cells, not a profile.
 - `'cgm'` is uncalibrated; its outermost face uses the gradient between the last two cells, not
-  the one to the separatrix value. The ITER15 ramp-up takes about 5 s per 10 s of discharge (JET-size machines are
-  slower: the steps are shorter).
+  the one to the separatrix value. The ITER15 ramp-up takes about 3 to 4 s per 10 s of discharge (JET-size machines are
+  slower: the steps are shorter). Its stages are solved by Newton, which is about 1.2 to 1.8 times the cost of Picard with Anderson
+  mixing: the Jacobian is 12 evaluations of the whole physics, and reusing it from step to step would need it in the checkpoint.
 - P_SOL (two-point T_sep) follows the lagged global balance P_heat − P_rad − dW/dt, not P_bound, on
   purpose: the instantaneous flux would couple T_sep and the edge gradient step by step. The raw dW/dt of the last step still
   makes P_SOL and T_sep oscillate from step to step at Δt above about 15 ms (the outermost cells then hold the step near
@@ -360,12 +444,15 @@ model take part as soon as they implement the hooks; other parts are listed in
 | File | Covers |
 | --- | --- |
 | `solver/trbdf2.test.ts`, `solver/localise.test.ts` | TR-BDF2 constants, second order, L-stability and the embedded error estimate on scalar problems; the controller; the dense output and the crossing of an event margin |
-| `fvsolver.test.ts` | the solvers' right-hand sides against their solutions, the reference state and explicit rate of a stage, the error-estimate filter |
+| `fvsolver.test.ts` | the solvers' right-hand sides against their solutions, the reference state and explicit rate of a stage, the error-estimate filter, the Pereverzev–Corrigan term (a fixed point stays fixed; the frozen-χ iteration on a steep χ cycles and the stabilised one converges) |
+| `../numerics/blockTridiagN.test.ts`, `../numerics/newton.test.ts` | the block-tridiagonal solver for block sizes 1 to 5 against dense LU (pivoting inside blocks, several right-hand sides, singular blocks), the coloured Jacobian against the column-by-column one and a linear map, the damped Newton iteration (quadratic convergence, the chord variant, the line search, the bounds, a Jacobian passed in, the failure reasons) |
+| `solver/newtonStage.test.ts` | the residual of a stage is a function of the state alone, its coloured Jacobian is the Jacobian, its root is the Picard fixed point, quadratic convergence on a smooth stage, the choice of the solver, the fallback (a shot with every Newton solve failing is the PC-Picard shot bit for bit), chunk invariance and exact rewind of a Newton shot |
+| `currentDiffusion.test.ts` | the skin-time response of a uniform cylinder to a step of I_p against the Bessel series and its second order in Δt, the Φ̇_b term (a frozen flux is carried with the moving grid), the Hinton–Hazeltine form with a non-constant F, the plasma-current programme (waveform, a shot whose boundary current follows it) |
 | `solver/coupledStep.test.ts` | the TR-BDF2 step on whole shots: error control against a tight reference, `dtMax`, rejections and their counters, the energy identity, ELM counts against the step limit, the checkpoint of the counters |
 | `modules.test.ts` | state layout, work arrays, module wiring, checkpoint keys, the three plug-in interfaces (hooks and their call counts, particle source, state over accepted steps and rewinds) |
 | `events/events.test.ts` | every event model through `afterStep`, with checkpoints |
 | `energy.test.ts` | convection vs an analytic steady state, exact energy identity of a heat step, full-model energy balance (ITER15) |
-| `geometry.test.ts` | transport geometry of an analytic Solov'ev equilibrium; cell volumes on real Grad–Shafranov tables (ITER15, MASTU15) |
+| `geometry.test.ts` | transport geometry of an analytic Solov'ev equilibrium, including ⟨j·B⟩ of the current solver against the analytic one (5·10⁻⁵ against 1.2 % for the form with F inside the derivative); cell volumes on real Grad–Shafranov tables (ITER15, MASTU15) |
 | `sources/sources.test.ts` | NBI chord cache vs direct deposition, beam-target table vs the integral |
 | `sources/fusion.test.ts` | reaction rates, burn-up, ash, beam-target rates and charged-product heating per channel against independent evaluations, for every fuel |
 | `lossPower.test.ts` | core radiation, the loss power P_L, the scaling-mode τ_E and C_χ target at P_L (exact, every step), the smoothed dW/dt with the ELM losses (with a replay from an ELM frame), the L–H threshold with the low-density branch, one stored energy |

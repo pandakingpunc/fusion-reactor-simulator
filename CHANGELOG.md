@@ -361,11 +361,24 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   Siccinio et al. 2022; their table 1 writes it as the angle-bracket <n>/n_GW, which may mean the volume average:
   read that way, the 0D DEMO shot exceeds its Greenwald limit 1.3 and disrupts at 81 s), which the flat tops now
   reach to 2.5 % (0.84 and 1.17; before 0.92 and 1.24). The 1.5D
-  presets already regulate the line average and keep their targets. The ITER-pB11 golden case, whose power balance
-  is marginal (1.0e20 collapses at 28 s, 0.85e20 survives), now runs to the scheduled end.
+  presets already regulate the line average and keep their targets. The p-11B shot of the ITER preset, whose power
+  balance is marginal (1.0e20 collapses at 28 s, 0.85e20 survives), now runs to the scheduled end; the golden case
+  ITER-pB11 keeps the former 1.0e20 (`overrides.n_target`) so that the suite still has a disrupting shot.
 - MAST-U preset: the first-campaign scenario (R 0.8 m, a 0.5 m, kappa 2.1, delta 0.47, 0.75 MA, 0.55 T, 2 MW of NBI
   absorbed; Harrison et al. 2024, Imada et al. 2024) instead of the machine's design-maximum shape: q95 18.2 -> 6.4
   (the published band is 5-10, so the `MASTU.q95` known failure is gone) and MASTU15 (1.5D) q95 17.6 -> 6.4.
+- Setup wizard: Confinement scaling offers ITPA20 and ITPA20-IL (H98 multiplies the chosen scaling), and the LCFS
+  elongation and triangularity are in the Geometry step of every tokamak, in 0D as well (they set the 0D volume,
+  surface and cross-section, and the 1.5D boundary); English and Turkish hints. The configuration schema
+  (`schema/fusion-sim.schema.json`) knows the two scalings and `profiles.lcfsRef95`, and the profiles section is
+  optional in share links and imported files (ITER and DEMO carry one in 0D).
+- The `uq` and `scan` commands, the ensemble and scan specs and `runMetrics` default to the time-weighted flat top
+  like everything else (`--flat-top frame` gives the mean over the frames of v3.0.0; the input hash of a study that
+  did not name a weighting changes); the steady-state evaluator (`optimize`, `analysis/steadyState.ts`) and the
+  temperature axis of the POPCON map take the volume and surface of the boundary shape and the ITPA20 scalings, as
+  the POPCON map itself does.
+- Golden harness: a case may set the target density; the suite keeps one disrupting shot (ITER-pB11 at 1.0e20 m^-3,
+  radiative collapse at 27 s), and a test requires it.
 
 ### Fixed
 - `npm run bench:convergence`: the time-step series (dtMax) failed with "this model has no internal time step

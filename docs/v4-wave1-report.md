@@ -657,6 +657,34 @@ ledger reason. Items marked (R) come from a lane's request list, (F) from a revi
   no temporary worktree of the gate remains.
 - Nothing was pushed, tagged, released or archived (Zenodo). `docs/figures` was not touched.
 
+## Addendum (Wave-2A integration): what the merge of ws2c changed in this report
+
+The report describes the gate state (`b059097`). After ws2c (numbers hygiene) was merged into `v4/integration` the
+following statements above are superseded; the golden files and `test/golden/CHANGES.md` are the record.
+
+- **Appendix A.** Four of the six pins are flipped and are plain tests now: D-T neutron and alpha energies (exact
+  two-body kinematics, 14.028 and 3.561 MeV), E_charged + E_neutron = E_tot for every channel, the p-11B beam-target
+  quadrature (1500 cells resolve the 148 keV resonance), and the exact Miller volume and surface of every preset. The
+  W7-X density collapse is a plain test (`regress/densityCollapse.test.ts`: the shot ends with 'Density collapse -
+  fuelling lost' at 0.50 s). Two pins remain: the two-knot clamped spline end slopes and 1.5D with a > R.
+- **Flat-top definition (sections 5, 9).** Flat-top averages are time-weighted by default; the frame-weighted mean of
+  v3.0.0 is the option `weighting: 'frame'`. The decision asked for in section 9 (WS1) is taken. The uq and scan tools
+  follow it.
+- **Validation (section 6).** 36 checks pass and 6 are known failures (`MASTU.q95` passes since the MAST-U preset is the
+  first-campaign scenario; its q95 is 6.4).
+- **Headline numbers (section 5), flat-top means of the golden files now.** ITER Q 10.04, P_fus 513.7 MW, line-averaged
+  n/n_G 0.84 (was 10.13, 523.4 MW, 0.915: exact D-T energies +4 %, Miller volume and surface -5.5 %, density target
+  +0.7 %); SPARC Q 7.56 (6.59, the ellipse volume was 8.6 % too big); JET Q 0.386 (0.369); DEMO Q 18.27, P_fus 1836 MW
+  (20.13, 2025 MW); MAST-U q95 6.4 (18.2); ITER15 Q 10.41 and P_fus 523.2 MW; DEMO15 Q 23.46; SPARC15 Q 6.35.
+- **Open issues (section 9).** The ws2c items are done: the MAST-U preset, the ITER and DEMO density basis (with the
+  line-versus-volume ambiguity of the DEMO reference documented as an assumption), the D-T energies, the low-density
+  L-H branch (exponent 2, an approximation), ITPA20 selectable in 0D, POPCON and 1.5D. What is still open from them:
+  the DEMO LCFS shape (kappa 1.85, delta 0.5) is a conversion of the published 95 % shape, and the 1.5D boundary
+  (`ProfileContext.geomB`) does not follow an edited kappa or delta yet (ws3s).
+- **Not refreshed here (Wave 3).** The README validation table and fig03, `docs/technical-report.md` (Q = 9.8 and
+  P_fus = 491 MW of the 1.5D ITER baseline, the 'Q about 14' discussion, the L-H time in the figure 3 caption,
+  section 7) and the figures still carry the numbers of section 5 or older.
+
 ## Appendix A: pins that remain (`it.fails`)
 
 All in `src/physics/reference/`; each passes while its bug is present and turns red when the bug is fixed:

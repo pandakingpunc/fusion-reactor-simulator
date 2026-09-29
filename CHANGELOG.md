@@ -83,8 +83,25 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 - Every figure builder is exercised on deterministic synthetic data with the SHA-256 of the SVG and
   PDF pinned (`src/plot/figures/testdata/builders.sha256.json`); line coverage of
   `src/plot/figures` rises from 4-15 % to 96.5 %.
+- POPCON map computed off the page's thread in its own worker chunk: a 16x16 preview while the
+  controls move, the 44x44 map once they rest; jobs a newer one replaces are dropped.
+- POPCON shows the run trajectory (fading with age), the operating point and the contour of the
+  heating power applied now; hovering reads out P_aux, Q, beta_N, self-heating and the beta_N, L-H
+  and Greenwald limits; clicking steers the shot to a point of the map (density set-point and
+  heating power).
+- Time charts thin long runs per pixel column (min/max level of detail) and keep event frames: ELM
+  and sawtooth crashes stay visible at any run length.
+- `bench/pause-latency.ts` measures the wait of a pause request on the simulation worker (p50, p99).
 
 ### Changed
+- POPCON T axis scaled to where the device operates instead of a fixed 0-40 keV: 2.5 times the
+  temperature its installed heating alone would hold at its own density, bounded by the beta limit
+  there (ITER 15 keV, DEMO 20, SPARC 20, JET 8, MAST-U and W7-X 2.5); p-11B keeps a wide axis.
+- Charts: canvases follow their CSS width and the device pixel ratio without reallocating the
+  backing store on each redraw; the POPCON map is drawn once per grid into an offscreen layer.
+- Simulation worker is time-sliced: a pause, control or rewind request is served within about one
+  step (p99 about 50 ms for DEMO15 and ITER15 at 100x, was 290-400 ms); results are bitwise
+  unchanged.
 - Figure caption and run log: the 'GS updates' number counts accepted Grad-Shafranov updates, and
   the Fig. 1 caption now also reports retried and rejected updates and forced transport steps
   (`eqRetried`, `eqRejected`, `forcedSteps`).

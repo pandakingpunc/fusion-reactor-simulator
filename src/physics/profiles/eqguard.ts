@@ -4,10 +4,11 @@
  * The model needs an equilibrium at start-up and re-solves it periodically from the transport
  * profiles. A solve can fail in three ways: it throws (a typed GSFailure of the solver, or a plain
  * Error from the linear algebra), it returns a result that did not converge, or the result is
- * rejected by the caller's own acceptance test (e.g. the current table does not match the
- * equilibrium). All are handled here in one place: a solve runs through a ladder of retry stages
- * and every attempt is logged, so that the caller can count, report and warn instead of dropping
- * failures silently. solverErrorMessage is the single point that decodes what the solver threw.
+ * rejected by the caller's own acceptance test. The initial solve runs through a short ladder of
+ * retry stages (solveGuarded) and every attempt is logged, so that the caller can count, report and
+ * warn instead of dropping failures silently. The periodic updates are not a ladder any more: they are
+ * the self-consistent solve of coupling/outer.ts, which logs its attempts in the same GsAttempt form.
+ * solverErrorMessage is the single point that decodes what the solver threw.
  */
 import { GSFailure } from '../equilibrium/gs';
 import type { Equilibrium, EquilibriumOptions, GSSolver } from '../equilibrium/gs';
@@ -102,28 +103,4 @@ export function solveGuarded(solver: GSSolver, base: EquilibriumOptions, stages:
     }
   }
   return { eq: null, stage: -1, attempts, best };
-}
-
-/**
- * Low-pass filter of a table sampled on nodes about uniform in ρ: `passes` binomial (¼, ½, ¼)
- * passes with both end values held. n passes approximate a Gaussian kernel of variance n/2 node
- * spacings² (the binomial distribution; e.g. Marchand & Marmet, Rev. Sci. Instrum. 54 (1983) 1034).
- */
-export function binomialSmooth(a: ArrayLike<number>, passes: number): number[] {
-  let b = Array.from(a);
-  const n = b.length;
-  for (let k = 0; k < passes; k++) {
-    const c = b.slice();
-    for (let i = 1; i < n - 1; i++) c[i] = 0.25 * b[i - 1] + 0.5 * b[i] + 0.25 * b[i + 1];
-    b = c;
-  }
-  return b;
-}
-
-/**
- * Number of binomial passes that filter a table with node spacing Δρ down to the scale the GS grid
- * resolves: Gaussian σ = Δ_GS (grid spacing in ρ units), n = 2 (σ/Δρ)², at least one pass.
- */
-export function gridScalePasses(gridSpacingRho: number, tableSpacingRho: number): number {
-  return Math.max(1, Math.round(2 * (gridSpacingRho / Math.max(tableSpacingRho, 1e-6)) ** 2));
 }

@@ -237,7 +237,7 @@ describe('interpolation', () => {
 
   it('clamped cubic spline reproduces any cubic exactly (value, derivative, integral)', () => {
     forAll(knots, ({ n, seed }) => {
-      const { xs, f, df, F, s, scale } = cubicCase(Math.max(n, 3), seed); // n = 2: see the BUG below
+      const { xs, f, df, F, s, scale } = cubicCase(n, seed); // n = 2 too: the end slopes are the two conditions of the Hermite cubic
       for (let k = 0; k <= 20; k++) {
         const x = xs[0] + ((xs[xs.length - 1] - xs[0]) * k) / 20;
         expect(Math.abs(s.eval(x) - f(x))).toBeLessThan(1e-10 * scale);
@@ -247,14 +247,22 @@ describe('interpolation', () => {
     }, { runs: 150, label: 'clamped spline' });
   });
 
-  // BUG(ws2a): with exactly two knots CubicSpline returns before using the boundary conditions
-  // (`if (n === 2) return;` leaves M = 0), so a clamped two-knot spline is a straight line and
-  // silently ignores d1Start/d1End (documented as "clamped ends when given"); the Hermite cubic is
-  // the correct result. Latent unless a caller builds a 2-point clamped spline.
-  it.fails('a two-knot clamped spline honours its end slopes (BUG(ws2a): n = 2 ignores d1Start/d1End)', () => {
-    const { xs, f, s, scale } = cubicCase(2, 12345);
+  // Formerly BUG(ws2a): with exactly two knots CubicSpline returned before using the boundary conditions
+  // (`if (n === 2) return;` left M = 0), so a clamped two-knot spline was a straight line that silently
+  // ignored d1Start/d1End (documented as "clamped ends when given"); the Hermite cubic is the correct result.
+  it('a two-knot clamped spline honours its end slopes (it is the Hermite cubic); one clamped end and one natural end too', () => {
+    const { xs, f, df, s, scale } = cubicCase(2, 12345);
     const xm = 0.5 * (xs[0] + xs[1]);
     expect(Math.abs(s.eval(xm) - f(xm))).toBeLessThan(1e-10 * scale);
+    expect(Math.abs(s.deriv(xs[0]) - df(xs[0]))).toBeLessThan(1e-10 * scale);
+    expect(Math.abs(s.deriv(xs[1]) - df(xs[1]))).toBeLessThan(1e-10 * scale);
+    // only the start slope given: the other end is natural (zero curvature)
+    const half = new CubicSpline([0, 2], [0, 2], { d1Start: 3 });
+    expect(half.deriv(0)).toBeCloseTo(3, 12);
+    expect(half.m[1]).toBe(0);
+    expect(half.eval(2)).toBeCloseTo(2, 12);
+    // no boundary condition at all: a straight line
+    expect(new CubicSpline([0, 2], [0, 2]).eval(1)).toBe(1);
   });
 
   it('natural spline and PCHIP interpolate the knots and reproduce straight lines; lerpTable too', () => {

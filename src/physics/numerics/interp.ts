@@ -39,7 +39,8 @@ export class CubicSpline {
     this.x = Float64Array.from(xs);
     this.y = Float64Array.from(ys);
     this.m = new Float64Array(n);
-    if (n === 2) return;
+    // two knots with natural ends are a straight line (M = 0); a clamped end is a condition of the 2 × 2 system below
+    if (n === 2 && bc.d1Start === undefined && bc.d1End === undefined) return;
     const a = new Float64Array(n), b = new Float64Array(n), c = new Float64Array(n), d = new Float64Array(n);
     const X = this.x, Y = this.y;
     for (let i = 1; i < n - 1; i++) {

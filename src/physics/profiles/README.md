@@ -25,7 +25,7 @@ current equilibrium and transport geometry, work arrays, plasma and controller s
 | `transport/` | `TransportModel` plug-ins: `scaling`, `cgm`; `coefficients.ts` adds barrier (`pedestal.ts`), D and pinch, NTM islands, neoclassical floor |
 | `control/` | heating (with the ignition-test ramp-down) and density programmes, fueling feedback, loss power P_L, τ_E scaling and the C_χ controller |
 | `solver/` | `pipeline.ts` (evaluation order), `coupledStep.ts` (Picard step, Δt control, failures), `acceptStep.ts` (update after an accepted step) |
-| `coupling/equilibrium.ts` | Grad–Shafranov coupling: initial solve, update policy, guarded updates (`eqguard.ts`) |
+| `coupling/equilibrium.ts` | Grad–Shafranov coupling: initial solve (guarded, `eqguard.ts`), update policy, the update as a self-consistent solve (`coupling/outer.ts`: outer iteration of the tables on the equilibrium's own surfaces; `coupling/tables.ts`: node and table helpers) |
 | `events/` | `EventModel` plug-ins: `LH`, `ELM`, `sawtooth`, `NTM`, `burn`, `warnings`, `disruption` |
 | `diagnostics.ts` | time traces (`PROFILE_DIAGS` are the ones the UI shows), profiles, power totals |
 | `checkpoint.ts` | `Checkpointable` and the checkpoint store (rewind) |
@@ -194,19 +194,26 @@ model take part as soon as they implement the hooks; other parts are listed in
   editing `defaultEvents()`. Sources and the transport model can be replaced.
 - The `accepted` hooks and the checkpoints of sources and the transport model run in the normal
   phase; during the quench phases of a disruption profiles are scaled, not transported.
-- Grad–Shafranov updates are quasi-static: a table-mode solve whose current table had to be
-  rescaled by more than `CURRENT_SCALE_LIMIT` (0.5) to meet I_p is rejected like a solve that does
-  not converge (the geometry the table was mapped through is stale). MASTU15 (hollow current at
-  β_p ≈ 1.8) still holds back part of its updates (4 accepted, 3 rejected: the geometry stays near
-  the start-up equilibrium for much of the shot), and so do fast transients such as the JET15
-  L–H transition (one of 15 attempts rejected). A converged answer needs a table consistent with
-  the new geometry, i.e. an outer iteration between the transport tables and the solver.
-- The transport-geometry cell volumes are ∫V' dρ̂ over each cell, scaled once to the volume of the equilibrium. The tables
-  sit at ψ_N = (k/50)², so the last interval before the separatrix is wide in ρ̂ (ITER15 0.955 → 1, MASTU15 0.886 → 1) and
-  the ρ̂ of the outer nodes, a cumulative integral of q that diverges at the X-point, is too small on such a coarse
-  table (ITER15 5e-4, MASTU15 1.2e-2 at ψ_N = 0.96, against 8 times the surfaces). That is a property of the tables
-  (`equilibrium/gs.ts`), not of the geometry: the metrics of the outer cells of a spherical tokamak sit at a ρ̂ that is
-  up to 1 % of the minor radius off. A finer table (`nSurf`) moves ρ̂ and the cell volumes by less than 0.1 % (ITER15).
+- Grad–Shafranov updates are quasi-static and self-consistent: p(ρ) and ⟨j_φ/R⟩(ρ) are handed to the solver on nodes ρ_j = j/N
+  mapped to ψ_N through the equilibrium, and the nodes are moved until the new equilibrium's ρ_tor(ψ_N) agrees with them
+  (rms Δρ below `OUTER_TOL` = 2e-3 over ρ ≥ 2 grid spacings; ω under-relaxed, at most `OUTER_MAX` iterations). A table mapped
+  through the previous equilibrium instead (stale) integrates to something other than I_p on the new surfaces and, after a
+  fast change, has no converged solution (JET15 lost one update in 15, MASTU15 three in seven). Each solve is a continuation
+  from the previous equilibrium's own tables, halved on failure. Where the whole way cannot be solved (a fold of the
+  fixed-boundary problem near the transport's pressure and current), at least 75 % of it is used and the update is reported
+  once as limited (`fraction`). The parts of a continuation that are not the last are solved on a coarse three-surface table
+  (only their ψ is used, as the start of the next part), so a part that is used is solved again from its own ψ on the default
+  surface table before anything reads it (one iteration): the mapping mismatch and the transport geometry need the full table.
+  With less than 75 %, or if the current table still needs rescaling by more than `CURRENT_SCALE_LIMIT`
+  (0.5) at consistent surfaces, or the outer iteration stops above `OUTER_ACCEPT` (5e-3; twice that for a limited update,
+  whose tables lag the surfaces by the rest of the change), it is rejected, counted, warned
+  about and retried with a back-off. The core inside two grid spacings carries a flat current table: ⟨j_φ/R⟩ = 2π dI/dV of the
+  innermost cells dips there and the surfaces are below what the grid resolves. The 1.5D golden cases accept all of their updates.
+- The transport-geometry cell volumes are ∫V' dρ̂ over each cell, scaled once to the volume of the equilibrium. The
+  equilibrium's output table has 101 nodes clustered at the edge (`surfaceLevels` in `equilibrium/gs.ts`: q, ⟨|∇ψ|²⟩ and dV/dψ_N
+  follow a boundary layer of about 1e-3 in ψ_N at the LCFS): the g1, g2, V', ∇ρ, q and ΔV of the outer faces and cells are within 0.1 % of
+  a table of 401 surfaces (with the old ψ_N = (k/50)² table ITER15 was 1.2 % and MASTU15 14.7 % off, and ρ̂ of the outer nodes
+  too small by 5e-4 and 1.2e-2 at ψ_N = 0.96).
 - The charged fusion products and the NBI ions heat instantaneously and locally (the 0D model delays the heating with
   the same pools); only their pressure follows the pool dynamics above, with no fast-ion transport or loss. The pool
   is scalar: its τ_W is the source-weighted mean over the cells, not a profile.

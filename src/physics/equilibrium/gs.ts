@@ -99,6 +99,36 @@ export interface GSWarning {
 /** default of EquilibriumOptions.currentScaleWarn (every accepted table solve of the 1.5D golden cases but one has |c − 1| ≤ 0.07) */
 const CURRENT_SCALE_WARN = 0.1;
 
+/** default number of nodes of the output flux-surface tables (the axis and 100 surfaces) */
+export const DEFAULT_N_SURF = 101;
+
+/**
+ * Output flux-surface levels ψ_N of an equilibrium table with n nodes: the n − 1 surfaces after the
+ * axis, the last one the LCFS (ψ_N = 1). With t = k/(n − 1) and s = t²
+ *
+ *   ψ_N(t) = s + s² − s³ ,   dψ_N/ds = (1 − s)(1 + 3s) ≥ 0.
+ *
+ * Near the axis ψ_N ≈ t², so the surfaces are uniform in ρ_tor as with ψ_N = t². Towards the edge
+ * the slope vanishes and 1 − ψ_N ≈ 2(1 − s)² clusters them: the last interior surface is at
+ * 1 − ψ_N = 3e−3 for n = 51 and 7.8e−4 for n = 101 (ψ_N = t² gives 0.04 and 0.02). The clustering is what
+ * the edge needs. q, ⟨|∇ψ|²⟩ and dV/dψ_N are not smooth in ψ_N at the LCFS: |∇ψ| on the last surface is
+ * small where the boundary is strongly shaped, so they follow a boundary layer of width about 1e−3 in
+ * ψ_N (MASTU15, κ = 2.5, δ = 0.5: q = 12.6, 36.4, 49.3, 51.4, 51.6 at 1 − ψ_N = 0.1, 1e−2, 1e−3, 1e−4, 0).
+ * On ψ_N = t² tables the last interval spans 0.04 of ψ_N, which puts ρ_tor of the outer nodes, a cumulative
+ * integral of q, too small (MASTU15 1.2e−2 at ψ_N = 0.96 against a 401-surface table) and the metrics
+ * of the outer transport cells up to 14.7 % (MASTU15 g1, g2, q; ITER15 1.2 %) off a converged reference; on
+ * this map 51 surfaces give 0.2 % and 101 surfaces 0.07 % (surfaces.test.ts).
+ */
+export function surfaceLevels(n: number): Float64Array {
+  if (!(Number.isInteger(n) && n >= 4)) badInput(`the number of surfaces must be an integer ≥ 4 (got ${n})`);
+  const L = new Float64Array(n - 1);
+  for (let k = 1; k < n; k++) {
+    const s = (k / (n - 1)) ** 2;
+    L[k - 1] = k === n - 1 ? 1 : s + s * s - s * s * s;
+  }
+  return L;
+}
+
 function badInput(msg: string): never { throw new GSFailure('bad-input', msg); }
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
@@ -110,8 +140,10 @@ export interface GSGridOptions {
   /** box margin around the plasma, in units of a; default 0.06 */
   margin?: number;
   /**
-   * Plasma boundary (default: Miller shape of geom). It must be up-down symmetric and cut every
-   * grid line at most twice. Grids with a custom boundary are never cached.
+   * Plasma boundary (default: Miller shape of geom). Every grid line must cut it at most twice. Without `zBottom`
+   * and `zRange` it must be up-down symmetric about Z = 0 (the grid is symmetric, with a Z = 0 row); an asymmetric or
+   * shifted boundary (millerShape, polygonBoundary, fourierBoundary) declares its extent and the grid covers it.
+   * Grids with a custom boundary are never cached.
    */
   boundary?: ShapeBoundary;
   /** GSSolver only: reuse the per-worker grid/LU cache for identical parameters (default true) */
@@ -193,6 +225,7 @@ export class GSGrid {
   /** per row j / column i: horizontal and vertical boundary crossings */
   private readonly rowRange: ([number, number] | null)[];
   private readonly colTop: (number | null)[];
+  private readonly colBot: (number | null)[];
   private readonly lu: BandedLU;
   private readonly plan: ExtensionPlan;
 
@@ -207,14 +240,31 @@ export class GSGrid {
     const b = (this.boundary = opts.boundary ?? millerBoundary(geom));
     const Rlo = geom.R - geom.a * (1 + m), Rhi = geom.R + geom.a * (1 + m);
     const dR = (Rhi - Rlo) / (NR - 1);
-    const Zext = geom.kappa * geom.a * (1 + m);
-    const NZ = 2 * Math.ceil(Zext / dR) + 1; // odd → a Z = 0 row exists
-    const dZ = (2 * Zext) / (NZ - 1);
-    this.NR = NR; this.NZ = NZ; this.Rmin = Rlo; this.Zmin = -Zext; this.dR = dR; this.dZ = dZ;
+    // vertical extent: symmetric about Z = 0 with an odd number of rows (a Z = 0 row exists), or — for a boundary that
+    // declares zRange (up-down asymmetric or shifted shapes) — the boundary's extent plus the same margin
+    let Zlo: number, NZ: number, dZ: number;
+    if (b.zRange) {
+      const zm = m * geom.kappa * geom.a;
+      Zlo = b.zRange[0] - zm;
+      const Zhi = b.zRange[1] + zm;
+      NZ = Math.ceil((Zhi - Zlo) / dR) + 1;
+      dZ = (Zhi - Zlo) / (NZ - 1);
+    } else {
+      const Zext = geom.kappa * geom.a * (1 + m);
+      NZ = 2 * Math.ceil(Zext / dR) + 1;
+      dZ = (2 * Zext) / (NZ - 1);
+      Zlo = -Zext;
+    }
+    this.NR = NR; this.NZ = NZ; this.Rmin = Rlo; this.Zmin = Zlo; this.dR = dR; this.dZ = dZ;
     const N = NR * NZ;
     // boundary crossings of every grid line (evaluated once: custom boundaries may be expensive)
     this.rowRange = Array.from({ length: NZ }, (_, j) => b.rRange(this.Z(j)));
     this.colTop = Array.from({ length: NR }, (_, i) => b.zTop(this.R(i)));
+    this.colBot = Array.from({ length: NR }, (_, i) => {
+      if (b.zBottom) return b.zBottom(this.R(i));
+      const zt = this.colTop[i];
+      return zt === null ? null : -zt;
+    });
     const kind = (this.kind = new Int8Array(N));
     const snap = 1e-3;
     for (let j = 0; j < NZ; j++) {
@@ -224,10 +274,10 @@ export class GSGrid {
       for (let i = 0; i < NR; i++) {
         const R = this.R(i);
         if (R <= rr[0] || R >= rr[1]) continue;
-        const zt = this.colTop[i];
+        const zt = this.colTop[i], zb = this.colBot[i];
         const dh = Math.min(R - rr[0], rr[1] - R) / dR;
-        const dv = zt === null ? 0 : (zt - Math.abs(Z)) / dZ;
-        if (zt === null || dv <= 0) continue;
+        const dv = zt === null || zb === null ? 0 : Math.min(zt - Z, Z - zb) / dZ;
+        if (zt === null || zb === null || dv <= 0) continue;
         kind[j * NR + i] = dh < snap || dv < snap ? 2 : 1;
       }
     }
@@ -248,11 +298,11 @@ export class GSGrid {
     for (let u = 0; u < nIn; u++) {
       const k = ins[u], i = k % NR, j = (k - i) / NR;
       const R = this.R(i), Z = this.Z(j);
-      const rr = this.rowRange[j]!, zt = this.colTop[i]!;
+      const rr = this.rowRange[j]!, zt = this.colTop[i]!, zb = this.colBot[i]!;
       // arm lengths (to the boundary crossing when the neighbour is outside)
       const outW = kind[k - 1] === 0, outE = kind[k + 1] === 0, outS = kind[k - NR] === 0, outN = kind[k + NR] === 0;
       const h1 = outW ? R - rr[0] : dR, h2 = outE ? rr[1] - R : dR;
-      const k1 = outS ? Z + zt : dZ, k2 = outN ? zt - Z : dZ;
+      const k1 = outS ? Z - zb : dZ, k2 = outN ? zt - Z : dZ;
       const den = h1 * h2 * (h1 + h2);
       const cE = (2 * h1 - (h1 * h1) / R) / den;
       const cW = (2 * h2 + (h2 * h2) / R) / den;
@@ -268,7 +318,7 @@ export class GSGrid {
       };
       arm(0, k - 1, cW, outW, rr[0], Z);
       arm(1, k + 1, cE, outE, rr[1], Z);
-      arm(2, k - NR, cS, outS, R, -zt);
+      arm(2, k - NR, cS, outS, R, zb);
       arm(3, k + NR, cN, outN, R, zt);
     }
     lu.factor();
@@ -351,6 +401,25 @@ export class GSGrid {
         s += stCoef[5 * u + 1 + d] * v;
       }
       out[k] = s;
+    }
+    return out;
+  }
+
+  /**
+   * The ordinary 5-point Δ*ψ = ψ_RR − ψ_R/R + ψ_ZZ (equal arms) at the interior nodes, 0 elsewhere, from the values of ψ at
+   * the neighbouring nodes whatever their kind: for a state whose exterior nodes hold the true field (an imported
+   * equilibrium), where Shortley–Weller's crossing value ψ = 0 would put the error of the boundary polygon into the
+   * first layer of nodes. Second-order accurate everywhere.
+   */
+  applyStandardOperator(psi: ArrayLike<number>, out: Float64Array = new Float64Array(this.NR * this.NZ)): Float64Array {
+    const { NR, NZ, interior, dR, dZ } = this;
+    out.fill(0);
+    const a = 1 / (dR * dR), b = 1 / (dZ * dZ);
+    for (let u = 0; u < this.nInside; u++) {
+      const k = interior[u], i = k % NR, j = (k - i) / NR;
+      if (i < 1 || i > NR - 2 || j < 1 || j > NZ - 2) continue;
+      const R = this.R(i), c = 1 / (2 * dR * R);
+      out[k] = (a - c) * psi[k + 1] + (a + c) * psi[k - 1] + b * (psi[k + NR] + psi[k - NR]) - 2 * (a + b) * psi[k];
     }
     return out;
   }
@@ -450,9 +519,9 @@ export class GSGrid {
           if (!rr) continue;
           Rb = di > 0 ? rr[1] : rr[0]; Zb = ZI; hb = Math.abs(Rb - RI);
         } else {
-          const zt = this.colTop[i1];
-          if (zt === null) continue;
-          Rb = RI; Zb = dj > 0 ? zt : -zt; hb = Math.abs(Zb - ZI);
+          const zEdge = dj > 0 ? this.colTop[i1] : this.colBot[i1];
+          if (zEdge === null) continue;
+          Rb = RI; Zb = zEdge; hb = Math.abs(Zb - ZI);
         }
         hb = Math.min(hb, h);
         const gb = g ? g(Rb, Zb) : 0;
@@ -579,8 +648,25 @@ export interface EquilibriumOptions {
   acceleration?: 'anderson' | 'none';
   /** Anderson depth m (default 4) */
   andersonDepth?: number;
-  /** number of output flux surfaces and poloidal resolution */
+  /**
+   * When the mixing is restarted (history dropped, ω halved): by default as soon as the residual is above the previous
+   * one. Anderson iterates are not monotone, and that rule can restart an iteration that would have converged. With a value
+   * > 1 the restart is when the residual exceeds that multiple of the smallest one so far. Of 192 table solves recorded from
+   * six 1.5D cases (JET15, MASTU15, SPARC15, DIII-D15, ITER15, DEMO15, at the times of their updates), 164 converge to
+   * 1e−5 within 100 iterations with the default rule and ω = 0.9, and 177 with `restartGrowth: 3` and ω = 1 (mean 8.5 iterations
+   * against 7.0 of those that converge either way): the stiff ones, near a fold of the fixed-boundary problem.
+   */
+  restartGrowth?: number;
+  /**
+   * number of nodes of the output flux-surface tables (axis included; default DEFAULT_N_SURF = 101), placed
+   * at surfaceLevels(nSurf), and the number of rays that trace each surface (default 128)
+   */
   nSurf?: number;
+  /**
+   * explicit ψ_N of the output surfaces after the axis (strictly increasing, in (0, 1], the last equal to 1);
+   * instead of nSurf. The tables then have psiLevels.length + 1 nodes.
+   */
+  psiLevels?: ArrayLike<number>;
   nTheta?: number;
   /** previous solution on the same grid (warm start) */
   psiInit?: Float64Array;
@@ -618,6 +704,25 @@ export interface EqProfiles {
   delta: Float64Array;
   Phi: Float64Array; // toroidal flux [Wb]
 }
+
+/**
+ * Profiles of a plasma state as functions of ψ_N ∈ [0, 1] (0 on the axis, 1 on the boundary), in the solver's
+ * convention (ψ [Wb/rad], maximal on the axis, ψ_b = 0): what an Equilibrium's tables are built from, and what
+ * GSSolver.assemble takes for a state that was not solved here (an imported equilibrium).
+ */
+export interface StateProfiles {
+  /** pressure p(ψ_N) [Pa] */
+  p(psiN: number): number;
+  /** dp/dψ [Pa/(Wb/rad)] (> 0 for a peaked profile: p and ψ are both maximal on the axis) */
+  pp(psiN: number): number;
+  /** FF' = F dF/dψ [T² m²/(Wb/rad)] */
+  ffp(psiN: number): number;
+  /** F = R B_φ [T m] (> 0) */
+  F(psiN: number): number;
+}
+
+/** The options of an Equilibrium's tables (a subset of EquilibriumOptions) */
+export type TableOptions = Pick<EquilibriumOptions, 'Ip' | 'B0' | 'psiLevels' | 'nSurf' | 'nTheta'>;
 
 export interface Equilibrium {
   grid: GSGrid;
@@ -775,9 +880,16 @@ function validateOptions(o: EquilibriumOptions, nGrid: number): void {
   if (o.maxIter !== undefined && !(Number.isInteger(o.maxIter) && o.maxIter >= 1)) badInput(`maxIter must be a positive integer (got ${o.maxIter})`);
   if (o.tol !== undefined && !(finite(o.tol) && o.tol > 0)) badInput(`tol must be positive (got ${o.tol})`);
   if (o.relax !== undefined && !(finite(o.relax) && o.relax > 0 && o.relax <= 1)) badInput(`relax must be in (0, 1] (got ${o.relax})`);
+  if (o.restartGrowth !== undefined && !(finite(o.restartGrowth) && o.restartGrowth > 1)) badInput(`restartGrowth must be > 1 (got ${o.restartGrowth})`);
   if (o.andersonDepth !== undefined && !(Number.isInteger(o.andersonDepth) && o.andersonDepth >= 0 && o.andersonDepth <= 20)) badInput(`andersonDepth must be an integer in [0, 20] (got ${o.andersonDepth})`);
   if (o.nSurf !== undefined && !(Number.isInteger(o.nSurf) && o.nSurf >= 4)) badInput(`nSurf must be an integer ≥ 4 (got ${o.nSurf})`);
   if (o.nTheta !== undefined && !(Number.isInteger(o.nTheta) && o.nTheta >= 8)) badInput(`nTheta must be an integer ≥ 8 (got ${o.nTheta})`);
+  if (o.psiLevels !== undefined) {
+    const L = o.psiLevels, m = L.length;
+    if (m < 3) badInput(`psiLevels needs at least 3 surfaces (got ${m})`);
+    for (let i = 0; i < m; i++) if (!(L[i] > 0 && L[i] <= 1) || (i > 0 && !(L[i] > L[i - 1]))) badInput('psiLevels must be strictly increasing values in (0, 1]');
+    if (L[m - 1] !== 1) badInput(`the last of psiLevels must be 1, the boundary (got ${L[m - 1]})`);
+  }
   if (o.currentScaleWarn !== undefined && !(finite(o.currentScaleWarn) && o.currentScaleWarn >= 0)) badInput(`currentScaleWarn must be ≥ 0 (got ${o.currentScaleWarn})`);
   if (o.psiInit !== undefined) {
     if (o.psiInit.length !== nGrid) badInput(`psiInit has ${o.psiInit.length} values, the grid ${nGrid}`);
@@ -826,7 +938,7 @@ export class GSSolver {
     this.Rin = Rin;
   }
 
-  /** Output surface levels: ψ_N = (k/(n−1))², k = 1…n−1 (the axis is added separately) */
+  /** Coarse levels of the Picard iteration's trace: ψ_N = (k/(n−1))², k = 1…n−1 (the axis is added separately) */
   private levels(n: number): Float64Array {
     const L = new Float64Array(n - 1);
     for (let k = 1; k < n; k++) L[k - 1] = (k / (n - 1)) ** 2;
@@ -850,7 +962,7 @@ export class GSSolver {
     const N = NR * NZ;
     validateOptions(o, N);
     const R0 = this.geom.R;
-    const maxIter = o.maxIter ?? 200, tol = o.tol ?? 1e-9, omegaMax = o.relax ?? 1;
+    const maxIter = o.maxIter ?? 200, tol = o.tol ?? 1e-9, omegaMax = o.relax ?? 1, restartGrowth = o.restartGrowth;
     const depth = (o.acceleration ?? 'anderson') === 'anderson' ? (o.andersonDepth ?? 4) : 0;
     const Bpa = (MU0 * o.Ip) / this.shape.perimeter;
     const V = this.shape.volume;
@@ -881,7 +993,7 @@ export class GSSolver {
     let tabXs: number[] = [], tabA: number[] = [], tabB: number[] = [], cScale = NaN;
     const acc = new AndersonMixer(nIn, depth);
     const xv = new Float64Array(nIn), gv = new Float64Array(nIn);
-    let omega = omegaMax, prevResid = Infinity;
+    let omega = omegaMax, prevResid = Infinity, bestResid = Infinity;
     let converged = false, it = 0, resid = NaN;
     for (it = 1; it <= maxIter; it++) {
       grid.extend(psi);
@@ -967,14 +1079,15 @@ export class GSSolver {
       o.onIter?.(it, resid, dpsi);
       if (resid < tol) { converged = true; break; }
       if (it === maxIter) break;
-      if (resid > prevResid) { omega = Math.max(0.5 * omega, OMEGA_MIN); acc.reset(); }
-      prevResid = resid;
+      // restart of the mixing: the residual grew (over the previous one, or over `restartGrowth` times the smallest so far)
+      if (resid > (restartGrowth === undefined ? prevResid : restartGrowth * bestResid)) { omega = Math.max(0.5 * omega, OMEGA_MIN); acc.reset(); }
+      prevResid = resid; bestResid = Math.min(bestResid, resid);
       for (let u = 0; u < nIn; u++) { const k = inIdx[u]; xv[u] = psi[k]; gv[u] = gx[k]; }
       acc.step(xv, gv, omega);
       for (let u = 0; u < nIn; u++) psi[inIdx[u]] = xv[u];
     }
     const ffpTable = prof.kind === 'table' ? new CubicSpline(tabXs, tabA.map((a, i) => cScale * a + tabB[i])) : null;
-    const eq = this.postProcess(gx, o, beta0, tail, ffpTable, ppN, Math.min(it, maxIter), converged, resid);
+    const eq = this.postProcess(gx, o, (dpsi) => this.solvedProfiles(gx, o, beta0, tail, ffpTable, ppN, dpsi), true, Math.min(it, maxIter), converged, resid);
     const warn = (code: GSWarningCode, message: string) => eq.warnings.push({ code, message });
     if (!converged) warn('not-converged', `residual ${resid.toExponential(2)} > tol ${tol} after ${eq.iterations} iterations`);
     if (prof.kind === 'shape') {
@@ -993,28 +1106,63 @@ export class GSSolver {
     return eq;
   }
 
-  private postProcess(psi: Float64Array, o: EquilibriumOptions, beta0: number, tail: ShapeTail | null, ffpTable: CubicSpline | null,
-    ppN: ((x: number) => number) | null, iterations: number, converged: boolean, residual: number): Equilibrium {
+  /**
+   * Equilibrium of a state that was not solved here: ψ on this grid (NR·NZ values; ψ_b = 0, ψ > 0 inside and maximal on
+   * the axis — e.g. an imported equilibrium resampled onto the grid) and its profiles as functions of ψ_N. The tables —
+   * flux-surface metrics, q, ρ_tor, β, l_i, the force balance — are traced from ψ; the profiles enter as p, p', FF' and F
+   * (`profiles(Δψ)` is called with the axis flux). iterations = 0 and converged = true. The exterior nodes of ψ are kept
+   * when `keepExterior` (a field known outside the boundary), otherwise refilled from the interior as after a solve.
+   * `residual` says how well ψ satisfies Δ*ψ = −μ0 R j_φ(ψ) for these profiles at this resolution: the fixed-point
+   * residual max|G(ψ) − ψ|/Δψ of one Picard step under this grid's Shortley–Weller operator; with `keepExterior`
+   * (where the boundary polygon is not a flux surface to better than its own accuracy) Σ|Δ*ψ + μ0 R j_φ| over
+   * Σ|μ0 R j_φ| on the interior nodes with the ordinary 5-point operator, and forceBalanceResidual uses that operator too.
+   */
+  assemble(psi: ArrayLike<number>, profiles: (psiAxis: number) => StateProfiles, o: TableOptions & { keepExterior?: boolean }): Equilibrium {
+    const grid = this.grid, N = grid.NR * grid.NZ;
+    if (!(finite(o.Ip) && o.Ip > 0)) badInput(`I_p must be a positive finite current (got ${o.Ip})`);
+    if (!(finite(o.B0) && o.B0 > 0)) badInput(`B0 must be a positive finite field (got ${o.B0})`);
+    if (psi.length !== N) badInput(`ψ has ${psi.length} values, the grid ${N}`);
+    const p = Float64Array.from(psi);
+    for (let k = 0; k < N; k++) if (grid.kind[k] !== 0 && !Number.isFinite(p[k])) badInput('ψ contains non-finite values');
+    const eq = this.postProcess(p, o, profiles, !o.keepExterior, 0, true, NaN);
+    const fns = profiles(eq.psiAxis), dpsi = eq.psiAxis;
+    const jphi = new Float64Array(N), inIdx = grid.interior, Rn = grid.interiorR;
+    for (let u = 0; u < grid.nInside; u++) {
+      const k = inIdx[u];
+      let x = (dpsi - p[k]) / dpsi;
+      if (!(x < 1)) continue;
+      if (x < 0) x = 0;
+      jphi[k] = Rn[u] * fns.pp(x) + fns.ffp(x) / (MU0 * Rn[u]);
+    }
+    let dmax = 0;
+    if (o.keepExterior) {
+      const lap = grid.applyStandardOperator(p);
+      let scale = 0;
+      for (let u = 0; u < grid.nInside; u++) {
+        const k = inIdx[u];
+        dmax += Math.abs(lap[k] + MU0 * Rn[u] * jphi[k]);
+        scale += MU0 * Rn[u] * Math.abs(jphi[k]);
+      }
+      eq.residual = dmax / scale;
+    } else {
+      const g = grid.solveLinear((R, _Z, k) => -MU0 * R * jphi[k]);
+      for (let u = 0; u < grid.nInside; u++) { const k = inIdx[u]; dmax = Math.max(dmax, Math.abs(g[k] - p[k])); }
+      eq.residual = dmax / dpsi;
+    }
+    return eq;
+  }
+
+  /**
+   * The profiles p, p', FF' and F of a solved state (the converged ψ, on the axis value Δψ = dpsi) — what the tables of
+   * the returned Equilibrium are made from. Shape mode: the profile shape with λ recomputed from the returned ψ; table
+   * mode: the given pressure table and the FF' of the last iteration (currentScale applied). F² = F_b² + 2Δψ ∫_x^1 FF' ds
+   * from the vacuum value F_b = R0 B0 at the boundary.
+   */
+  private solvedProfiles(psi: Float64Array, o: EquilibriumOptions, beta0: number, tail: ShapeTail | null, ffpTable: CubicSpline | null,
+    ppN: ((x: number) => number) | null, dpsi: number): StateProfiles {
     const grid = this.grid;
     const R0 = this.geom.R;
-    grid.extend(psi);
-    const bi = grid.bicubic(psi);
-    const ax = findAxis(grid, psi, bi);
-    const dpsi = ax.psi;
-    if (!(Number.isFinite(dpsi) && dpsi > 0)) throw new GSFailure('diverged', 'ψ on the magnetic axis ≤ 0 in the final state', iterations, residual);
-    const field: PsiField = { bi, psiAxis: dpsi, psiB: 0, Rax: ax.R, Zax: ax.Z };
-    const nS = o.nSurf ?? 51;
-    const lev = this.levels(nS);
-    const tr = traceSurfaces(field, grid.boundary, lev, o.nTheta ?? 128, 64);
     const Fb = R0 * o.B0;
-    const n = nS; // axis + levels
-    const P: EqProfiles = {
-      psiN: new Float64Array(n), rhoTor: new Float64Array(n), q: new Float64Array(n), F: new Float64Array(n), p: new Float64Array(n),
-      FFp: new Float64Array(n), pp: new Float64Array(n), V: new Float64Array(n), dVdpsiN: new Float64Array(n), area: new Float64Array(n),
-      Ienc: new Float64Array(n), avgR2inv: new Float64Array(n), avgRinv: new Float64Array(n), avgGrad2R2: new Float64Array(n), avgGrad2: new Float64Array(n),
-      avgGrad: new Float64Array(n), avgB2: new Float64Array(n), Bmax: new Float64Array(n), Bmin: new Float64Array(n), ft: new Float64Array(n),
-      Rin: new Float64Array(n), Rout: new Float64Array(n), kappa: new Float64Array(n), delta: new Float64Array(n), Phi: new Float64Array(n),
-    };
     // pressure and FF' profiles (in ψ_N); tailFF(x) = ∫_x^1 FF' dψ_N
     let pOf: (x: number) => number, ffpOf: (x: number) => number, ppOf: (x: number) => number, tailFF: (x: number) => number;
     if (tail) {
@@ -1045,6 +1193,36 @@ export class GSSolver {
     }
     // F(ψ_N): F² = F_b² + 2∫_{ψ_b}^{ψ} FF' dψ = F_b² + 2Δψ ∫_x^1 FF'(s) ds
     const Fof = (x: number) => Math.sqrt(Math.max(Fb * Fb + 2 * dpsi * tailFF(x), 1e-6 * Fb * Fb));
+    return { p: pOf, pp: ppOf, ffp: ffpOf, F: Fof };
+  }
+
+  /**
+   * Equilibrium of a state: ψ on the grid and the profiles as functions of ψ_N. Everything of the returned tables is
+   * derived from ψ by tracing the flux surfaces; the profiles enter only as p, p', FF', F. `extend` refills the exterior
+   * nodes from the interior (the solver's own state); an imported ψ keeps its own exterior values.
+   */
+  private postProcess(psi: Float64Array, o: TableOptions, profiles: (psiAxis: number) => StateProfiles, extend: boolean,
+    iterations: number, converged: boolean, residual: number): Equilibrium {
+    const grid = this.grid;
+    const R0 = this.geom.R;
+    if (extend) grid.extend(psi);
+    const bi = grid.bicubic(psi);
+    const ax = findAxis(grid, psi, bi);
+    const dpsi = ax.psi;
+    if (!(Number.isFinite(dpsi) && dpsi > 0)) throw new GSFailure('diverged', 'ψ on the magnetic axis ≤ 0 in the final state', iterations, residual);
+    const field: PsiField = { bi, psiAxis: dpsi, psiB: 0, Rax: ax.R, Zax: ax.Z };
+    const lev = o.psiLevels ? Float64Array.from(o.psiLevels) : surfaceLevels(o.nSurf ?? DEFAULT_N_SURF);
+    const nS = lev.length + 1;
+    const tr = traceSurfaces(field, grid.boundary, lev, o.nTheta ?? 128, 64);
+    const n = nS; // axis + levels
+    const P: EqProfiles = {
+      psiN: new Float64Array(n), rhoTor: new Float64Array(n), q: new Float64Array(n), F: new Float64Array(n), p: new Float64Array(n),
+      FFp: new Float64Array(n), pp: new Float64Array(n), V: new Float64Array(n), dVdpsiN: new Float64Array(n), area: new Float64Array(n),
+      Ienc: new Float64Array(n), avgR2inv: new Float64Array(n), avgRinv: new Float64Array(n), avgGrad2R2: new Float64Array(n), avgGrad2: new Float64Array(n),
+      avgGrad: new Float64Array(n), avgB2: new Float64Array(n), Bmax: new Float64Array(n), Bmin: new Float64Array(n), ft: new Float64Array(n),
+      Rin: new Float64Array(n), Rout: new Float64Array(n), kappa: new Float64Array(n), delta: new Float64Array(n), Phi: new Float64Array(n),
+    };
+    const { p: pOf, pp: ppOf, ffp: ffpOf, F: Fof } = profiles(dpsi);
     // axis values
     const Fax = Fof(0);
     P.psiN[0] = 0; P.F[0] = Fax; P.p[0] = pOf(0); P.FFp[0] = ffpOf(0); P.pp[0] = ppOf(0);
@@ -1090,7 +1268,7 @@ export class GSSolver {
     const q95 = qS.eval(0.95);
     let qmin = Infinity;
     for (let i = 0; i < n; i++) qmin = Math.min(qmin, P.q[i]);
-    const fb = this.forceBalance(psi, bi, dpsi, ppOf, ffpOf);
+    const fb = this.forceBalance(psi, bi, dpsi, ppOf, ffpOf, !extend);
     return {
       grid, psi, psiAxis: dpsi, psiB: 0, Raxis: ax.R, Zaxis: ax.Z, Ip: o.Ip, B0: o.B0, R0,
       prof: P, surfaces: tr, PhiB, rhoTorB: Math.sqrt(PhiB / (Math.PI * o.B0)),
@@ -1121,9 +1299,9 @@ export class GSSolver {
   }
 
   /** Volume-integrated force balance of (ψ, p', FF') — see Equilibrium.forceBalanceResidual. */
-  private forceBalance(psi: Float64Array, bi: Bicubic, dpsi: number, ppOf: (x: number) => number, ffpOf: (x: number) => number): { residual: number; ratio: number } {
+  private forceBalance(psi: Float64Array, bi: Bicubic, dpsi: number, ppOf: (x: number) => number, ffpOf: (x: number) => number, standard = false): { residual: number; ratio: number } {
     const grid = this.grid, NR = grid.NR;
-    const lap = grid.applyOperator(psi);
+    const lap = standard ? grid.applyStandardOperator(psi) : grid.applyOperator(psi);
     const inIdx = grid.interior, Rn = grid.interiorR;
     const g3 = new Float64Array(3);
     let num = 0, denP = 0, denJ = 0, numRatio = 0, denRatio = 0;

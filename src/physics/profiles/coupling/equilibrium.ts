@@ -3,23 +3,29 @@
  * the equilibrium evolves slowly on the transport time scale).
  *
  *  - Initial equilibrium: shape profile j ∝ (1 − ψ_N²)^1.3 with β_p = 0.1 (cold start).
- *  - Updates: from the transport profiles (table mode: p and ⟨j_φ/R⟩ on the current ψ_N nodes)
- *    at least every eqUpdateInterval, earlier (but not before a quarter interval) when β_p or ℓ_i
+ *  - Updates: from the transport profiles (table mode: p and ⟨j_φ/R⟩ tabulated on the equilibrium's own flux
+ *    surfaces) at least every eqUpdateInterval, earlier (but not before a quarter interval) when β_p or ℓ_i
  *    changed by 10 % / 5 %. An accepted update replaces the transport geometry; the work arrays
  *    are then re-evaluated on it before the MHD events read them.
- *  - Guarding (eqguard.ts): every solve runs through a retry ladder, a rejected update is counted,
- *    reported and retried with a back-off; nothing fails silently. An update whose current table
- *    had to be rescaled by more than CURRENT_SCALE_LIMIT to meet I_p is rejected as well.
+ *  - The update is a self-consistent solve (outer.ts): the tables are remapped through the new equilibrium and
+ *    re-solved, under-relaxed and with stagnation detection, until the equilibrium's ρ_tor(ψ_N) agrees with the
+ *    map the tables were built with, instead of taking the solve of a table mapped through the previous
+ *    equilibrium (stale) or leaving the update out. Nothing fails silently: a rejected update is counted, reported and
+ *    retried with a back-off. An update whose current table had to be rescaled by more than CURRENT_SCALE_LIMIT
+ *    to meet I_p is rejected as well.
  */
 import { GSSolver, Equilibrium, EquilibriumOptions } from '../../equilibrium/gs';
+import { SingularMatrixError } from '../../numerics/linalg';
 import type { EqSnapshot } from '../../types';
 import { KEV, ProfileContext } from '../context';
 import type { Checkpointable, CheckpointRecord } from '../checkpoint';
 import { recNum } from '../checkpoint';
-import { GsAttempt, GsStage, acceptableEquilibrium, binomialSmooth, gridScalePasses, isUsableEquilibrium, isUsableGeometry, solveGuarded, solverErrorMessage } from '../eqguard';
+import { GsAttempt, GsStage, isUsableEquilibrium, isUsableGeometry, solveGuarded, solverErrorMessage } from '../eqguard';
 import { EquilibriumInitFailure } from '../failures';
-import { TransportGeometry, geometryFromEquilibrium } from '../geometry1d';
+import { geometryFromEquilibrium } from '../geometry1d';
 import type { ProfileState } from '../state';
+import { solveConsistent } from './outer';
+import { coreFlat } from './tables';
 
 /**
  * Largest |c − 1| of a table-mode solve that is accepted, c being the factor the Grad–Shafranov
@@ -38,6 +44,21 @@ import type { ProfileState } from '../state';
  */
 export const CURRENT_SCALE_LIMIT = 0.5;
 
+/**
+ * The outer iteration of an update (outer.ts): the mapping mismatch (rms over the radius of ρ_tor of the equilibrium
+ * minus the ρ the table node was made for) below which the tables are taken as consistent with the equilibrium, 10 % of a
+ * transport cell of the default 50 (the normal updates of the golden 1.5D cases reach 1e−3 in two or three iterations;
+ * the noise floor of the innermost nodes, where the GS grid cannot resolve the surfaces, is a few 1e−4); the outer
+ * iterations at most; and the mismatch up to which an iteration that did not get below the tolerance is still accepted
+ * (a quarter of a cell) because its current table is consistent to within CURRENT_SCALE_LIMIT.
+ */
+export const OUTER_TOL = 2e-3;
+export const OUTER_MAX = 8;
+export const OUTER_ACCEPT = 5e-3;
+
+/** options of every table solve of an update: warm start, at most 60 Anderson iterations to 1e−5 (mixing 1, restart when the residual is 3 times the smallest so far) */
+const UPDATE_SOLVE: Partial<EquilibriumOptions> = { tol: 1e-5, maxIter: 60, relax: 1, restartGrowth: 3 };
+
 export class EquilibriumCoupling implements Checkpointable {
   readonly gsSolver: GSSolver;
   /** time of the last accepted equilibrium, and its β_p and ℓ_i (the update triggers) */
@@ -46,7 +67,7 @@ export class EquilibriumCoupling implements Checkpointable {
   eqLi = 0;
   /** accepted Grad–Shafranov updates after the initial solve */
   eqUpdates = 0;
-  /** accepted updates that needed a retry stage; updates for which every stage failed */
+  /** accepted updates in which a solve needed Newton–Krylov, a shorter continuation step or failed; updates that were rejected */
   eqRetried = 0;
   eqRejected = 0;
   /** no update attempt before this time (back-off after a rejected update); consecutive rejections */
@@ -143,23 +164,18 @@ export class EquilibriumCoupling implements Checkpointable {
   }
 
   /**
-   * Grad–Shafranov update from the transport profiles (table mode: p, ⟨j_φ/R⟩ on the current ψ_N
-   * nodes); on success the transport geometry is replaced and `evaluate` re-evaluates the work
-   * arrays on it. t is the time of y. Returns whether the new equilibrium was accepted.
+   * Grad–Shafranov update from the transport profiles p(ρ) and ⟨j_φ/R⟩(ρ) (table mode); on success the transport
+   * geometry is replaced and `evaluate` re-evaluates the work arrays on it. t is the time of y. Returns whether the new
+   * equilibrium was accepted.
    *
-   * Retry ladder (each stage warm-starts from the last accepted equilibrium):
-   *  1. nominal: relaxation 0.9, 40 Picard iterations (quasi-static change converges in ~8–12);
-   *  2. relaxation 0.5, 80 iterations;
-   *  3. pressure table low-pass filtered at the GS grid scale (binomialSmooth, Gaussian σ = grid
-   *     spacing), relaxation 0.3, 120 iterations. The Dirichlet edge condition puts the drop to
-   *     p_sep within half a transport cell (Δρ = 1/(2N)), well below the GS grid spacing (≈ 0.044
-   *     in ρ for 49 nodes); the 5-point operator cannot represent that p', and Picard then cycles
-   *     as nodes move in and out of the drop (JET15: 14 of 17 updates stalled at residuals
-   *     1e-3–3e-2 with the nominal settings, and relaxation alone rescues few of them).
+   * The equilibrium is the self-consistent one (solveConsistent): its tables sit on its own flux surfaces to within
+   * OUTER_TOL. It is accepted if its current table needs no rescaling beyond CURRENT_SCALE_LIMIT to meet I_p (the
+   * gate against a stale geometry, which the outer iteration normally removes), if the outer iteration converged
+   * or stopped within OUTER_ACCEPT, and if the transport geometry built from it is usable (finite metrics, positive
+   * cell volumes). The attempt log of the update is `eqAttempts`, one entry per solve.
    */
   update(ctx: ProfileContext, t: number, y: Float64Array, evaluate: (t: number, st: ProfileState) => void): boolean {
     const g = ctx.tg, w = ctx.w, N = ctx.N, v = ctx.view(y);
-    const P = ctx.eq.prof;
     const niB = ctx.bc.n * (w.ni[N - 1] / Math.max(v.ne[N - 1], 1));
     const pB = (ctx.bc.n * ctx.bc.Te + niB * ctx.bc.Ti) * KEV;
     const pAt = (r: number) => {
@@ -169,7 +185,7 @@ export class EquilibriumCoupling implements Checkpointable {
       const t = (r - g.rhoC[i]) / g.dRho;
       return w.p[i] + t * (w.p[i + 1] - w.p[i]);
     };
-    // flux-surface averaged ⟨j_φ/R⟩ = 2π dI/dV (on the transport geometry, at the cell centres)
+    // flux-surface averaged ⟨j_φ/R⟩ = 2π dI/dV on the transport geometry, at the cell centres
     const jRc = new Float64Array(N);
     for (let i = 0; i < N; i++) jRc[i] = Math.max((2 * Math.PI * (w.IencF[i + 1] - w.IencF[i])) / g.dV[i], 0);
     const jRAt = (r: number) => {
@@ -179,39 +195,28 @@ export class EquilibriumCoupling implements Checkpointable {
       const t = (r - g.rhoC[i]) / g.dRho;
       return jRc[i] + t * (jRc[i + 1] - jRc[i]);
     };
-    const pT = Array.from(P.rhoTor, pAt);
-    const jT = Array.from(P.rhoTor, jRAt);
-    const Ip = v.s.Ip;
-    const base: EquilibriumOptions = {
-      Ip, B0: ctx.cfg.B0, profile: { kind: 'table', psiN: P.psiN, p: pT, jR: jT }, psiInit: ctx.eq.psi, tol: 1e-5, maxIter: 40, relax: 0.9,
-      currentScaleWarn: CURRENT_SCALE_LIMIT,
-    };
-    const passes = gridScalePasses(this.gsSolver.grid.dR / ctx.geomB.a, 1 / (P.psiN.length - 1));
-    const stages: GsStage[] = [
-      { label: 'nominal', opts: {} },
-      { label: 'relaxation 0.5', opts: { relax: 0.5, maxIter: 80 } },
-      { label: 'grid-scale pressure', opts: { relax: 0.3, maxIter: 120, profile: { kind: 'table', psiN: P.psiN, p: binomialSmooth(pT, passes), jR: jT } } },
-    ];
-    // the current table must match the equilibrium (no 'table-current-rescaled' warning beyond
-    // CURRENT_SCALE_LIMIT), and the transport geometry built from it must be usable as well (finite
-    // metrics, positive cell volumes)
-    const built: { tg?: TransportGeometry } = {};
-    const accept = (eq: Equilibrium): boolean | string => {
-      built.tg = undefined;
-      if (!acceptableEquilibrium(eq)) return false;
-      if (eq.warnings.some((w) => w.code === 'table-current-rescaled')) {
-        return `current table rescaled by ${(eq.currentScale ?? NaN).toFixed(2)} to meet I_p (limit ±${CURRENT_SCALE_LIMIT})`;
-      }
-      try { built.tg = geometryFromEquilibrium(eq, N, ctx.geomB); } catch { return false; }
-      return isUsableGeometry(built.tg);
-    };
-    const out = solveGuarded(this.gsSolver, base, stages, accept);
-    this.eqAttempts = out.attempts;
-    const last = out.attempts[out.attempts.length - 1];
+    const rho = Float64Array.from({ length: N + 1 }, (_, j) => j / N);
+    // the grid resolves ρ_tor down to a couple of its spacings (in units of a) from the axis: the current table is flat inside
+    const rhoCore = 2 * this.gsSolver.grid.dR / ctx.geomB.a;
+    const pT = Float64Array.from(rho, pAt), jT = coreFlat(Float64Array.from(rho, jRAt), rho, rhoCore);
+    const res = solveConsistent(this.gsSolver, ctx.eq, {
+      Ip: v.s.Ip, B0: ctx.cfg.B0, rho, p: pT, jR: jT, rhoMin: rhoCore, currentScaleLimit: CURRENT_SCALE_LIMIT,
+    }, { tol: OUTER_TOL, accept: OUTER_ACCEPT, maxOuter: OUTER_MAX, solve: UPDATE_SOLVE });
+    this.eqAttempts = res.attempts;
+    const last = res.attempts[res.attempts.length - 1];
     this.eqStats = { it: last.iterations, res: last.residual };
-    if (!out.eq || !built.tg) return false;
-    if (out.stage > 0) this.eqRetried++;
-    ctx.adoptGeometry({ eq: out.eq, tg: built.tg });
+    const reject = (why: string): false => { last.rejected = why; return false; };
+    if (!res.eq) return reject(last.rejected ?? res.reason ?? 'no equilibrium');
+    if (!res.converged && (res.delta > OUTER_ACCEPT * (res.fraction < 1 ? 2 : 1))) return reject(res.reason ?? `the tables did not converge to the equilibrium's surfaces (rms Δρ_tor = ${res.delta.toExponential(1)})`);
+    // only a singular system of the metric splines is a numerical failure of the geometry; anything else is a bug and propagates
+    let tg;
+    try { tg = geometryFromEquilibrium(res.eq, N, ctx.geomB); } catch (e) { if (e instanceof SingularMatrixError) return reject(solverErrorMessage(e)); throw e; }
+    if (!isUsableGeometry(tg)) return reject('the transport geometry of the equilibrium has non-finite metrics or a non-positive cell volume');
+    if (res.hard) this.eqRetried++;
+    if (res.fraction < 1) {
+      ctx.warnOnce('gs-limited', t, `Grad–Shafranov update followed only ${(100 * res.fraction).toFixed(0)} % of the change of the transport profiles: the equilibrium of the whole change did not converge (pressure and current tables at the limit of what the boundary can hold); the geometry lags the profiles by the rest — reported once, at t = ${t.toFixed(2)} s`);
+    }
+    ctx.adoptGeometry({ eq: res.eq, tg });
     // postStep (ELM, sawtooth) runs next and reads n_i, q, p: evaluate them on the new geometry
     evaluate(t, v);
     return true;

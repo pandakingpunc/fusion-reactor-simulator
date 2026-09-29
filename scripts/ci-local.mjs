@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Local CI: type check, unit tests, literature validation and golden regression, in sequence.
+// Local CI: type check, config JSON Schema up to date, unit tests, literature validation and golden regression, in sequence.
 // Stops at the first failing step and exits with its code. Usage: npm run ci:local
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +10,7 @@ const win = process.platform === 'win32';
 /** [label, command, args] — npm/npx are .cmd shims on Windows and must be started through a shell */
 const steps = [
   ['type check', 'npx', ['tsc', '--noEmit', '-p', 'tsconfig.json']],
+  ['config schema up to date', 'npm', ['run', 'schema:check']],
   ['unit tests', 'npx', ['vitest', 'run']],
   ['validation', 'npm', ['run', 'validate', '--', '--threads', '4']],
   ['golden regression', 'npm', ['run', 'golden', '--', '--threads', '4']],

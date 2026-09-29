@@ -73,9 +73,10 @@ export interface TFTechSpec {
  * taken as 0.3 in all cases"). Copper: E = 117 GPa, nu = 0.35 (PROCESS `eyoung_copper`, `poisson_copper`), rho = 8960.
  * The compliant winding-pack part (cable in conduit and its glass-epoxy insulation) is taken as 20 GPa, the value the
  * PROCESS documentation quotes for the superconducting TF insulation (ITER DDD 11-2, 2009).
- * The structure area fractions, nose fractions and turn currents are design-typical values: the ITER TF winding pack
- * (7 double pancakes in steel radial plates; 68 kA cable-in-conduit conductor, Mitchell, ITER DDD 11-7 / Fusion Eng. Des.),
- * JT-60SA NbTi (25.7 kA), HTS compact coils with a large steel fraction (SPARC, Creely 2020), copper coils.
+ * The structure area fractions, nose fractions and turn currents are design-typical values, not fitted to a result: the ITER TF winding
+ * pack (7 double pancakes in steel radial plates; 68 kA cable-in-conduit conductor, N. Mitchell, ITER DDD 11-7 "Conductors", 2009,
+ * as cited by Kovari 2016), JT-60SA NbTi (25.7 kA), compact HTS coils with a large steel fraction (SPARC, Creely et al., J. Plasma
+ * Phys. 86 (2020) 865860502), copper coils.
  */
 export const TF_TECH: Record<MagnetTech, TFTechSpec> = {
   Cu: {

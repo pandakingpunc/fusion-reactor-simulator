@@ -14,7 +14,8 @@
  *   Psi_CS = 2 f_swing (pi / 3) (r_o^2 + r_o r_i + r_i^2) B_max
  * (derivation: B(r) = mu0 J (r_o - r) in the winding and B_i = mu0 J (r_o - r_i) in the bore; the flux through the loop is
  * (pi / 3) B_i (r_o^2 + r_o r_i + r_i^2)). For the ITER CS (r_i = 1.3 m, r_o = 2.08 m, 13 T) this gives 237 V s against the
- * 266.6 V s quoted for it (Mitchell et al.; the total requirement of 277 V s is met by the CS together with the PF coils).
+ * 266.6 V s quoted for it (J.H. Schultz et al., "The ITER Central Solenoid", MIT Plasma Science and Fusion Center, 2005; General Atomics
+ * ITER CS booklet, 2021: 13 T at 40 kA; the total requirement of 277 V s is met by the CS together with the PF coils).
  *
  * Hook for the later current/flux work (WS6c): a model that integrates the loop voltage can publish it in the history
  * frames, `V_loop` [V] (then the burn flux is its time integral instead of P_ohmic / I_p) and/or `psi_used` [V s], the cumulative

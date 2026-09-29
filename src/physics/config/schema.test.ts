@@ -328,7 +328,7 @@ const MUTANTS: Mutant[] = [
   m('unknown fidelity', 'ITER', set('fidelity', '2D'), 'fidelity', 'enum'),
   m('too few radial cells', 'ITER15', set('profiles.nRho', 3), 'profiles.nRho', 'range'),
   m('fractional radial cells', 'ITER15', set('profiles.nRho', 50.5), 'profiles.nRho', 'integer'),
-  m('unknown transport model', 'ITER15', set('profiles.transportModel', 'bgb'), 'profiles.transportModel', 'enum'),
+  m('unknown transport model', 'ITER15', set('profiles.transportModel', 'tglf'), 'profiles.transportModel', 'enum'),
   m('pedestal wider than half the radius', 'ITER15', set('profiles.pedestalWidth', 0.7), 'profiles.pedestalWidth', 'range'),
   m('LCFS elongation below 1', 'ITER15', set('profiles.lcfsKappa', 0.8), 'profiles.lcfsKappa', 'range'),
   m('reference elongation of the LCFS below 1', 'ITER15', set('profiles.lcfsRef95.kappa', 0.5), 'profiles.lcfsRef95.kappa', 'range'),

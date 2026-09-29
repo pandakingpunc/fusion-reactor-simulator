@@ -318,9 +318,11 @@
           "type": "string",
           "enum": [
             "scaling",
-            "cgm"
+            "cgm",
+            "bgb",
+            "ifspppl"
           ],
-          "description": "'scaling': transport constrained by the tau_E scaling law (validated global dynamics); 'cgm': critical-gradient model (predictive, uncalibrated).",
+          "description": "'scaling': transport constrained by the tau_E scaling law (validated global dynamics); 'cgm': critical-gradient model (predictive, uncalibrated); 'bgb': mixed Bohm/gyro-Bohm model of Erba et al. (predictive, JET-validated coefficients; the Bohm term is non-local in the edge temperature); 'ifspppl': IFS-PPPL ITG critical gradient and stiffness of Kotschenreuther et al. 1995 (predictive). Every model but 'scaling' is predictive: tau_E and H98 emerge (the diagnostics H98y2 and HITPA20).",
           "default": "scaling"
         },
         "chiShape": {

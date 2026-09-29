@@ -4,6 +4,8 @@
  */
 import type { ProfileSettings } from '../../types';
 import { CriticalGradientTransport } from './cgm';
+import { BohmGyroBohmTransport } from './gyrobohm/gyrobohm';
+import { IfsPpplTransport } from './ifspppl/ifspppl';
 import { ScalingTransport } from './scaling';
 import type { TransportModel } from './TransportModel';
 
@@ -12,6 +14,8 @@ export type { TransportModel } from './TransportModel';
 export const TRANSPORT_MODELS: Record<ProfileSettings['transportModel'], () => TransportModel> = {
   scaling: () => new ScalingTransport(),
   cgm: () => new CriticalGradientTransport(),
+  bgb: () => new BohmGyroBohmTransport(),
+  ifspppl: () => new IfsPpplTransport(),
 };
 
 export function createTransportModel(id: ProfileSettings['transportModel']): TransportModel {

@@ -46,7 +46,7 @@ const FIDELITIES = keysOf<Fidelity>({ '0D': 0, '1.5D': 0 });
 const SPECIES = keysOf<ImpuritySpecies>(IMPURITIES);
 const ABLATORS = keysOf<ICFConfig['ablator']>({ CH: 0, HDC: 0, Be: 0 });
 const SCALINGS = keysOf<MagneticConfig['scaling']>({ IPB98y2: 0, ITPA20: 0, 'ITPA20-IL': 0, ST_Valovic: 0 });
-const TRANSPORT_MODELS = keysOf<ProfileSettings['transportModel']>({ scaling: 0, cgm: 0 });
+const TRANSPORT_MODELS = keysOf<ProfileSettings['transportModel']>({ scaling: 0, cgm: 0, bgb: 0, ifspppl: 0 });
 const EDGE_MODELS = keysOf<NonNullable<ProfileSettings['edgeModel']>>({ legacy: 0, twoPoint: 0 });
 const NONLINEAR_SOLVERS = keysOf<NonNullable<ProfileSettings['nonlinearSolver']>>({ auto: 0, picard: 0, newton: 0, pc: 0 });
 const EDGE_LOSS_FITS = keysOf<NonNullable<EdgeOptions['lossFit']>>({ stangeby1: 0, stangeby2: 0, body2025: 0 });
@@ -123,7 +123,7 @@ const profileSettings = partial<ProfileSettings>({
     kappa: num({ min: 1, max: 5, doc: 'Elongation of the 95 % surface that lcfsKappa belongs to.' }),
     delta: num({ min: -1, max: 1, doc: 'Triangularity of the 95 % surface that lcfsDelta belongs to.' }),
   }, { doc: 'The 95 % surface shape (kappa95, delta95) that lcfsKappa and lcfsDelta belong to. The 0D volume, surface and cross-section then follow an edited `geometry.kappa` or `geometry.delta` in the ratio kappa/kappa95 and delta/delta95 (the ITER and DEMO presets); without it the LCFS values are absolute.' })),
-  transportModel: oneOf(TRANSPORT_MODELS, "'scaling': transport constrained by the tau_E scaling law (validated global dynamics); 'cgm': critical-gradient model (predictive, uncalibrated).", PS.transportModel),
+  transportModel: oneOf(TRANSPORT_MODELS, "'scaling': transport constrained by the tau_E scaling law (validated global dynamics); 'cgm': critical-gradient model (predictive, uncalibrated); 'bgb': mixed Bohm/gyro-Bohm model of Erba et al. (predictive, JET-validated coefficients; the Bohm term is non-local in the edge temperature); 'ifspppl': IFS-PPPL ITG critical gradient and stiffness of Kotschenreuther et al. 1995 (predictive). Every model but 'scaling' is predictive: tau_E and H98 emerge (the diagnostics H98y2 and HITPA20).", PS.transportModel),
   chiShape: num({ min: 0, max: 100, def: PS.chiShape, doc: 'Shape of chi, proportional to 1 + chiShape rho^2.' }),
   stiffness: num({ min: 0, max: 100, def: PS.stiffness, doc: 'Profile stiffness: chi is multiplied by 1 + stiffness max(0, (R/L_T)/critGrad - 1).' }),
   critGrad: num({ exMin: 0, max: 100, def: PS.critGrad, doc: 'Critical normalised temperature gradient R/L_T (ITG/TEM).' }),

@@ -25,9 +25,10 @@ import type { Geometry } from '../geometry';
 import type { FuelType } from '../reactivity';
 import { IMPURITIES, type ImpuritySpecies } from '../constants';
 import { DEFAULT_PROFILE_SETTINGS as PS } from '../profiles/defaults';
+import { STEP_DT_MIN } from '../profiles/settings';
 import {
   type ConfigPath, type Field, type JsonSchema, type Node, type NumberNode, type ObjectNode, type Rule, type ValidationIssue, type Shape,
-  bool, closest, describeValue, formatIssue, int, nodeToJsonSchema, num, object, oneOf, opt, partial, pointerOf, validateNode,
+  bool, closest, describeValue, formatIssue, int, nodeToJsonSchema, num, object, oneOf, opt, partial, pointerOf, series, validateNode,
 } from './dsl';
 
 export type { ConfigPath, IssueCode, JsonSchema, ValidationIssue } from './dsl';
@@ -47,6 +48,7 @@ const ABLATORS = keysOf<ICFConfig['ablator']>({ CH: 0, HDC: 0, Be: 0 });
 const SCALINGS = keysOf<MagneticConfig['scaling']>({ IPB98y2: 0, ITPA20: 0, 'ITPA20-IL': 0, ST_Valovic: 0 });
 const TRANSPORT_MODELS = keysOf<ProfileSettings['transportModel']>({ scaling: 0, cgm: 0 });
 const EDGE_MODELS = keysOf<NonNullable<ProfileSettings['edgeModel']>>({ legacy: 0, twoPoint: 0 });
+const NONLINEAR_SOLVERS = keysOf<NonNullable<ProfileSettings['nonlinearSolver']>>({ auto: 0, picard: 0, newton: 0, pc: 0 });
 const EDGE_LOSS_FITS = keysOf<NonNullable<EdgeOptions['lossFit']>>({ stangeby1: 0, stangeby2: 0, body2025: 0 });
 const EDGE_RADIATIONS = keysOf<NonNullable<EdgeOptions['radiation']>>({ prescribed: 0, lengyel: 0 });
 const MAGNETIC_METHODS = keysOf<MagneticConfig['method']>({ tokamak: 0, spherical_tokamak: 0, stellarator: 0 });
@@ -104,6 +106,15 @@ const geometry = object<Geometry>({
 
 const profileSettings = partial<ProfileSettings>({
   nRho: int({ min: 8, max: 2000, def: PS.nRho, doc: 'Radial cells on rho_tor.' }),
+  gridPacking: opt(num({ min: 0, max: 100, def: PS.gridPacking, doc: 'Edge packing of the radial cells (tanh step in the cell density): the cells at the pedestal and the separatrix are (1 + gridPacking) times narrower than the core cells, for the same nRho. 0 is the uniform grid of v3.' })),
+  rtol: opt(num({ exMin: 0, max: 1, def: PS.rtol, doc: 'Relative tolerance of the error control of the transport time step (TR-BDF2). The model replaces a value outside its domain by the default at run time.' })),
+  atol: opt(num({ min: 0, max: 1, def: PS.atol, doc: 'Absolute tolerance of the error control of the transport time step, as a fraction of the profile maximum (0: a purely relative tolerance).' })),
+  dtMax: opt(num({ min: STEP_DT_MIN, max: 1e5, unit: 's', def: PS.dtMax, doc: 'Longest transport time step.' })),
+  nonlinearSolver: opt(oneOf(NONLINEAR_SOLVERS, "Solver of the nonlinear system of a transport stage. 'auto': Newton-Raphson for a predictive transport model ('cgm'), Picard iteration with Anderson mixing for 'scaling'; 'picard', 'newton' (with the Pereverzev-Corrigan Picard iteration as its fallback) and 'pc' (that stabilised Picard iteration alone) force one.", 'auto')),
+  IpWaveform: opt(series({
+    x: { min: 0, max: 1e7, unit: 's' }, y: { exMin: 0, max: 200, unit: 'MA' }, minItems: 1, maxItems: 10000,
+    doc: 'Plasma-current programme I_p(t): the boundary condition of the current diffusion as points [t (s), I_p (MA)] in increasing time, linearly interpolated and held constant beyond the first and last point. Ip_MA is what the initial equilibrium is solved for and should equal the programme at t = 0. Absent: I_p constant (and a live control).',
+  })),
   eqNR: int({ min: 9, max: 1025, def: PS.eqNR, doc: 'Grad-Shafranov grid nodes in R.' }),
   eqUpdateInterval: num({ exMin: 0, max: 1e5, unit: 's', def: PS.eqUpdateInterval, doc: 'Upper limit of the interval between equilibrium updates.' }),
   lcfsKappa: opt(num({ min: 1, max: 5, doc: 'Elongation of the last closed flux surface; the elongation of `geometry` (a 95 % value) if absent.' })),

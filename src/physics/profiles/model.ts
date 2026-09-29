@@ -4,7 +4,8 @@
  * Radial transport on ρ̂ = √(Φ/Φ_b) (cell-centred finite volumes) coupled to a fixed-boundary
  * Grad–Shafranov equilibrium (periodic, quasi-static). State: T_e(ρ), T_i(ρ), n_e(ρ), ψ(ρ) and the
  * global scalars of state.ts (He ash, impurity, fuel mix, counters, transport multiplier, NTM
- * island widths). Implicit (backward Euler) steps with a Picard iteration and adaptive Δt.
+ * island widths). TR-BDF2 steps with a Picard iteration and an error-controlled Δt; ELMs and
+ * sawtooth crashes end the step at the crossing of their threshold.
  *
  * This class is the orchestrator implementing SimModel; the physics lives in the modules:
  *
@@ -16,7 +17,7 @@
  *   sources/             SourceModel plug-ins: NBI, RF, fusion, radiation, exchange; current sources
  *   transport/           TransportModel plug-ins ('scaling', 'cgm'), barrier, neoclassical floor
  *   control/             actuators, fueling feedback, confinement (τ_E scaling, C_χ controller)
- *   solver/              evaluation pipeline, coupled implicit step, accepted-step update
+ *   solver/              evaluation pipeline, coupled TR-BDF2 step (Δt control, event localisation), accepted-step update
  *   coupling/            Grad–Shafranov coupling (initial solve, update policy, guarded updates)
  *   events/              EventModel plug-ins: L–H, ELM, sawtooth, NTM, burn, warnings, disruption
  *   diagnostics.ts       time traces and profiles; checkpoint.ts: rewind checkpoints
@@ -37,6 +38,7 @@ import { CrashHook, ProfileContext, StepConstants } from './context';
 import { CheckpointStore, Checkpointable, contextCheckpoint } from './checkpoint';
 import { composition } from './composition';
 import { FuelingControl } from './control/fueling';
+import type { CurrentProgramme } from './control/plasmaCurrent';
 import { EquilibriumCoupling } from './coupling/equilibrium';
 import { PROFILE_DIAGS, stateDiagnostics } from './diagnostics';
 import { defaultEvents, EventModel } from './events';
@@ -45,7 +47,7 @@ import type { ElmEvents } from './events/elm';
 import type { EquilibriumInitFailure, StepFailure } from './failures';
 import type { TransportGeometry } from './geometry1d';
 import type { GsAttempt } from './eqguard';
-import { currentProfiles } from './qprofile';
+import { currentProfiles, equilibriumCurrentScale } from './qprofile';
 import { defaultSources, SourceModel } from './sources';
 import { acceptStep } from './solver/acceptStep';
 import { CoupledStepper } from './solver/coupledStep';
@@ -71,6 +73,8 @@ export interface ProfileModules {
   sources?: SourceModel[];
   /** additional event models, run after the standard ones and before the disruption check */
   events?: EventModel[];
+  /** plasma-current programme I_p(t) [A], the boundary condition of the current diffusion (control/plasmaCurrent.ts); replaces ProfileSettings.IpWaveform */
+  plasmaCurrent?: CurrentProgramme;
 }
 
 /** Configurations the profile model can run */
@@ -109,6 +113,7 @@ export class ProfileModel implements SimModel {
     this.tEnd = cfg.t_end;
     this.outputDt = Math.max(cfg.t_end / 800, 0.002);
     this.nState = ctx.layout.size;
+    if (modules.plasmaCurrent) ctx.setCurrentProgramme(modules.plasmaCurrent);
     this.physics = new PhysicsPipeline(ctx, modules.transport ?? createTransportModel(ctx.ps.transportModel), modules.sources ?? defaultSources());
     this.fueling = new FuelingControl(ctx);
     const ev = defaultEvents(modules.events);
@@ -117,7 +122,7 @@ export class ProfileModel implements SimModel {
     this.stepper = new CoupledStepper(ctx, this.physics, this.fueling, this.disruption, (t, dt, yOld, y) => {
       acceptStep(ctx, this.fueling, this.physics, t, dt, yOld, y);
       this.coupling.check(ctx, t + dt, y, (tu, yu) => this.updateEquilibrium(tu, yu));
-    });
+    }, this.events);
     this.checkpointParts = [contextCheckpoint(ctx), this.coupling, this.stepper, this.physics.transport, ...this.physics.sources, ...this.events];
     this.magnetInfo = checkMagnet(cfg.geometry, cfg.B0, cfg.magnet.tech, cfg.magnet.gap_m, cfg.magnet.coilThickness_m);
     this.coupling.initialize(ctx);
@@ -177,20 +182,22 @@ export class ProfileModel implements SimModel {
       Ti[i] = 0.8 * Te[i];
       ne[i] = n0 * (fsep + (1 - fsep) * (1 + an) * Math.pow(1 - r * r, an));
     }
-    // ψ from the q profile of the equilibrium: ψ' = Φ_b ρ/(π q)
+    // ψ from the q profile of the equilibrium: ψ' = Φ_b ρ/(π q), scaled to carry the boundary current (equilibriumCurrentScale)
+    const Ip0 = ctx.ipAt(0);
+    const scale = equilibriumCurrentScale(ctx.eq, Ip0);
     let acc = 0;
     for (let i = 0; i < N; i++) {
       const r0 = i === 0 ? 0 : g.rhoC[i - 1], r1 = g.rhoC[i];
       const qm = i === 0 ? g.qEqC[0] : 0.5 * (g.qEqC[i - 1] + g.qEqC[i]);
       const rm = 0.5 * (r0 + r1);
-      acc += ((g.PhiB * rm) / (Math.PI * Math.max(qm, 0.3))) * (r1 - r0);
+      acc += ((scale * g.PhiB * rm) / (Math.PI * Math.max(qm, 0.3))) * (r1 - r0);
       psi[i] = acc;
     }
     s.NHe = 0;
     s.cZ = c.impurity.concentration;
     s.fA = c.fuelFracA;
     s.Cchi = 0.5; s.CI = 0.5;
-    s.Ip = Math.max(c.Ip_MA, 0.05) * 1e6;
+    s.Ip = Ip0;
     s.Sfuel = 0;
     ctx.bc = { Te: 0.05, Ti: 0.05, n: fsep * n0 };
     composition(ctx, Te, ne, s);
@@ -293,6 +300,8 @@ export class ProfileModel implements SimModel {
         'Shafranov shift (m)': +ctx.eq.shafranovShift.toFixed(3),
         'GS updates accepted': this.eqUpdates, 'GS updates needing a retry': this.eqRetried, 'GS updates rejected': this.eqRejected,
         'Forced transport steps': this.forcedSteps,
+        'Transport steps (accepted / rejected by the error test)': `${this.stepper.stats.accepted} / ${this.stepper.stats.rejected}`,
+        ...(this.stepper.stats.newtonIters > 0 ? { 'Newton iterations / Jacobians / Picard fallbacks': `${this.stepper.stats.newtonIters} / ${this.stepper.stats.jacobians} / ${this.stepper.stats.fallbacks}` } : {}),
       },
       extraExtras: {
         'T_e axis (final, keV)': +(d.Te0 ?? 0).toFixed(2), 'T_ped (final, keV)': +(d.Tped ?? 0).toFixed(2), 'T_sep (final, keV)': +(d.Tsep ?? 0).toFixed(3),

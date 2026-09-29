@@ -116,7 +116,7 @@ describe('module wiring', () => {
     expect(keys).toEqual([
       'GammaB', 'IpD', 'PSOL', 'TeB', 'TiB', 'Wd', 'WfAlpha', 'WfBeam', 'alphaRatio', 'burning', 'ck', 'crashE', 'dWdtS', 'dt', 'eqBetaP', 'eqFailStreak', 'eqLi',
       'eqRejected', 'eqRetried', 'eqRetryAt', 'eqTime', 'eqUpdates', 'forcedSteps', 'hmode', 'ignited', 'lastElm', 'lastSaw', 'lastVloop',
-      'nB', 'nsepGain', 'ntmOn21', 'ntmOn32', 'phase', 'rng', 'tAuxOff', 'tDisrupt', 'tauE',
+      'nB', 'nsepGain', 'ntmOn21', 'ntmOn32', 'phase', 'rng', 'stepAccepted', 'stepFailed', 'stepFallbacks', 'stepJacobians', 'stepLocalised', 'stepNewtonEvals', 'stepNewtonIters', 'stepPicardIters', 'stepRejected', 'tAuxOff', 'tDisrupt', 'tauE',
     ].sort());
   });
 });

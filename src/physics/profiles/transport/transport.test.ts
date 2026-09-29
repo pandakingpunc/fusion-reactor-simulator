@@ -9,7 +9,8 @@ import { ProfileModel } from '../model';
 import { runAllYielding } from '../../../testing/yielding';
 
 describe("'cgm' transport smoke test", () => {
-  // The run takes ~30 s of wall time (≈ 2 s per simulated second, uncalibrated model): it advances in chunks and yields to the event loop
+  // The run took ~30 s of wall time with the backward-Euler step (Picard alone oscillates on the steep χ(R/L_T): a third of the attempts
+  // failed) and takes ~5 s with the TR-BDF2 step and Anderson-accelerated Picard. It still advances in chunks and yields to the event loop
   // in between (runAllYielding), or the Vitest worker cannot answer the runner and coverage runs fail on "Timeout calling onTaskUpdate".
   it('ITER15 ramp-up to 10 s: completes, stays finite and reports the actual τ_E = W/P_loss', async () => {
     const sim = new Simulation({ ...ITER_15D, t_end: 10, profiles: { ...ITER_15D.profiles, transportModel: 'cgm' } });
@@ -18,10 +19,8 @@ describe("'cgm' transport smoke test", () => {
     const post = m.postStep.bind(m);
     let worstBalance = 0;
     m.postStep = (t, dt, y) => {
-      if (dt > 0 && m.ctx.phase === 'normal') {
-        const d = m.ctx.lastDiag;
-        worstBalance = Math.max(worstBalance, Math.abs(d.dWdt - (d.P_heat - d.P_rad - d.P_bound)) / d.P_heat);
-      }
+      // the discrete energy balance of the TR-BDF2 step (CoupledStepper.energyResidual); the start-up ramp is left out (P_heat ≈ 0)
+      if (dt > 0 && m.ctx.phase === 'normal' && t > 0.2) worstBalance = Math.max(worstBalance, Math.abs(m.stepper.energyResidual));
       return post(t, dt, y);
     };
     const r = await runAllYielding(sim);
@@ -31,6 +30,9 @@ describe("'cgm' transport smoke test", () => {
     expect(m.forcedSteps).toBe(0);
     expect(m.stepFailure).toBeNull();
     expect(r.warnings.some((w) => w.includes('forced'))).toBe(false);
+    // the steep χ(R/L_T) no longer stalls the Picard iteration: few attempts are repeated (a third of them failed before the Anderson mixing)
+    const st = m.stepper.stats;
+    expect((st.rejected + st.failed) / (st.accepted + st.rejected + st.failed)).toBeLessThan(0.03);
     // the ramp-up crosses an L–H transition and a sawtooth crash (a frame of a state no step produced)
     const kinds = sim.events.map((e) => e.kind);
     expect(kinds).toContain('LH');
@@ -56,6 +58,6 @@ describe("'cgm' transport smoke test", () => {
     expect(last.Te0).toBeGreaterThan(5);
     expect(last.Te0).toBeLessThan(40);
     // stiff transport: the energy balance of each step still closes within the Picard tolerance
-    expect(worstBalance).toBeLessThan(2e-3);
+    expect(worstBalance).toBeLessThan(1e-3);
   }, 180000);
 });

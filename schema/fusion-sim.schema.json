@@ -196,6 +196,74 @@
           "description": "Radial cells on rho_tor.",
           "default": 50
         },
+        "gridPacking": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Edge packing of the radial cells (tanh step in the cell density): the cells at the pedestal and the separatrix are (1 + gridPacking) times narrower than the core cells, for the same nRho. 0 is the uniform grid of v3.",
+          "default": 4
+        },
+        "rtol": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "description": "Relative tolerance of the error control of the transport time step (TR-BDF2). The model replaces a value outside its domain by the default at run time.",
+          "default": 0.01
+        },
+        "atol": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Absolute tolerance of the error control of the transport time step, as a fraction of the profile maximum (0: a purely relative tolerance).",
+          "default": 0.0001
+        },
+        "dtMax": {
+          "type": "number",
+          "minimum": 0.000001,
+          "maximum": 100000,
+          "description": "Longest transport time step. Unit: s.",
+          "x-unit": "s",
+          "default": 0.5
+        },
+        "nonlinearSolver": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "picard",
+            "newton",
+            "pc"
+          ],
+          "description": "Solver of the nonlinear system of a transport stage. 'auto': Newton-Raphson for a predictive transport model ('cgm'), Picard iteration with Anderson mixing for 'scaling'; 'picard', 'newton' (with the Pereverzev-Corrigan Picard iteration as its fallback) and 'pc' (that stabilised Picard iteration alone) force one.",
+          "default": "auto"
+        },
+        "IpWaveform": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10000000,
+                "description": "Unit: s.",
+                "x-unit": "s"
+              },
+              {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 200,
+                "description": "Unit: MA.",
+                "x-unit": "MA"
+              }
+            ],
+            "items": false,
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "minItems": 1,
+          "maxItems": 10000,
+          "description": "Plasma-current programme I_p(t): the boundary condition of the current diffusion as points [t (s), I_p (MA)] in increasing time, linearly interpolated and held constant beyond the first and last point. Ip_MA is what the initial equilibrium is solved for and should equal the programme at t = 0. Absent: I_p constant (and a live control). Points [s, MA], the first number strictly increasing."
+        },
         "eqNR": {
           "type": "integer",
           "minimum": 9,

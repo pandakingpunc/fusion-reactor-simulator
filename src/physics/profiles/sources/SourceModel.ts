@@ -9,16 +9,19 @@
  *                 deposition, synchrotron loss) and the fields of the step constants K;
  *  2. particles — on the old state, after the fueling control wrote the particle source w.Sn of
  *                 the step: additional particle source density, added into w.Sn;
- *  3. heat      — every Picard iteration, on the iterate, after its composition: heat source
- *                 densities (fusion, radiation, exchange);
+ *  3. heat      — every Picard iteration, on the iterate, after its composition (and once on the
+ *                 old state): heat source densities (fusion, radiation, exchange);
  *  4. current   — every Picard iteration, after the q profile of the iterate and the bootstrap
- *                 current: non-inductive current drive, added into w.jcdB (cleared before);
+ *                 current (and once on the old state): non-inductive current drive, added into
+ *                 w.jcdB (cleared before);
  *  5. accepted  — once after each accepted step of the normal phase: the place to evolve state.
  *
  * prepare, particles, heat and current are evaluations, not events. prepare runs once per
- * implicit attempt (a step whose Δt was cut runs it again) and also whenever the work arrays of a
- * state that no step produced are evaluated (first frame, after an equilibrium swap, after an
- * MHD crash); heat and current run once per Picard iteration, at least twice per attempt.
+ * implicit attempt (a step whose Δt was cut, or that the error control rejected, runs it again) and
+ * also whenever the work arrays of a state that no step produced are evaluated (first frame, after
+ * an equilibrium swap, after an MHD crash); heat and current run on the old state of an attempt
+ * (the rate of the old state, see coupledStep.ts) and once per Picard iteration of each of its two
+ * stages, at least five times per attempt.
  * They must therefore be functions of (state, t) — and of the state the source keeps — that leave
  * that state unchanged, so that calling them again gives the same result. A population that
  * evolves from step to step is integrated in `accepted` (which gets Δt and the old and new state)

@@ -41,6 +41,34 @@ export type Fidelity = '0D' | '1.5D';
 export interface ProfileSettings {
   /** radyal hücre sayısı (ρ_tor) */
   nRho: number;
+  /**
+   * edge packing of the radial cells (tanh step, 1.5D): the cells at the pedestal and the separatrix are
+   * (1 + gridPacking) times narrower than the core cells, for the same nRho (default 4: 10 cells across the
+   * pedestal at nRho 50). 0: the uniform grid of v3.
+   */
+  gridPacking?: number;
+  /**
+   * error control of the transport time step (TR-BDF2, profiles/solver/coupledStep.ts): the local error estimate of T_e, T_i, n_e
+   * and ψ must stay below atol · max|y| + rtol · |y| in every cell (default rtol 1e-2, atol 1e-4: the profile maximum is the
+   * scale of the absolute tolerance), and the step is at most dtMax seconds (default 0.5)
+   */
+  rtol?: number;
+  atol?: number;
+  dtMax?: number;
+  /**
+   * how the nonlinear system of a transport stage is solved (profiles/solver/coupledStep.ts): 'picard' (frozen coefficients, Anderson mixing:
+   * the fast path), 'newton' (Newton–Raphson on T_e, T_i, n_e and ψ together with a coloured finite-difference block-tridiagonal
+   * Jacobian and a line search; a solve that does not converge is repeated by the Pereverzev–Corrigan stabilised Picard iteration), 'pc'
+   * (that stabilised Picard iteration alone). Default 'auto': Newton for a predictive transport model ('cgm'), Picard for 'scaling'
+   */
+  nonlinearSolver?: 'auto' | 'picard' | 'newton' | 'pc';
+  /**
+   * plasma-current programme, the boundary condition of the current diffusion equation as a function of time: points [t (s), I_p (MA)] in increasing
+   * time, linearly interpolated and held constant beyond the first and last point (profiles/control/plasmaCurrent.ts). `Ip_MA` is what the initial
+   * equilibrium is solved for and should equal the programme at t = 0. Default: I_p constant. A function of time is given to the model as
+   * `ProfileModules.plasmaCurrent`.
+   */
+  IpWaveform?: ReadonlyArray<readonly [number, number]>;
   /** GS ızgarası R yönü düğüm sayısı */
   eqNR: number;
   /** denge güncelleme aralığı üst sınırı [s] */

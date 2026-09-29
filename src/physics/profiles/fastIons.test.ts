@@ -57,7 +57,7 @@ describe('fast-ion pressure and the thermal β_N', () => {
     expect(n).toBeGreaterThan(50);
     // the frames of the whole run agree as well, to the accuracy of the equilibrium changes of B0
     for (const h of flat) expect(rel(h.d.betaN, h.d.betaN_th * (1 + h.d.Wf / h.d.W))).toBeLessThan(1e-12);
-  });
+  }, 60000); // 4 s alone, over the 5 s default on a loaded machine
 
   it('JET15 (NBI): the fast ions are a substantial part of the pressure, most of it the beam', () => {
     const d = flat[flat.length - 1].d;

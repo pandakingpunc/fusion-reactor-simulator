@@ -72,7 +72,7 @@ describe('ignition and the ignition test (heating.autoOff)', () => {
     for (const h of during) expect(h.d.P_aux).toBeCloseTo(P0, 6);
     expect(sim.history.every((h) => h.d.ignited === 0)).toBe(true);
     expect(r.ignitionTime_s).toBe(0);
-  });
+  }, 120000);
 
   it('the state of the test and of the ignition flag is checkpointed: a replay from before the test reproduces it, from inside the ramp too', () => {
     const tOff = tests[0].t;

@@ -27,6 +27,7 @@ import { ITER_15D, PRESETS } from '../presets';
 import type { MagneticConfig } from '../types';
 import { Bicubic, CubicSpline } from '../numerics/interp';
 import { gaussLegendre } from '../numerics/quadrature';
+import { CurrentSolver } from './fvsolver';
 import { EquilibriumTables, geometryFromEquilibrium, TransportGeometry } from './geometry1d';
 
 const MU0 = 1.25663706212e-6;
@@ -215,6 +216,30 @@ describe("transport geometry from an analytic Solov'ev equilibrium", () => {
     }
   }, 60000);
 
+  it('⟨j·B⟩ of the current solver (Hinton–Hazeltine form F² ∂(V′ g2 ψ′/F)/(μ0 V′)) is the analytic ⟨j·B⟩ = F p′ + F FF′⟨R⁻²⟩/μ0 + FF′ g2 ψ′²/(F μ0); the form with F inside the derivative is not', () => {
+    const cs = new CurrentSolver(g);
+    const dpsi = Float64Array.from({ length: N + 1 }, (_, f) => (f === 0 ? 0 : (g.PhiB * g.rhoF[f]) / (Math.PI * ref(g.rhoF[f]).q)));
+    const jB = cs.jB(dpsi, new Float64Array(N));
+    // the form of v3 to v4 stage B: (1/(μ0 ΔV)) [(V′ F g2 ψ′)|right − (…)|left]
+    const old = (i: number) => (g.VpF[i + 1] * g.FF[i + 1] * g.g2F[i + 1] * dpsi[i + 1] - g.VpF[i] * g.FF[i] * g.g2F[i] * dpsi[i]) / (MU0 * g.dV[i]);
+    const sol = an.sol;
+    let worstHH = 0, worstOld = 0, corr = 0;
+    for (const i of [2, 5, 10, 20, 30, 40, 45]) {
+      const F = g.FC[i];
+      // ψ′ at the cell centre from the analytic q; the averages of the geometry (checked against the analytic ones above)
+      const dpsiC = (g.PhiB * g.rhoC[i]) / (Math.PI * ref(g.rhoC[i]).q);
+      const exact = F * sol.pPrime + (F * sol.FFprime * g.R2invC[i]) / MU0 + (sol.FFprime * dpsiC * dpsiC * g.g2C[i]) / (F * MU0);
+      worstHH = Math.max(worstHH, Math.abs(jB[i] / exact - 1));
+      worstOld = Math.max(worstOld, Math.abs(old(i) / exact - 1));
+      corr = Math.max(corr, Math.abs((2 * sol.FFprime * dpsiC * dpsiC * g.g2C[i]) / (F * MU0) / exact));
+    }
+    expect(worstHH).toBeLessThan(5e-4); // 5e-5 measured: the truncation error of the difference on 50 cells
+    // the term the two forms differ by is 2 F′ ⟨|∇ψ|²/R²⟩/μ0 (1.2 % of ⟨j·B⟩ at the worst of these cells), so the old form misses by about that
+    expect(corr).toBeGreaterThan(5e-3);
+    expect(worstOld).toBeGreaterThan(5e-3);
+    expect(worstOld).toBeGreaterThan(20 * worstHH);
+  }, 120000);
+
   it('cell volumes (innermost and outermost) and the safety factor at the cell centres', () => {
     // the innermost cell was 1.3 % too small when V was splined against ρ̂ with a natural end condition
     for (const i of CELLS) expect(rel(g.dV[i], ref(g.rhoF[i + 1]).V - (i ? ref(g.rhoF[i]).V : 0))).toBeLessThan(3e-4);
@@ -285,7 +310,7 @@ describe('cell volumes on real Grad–Shafranov tables (51 flux surfaces)', () =
     return { eq, g: geometryFromEquilibrium(eq, N, shape) };
   };
   /** Simpson integral of V' over the cell between faces i and i + 1 */
-  const simpson = (g: TransportGeometry, i: number) => ((g.VpF[i] + 4 * g.VpC[i] + g.VpF[i + 1]) * g.dRho) / 6;
+  const simpson = (g: TransportGeometry, i: number) => ((g.VpF[i] + 4 * g.VpC[i] + g.VpF[i + 1]) * g.dRhoC[i]) / 6;
 
   // [case, config, largest |ΔV/∫V' − 1| (the volume scale factor, ρ̂ error of the table), largest |ΔV/ΔV(201 surfaces) − 1|]
   it.each([

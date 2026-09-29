@@ -1,18 +1,22 @@
 /**
  * Evaluation pipeline of the 1.5D work arrays: which modules run, in which order, on which state.
- * The coupled step (solver/coupledStep.ts) calls the parts inside its Picard iteration; the
+ * The coupled step (solver/coupledStep.ts) calls the parts inside its Picard iterations; the
  * diagnostics of a state no step produced call evaluateWorkArrays.
  *
  *   once per attempt (old state): composition → q profile → step constants: heating powers,
  *                                 sources' prepare (NBI, RF, synchrotron, …), neoclassical closure
  *                                 → fueling control (w.Sn) → sources' particles
- *   per Picard iteration:         transport coefficients → density → composition → sources' heat
- *                                 (fusion, radiation, exchange, …) → q profile → current sources
+ *   rates of the old state:       transport coefficients → sources' heat → current sources (the same
+ *                                 evaluations as one Picard iteration, on the old state, for the rate that
+ *                                 the trapezoidal stage takes explicitly and the error estimate needs)
+ *   per Picard iteration          transport coefficients → density → composition → sources' heat
+ *   (of each of the two stages):  (fusion, radiation, exchange, …) → q profile → current sources
  *                                 (conductivity and bootstrap, sources' current drive, ohmic)
  *   once per accepted step:       transport model's and sources' accepted hooks (acceptStep)
  *
- * An attempt is one implicit step at one Δt: a step that is retried at a smaller Δt runs the
- * per-attempt parts again, so the evaluations must be idempotent (see SourceModel).
+ * An attempt is one TR-BDF2 step at one Δt: a step that is retried at a smaller Δt (a rejected one, one
+ * that is shortened to end at an event) runs the per-attempt parts again, so the evaluations must be
+ * idempotent (see SourceModel).
  */
 import type { ProfileContext, StepConstants } from '../context';
 import { FUEL_CHANNELS } from '../../reactivity';

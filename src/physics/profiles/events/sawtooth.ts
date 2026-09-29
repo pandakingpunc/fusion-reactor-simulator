@@ -13,18 +13,29 @@ import type { ProfileContext } from '../context';
 import type { ProfileState } from '../state';
 import { recNum, type CheckpointRecord } from '../checkpoint';
 import { composition } from '../composition';
+import { cellIndex } from '../geometry1d';
 import { flattenConserving, kadomtsevMixingRadius, rhoOfQ, shearAt } from '../mhd';
 import { currentProfiles } from '../qprofile';
 import { seedIslands } from './ntm';
-import type { EventModel } from './EventModel';
+import type { EventModel, EventTrigger } from './EventModel';
+import { CRASH_RESTART_DT } from './elm';
+import { READY_MARGIN, sawtoothMargin } from './triggers';
+
+/** Minimum time between two crashes [s] */
+const SAWTOOTH_REFRACTORY = 0.05;
 
 export class SawtoothEvents implements EventModel {
   readonly id = 'sawtooth';
   private lastSaw = -1e9;
 
+  readonly trigger: EventTrigger = {
+    readyAt: () => this.lastSaw + SAWTOOTH_REFRACTORY + READY_MARGIN,
+    margin: sawtoothMargin,
+  };
+
   afterStep(ctx: ProfileContext, t: number, st: ProfileState, d: Readonly<Record<string, number>>, ev: SimEvent[]): void {
-    const c = ctx.cfg, g = ctx.tg, w = ctx.w, N = ctx.N, v = st;
-    if (!(c.events.sawteeth && t - this.lastSaw > 0.05)) return;
+    const c = ctx.cfg, g = ctx.tg, w = ctx.w, v = st;
+    if (!(c.events.sawteeth && t - this.lastSaw > SAWTOOTH_REFRACTORY)) return;
     const r1 = rhoOfQ(g, w.qF, 1);
     if (!(r1 > 0.05 && r1 < 0.8)) return;
     const s1 = shearAt(g, w.qF, r1);
@@ -43,15 +54,15 @@ export class SawtoothEvents implements EventModel {
     composition(ctx, v.Te, v.ne, v.s);
     flattenConserving(g, v.Ti, w.ni, r1, rmix, niBefore);
     // q → max(q, 1.01) in the mixing region; rebuild ψ inward from ρ_mix
-    const iMix = Math.min(N - 1, Math.floor(rmix / g.dRho));
+    const iMix = cellIndex(g, rmix);
     for (let f = 1; f <= iMix; f++) {
       if (w.qF[f] < 1.01) w.dpsiF[f] = (g.PhiB * g.rhoF[f]) / (Math.PI * 1.01);
     }
-    for (let i = iMix - 1; i >= 0; i--) v.psi[i] = v.psi[i + 1] - w.dpsiF[i + 1] * g.dRho;
+    for (let i = iMix - 1; i >= 0; i--) v.psi[i] = v.psi[i + 1] - w.dpsiF[i + 1] * g.distF[i + 1];
     currentProfiles(ctx, v.psi, v.s.Ip);
     if (before) ctx.crashHook!('sawtooth', t, before, ctx.crashSnapshot(v));
     this.lastSaw = t;
-    ctx.dt = Math.min(ctx.dt, 5e-3);
+    ctx.dt = Math.min(ctx.dt, CRASH_RESTART_DT);
     ctx.diagStale = true;
     ev.push({ t, kind: 'sawtooth', msg: `Sawtooth crash (s₁ = ${s1.toFixed(2)}): ρ(q=1) = ${r1.toFixed(2)}, ρ_mix = ${rmix.toFixed(2)}, T_e0 ${Te0.toFixed(1)} → ${v.Te[0].toFixed(1)} keV`, value: (Te0 - v.Te[0]) / Te0 });
     if (c.events.ntm) seedIslands(ctx, v, d);

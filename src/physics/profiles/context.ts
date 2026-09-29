@@ -14,7 +14,9 @@ import { RNG } from '../rng';
 import type { Equilibrium } from '../equilibrium/gs';
 import type { MagneticConfig, ProfileSettings, SimEvent, TerminationInfo } from '../types';
 import { DEFAULT_PROFILE_SETTINGS } from './defaults';
-import type { TransportGeometry } from './geometry1d';
+import { checkProfileSettings, type SettingNote } from './settings';
+import { CurrentProgramme, currentWaveform, IP_PROGRAMME_FLOOR } from './control/plasmaCurrent';
+import { gridSpec, type GridSpec, type TransportGeometry } from './geometry1d';
 import { CurrentSolver, DensitySolver, HeatSolver } from './fvsolver';
 import { volumeIntegral } from './sources/deposition';
 import type { BootstrapCoeffs } from './neoclassical';
@@ -56,6 +58,11 @@ export interface BoundaryValues { Te: number; Ti: number; n: number }
 export interface Actuators {
   P_NBI_MW: number; P_ICRH_MW: number; P_ECRH_MW: number;
   n_target_1e20: number; H98: number; cZ: number; fuelRate_1e20s: number;
+  /**
+   * plasma current [MA]: the boundary condition of the current diffusion for the next step (control/plasmaCurrent.ts). Present unless a
+   * programme I_p(t) (`ProfileSettings.IpWaveform`, `ProfileModules.plasmaCurrent`) drives the current: then the programme is the only source
+   */
+  Ip_MA?: number;
 }
 
 /** State of a disruption once a limit has been crossed */
@@ -79,12 +86,18 @@ export type CrashHook = (kind: 'sawtooth' | 'ELM', t: number, before: CrashSnaps
  * setting that is `undefined` (or `null`) is blank, not a value: the setup wizard stores that for
  * an emptied input, and it leaves the default (or, for the optional settings without one, the
  * documented "blank" behaviour) in force. Spreading it would overwrite the default with undefined.
+ *
+ * The step-control settings rtol, atol and dtMax that are outside their domain (settings.ts) are replaced by the default; `notes` lists
+ * what was replaced.
  */
-export function profileSettings(cfg: MagneticConfig): ProfileSettings {
+export function resolveProfileSettings(cfg: MagneticConfig): { ps: ProfileSettings; notes: SettingNote[] } {
   const user: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(cfg.profiles ?? {})) if (v !== undefined && v !== null) user[k] = v;
-  return { ...DEFAULT_PROFILE_SETTINGS, eqUpdateInterval: Math.min(Math.max(cfg.t_end / 20, 0.5), 20), ...(user as Partial<ProfileSettings>) };
+  return checkProfileSettings({ ...DEFAULT_PROFILE_SETTINGS, eqUpdateInterval: Math.min(Math.max(cfg.t_end / 20, 0.5), 20), ...(user as Partial<ProfileSettings>) });
 }
+
+/** The settings of a shot (resolveProfileSettings without the notes) */
+export function profileSettings(cfg: MagneticConfig): ProfileSettings { return resolveProfileSettings(cfg).ps; }
 
 export class ProfileContext {
   // ---------------------------------------------------------------- configuration
@@ -92,6 +105,8 @@ export class ProfileContext {
   readonly ps: ProfileSettings;
   /** radial cells */
   readonly N: number;
+  /** edge packing of the cells (ProfileSettings.gridPacking; undefined: the uniform grid); every transport geometry is built with it */
+  readonly grid: GridSpec | undefined;
   readonly layout: StateLayout;
   /** Grad–Shafranov boundary shape (LCFS) */
   readonly geomB: Geometry;
@@ -102,6 +117,8 @@ export class ProfileContext {
   /** stochastic events (ELM size); part of the checkpoint */
   readonly rng: RNG;
   readonly ctrl: Actuators;
+  /** plasma-current programme I_p(t) [A] (control/plasmaCurrent.ts); null: I_p is the control `Ip_MA` (the configured current until it is changed) */
+  ipProgramme: CurrentProgramme | null;
 
   // ---------------------------------------------------------------- equilibrium and geometry
   geo!: EqGeometry;
@@ -178,8 +195,12 @@ export class ProfileContext {
 
   constructor(cfg: MagneticConfig) {
     this.cfg = cfg;
-    this.ps = profileSettings(cfg);
+    const resolved = resolveProfileSettings(cfg);
+    this.ps = resolved.ps;
+    // a setting that was replaced is said once, at the start of the shot (the first step's events)
+    for (const n of resolved.notes) this.warnOnce(`settings.${n.key}`, 0, `${n.message}.`);
     this.N = Math.max(16, Math.round(this.ps.nRho));
+    this.grid = gridSpec(this.ps);
     this.layout = new StateLayout(this.N);
     this.w = allocateWorkArrays(this.N);
     const g0 = cfg.geometry;
@@ -187,11 +208,13 @@ export class ProfileContext {
     const fs = FUEL_SPECIES[cfg.fuel];
     this.M = cfg.fuelFracA * fs.a.A + (1 - cfg.fuelFracA) * fs.b.A;
     this.rng = new RNG(cfg.seed);
+    this.ipProgramme = this.ps.IpWaveform ? currentWaveform(this.ps.IpWaveform) : null;
     this.ctrl = {
       P_NBI_MW: cfg.heating.P_NBI_MW, P_ICRH_MW: cfg.heating.P_ICRH_MW, P_ECRH_MW: cfg.heating.P_ECRH_MW,
       n_target_1e20: cfg.n_target / 1e20, H98: cfg.H98, cZ: cfg.impurity.concentration,
       fuelRate_1e20s: cfg.fueling.maxRate_1e20s,
     };
+    if (!this.ipProgramme) this.ctrl.Ip_MA = cfg.Ip_MA;
     // pinch parameter: source-free equilibrium n ∝ exp(−P ρ²) has n(0)/⟨n⟩ = 1 + α_n
     const target = 1 + cfg.transport.alpha_n;
     let P = 0.5;
@@ -201,6 +224,24 @@ export class ProfileContext {
 
   /** Views of a state vector */
   view(y: Float64Array): ProfileState { return this.layout.view(y); }
+
+  /**
+   * The plasma current that a step ending at time t takes as its boundary condition [A], at least 0.05 MA: the programme at t, or without one
+   * the control `Ip_MA` (a set-point that holds over the whole step: the kernel changes it at step boundaries). A control that is not a number
+   * is the configured current.
+   */
+  ipAt(t: number): number {
+    const p = this.ipProgramme;
+    if (p) return Math.max(p(t), IP_PROGRAMME_FLOOR);
+    const c = this.ctrl.Ip_MA;
+    return Math.max(c !== undefined && Number.isFinite(c) ? c : this.cfg.Ip_MA, 0.05) * 1e6;
+  }
+
+  /** Puts a programme I_p(t) in place of the control `Ip_MA`, which is then no longer one of the controls (the programme is the only source of the current) */
+  setCurrentProgramme(p: CurrentProgramme): void {
+    this.ipProgramme = p;
+    delete this.ctrl.Ip_MA;
+  }
 
   /** Registers a cache that depends on the transport geometry; called now if a geometry exists and on every adoptGeometry */
   onGeometry(f: (tg: TransportGeometry) => void): void {

@@ -24,6 +24,8 @@ export const CONTROL_DEFS: Record<string, CtrlDef> = {
   P_ICRH_MW: { sym: 'P_ICRH', unit: 'MW', min: 0, max: 100, step: 0.5, hint: 'ctrl.icrhHint' },
   P_ECRH_MW: { sym: 'P_ECRH', unit: 'MW', min: 0, max: 100, step: 0.5, hint: 'ctrl.ecrhHint' },
   P_aux_MW: { sym: 'P_aux', unit: 'MW', min: 0, max: 300, step: 1 },
+  // 1.5D plasma current (the boundary condition of the current diffusion): a machine's current is anywhere from 1 to 20 MA, so a range around the default
+  Ip_MA: { sym: 'I_p', unit: 'MA', min: 0.05, max: 40, step: 0.05, mult: 2 },
   n_target_1e20: { label: 'ctrl.nTarget', unit: '10²⁰', min: 0.01, max: 15, step: 0.01, hint: 'ctrl.nTargetHint' },
   fuelRate_1e20s: { label: 'ctrl.fuelRate', unit: '10²⁰/s', min: 0, max: 3000, step: 1 },
   H98: { sym: 'H₉₈', unit: '', min: 0.3, max: 2, step: 0.01, hint: 'ctrl.h98Hint' },

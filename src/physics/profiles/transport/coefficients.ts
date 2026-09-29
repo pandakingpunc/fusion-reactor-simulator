@@ -6,6 +6,7 @@
  * (+5 m²/s), the neoclassical ion floor and a 0.01 m²/s numerical floor.
  */
 import type { ProfileContext } from '../context';
+import { faceValue } from '../geometry1d';
 import type { ProfileState } from '../state';
 import { islandRegions } from '../events/ntm';
 import { barrierFactor } from './pedestal';
@@ -26,8 +27,7 @@ export function transportCoefficients(ctx: ProfileContext, model: TransportModel
     let chiE = chiT, chiI = chiTi;
     for (const [rs, dr] of islands) if (Math.abs(rho - rs) < 0.5 * dr) { chiE += 5; chiI += 5; }
     // neoclassical ion floor
-    const i0 = Math.max(0, Math.min(N - 1, f - 1)), i1 = Math.min(N - 1, f);
-    chiI += 0.5 * (w.chiNeo[i0] + w.chiNeo[i1]);
+    chiI += f > 0 && f < N ? faceValue(g, w.chiNeo, f) : w.chiNeo[Math.min(N - 1, f)];
     w.chiE[f] = chiE + 0.01;
     w.chiI[f] = chiI + 0.01;
     w.D[f] = ps.DoverChi * chiT + 0.02;

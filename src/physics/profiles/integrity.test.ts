@@ -635,7 +635,7 @@ describe('checkpoints and replays', () => {
   // User breakpoints every 2.9 ms end steps off the output grid (3.75 ms): the step of the disruption onset then
   // ends at a time that is not an output time and is recorded as an irregular frame. Without them the
   // Δt of the density ramp is longer than the output interval, every step is cut at an output time and the onset
-  // frame is a regular one.
+  // frame is a regular one. The spacing is a property of the run: the onset time depends on the radial grid.
   const grid = { breakpoints: Array.from({ length: 1034 }, (_, k) => (k + 1) * 2.9e-3) };
 
   it('a replay from a thermal- or current-quench frame reproduces the frames and the report', () => {

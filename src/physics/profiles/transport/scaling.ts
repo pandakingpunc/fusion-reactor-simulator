@@ -11,6 +11,7 @@
  * the edge and pedestal follow different physics).
  */
 import type { ProfileContext } from '../context';
+import { faceValue } from '../geometry1d';
 import type { ProfileState } from '../state';
 import type { TransportModel } from './TransportModel';
 
@@ -26,8 +27,8 @@ export class ScalingTransport implements TransportModel {
     const RLT = (T: Float64Array, TB: number, f: number) => {
       if (f === 0) return 0;
       const TL = T[f - 1], TR = f < N ? T[f] : TB;
-      const dist = f < N ? g.dRho : 0.5 * g.dRho;
-      const Tf = Math.max(0.5 * (TL + TR), 0.01);
+      const dist = g.distF[f];
+      const Tf = Math.max(f < N ? faceValue(g, T, f) : 0.5 * (TL + TR), 0.01);
       return (-g.R0 * ((TR - TL) / dist) * g.gradRhoF[f]) / Tf;
     };
     const stiffF = (x: number) => 1 + ps.stiffness * Math.min(Math.max(x / ps.critGrad - 1, 0), 5);

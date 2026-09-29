@@ -2,11 +2,15 @@
 /**
  * Numerical convergence study of the 1.5D ITER preset: npm run bench:convergence [-- options]
  *
- * Runs ITER15 at three radial resolutions (ProfileSettings.nRho, default 25/50/100 cells) and at three
- * upper limits of the adaptive time step (default 0.5/0.05/0.01 s; the model's own cap is 0.5 s), one
- * parameter at a time, and reports the flat-top Q, bootstrap fraction f_bs, internal inductance ℓ_i(3)
- * and pedestal temperature T_ped with a Richardson estimate of the error of the finest run
- * (bench/richardson.ts). Prints a Markdown table; --out writes the full results as JSON.
+ * Runs ITER15 at three radial resolutions (ProfileSettings.nRho, default 25/50/100 cells), at three tolerances of the
+ * error-controlled time step (ProfileSettings.rtol, default 1e-2/1e-3/1e-4) and at three upper limits of the time step
+ * (ProfileSettings.dtMax, default 0.5/0.05/0.01 s), one parameter at a time, and reports the flat-top Q, bootstrap fraction
+ * f_bs, internal inductance ℓ_i(3) and pedestal temperature T_ped with a Richardson estimate of the error of the finest run
+ * (bench/richardson.ts; for the tolerance series the observed order is the exponent of the error against rtol). The radial
+ * cells are packed towards the edge (ProfileSettings.gridPacking, the model default; --packing 0 is the uniform grid of v3,
+ * --packing P another strength): the table shows how many cells lie across the pedestal at each N. The other series run
+ * at the model's tolerance (--base-rtol); the ELM count and the counters of the step control (attempts rejected by the error
+ * test or failed, events localised) are listed with each run. Prints a Markdown table; --out writes the full results as JSON.
  * Not part of ci:local (minutes of CPU time).
  */
 import { writeFileSync } from 'node:fs';
@@ -14,7 +18,9 @@ import { cpus } from 'node:os';
 import { defineCli, exitUsage, parseArgsOrExit } from '../src/cli/args';
 import { PoolAbortError, PoolConfigError, defaultThreads, runPool } from '../src/cli/pool';
 import { ITER_15D } from '../src/physics/presets';
-import type { MagneticConfig } from '../src/physics/types';
+import { DEFAULT_PROFILE_SETTINGS } from '../src/physics/profiles/defaults';
+import { buildGrid, gridSpec } from '../src/physics/profiles/geometry1d';
+import type { MagneticConfig, ProfileSettings } from '../src/physics/types';
 import type { ConvResult, ConvTask } from './convergence.worker';
 import { type Richardson, richardson } from './richardson';
 
@@ -30,9 +36,12 @@ const CLI = defineCli({
   summary: 'Grid and time-step convergence of ITER15 (1.5D): flat-top Q, f_bs, ℓ_i(3), T_ped with Richardson error estimates.',
   flags: {
     grids: { type: 'list', default: ['25', '50', '100'], metavar: 'N,N,N', help: 'three radial cell counts (nRho), coarse to fine' },
+    rtols: { type: 'list', default: ['1e-2', '1e-3', '1e-4'], metavar: 'T,T,T', help: 'three tolerances of the time-step error control (rtol), coarse to fine' },
     dts: { type: 'list', default: ['0.5', '0.05', '0.01'], metavar: 'S,S,S', help: 'three time-step limits [s], coarse to fine' },
-    'base-grid': { type: 'int', default: 50, min: 5, metavar: 'N', help: 'nRho of the time-step series' },
+    'base-grid': { type: 'int', default: 50, min: 5, metavar: 'N', help: 'nRho of the tolerance and time-step series' },
+    'base-rtol': { type: 'number', default: 1e-2, min: 1e-12, metavar: 'T', help: 'rtol of the radial-resolution and time-step series' },
     't-end': { type: 'number', min: 1, metavar: 'S', help: 'shorten the discharge (default: the preset, 400 s); for smoke tests' },
+    packing: { type: 'number', min: 0, metavar: 'P', help: 'edge packing of the radial cells (ProfileSettings.gridPacking; 0: uniform grid; default: the model default)' },
     threads: { type: 'int', min: 1, help: 'worker threads (default: min(6, cores − 1))' },
     out: { type: 'string', metavar: 'FILE', help: 'write the results as JSON' },
   },
@@ -45,24 +54,30 @@ function triple(name: string, items: readonly string[], parse: (s: string) => nu
 }
 
 interface Series {
-  parameter: 'nRho' | 'dtMax';
+  parameter: 'nRho' | 'rtol' | 'dtMax';
   values: [number, number, number];
-  /** Richardson step size of each run: 1/nRho or dtMax */
+  /** Richardson step size of each run: 1/nRho, rtol or dtMax */
   h: [number, number, number];
-  runs: { value: number; ok: boolean; error?: string; ms?: number; steps?: number; metrics: Record<string, number> }[];
+  runs: { value: number; ok: boolean; error?: string; ms?: number; steps?: number; nElm?: number; stats?: ConvResult['stats']; cellsAcrossPedestal?: number; metrics: Record<string, number> }[];
   richardson: Record<string, Richardson>;
 }
 
 async function main() {
   const args = parseArgsOrExit(CLI);
   const grids = triple('grids', args.grids, (s) => Number.parseInt(s, 10)).sort((a, b) => a - b) as [number, number, number];
+  const rtols = triple('rtols', args.rtols, Number).sort((a, b) => b - a) as [number, number, number];
   const dts = triple('dts', args.dts, Number).sort((a, b) => b - a) as [number, number, number];
-  if (new Set(grids).size < 3 || new Set(dts).size < 3) exitUsage(CLI.name, '--grids and --dts need three different values');
+  if (new Set(grids).size < 3 || new Set(rtols).size < 3 || new Set(dts).size < 3) exitUsage(CLI.name, '--grids, --rtols and --dts need three different values');
   const base: MagneticConfig = { ...ITER_15D, ...(args['t-end'] ? { t_end: args['t-end'] } : {}) };
-  const cfg = (nRho: number): MagneticConfig => ({ ...base, profiles: { ...base.profiles, nRho } });
+  const packing = args.packing;
+  const cfg = (nRho: number, more: Partial<ProfileSettings> = {}): MagneticConfig => ({ ...base, profiles: { ...base.profiles, nRho, ...(packing !== undefined ? { gridPacking: packing } : {}), rtol: args['base-rtol'], ...more } });
+  const ps = { ...DEFAULT_PROFILE_SETTINGS, ...base.profiles, ...(packing !== undefined ? { gridPacking: packing } : {}) };
+  /** cells whose centre lies in the pedestal, ρ ≥ 1 − pedestalWidth */
+  const across = (n: number) => { const g = buildGrid(n, gridSpec(ps)); let c = 0; for (let i = 0; i < n; i++) if (g.rhoC[i] >= 1 - ps.pedestalWidth) c++; return c; };
   const tasks: ConvTask[] = [
     ...grids.map((n) => ({ id: `nRho=${n}`, cfg: cfg(n) })),
-    ...dts.map((dt) => ({ id: `dtMax=${dt}`, cfg: cfg(args['base-grid']), dtMax: dt })),
+    ...rtols.map((r) => ({ id: `rtol=${r}`, cfg: cfg(args['base-grid'], { rtol: r }) })),
+    ...dts.map((dt) => ({ id: `dtMax=${dt}`, cfg: cfg(args['base-grid'], { dtMax: dt }) })),
   ];
   const threads = args.threads ?? Math.min(6, defaultThreads());
   console.error(`ITER15 convergence: ${tasks.length} runs of ${base.t_end} s on ${Math.min(threads, tasks.length)} threads …`);
@@ -80,7 +95,7 @@ async function main() {
     const runs = values.map((v) => {
       const r = byId.get(`${parameter}=${v}`)!;
       const metrics = Object.fromEntries(METRICS.map((m) => [m.key, r.avg?.[m.key] ?? NaN]));
-      return { value: v, ok: r.ok, ...(r.error ? { error: r.error } : {}), ms: r.ms, steps: r.steps, metrics };
+      return { value: v, ok: r.ok, ...(r.error ? { error: r.error } : {}), ms: r.ms, steps: r.steps, nElm: r.nElm, ...(r.stats ? { stats: r.stats } : {}), ...(parameter === 'nRho' ? { cellsAcrossPedestal: across(v) } : {}), metrics };
     });
     const rich = Object.fromEntries(METRICS.map((m) => [m.key, richardson(h, runs.map((r) => r.metrics[m.key]) as [number, number, number])]));
     return { parameter, values, h, runs, richardson: rich };
@@ -90,13 +105,16 @@ async function main() {
     preset: 'ITER15',
     t_end_s: base.t_end,
     baseGrid: args['base-grid'],
+    baseRtol: args['base-rtol'],
+    gridPacking: ps.gridPacking ?? 0,
+    pedestalWidth: ps.pedestalWidth,
     node: process.version,
     cpu: cpus()[0]?.model ?? 'unknown',
     date: new Date().toISOString(),
     wall_s: (performance.now() - t0) / 1000,
-    series: [series('nRho', grids), series('dtMax', dts)],
+    series: [series('nRho', grids), series('rtol', rtols), series('dtMax', dts)],
   };
-  console.log(markdown(out.series, out.t_end_s, out.baseGrid));
+  console.log(markdown(out.series, out.t_end_s, out.baseGrid, out.baseRtol, out.gridPacking));
   if (args.out) {
     writeFileSync(args.out, JSON.stringify(out, (_k, v) => (typeof v === 'number' && !Number.isFinite(v) ? null : v), 2) + '\n');
     console.error(`results written to ${args.out}`);
@@ -107,10 +125,11 @@ async function main() {
 const f4 = (v: number) => (Number.isFinite(v) ? String(Number(v.toPrecision(4))) : 'n/a');
 const pct = (v: number) => (Number.isFinite(v) ? `${(100 * v).toPrecision(2)} %` : 'n/a');
 
-function markdown(all: Series[], tEnd: number, baseGrid: number): string {
-  const L: string[] = [`### ITER15 numerical convergence (flat-top averages, ${tEnd} s discharge)`, ''];
+function markdown(all: Series[], tEnd: number, baseGrid: number, baseRtol: number, packing: number): string {
+  const L: string[] = [`### ITER15 numerical convergence (flat-top averages, ${tEnd} s discharge, gridPacking ${packing}${packing > 0 ? '' : ': uniform grid'})`, ''];
   for (const s of all) {
-    const name = s.parameter === 'nRho' ? 'radial cells nRho' : `time-step limit dtMax [s] (nRho = ${baseGrid})`;
+    const name = s.parameter === 'nRho' ? `radial cells nRho (rtol = ${baseRtol})`
+      : s.parameter === 'rtol' ? `time-step tolerance rtol (nRho = ${baseGrid}; order p: error ∝ rtol^p)` : `time-step limit dtMax [s] (nRho = ${baseGrid}, rtol = ${baseRtol})`;
     L.push(`**${name}**`, '');
     const head = ['Metric', ...s.values.map((v) => `${s.parameter}=${v}`), 'order p', 'extrapolated', `error of ${s.parameter}=${s.values[2]}`, 'GCI'];
     L.push(`| ${head.join(' | ')} |`, `|${head.map(() => '---').join('|')}|`);
@@ -119,8 +138,15 @@ function markdown(all: Series[], tEnd: number, baseGrid: number): string {
       const note = r.kind === 'monotone' ? '' : ` (${r.kind})`;
       L.push(`| ${m.label}${m.unit ? ` [${m.unit}]` : ''} | ${s.runs.map((x) => f4(x.metrics[m.key])).join(' | ')} | ${f4(r.p)}${note} | ${f4(r.extrapolated)} | ${f4(r.error)} | ${pct(r.gci)} |`);
     }
+    if (s.runs.some((x) => x.cellsAcrossPedestal !== undefined)) L.push(`| cells across the pedestal | ${s.runs.map((x) => x.cellsAcrossPedestal ?? 'n/a').join(' | ')} | | | | |`);
     L.push(`| wall time [s] | ${s.runs.map((x) => (x.ms !== undefined ? (x.ms / 1000).toFixed(1) : 'failed')).join(' | ')} | | | | |`);
-    L.push(`| steps | ${s.runs.map((x) => x.steps ?? 'n/a').join(' | ')} | | | | |`, '');
+    L.push(`| steps | ${s.runs.map((x) => x.steps ?? 'n/a').join(' | ')} | | | | |`);
+    if (s.runs.some((x) => x.stats)) {
+      L.push(`| attempts rejected by the error test / failed | ${s.runs.map((x) => (x.stats ? `${x.stats.rejected} / ${x.stats.failed}` : 'n/a')).join(' | ')} | | | | |`);
+      L.push(`| events localised | ${s.runs.map((x) => x.stats?.localised ?? 'n/a').join(' | ')} | | | | |`);
+    }
+    if (s.runs.some((x) => x.nElm !== undefined)) L.push(`| ELMs | ${s.runs.map((x) => x.nElm ?? 'n/a').join(' | ')} | | | | |`);
+    L.push('');
     for (const x of s.runs) if (!x.ok) L.push(`> ${s.parameter}=${x.value} failed: ${x.error}`, '');
   }
   L.push('Error: Richardson estimate |f_fine − f_extrapolated| of the finest run; GCI with safety factor 1.25 (3 when not in the asymptotic range).');

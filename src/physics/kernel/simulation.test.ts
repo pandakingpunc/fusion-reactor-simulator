@@ -227,7 +227,7 @@ describe('FSAL stage reuse', () => {
     const direct = drive(true, true);
     expect(direct).toBe(drive(false, true));
     expect(direct).not.toBe(drive(true, false)); // the patches did change the run
-  }, 60000);
+  }, 60000); // five 3 s JET shots (a JET step is about 20 % dearer on the packed grid): 5 s on a loaded machine, over the 5 s default
 
   it('a rewind starts from a fresh evaluation, also right after stages were reused', async () => {
     const cfg = presetCfg('W7X');

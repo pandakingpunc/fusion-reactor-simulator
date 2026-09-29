@@ -3,9 +3,10 @@
  * validation (path-specific errors, all problems at once) and the JSON Schema 2020-12 emitter, so the two
  * cannot drift apart.
  *
- * Only what the reactor configurations need: numbers (range, integer), booleans, string enumerations and
- * objects (required and optional properties, unknown properties rejected, cross-field rules). There are no
- * arrays and no unions here; the discriminated union over `method` lives in schema.ts.
+ * Only what the reactor configurations need: numbers (range, integer), booleans, string enumerations,
+ * objects (required and optional properties, unknown properties rejected, cross-field rules) and one kind of
+ * array, a series of [x, y] points with x increasing (a programme in time). There are no other arrays and no
+ * unions here; the discriminated union over `method` lives in schema.ts.
  *
  * Types. A {@link Field}<V> carries the TypeScript type V it describes (invariantly), and {@link Shape}<T>
  * asks for one field per property of T, so a schema written for an interface fails to compile when the
@@ -74,7 +75,19 @@ export interface ObjectNode {
   rules: readonly Rule[];
   doc?: string;
 }
-export type Node = NumberNode | BooleanNode | EnumNode | ObjectNode;
+/**
+ * A list of [x, y] points with x strictly increasing (a programme in time: [t (s), I_p (MA)]). The two numbers of a
+ * point are checked against `x` and `y`; the list needs between `minItems` and `maxItems` points.
+ */
+export interface SeriesNode {
+  kind: 'series';
+  x: NumberNode;
+  y: NumberNode;
+  minItems: number;
+  maxItems: number;
+  doc?: string;
+}
+export type Node = NumberNode | BooleanNode | EnumNode | ObjectNode | SeriesNode;
 
 /** A relation between properties of one object that no per-property range can express. */
 export interface Rule {
@@ -116,6 +129,16 @@ export function bool(doc?: string, def?: boolean): Field<boolean> {
 /** One of a fixed list of strings; V is inferred as the union of the listed literals. */
 export function oneOf<const V extends string>(values: readonly V[], doc?: string, def?: V): Field<V> {
   return field<V>({ kind: 'enum', values, ...(doc !== undefined ? { doc } : {}), ...(def !== undefined ? { def } : {}) });
+}
+/** The numeric ends of a series of [x, y] points (the bounds of a point's two numbers, the number of points). */
+export interface SeriesOpts { x?: NumOpts; y?: NumOpts; minItems?: number; maxItems?: number; doc?: string }
+
+/** A list of [x, y] points (a programme): x strictly increasing, both numbers finite and within their bounds. */
+export function series(o: SeriesOpts = {}): Field<ReadonlyArray<readonly [number, number]>> {
+  return field<ReadonlyArray<readonly [number, number]>>({
+    kind: 'series', x: { kind: 'number', integer: false, ...o.x }, y: { kind: 'number', integer: false, ...o.y },
+    minItems: o.minItems ?? 1, maxItems: o.maxItems ?? 10000, ...(o.doc !== undefined ? { doc: o.doc } : {}),
+  });
 }
 /** Marks a property as optional (it may be absent or undefined; null is not accepted). */
 export function opt<V>(f: Field<V>): Field<V | undefined> {
@@ -204,6 +227,8 @@ export function describeRange(n: NumberNode): string {
   return parts.join(' and ');
 }
 
+const describeSeriesAxes = (n: SeriesNode): string => `${n.x.unit ?? 'x'}, ${n.y.unit ?? 'y'}`;
+
 /** Checks one number against its node; returns a violation message or undefined. */
 export function checkNumber(n: NumberNode, v: unknown): { code: IssueCode; message: string } | undefined {
   if (typeof v !== 'number') return { code: 'type', message: `must be a number, got ${describeValue(v)}` };
@@ -238,6 +263,25 @@ export function validateNode(node: Node, value: unknown, path: ConfigPath, issue
         add(path, 'enum', `must be one of ${node.values.map((s) => `'${s}'`).join(', ')}, got '${value}'`, c !== undefined ? `did you mean '${c}'?` : undefined);
       }
       return;
+    case 'series': {
+      if (!Array.isArray(value)) { add(path, 'type', `must be an array of [${describeSeriesAxes(node)}] points, got ${describeValue(value)}`); return; }
+      if (value.length < node.minItems || value.length > node.maxItems) {
+        add(path, 'range', `must have ${node.minItems === node.maxItems ? String(node.minItems) : `between ${node.minItems} and ${node.maxItems}`} points, got ${value.length}`);
+        return;
+      }
+      let prevX: number | undefined;
+      for (let k = 0; k < value.length; k++) {
+        const pt = value[k];
+        const at = join(path, String(k));
+        if (!Array.isArray(pt) || pt.length !== 2) { add(at, 'type', `must be a [${describeSeriesAxes(node)}] pair, got ${describeValue(pt)}`); prevX = undefined; continue; }
+        const rx = checkNumber(node.x, pt[0]), ry = checkNumber(node.y, pt[1]);
+        if (rx) add(join(at, '0'), rx.code, rx.message);
+        if (ry) add(join(at, '1'), ry.code, ry.message);
+        if (!rx && prevX !== undefined && !((pt[0] as number) > prevX)) add(join(at, '0'), 'cross_field', `must be greater than the previous point's ${String(prevX)} (the points increase in the first number), got ${String(pt[0])}`);
+        prevX = rx ? undefined : (pt[0] as number);
+      }
+      return;
+    }
     case 'object': {
       if (!isPlainObject(value)) { add(path, 'type', `must be an object, got ${describeValue(value)}`); return; }
       const known = Object.keys(node.props);
@@ -299,6 +343,15 @@ export function nodeToJsonSchema(node: Node): JsonSchema {
       const s: JsonSchema = { type: 'string', enum: [...node.values] };
       if (node.doc) s.description = node.doc;
       if (node.def !== undefined) s.default = node.def;
+      return s;
+    }
+    case 'series': {
+      const pt: JsonSchema = {
+        type: 'array', prefixItems: [nodeToJsonSchema(node.x), nodeToJsonSchema(node.y)], items: false, minItems: 2, maxItems: 2,
+      };
+      const s: JsonSchema = { type: 'array', items: pt, minItems: node.minItems, maxItems: node.maxItems };
+      const d = [node.doc, `Points [${describeSeriesAxes(node)}], the first number strictly increasing.`].filter(Boolean).join(' ');
+      if (d) s.description = d;
       return s;
     }
     case 'object': {

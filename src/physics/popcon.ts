@@ -18,6 +18,7 @@ import { tauHmode, tauISS04, pLH_threshold, stellaratorHISS04 } from './transpor
 import { FUEL_CHANNELS, FUEL_SPECIES, pairDensity } from './reactivity';
 import { bremsstrahlung, coolingRate, meanCharge, synchrotronTotal, RHO_CORE } from './radiation';
 import { greenwaldDensity, betaToroidal, betaNormalized, lineAverageFactor } from './limits';
+import { edgePlasma0D, edgeSetup, solveEdge } from './edge';
 
 const E_KEV = 1.602176634e-16;
 const MEV = 1.602176634e-13;
@@ -34,10 +35,12 @@ export interface PopconGrid {
   fHe: Float64Array; // kararlı durum He külü oranı n_He/n_e
   /** Greenwald limit on the ⟨n_e⟩ (volume-average) axis of this grid: n_G / f_line(α_n) (n_G is for the line average) */
   nG: number;
+  /** with `edge: true` (tokamaks): the edge model (src/physics/edge) at the steady state of each cell, P_sep = W/τ_E: P_sep/R [MW/m], peak target heat flux [MW/m²], target T_e [eV] */
+  PsepR?: Float64Array; qPeak?: Float64Array; Tt?: Float64Array;
 }
 
 /** uniformT: eşit aralıklı T ekseni (raster/figür için); varsayılan düşük T'de sıklaştırılmış */
-export function computePopcon(cfg: MagneticConfig, o: { nx?: number; ny?: number; Tmax?: number; nMaxFactor?: number; uniformT?: boolean } = {}): PopconGrid {
+export function computePopcon(cfg: MagneticConfig, o: { nx?: number; ny?: number; Tmax?: number; nMaxFactor?: number; uniformT?: boolean; edge?: boolean } = {}): PopconGrid {
   const NX = o.nx ?? 44, NY = o.ny ?? 44, TMAX = o.Tmax ?? 40;
   // volume and surface of the boundary (LCFS) shape, as in the 0D model (geometry.boundaryShape)
   const g = cfg.geometry, gB = boundaryShape(cfg), V = plasmaVolume(gB), S = plasmaSurface(gB);
@@ -64,6 +67,7 @@ export function computePopcon(cfg: MagneticConfig, o: { nx?: number; ny?: number
 
   const Paux = new Float64Array(NX * NY), Pfus = new Float64Array(NX * NY), Q = new Float64Array(NX * NY);
   const betaN = new Float64Array(NX * NY), PLH_ok = new Uint8Array(NX * NY), fHeA = new Float64Array(NX * NY);
+  const edge = o.edge && !stell ? { PsepR: new Float64Array(NX * NY), qPeak: new Float64Array(NX * NY), Tt: new Float64Array(NX * NY), par: edgeSetup(cfg).par } : undefined;
   const sh = (r: number) => 1 - r * r;
   for (let j = 0; j < NY; j++) {
     // T'ye bağlı profil integralleri (yoğunluktan bağımsız)
@@ -111,7 +115,8 @@ export function computePopcon(cfg: MagneticConfig, o: { nx?: number; ny?: number
       Paux[k] = Pa; Pfus[k] = Pf; Q[k] = Pa > 0 ? Pf / Pa : Infinity; fHeA[k] = fHe;
       betaN[k] = cfg.Ip_MA > 0 ? betaNormalized(betaToroidal(W / (1.5 * V), cfg.B0), g.a, cfg.B0, cfg.Ip_MA) : 0;
       PLH_ok[k] = P_loss >= pLH_threshold(fLine * ne, cfg.B0, S, M, cfg.Ip_MA, g.a, g.R) ? 1 : 0;
+      if (edge) { const e = solveEdge(edgePlasma0D(cfg, g, P_tr, cfg.Ip_MA * 1e6, ne, M), edge.par); edge.PsepR[k] = e.P_sep_R; edge.qPeak[k] = e.q_peak; edge.Tt[k] = e.T_t; }
     }
   }
-  return { n, T, nx: NX, ny: NY, Paux, Pfus, Q, betaN, PLH_ok, fHe: fHeA, nG };
+  return { n, T, nx: NX, ny: NY, Paux, Pfus, Q, betaN, PLH_ok, fHe: fHeA, nG, ...(edge ? { PsepR: edge.PsepR, qPeak: edge.qPeak, Tt: edge.Tt } : {}) };
 }

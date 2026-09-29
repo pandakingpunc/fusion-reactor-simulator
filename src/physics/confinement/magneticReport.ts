@@ -8,6 +8,7 @@ import { Geometry } from '../geometry';
 import { MAGNET_TECH, MagnetCheck, economics, neutronWallLoad, tritiumBreedingRatio } from '../engineering';
 import { U } from '../units';
 import { flatTopMean } from '../analysis/flatTop';
+import { edgeReportEntriesOf } from '../edge';
 import { HistoryFrame, MagneticConfig, Method, ShotReport, SimEvent, TerminationInfo } from '../types';
 
 /** Lawson ateşleme referansı: D-T için nTτ_E ≈ 3e21 keV s m^-3 (Wesson; T≈15 keV, profil düz) */
@@ -118,6 +119,7 @@ export function buildMagneticReport(ctx: MagneticReportContext, hist: HistoryFra
       'B_coil (T)': +mag.B_coil.toFixed(2), 'Technology B_max (T)': mag.B_max, 'TF stress (MPa)': +mag.stress_MPa.toFixed(0), 'Stress limit (MPa)': mag.stress_limit,
       'Magnetic energy (GJ)': +mag.storedEnergy_GJ.toFixed(2),
       'Divertor q_max (MW/m²)': +max(d('q_div')).toFixed(1), 'Neutron wall load (MW/m²)': +nwl.load_MWm2.toFixed(2), 'dpa/year': +nwl.dpa_per_year.toFixed(1),
+      ...edgeReportEntriesOf(hist),
       'TBR': +tbr.toFixed(3), 'Tritium burn fraction': +(last.d.burnFrac ?? 0).toFixed(3),
       'Avg. P_fusion (MW)': +Pfus_avg.toFixed(1), 'P_thermal (MW)': +eco.P_th_MW.toFixed(0), 'Gross P_electric (MW)': +eco.P_gross_MW.toFixed(0),
       'P_recirculating (MW)': +eco.P_recirc_MW.toFixed(0), 'Net P_electric (MW)': +eco.P_net_MW.toFixed(0),

@@ -15,6 +15,8 @@ import { q95 } from './qprofile';
 import { volumeIntegral } from './sources/deposition';
 import type { ProfileState } from './state';
 import { alphaCritical, alphaMHD, rhoOfQ, stabilityProfiles } from './mhd';
+import { EDGE_DIAGS } from '../edge';
+import { edgeChannels1D } from './boundary/edge';
 
 export const PROFILE_DIAGS: DiagSpec[] = [
   { key: 'Ti', label: 'T_i (volume avg.)', unit: 'keV', group: 'Temperature' },
@@ -78,6 +80,7 @@ export const PROFILE_DIAGS: DiagSpec[] = [
   { key: 'fuelFracA', label: 'D fraction n_D/(n_D+n_T)', unit: '', group: 'Fuel' },
   { key: 'q_div', label: 'Divertor heat flux', unit: 'MW/m²', group: 'Engineering' },
   { key: 'n_wall', label: 'Neutron wall load', unit: 'MW/m²', group: 'Engineering' },
+  ...EDGE_DIAGS,
 ];
 
 /** Volume-integrated powers of the current work arrays [W] */
@@ -199,6 +202,7 @@ export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: Globa
     burnFrac: s.NTfuel > 0 ? s.NTburn / s.NTfuel : 0, fuelFracA: s.fA,
     q_div: qdiv, n_wall: nw, P_heat: X.P_heat / 1e6, P_charged: X.P_chg / 1e6, P_neutron: X.P_neut / 1e6,
     Efus_MJ: s.Efus / 1e6, Ein_MJ: s.Ein / 1e6, Nn: s.Nn, P_loss: X.P_loss / 1e6, dWdt: X.dWdt / 1e6, dWdt_s: ctx.dWdtS / 1e6, P_bound: X.P_bound / 1e6,
+    ...edgeChannels1D(ctx, q95v, Ip),
   };
   // profiles
   const mer = w.mercF, bal = w.ballF;

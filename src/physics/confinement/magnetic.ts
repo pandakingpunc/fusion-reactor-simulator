@@ -30,6 +30,7 @@ import { greenwaldDensity, betaToroidal, betaNormalized, betaPoloidal, lineAvera
 import { disruptionReport, DisruptionCause, DISRUPTION_LABELS, DISRUPTION_FIXES } from '../disruption';
 import { checkMagnet, MAGNET_TECH, divertorHeatFlux, divertorHeatFluxStellarator, neutronWallLoad } from '../engineering';
 import { buildMagneticReport, LAWSON_DT } from './magneticReport';
+import { EDGE_DIAGS, edgeDiagnostics } from '../edge';
 import { RNG } from '../rng';
 import { U } from '../units';
 import { IMPURITIES } from '../constants';
@@ -101,6 +102,7 @@ export const MAGNETIC_DIAGS: DiagSpec[] = [
   { key: 'q_div', label: 'Divertor heat flux', unit: 'MW/m²', group: 'Engineering' },
   { key: 'n_wall', label: 'Neutron wall load', unit: 'MW/m²', group: 'Engineering' },
   { key: 'fuelFracA', label: 'D fraction n_D/(n_D+n_T)', unit: '', group: 'Fuel' },
+  ...EDGE_DIAGS,
 ];
 
 type Phase = 'normal' | 'thermal_quench' | 'current_quench' | 'ended';
@@ -112,7 +114,7 @@ export class MagneticModel implements SimModel {
   readonly tEnd: number;
   readonly outputDt: number;
   readonly nState = NSTATE;
-  readonly diagSpecs = MAGNETIC_DIAGS;
+  readonly diagSpecs: DiagSpec[];
   readonly integratorOpts;
   readonly dt0 = 1e-3;
   terminated: TerminationInfo | null = null;
@@ -170,6 +172,7 @@ export class MagneticModel implements SimModel {
     this.method = cfg.method;
     this.g = cfg.geometry;
     this.isStell = cfg.method === 'stellarator';
+    this.diagSpecs = this.isStell ? MAGNETIC_DIAGS.filter((s) => s.group !== 'Edge') : MAGNETIC_DIAGS; // no two-point SOL in a stellarator
     // volume, surface and cross-section of the boundary (LCFS) Miller shape; q95 and the scalings keep the nominal shape
     this.gB = boundaryShape(cfg);
     this.V = plasmaVolume(this.gB);
@@ -640,6 +643,8 @@ export class MagneticModel implements SimModel {
       q_div, n_wall: nw, fuelFracA: na / Math.max(na + nb, 1),
       P_heat: D.P_heat / 1e6, P_charged: D.P_charged / 1e6, P_neutron: D.P_neutron / 1e6,
       Efus_MJ: y[IDX.Efus] / 1e6, Ein_MJ: y[IDX.Ein] / 1e6, Nn: y[IDX.Nn],
+      // edge model (two-point): P_sep/R, T_t, q_peak, detachment state, c_z for detachment (tokamaks; a stellarator has no such SOL)
+      ...(this.isStell ? {} : edgeDiagnostics(c, this.g, D.P_SOL, y[IDX.Ip], D.ne, this.M)),
     };
   }
 

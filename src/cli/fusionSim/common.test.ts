@@ -32,6 +32,17 @@ describe('nodeIo', () => {
   });
 });
 
+describe('a reader that closes the pipe early', () => {
+  it('an EPIPE on stdout is ignored, any other stream error is not', () => {
+    nodeIo();
+    const before = process.stdout.listenerCount('error');
+    expect(() => process.stdout.emit('error', Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }))).not.toThrow();
+    expect(() => process.stdout.emit('error', new Error('disk full'))).toThrow('disk full');
+    nodeIo();
+    expect(process.stdout.listenerCount('error')).toBe(before); // the guard is installed once
+  });
+});
+
 describe('findPackageRoot', () => {
   const pkg = (dir: string, name: string) => { mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, 'package.json'), JSON.stringify({ name })); };
   it('finds this repository from a file inside it', () => {

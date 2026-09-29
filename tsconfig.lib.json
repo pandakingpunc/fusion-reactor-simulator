@@ -10,7 +10,7 @@
     "noEmit": false,
     "declaration": true,
     "emitDeclarationOnly": true,
-    "outDir": "dist/lib/types",
+    "outDir": "build/lib/types",
     "rootDir": "src",
     "isolatedModules": true,
     "jsx": "preserve"

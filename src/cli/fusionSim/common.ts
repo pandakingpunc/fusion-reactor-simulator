@@ -26,8 +26,13 @@ export interface CliIo {
   writeFile(path: string, data: string | Uint8Array): void;
 }
 
+/** A reader that closes the pipe early (`fusion-sim run ... | head`) is not an error of ours. */
+const ignoreEpipe = (e: NodeJS.ErrnoException): void => { if (e.code !== 'EPIPE') throw e; };
+let epipeGuarded = false;
+
 /** The real thing: process streams and the file system. */
 export function nodeIo(): CliIo {
+  if (!epipeGuarded) { epipeGuarded = true; process.stdout.on('error', ignoreEpipe); }
   return {
     stdout: { write: (d) => { process.stdout.write(d); }, get isTTY() { return Boolean(process.stdout.isTTY); } },
     stderr: { write: (t) => { process.stderr.write(t); }, get isTTY() { return Boolean(process.stderr.isTTY); } },

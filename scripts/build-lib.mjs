@@ -5,7 +5,7 @@
 //
 //   node scripts/build-lib.mjs [--out DIR] [--no-types] [--quiet]
 //
-// Output (default dist/lib):
+// Output (default build/lib):
 //   index.js  index.cjs  index.d.ts    the physics API (import { Simulation, presets } from '...')
 //   io.js     io.cjs     io.d.ts       the browser-safe writers and readers (CSV, NDJSON, NetCDF-3, IMAS-like JSON)
 //   presetRunner.worker.js / .cjs      the worker thread that runs one configuration (no tsx loader needed)
@@ -34,7 +34,7 @@ for (const [i, a] of args.entries()) {
   }
 }
 if (flag('--out') && !value('--out')) { process.stderr.write('build-lib: --out needs a directory\n'); process.exit(2); }
-const OUT = resolve(value('--out') ?? join(ROOT, 'dist', 'lib'));
+const OUT = resolve(value('--out') ?? join(ROOT, 'build', 'lib'));
 const say = (s) => { if (!flag('--quiet')) console.log(s); };
 
 /** Empties the output directory, but only one this script made (or an empty or new one). */

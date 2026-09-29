@@ -9,7 +9,7 @@ fusion-sim schema        the JSON Schema of a configuration, or a check of a con
 ```
 
 From source: `npx tsx src/cli/fusion-sim.ts <command> ...`. Built: `node scripts/build-lib.mjs`, then
-`node dist/lib/fusion-sim.js <command> ...` (or `fusion-sim` once `bin` is in package.json). The compiled binary
+`node build/lib/fusion-sim.js <command> ...` (or `fusion-sim` once `bin` is in package.json). The compiled binary
 and its worker need no tsx loader. `--help` after a command lists its flags.
 
 ## Configuration

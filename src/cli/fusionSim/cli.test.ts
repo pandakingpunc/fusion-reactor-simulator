@@ -610,7 +610,7 @@ describe('remaining paths', () => {
   });
   it('the worker module is the .ts file beside the CLI from source, the compiled .js next to a bundle', () => {
     expect(workerUrl('file:///repo/src/cli/fusionSim/scanCmd.ts').href).toBe('file:///repo/src/cli/presetRunner.worker.ts');
-    expect(workerUrl('file:///pkg/dist/lib/fusion-sim.js').href).toBe('file:///pkg/dist/lib/presetRunner.worker.js');
+    expect(workerUrl('file:///pkg/build/lib/fusion-sim.js').href).toBe('file:///pkg/build/lib/presetRunner.worker.js');
   });
   it('scan tolerates an executor that returns fewer or thinner results than tasks', async () => {
     const thin: Executor = async (tasks) => [{ id: tasks[0].id, ok: true, report: (await inProcessExecutor([tasks[0]], { threads: 1 }))[0].report }, { id: tasks[1].id, ok: false }];

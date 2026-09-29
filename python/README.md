@@ -28,8 +28,8 @@ command was not found: `.returncode`, `.stderr`).
 ## Finding the command
 
 In this order: the environment variable `FUSION_SIM_CLI` (the command as one string, e.g.
-`node /path/to/dist/lib/fusion-sim.js`, or in a checkout `node --import tsx src/cli/fusion-sim.ts`; put a path with spaces in double quotes), `fusion-sim` on the
-`PATH`, `node` with `dist/lib/fusion-sim.js` of this repository (`node scripts/build-lib.mjs` builds it). Node.js 20 or
+`node /path/to/build/lib/fusion-sim.js`, or in a checkout `node --import tsx src/cli/fusion-sim.ts`; put a path with spaces in double quotes), `fusion-sim` on the
+`PATH`, `node` with `build/lib/fusion-sim.js` of this repository (`node scripts/build-lib.mjs` builds it). Node.js 20 or
 newer is required.
 
 ## Tests

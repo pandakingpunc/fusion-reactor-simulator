@@ -18,7 +18,7 @@ import { makePoolExecutor, workerUrl } from './fusionSim/scanCmd';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const WORK = mkdtempSync(join(tmpdir(), 'fusion-lib-'));
-const LIB = join(WORK, 'pkg', 'dist', 'lib');
+const LIB = join(WORK, 'pkg', 'build', 'lib');
 const PKG = join(WORK, 'pkg');
 
 const golden = (id: string): { scalars: Record<string, number> } => JSON.parse(readFileSync(join(ROOT, 'test', 'golden', `${id}.json`), 'utf8'));
@@ -39,7 +39,7 @@ describe('library build', { timeout: 300_000 }, () => {
   let build: ReturnType<typeof node>;
   beforeAll(() => {
     mkdirSync(PKG, { recursive: true });
-    // a package.json next to dist/, as in an installed package: the CLI finds its version there
+    // a package.json above build/, as in an installed package: the CLI finds its version there
     writeFileSync(join(PKG, 'package.json'), JSON.stringify({ name: 'fusion-reactor-simulator', version: '9.9.9', type: 'module' }));
     build = node([join(ROOT, 'scripts', 'build-lib.mjs'), '--out', LIB, '--quiet'], { cwd: ROOT, timeout: 240_000 });
   }, 300_000);
@@ -76,8 +76,8 @@ describe('library build', { timeout: 300_000 }, () => {
     const dir = join(WORK, 'consumer-ts');
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'consumer.mts'), [
-      "import { Simulation, presets, validateConfig, runShot, type ReactorConfig, type ShotReport, type ValidationIssue } from '../pkg/dist/lib/index.js';",
-      "import { writeCsv, sourceFromSimulation, type RunSource } from '../pkg/dist/lib/io.js';",
+      "import { Simulation, presets, validateConfig, runShot, type ReactorConfig, type ShotReport, type ValidationIssue } from '../pkg/build/lib/index.js';",
+      "import { writeCsv, sourceFromSimulation, type RunSource } from '../pkg/build/lib/io.js';",
       'const cfg: ReactorConfig = presets[0].cfg;',
       'const sim = new Simulation(cfg);',
       'const rep: ShotReport = sim.runAll();',
@@ -93,7 +93,7 @@ describe('library build', { timeout: 300_000 }, () => {
 
   it('ESM consumer under plain Node: { Simulation, presets } reproduces the golden JET and the golden 1.5D SPARC values', () => {
     const p = script('consume.mjs', `
-      import { Simulation, presets, runFingerprint, validateConfig } from './pkg/dist/lib/index.js';
+      import { Simulation, presets, runFingerprint, validateConfig } from './pkg/build/lib/index.js';
       const jet = presets.find((p) => p.id === 'JET').cfg;
       const sim = new Simulation(jet);
       const rep = sim.runAll();
@@ -118,15 +118,15 @@ describe('library build', { timeout: 300_000 }, () => {
 
   it('CJS consumer under plain Node: require() of index.cjs and io.cjs', () => {
     const p = script('consume.cjs', `
-      const { Simulation, presets, validateConfig } = require('./pkg/dist/lib/index.cjs');
-      const io = require('./pkg/dist/lib/io.cjs');
+      const { Simulation, presets, validateConfig } = require('./pkg/build/lib/index.cjs');
+      const io = require('./pkg/build/lib/io.cjs');
       const nif = presets.find((p) => p.id === 'NIF').cfg;
       const sim = new Simulation(nif);
       const rep = sim.runAll();
       const jet = new Simulation(presets.find((p) => p.id === 'JET').cfg);
       const rj = jet.runAll();
       const csv = io.writeCsv(io.sourceFromSimulation(jet), { keys: ['Q'], every: 100 });
-      console.log(JSON.stringify({ nifG: rep.Q_sci_max, jetQ: rj.Q_sci_max, jetE: rj.E_fusion_MJ, rows: io.parseCsv(csv).columns.t.length, keys: Object.keys(require('./pkg/dist/lib/index.cjs')).length }));
+      console.log(JSON.stringify({ nifG: rep.Q_sci_max, jetQ: rj.Q_sci_max, jetE: rj.E_fusion_MJ, rows: io.parseCsv(csv).columns.t.length, keys: Object.keys(require('./pkg/build/lib/index.cjs')).length }));
     `);
     const r = node([p]);
     expect(r.err).toBe('');
@@ -142,7 +142,7 @@ describe('library build', { timeout: 300_000 }, () => {
   it('the compiled workers (ESM and CJS) run a configuration without any loader', () => {
     const p = script('worker.mjs', `
       import { Worker } from 'node:worker_threads';
-      import { presets } from './pkg/dist/lib/index.js';
+      import { presets } from './pkg/build/lib/index.js';
       const cfg = { ...presets.find((p) => p.id === 'JET').cfg, t_end: 1 };
       const run = (file) => new Promise((resolve, reject) => {
         const w = new Worker(new URL(file, import.meta.url));
@@ -150,8 +150,8 @@ describe('library build', { timeout: 300_000 }, () => {
         w.once('error', reject);
         w.postMessage({ id: 'x', cfg, keepSeries: ['Q'] });
       });
-      const a = await run('./pkg/dist/lib/presetRunner.worker.js');
-      const b = await run('./pkg/dist/lib/presetRunner.worker.cjs');
+      const a = await run('./pkg/build/lib/presetRunner.worker.js');
+      const b = await run('./pkg/build/lib/presetRunner.worker.cjs');
       console.log(JSON.stringify([a, b].map((m) => ({ ok: m.ok, id: m.id, Q: m.report.Q_sci_max, n: m.series.Q.length, flat: m.avg.Q }))));
     `);
     const r = node([p]);
@@ -163,7 +163,7 @@ describe('library build', { timeout: 300_000 }, () => {
     expect(a.Q).toBeGreaterThan(0.3);
   });
 
-  it('fusion-sim (compiled): version from the package.json next to dist, presets, run, scan on the pool', () => {
+  it('fusion-sim (compiled): version from the package.json above build/, presets, run, scan on the pool', () => {
     const bin = join(LIB, 'fusion-sim.js');
     expect(node([bin, '--version']).out).toBe('9.9.9\n');
     const presets = JSON.parse(node([bin, 'presets', '--json']).out);

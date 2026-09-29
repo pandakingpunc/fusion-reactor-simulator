@@ -6,9 +6,9 @@ simulator itself is the Node.js program of this repository; nothing is reimpleme
 Finding the command, in this order:
 
 1. the ``FUSION_SIM_CLI`` environment variable: the command as one string, split like a shell would
-   (``node /path/to/dist/lib/fusion-sim.js``, or ``node --import tsx src/cli/fusion-sim.ts`` in a checkout);
+   (``node /path/to/build/lib/fusion-sim.js``, or ``node --import tsx src/cli/fusion-sim.ts`` in a checkout);
 2. ``fusion-sim`` on the ``PATH`` (an installed package);
-3. ``node`` and ``dist/lib/fusion-sim.js`` of the repository this file lives in (``node scripts/build-lib.mjs``
+3. ``node`` and ``build/lib/fusion-sim.js`` of the repository this file lives in (``node scripts/build-lib.mjs``
    builds it).
 """
 from __future__ import annotations
@@ -61,7 +61,7 @@ def cli_command() -> List[str]:
     if exe:
         return [exe]
     node = shutil.which("node")
-    built = Path(__file__).resolve().parents[2] / "dist" / "lib" / "fusion-sim.js"
+    built = Path(__file__).resolve().parents[2] / "build" / "lib" / "fusion-sim.js"
     if node and built.is_file():
         return [node, str(built)]
     raise FusionSimError(

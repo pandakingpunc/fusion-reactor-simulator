@@ -19,7 +19,7 @@ sim.fingerprint('4.0.0');                                       // names the run
 ```
 
 `node scripts/build-lib.mjs` (Vite + tsc, no new dependency) writes ESM and CJS bundles, the type declarations,
-the compiled preset-runner worker and the `fusion-sim` binary to `dist/lib`; `lib.test.ts` (src/cli) builds it
+the compiled preset-runner worker and the `fusion-sim` binary to `build/lib`; `lib.test.ts` (src/cli) builds it
 into a temporary directory and runs it under plain Node. The exports/bin/files patch for `package.json` is in
 the WS8 lane report (the file stays `"private": true`).
 

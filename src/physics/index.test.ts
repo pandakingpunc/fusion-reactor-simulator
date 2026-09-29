@@ -16,15 +16,17 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 
 /** The runtime exports of the library. Add a name here when you add it to index.ts. */
 const EXPECTED = [
-  'CONFIG_SCHEMA_ID', 'CONFINEMENT_SCALINGS', 'CONSTANTS', 'ConfigPathError', 'ConfigValidationError', 'DEFAULT_PROFILE_SETTINGS', 'DEMO', 'DEMO_15D', 'DIIID',
-  'DIRECT_DRIVE', 'FINGERPRINT_SCHEMA', 'FLAT_TOP_START', 'FUEL_CHANNELS', 'GF_PISTON', 'IMPURITIES', 'ITER', 'ITER_15D', 'JET', 'JET_15D', 'JT60SA',
-  'MAGNETIC_DIAGS', 'MASTU', 'METHODS', 'METHOD_FAMILY', 'METHOD_LABELS', 'MIRROR', 'MTF_LINER', 'MUON', 'ModelContractError', 'NIF', 'NonFiniteStateError',
-  'PRESETS', 'PROFILE_DIAGS', 'ProfileModel', 'REFERENCE_CHECKS', 'SPARC', 'SPARC_15D', 'SYNC_INTERVALS', 'Simulation', 'SimulationError', 'TAE',
-  'UnknownMethodError', 'W7X', 'ZAP', 'ZMACHINE', 'applyAssignments', 'aspectRatio', 'assertValidConfig', 'betaNormalized', 'burnAverages', 'canonicalString',
-  'configJsonSchema', 'createModel', 'crossSection', 'defaultMagnetic', 'evaluateCheck', 'fieldInfo', 'flatTopAverages', 'flatTopMean', 'formatIssue', 'getPath',
-  'getPreset', 'greenwaldDensity', 'leafPaths', 'mergeConfig', 'pLH_Martin', 'parseAssignment', 'parseSettingValue', 'plasmaSurface', 'plasmaVolume',
-  'presetIds', 'presets', 'q95', 'readMetric', 'requirePreset', 'runDigest', 'runFingerprint', 'runShot', 'setPath', 'sha256Hex', 'sigmav', 'summarizeRun',
-  'supportsProfiles', 'tauIPB98y2', 'tauISS04', 'tauITER89P', 'tauITPA20', 'tauITPA20IL', 'tauSTValovic', 'validateConfig',
+   'CONFIG_SCHEMA_ID', 'CONFINEMENT_SCALINGS', 'CONSTANTS', 'ConfigPathError', 'ConfigValidationError', 'DEFAULT_PROFILE_SETTINGS', 'DEMO', 'DEMO_15D',
+   'DIIID', 'DIRECT_DRIVE', 'FINGERPRINT_SCHEMA', 'FLAT_TOP_START', 'FUEL_CHANNELS', 'GF_PISTON', 'IMPURITIES', 'ITER', 'ITER_15D', 'JET', 'JET_15D',
+   'JT60SA', 'MAGNETIC_DIAGS', 'MASTU', 'MAX_RAMP_GRID', 'METHODS', 'METHOD_FAMILY', 'METHOD_LABELS', 'MIN_RAMP_STEP', 'MIRROR', 'MTF_LINER', 'MUON',
+   'ModelContractError', 'NIF', 'NonFiniteStateError', 'PRESETS', 'PROFILE_DIAGS', 'ProfileModel', 'REFERENCE_CHECKS', 'SPARC', 'SPARC_15D',
+   'SYNC_INTERVALS', 'Scenario', 'ScenarioError', 'Simulation', 'SimulationError', 'TAE', 'UnknownMethodError', 'W7X', 'ZAP', 'ZMACHINE',
+   'applyAssignments', 'aspectRatio', 'assertValidConfig', 'betaNormalized', 'burnAverages', 'canonicalString', 'configJsonSchema', 'createModel',
+   'crossSection', 'defaultMagnetic', 'dropTemplate', 'evaluateCheck', 'fieldInfo', 'flatTopAverages', 'flatTopMean', 'formatIssue', 'gasPuffTemplate',
+   'getPath', 'getPreset', 'greenwaldDensity', 'interlockTemplate', 'leafPaths', 'mergeConfig', 'mergeScenarios', 'pLH_Martin', 'parseAssignment',
+   'parseScenario', 'parseSettingValue', 'plasmaSurface', 'plasmaVolume', 'presetIds', 'presets', 'q95', 'rampTemplate', 'readMetric', 'requirePreset',
+   'runDigest', 'runFingerprint', 'runShot', 'scenarioFromJSON', 'scenarioToJSON', 'setPath', 'sha256Hex', 'sigmav', 'summarizeRun',
+   'supportsProfiles', 'tauIPB98y2', 'tauISS04', 'tauITER89P', 'tauITPA20', 'tauITPA20IL', 'tauSTValovic', 'validateConfig', 'validateScenario',
 ];
 
 describe('the public barrel', () => {
@@ -67,6 +69,24 @@ describe('the public barrel', () => {
     expect(api.runFingerprint(cfg, cfg.seed, [], '4.0.0')).toBe(sim.fingerprint('4.0.0'));
     expect(api.runShot(cfg).report.Q_sci_max).toBe(rep.Q_sci_max);
     expect(api.sha256Hex('abc')).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+  });
+  it('a program can build, share, validate and run a scenario through the barrel alone', () => {
+    const cfg = { ...api.JET, t_end: 0.5 };
+    const spec = api.mergeScenarios(api.dropTemplate('P_NBI_MW', 0.25, 0), api.interlockTemplate('H_mode', '>=', 1, { P_ICRH_MW: 6 }));
+    const text = api.scenarioToJSON(spec);
+    expect(api.scenarioToJSON(api.scenarioFromJSON(text))).toBe(text); // one canonical text per scenario
+    const sim = new api.Simulation(cfg, { scenario: api.scenarioFromJSON(text) });
+    sim.runAll();
+    expect(sim.history.find((f) => f.t >= 0.26)!.sim!.controls.P_NBI_MW).toBe(0); // the corner is a step boundary
+    // the scenario is part of the run's fingerprint, its free name is not
+    expect(sim.fingerprint('4.0.0')).not.toBe(new api.Simulation(cfg).fingerprint('4.0.0'));
+    expect(sim.fingerprint('4.0.0')).toBe(new api.Simulation(cfg, { scenario: { ...spec, name: 'another label' } }).fingerprint('4.0.0'));
+    // a fine ramp grid is refused with the path and as a typed error (a share link cannot make a run endless)
+    const bad = api.validateScenario({ schema: 1, rampStep: 1e-9, waveforms: { P_NBI_MW: { kind: 'pwl', points: [[0, 1], [1, 2]] } } });
+    expect(bad.ok).toBe(false);
+    expect(() => api.parseScenario({ schema: 1, rampStep: api.MIN_RAMP_STEP / 10 })).toThrow(api.ScenarioError);
+    const unknownControl = { schema: 1, waveforms: { no_such_control: { kind: 'step', points: [[0.1, 1]] } } } as api.ScenarioSpec;
+    expect(() => new api.Simulation(cfg, { scenario: unknownControl })).toThrow(api.ScenarioError);
   });
 });
 

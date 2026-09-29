@@ -59,6 +59,30 @@ export type { FuelType } from './reactivity';
 /** @public */
 export type { ImpuritySpecies } from './constants';
 
+// ── scenarios ───────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The deterministic scenario engine (`new Simulation(cfg, { scenario })`): per-control piecewise-linear or step waveforms and
+ * conditional triggers on the recorded diagnostics, as plain JSON (`ScenarioSpec`, schema 1). `validateScenario` / `parseScenario`
+ * report every problem with its path (`ScenarioError`); `scenarioToJSON` / `scenarioFromJSON` give one canonical text per scenario
+ * (share links, files). A run with a scenario is chunk invariant and rewinds exactly, and the scenario is part of `runFingerprint`.
+ * @public
+ */
+export {
+  validateScenario, parseScenario, scenarioFromJSON, scenarioToJSON, dropTemplate, rampTemplate, gasPuffTemplate, interlockTemplate,
+  mergeScenarios, MIN_RAMP_STEP, MAX_RAMP_GRID,
+} from './scenario';
+/** @public */
+export type {
+  ScenarioSpec, WaveformSpec, WaveformPoint, WaveformKind, TriggerSpec, TriggerOp, TriggerMode, ScenarioContext, ScenarioState,
+} from './scenario';
+/**
+ * The engine itself (state save and restore, the step-boundary and trigger evaluation the kernel calls); the kernel is its only
+ * client, so the class is exposed for plug-in work and tests and may change.
+ * @experimental
+ */
+export { Scenario } from './scenario';
+
 // ── presets ─────────────────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -134,7 +158,9 @@ export { burnAverages } from './validation/metrics';
  * Typed errors of the kernel: catch these with `instanceof` instead of parsing messages.
  * @public
  */
-export { SimulationError, UnknownMethodError, NonFiniteStateError, ModelContractError } from './kernel/errors';
+export { SimulationError, UnknownMethodError, NonFiniteStateError, ModelContractError, ScenarioError } from './kernel/errors';
+/** @public */
+export type { ScenarioIssue } from './kernel/errors';
 
 // ── experimental: models and building blocks ────────────────────────────────────────────────────────
 

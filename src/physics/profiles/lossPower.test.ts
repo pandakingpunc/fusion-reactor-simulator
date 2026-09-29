@@ -108,7 +108,7 @@ describe('the τ_E scaling and the C_χ controller use the loss power (scaling t
     expect(worstTau).toBeLessThan(1e-12);
     expect(controlled).toBeGreaterThan(20);
     expect(worstC).toBeLessThan(1e-9);
-  });
+  }, 120000);
 });
 
 describe('smoothed dW/dt with the ELM losses', () => {

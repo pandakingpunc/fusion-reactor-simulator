@@ -586,7 +586,6 @@
     "engineering.Target q_peak, two-point (MW/m²)": 9.6,
     "engineering.Technology B_max (T)": 8.5,
     "engineering.Tritium burn fraction": 0,
-    "engineering.c_z for detachment, Lengyel upper bound (%)": 100,
     "engineering.dpa/year": 0,
     "extras.ELM count": 1560,
     "extras.He ash fraction (final)": 0,

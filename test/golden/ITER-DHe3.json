@@ -52,7 +52,7 @@
     "betaT": 0.22674986296352642,
     "burnFrac": 0,
     "cZ": 0.020483634886710927,
-    "cz_det": 0.02439070464312517,
+    "cz_det": 0.0009651022931058586,
     "dWdt": -0.08635304718137456,
     "detach": 1.9725490196078432,
     "fHe": 0.000013446236503541699,
@@ -399,8 +399,8 @@
     },
     "cz_det": {
       "max": 1,
-      "mean": 0.08543219675728012,
-      "min": 0.008943442162044903,
+      "mean": 0.06843227949585225,
+      "min": 0,
       "missing": 0,
       "nonFinite": 0
     },
@@ -587,7 +587,7 @@
     "engineering.Target q_peak, two-point (MW/m²)": 0.1,
     "engineering.Technology B_max (T)": 13,
     "engineering.Tritium burn fraction": 0,
-    "engineering.c_z for detachment, Lengyel upper bound (%)": 2.44,
+    "engineering.c_z for detachment, Lengyel upper bound (%)": 0.1,
     "engineering.dpa/year": 0,
     "extras.ELM count": 171,
     "extras.He ash fraction (final)": 0,

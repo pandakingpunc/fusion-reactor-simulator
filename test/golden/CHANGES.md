@@ -303,3 +303,40 @@ Node v24.19.0 · `npm run golden:update` · all cases
     - moved, largest change first: equilibrium.last.Zaxis, profiles.last.prof.Pohm[6], profiles.last.prof.johm[6], history.V_loop.max, profiles.last.prof.shear[1], profiles.last.prof.chii[0], history.Tsep.min, profiles.last.prof.shear[0], profiles.last.prof.chii[1], profiles.last.prof.Pohm[0], profiles.last.prof.jbs[0], history.P_oh.max, … (+2252 more)
     - added: flatTop.P_sep_R, flatTop.T_t, flatTop.T_u, flatTop.cz_det, flatTop.detach, flatTop.f_pwr, flatTop.lambda_q, flatTop.p_div, flatTop.q_det, flatTop.q_peak, history.P_sep_R.max, history.P_sep_R.mean, … (+52 more)
 - Unchanged (12): W7X, NIF, DIRECT, Z, GF, FRXL, ZAP, TAE, MIRROR, MUON, TAE-pB11, MIRROR-DHe3
+
+## 2026-09-29 06:48 UTC — ws7a review fix: the c_z-for-detachment quantity of the edge model (channel cz_det and the report row 'c_z for detachment, Lengyel upper bound (%)'). No physics number moved: every key other than cz_det and that row is unchanged at 1e-9. Cause 1: a run of the prescribed divertor radiation that is already at or below the detachment temperature (T_t <= detachTt_eV = 5 eV) now has cz_det = 0 (it needs no seed) instead of the requirement of the unradiated tube. MASTU: flatTop.cz_det 0.804 -> 0, history.cz_det mean 0.839 -> 0.130, min 0.424 -> 0, report row 80.39 -> 0. MASTU15: flatTop.cz_det 0.507 -> 0, history.cz_det max 1 -> 0, mean 0.477 -> 0, report row 50.73 -> 0. ITER-DHe3: flatTop.cz_det 0.0244 -> 0.00097, history mean 0.0854 -> 0.0684, min 0.0089 -> 0, report row 2.44 -> 0.1. ITER-pB11: flatTop.cz_det 0.0518 -> 0.0479, history mean 0.1971 -> 0.1959. DIIID15: history mean 0.9976 -> 0.9934 (a few frames of the history are detached). Same cause in the 0D and the 1.5D cases (MASTU, MASTU15). Cause 2: the report row prints 'n/a (> 100 %)' where the model finds no attainable seeding (every flat-top frame at the cap of 1) instead of a clipped 100, and '>= X (> 100 % in N % of the flat top)' where only part of the flat top is capped. A text row is not recorded by the harness, so the numeric key disappears: JET, SPARC, DIIID, JT60SA, JET15, SPARC15, SPARC15-short, SPARC15-DHe3, SPARC15-pB11, DIIID15 (100 -> text 'n/a (> 100 %)'), ITER-pB11 (5.18 -> text, 4 of 137 flat-top frames capped; the flat top swings between detached and attached frames). The channel cz_det itself stays capped at 1.
+
+Node v24.19.0 · `npm run golden:update` · all cases
+
+- Changed (14):
+  - JET: 0 keys moved; 1 key removed (scalars 1)
+    - removed: scalars.engineering.c_z for detachment, Lengyel upper bound (%)
+  - SPARC: 0 keys moved; 1 key removed (scalars 1)
+    - removed: scalars.engineering.c_z for detachment, Lengyel upper bound (%)
+  - DIIID: 0 keys moved; 1 key removed (scalars 1)
+    - removed: scalars.engineering.c_z for detachment, Lengyel upper bound (%)
+  - JT60SA: 0 keys moved; 1 key removed (scalars 1)
+    - removed: scalars.engineering.c_z for detachment, Lengyel upper bound (%)
+  - MASTU: 4 keys moved; max rel. diff 1.00e+0
+    - moved, largest change first: flatTop.cz_det, history.cz_det.min, scalars.engineering.c_z for detachment, Lengyel upper bound (%), history.cz_det.mean
+  - JET15: 0 keys moved; 1 key removed (scalars 1)
+    - removed: scalars.engineering.c_z for detachment, Lengyel upper bound (%)
+  - SPARC15: 0 keys moved; 1 key removed (scalars 1)
+    - removed: scalars.engineering.c_z for detachment, Lengyel upper bound (%)
+  - SPARC15-short: 0 keys moved; 1 key removed (scalars 1)
+    - removed: scalars.engineering.c_z for detachment, Lengyel upper bound (%)
+  - ITER-DHe3: 4 keys moved; max rel. diff 1.00e+0
+    - moved, largest change first: history.cz_det.min, flatTop.cz_det, scalars.engineering.c_z for detachment, Lengyel upper bound (%), history.cz_det.mean
+  - ITER-pB11: 2 keys moved; max rel. diff 7.53e-2; 1 key removed (scalars 1)
+    - moved, largest change first: flatTop.cz_det, history.cz_det.mean
+    - removed: scalars.engineering.c_z for detachment, Lengyel upper bound (%)
+  - SPARC15-DHe3: 0 keys moved; 1 key removed (scalars 1)
+    - removed: scalars.engineering.c_z for detachment, Lengyel upper bound (%)
+  - SPARC15-pB11: 0 keys moved; 1 key removed (scalars 1)
+    - removed: scalars.engineering.c_z for detachment, Lengyel upper bound (%)
+  - DIIID15: 1 key moved; max rel. diff 4.17e-3; 1 key removed (scalars 1)
+    - moved, largest change first: history.cz_det.mean
+    - removed: scalars.engineering.c_z for detachment, Lengyel upper bound (%)
+  - MASTU15: 4 keys moved; max rel. diff 1.00e+0
+    - moved, largest change first: flatTop.cz_det, history.cz_det.max, history.cz_det.mean, scalars.engineering.c_z for detachment, Lengyel upper bound (%)
+- Unchanged (16): ITER, W7X, DEMO, ITER15, DEMO15, NIF, DIRECT, Z, GF, FRXL, ZAP, TAE, MIRROR, MUON, TAE-pB11, MIRROR-DHe3

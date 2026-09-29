@@ -480,7 +480,7 @@
     },
     "cz_det": {
       "max": 1,
-      "mean": 0.9975959593040372,
+      "mean": 0.9934354485776805,
       "min": 0,
       "missing": 0,
       "nonFinite": 0
@@ -804,7 +804,6 @@
     "engineering.Target q_peak, two-point (MW/m²)": 3.1,
     "engineering.Technology B_max (T)": 9,
     "engineering.Tritium burn fraction": 0,
-    "engineering.c_z for detachment, Lengyel upper bound (%)": 100,
     "engineering.dpa/year": 0,
     "engineering.β_p (avg.)": 0.8,
     "engineering.ℓ_i(3) (avg.)": 0.805,

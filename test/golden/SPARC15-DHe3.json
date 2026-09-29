@@ -803,7 +803,6 @@
     "engineering.Target q_peak, two-point (MW/m²)": 31.7,
     "engineering.Technology B_max (T)": 23,
     "engineering.Tritium burn fraction": 0,
-    "engineering.c_z for detachment, Lengyel upper bound (%)": 100,
     "engineering.dpa/year": 0,
     "engineering.β_p (avg.)": 0.194,
     "engineering.ℓ_i(3) (avg.)": 0.794,

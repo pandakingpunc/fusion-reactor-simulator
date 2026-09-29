@@ -17,6 +17,8 @@ import { DEFAULT_PROFILE_SETTINGS } from './defaults';
 import { checkProfileSettings, type SettingNote } from './settings';
 import { CurrentProgramme, currentWaveform, IP_PROGRAMME_FLOOR } from './control/plasmaCurrent';
 import { gridSpec, type GridSpec, type TransportGeometry } from './geometry1d';
+import { beamComponents } from './fastions/components';
+import { FastIonProfile } from './fastions/pool';
 import { CurrentSolver, DensitySolver, HeatSolver } from './fvsolver';
 import { volumeIntegral } from './sources/deposition';
 import type { BootstrapCoeffs } from './neoclassical';
@@ -161,6 +163,11 @@ export class ProfileContext {
    */
   WfAlpha = 0;
   WfBeam = 0;
+  /**
+   * The fast-ion energy fields on the radial grid (ProfileSettings.fastIonModel = 'profile'; fastions/), or null for the scalar pools above.
+   * With the fields, WfAlpha and WfBeam are their volume integrals.
+   */
+  readonly fast: FastIonProfile | null;
   /** ignition state (P_α ≥ P_rad + W/τ_E, with hysteresis): a diagnostic and the report's ignition time */
   ignited = false;
   /** heating.autoOff: the time at which the external heating starts to ramp down (Infinity = it stays on) */
@@ -203,6 +210,7 @@ export class ProfileContext {
     this.grid = gridSpec(this.ps);
     this.layout = new StateLayout(this.N);
     this.w = allocateWorkArrays(this.N);
+    this.fast = this.ps.fastIonModel === 'profile' ? new FastIonProfile(this.N, beamComponents(cfg.heating.E_NBI_keV)) : null;
     const g0 = cfg.geometry;
     // the LCFS shape of the boundary is the one the 0D volume, surface and scalings use (geometry.boundaryShape): an edited geometry.kappa or
     // geometry.delta of a preset that carries profiles.lcfsRef95 (ITER15, DEMO15) moves it in the ratio to the 95 % shape (bitwise unchanged at the presets)

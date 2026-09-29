@@ -49,6 +49,7 @@ const SCALINGS = keysOf<MagneticConfig['scaling']>({ IPB98y2: 0, ITPA20: 0, 'ITP
 const TRANSPORT_MODELS = keysOf<ProfileSettings['transportModel']>({ scaling: 0, cgm: 0 });
 const EDGE_MODELS = keysOf<NonNullable<ProfileSettings['edgeModel']>>({ legacy: 0, twoPoint: 0 });
 const NONLINEAR_SOLVERS = keysOf<NonNullable<ProfileSettings['nonlinearSolver']>>({ auto: 0, picard: 0, newton: 0, pc: 0 });
+const FAST_ION_MODELS = keysOf<NonNullable<ProfileSettings['fastIonModel']>>({ scalar: 0, profile: 0 });
 const EDGE_LOSS_FITS = keysOf<NonNullable<EdgeOptions['lossFit']>>({ stangeby1: 0, stangeby2: 0, body2025: 0 });
 const EDGE_RADIATIONS = keysOf<NonNullable<EdgeOptions['radiation']>>({ prescribed: 0, lengyel: 0 });
 const MAGNETIC_METHODS = keysOf<MagneticConfig['method']>({ tokamak: 0, spherical_tokamak: 0, stellarator: 0 });
@@ -140,6 +141,8 @@ const profileSettings = partial<ProfileSettings>({
   nbiRtan: num({ exMin: 0, max: 2, def: PS.nbiRtan, doc: 'NBI tangency radius over the major radius.' }),
   nbcdEff: num({ min: 0, max: 10, def: PS.nbcdEff, doc: 'Neutral-beam current-drive efficiency factor.' }),
   eccdEff: num({ min: 0, max: 10, def: PS.eccdEff, doc: 'Electron-cyclotron current-drive efficiency factor.' }),
+  fastIonModel: opt(oneOf(FAST_ION_MODELS, "Fast ions (NBI ions, charged fusion products) of the 1.5D model. 'scalar': two scalar energy pools for the fast-ion pressure of beta, instantaneous local heating. 'profile': energy fields on the radial grid with the slowing-down delay of the heating and an orbit-width smoothing of the source; the fast pressure enters beta, the Grad-Shafranov pressure table and the ballooning drive (not the bootstrap current).", 'scalar')),
+  fastOrbitScale: opt(num({ min: 0, max: 10, def: 1, doc: "Multiplier of the rms orbit width of the fast ions in the 'profile' fast-ion model (0: no orbit smoothing)." })),
   Tsep_keV: opt(num({ exMin: 0, max: 10, unit: 'keV', doc: 'Fixed separatrix temperature; the two-point model if absent.' })),
   nsepFrac: num({ exMin: 0, max: 1, def: PS.nsepFrac, doc: 'Separatrix density over the volume-averaged electron density.' }),
   edgeModel: opt(oneOf(EDGE_MODELS, "Separatrix temperature of the 1.5D boundary. 'legacy': conduction-limited two-point T_sep (outboard share 0.6, clamped to 0.03-0.5 keV); 'twoPoint': T_sep of the edge model (Eich lambda_q, divertor spreading, outer-leg power share), guard band 5 eV - 2 keV. The edge diagnostics use the edge model either way.", 'legacy')),

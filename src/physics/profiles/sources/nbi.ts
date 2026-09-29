@@ -27,6 +27,8 @@ import type { ProfileState } from '../state';
 import { NbiChord, volumeIntegral } from './deposition';
 import { cdDensity20, cdTeFactor } from './current';
 import type { SourceModel } from './SourceModel';
+import { beamComponents } from '../fastions/components';
+import { poolBeamTarget } from '../fastions/beamTarget';
 
 /** J per MeV */
 const MEV = 1e3 * KEV;
@@ -46,7 +48,10 @@ export class NbiSource implements SourceModel {
     const fs = FUEL_SPECIES[c.fuel];
     const P_NBI = K.P_NBI;
     const Eb = c.heating.E_NBI_keV;
-    const comps: [number, number][] = Eb < 250 ? [[Eb, 0.75], [Eb / 2, 0.15], [Eb / 3, 0.1]] : [[Eb, 1]];
+    const comps: [number, number][] = beamComponents(Eb).map((b) => [b.E_keV, b.f]);
+    // fastIonModel 'profile': the birth power of each component goes to the fast-ion fields (fastions/), which deliver the heating and give the beam density
+    const fast = ctx.fast;
+    if (fast) for (const b of fast.beamBirth) b.fill(0);
     let shine = 0, sqrtE = 0;
     w.nbiDep.fill(0); w.nfast.fill(0); w.nbiPart.fill(0); w.PnbiE.fill(0); w.PnbiI.fill(0); w.Pbt.fill(0); w.Wbeam.fill(0); w.tauWb.fill(0);
     const btR = K.btR; // per channel, fresh zeros from the pipeline
@@ -63,7 +68,7 @@ export class NbiSource implements SourceModel {
         w.tauWb[i] = tau;
       }
     }
-    for (const [Ek, fk] of comps) {
+    for (const [kc, [Ek, fk]] of comps.entries()) {
       if (P_NBI <= 0) break;
       const r = this.chord.deposit(ne, Ek, fs.a.A, w.nbiTmp);
       let tab = this.btTables.get(Ek);
@@ -81,10 +86,11 @@ export class NbiSource implements SourceModel {
         w.nbiDep[i] += dep;
         w.PnbiE[i] += pd * (1 - fi); w.PnbiI[i] += pd * fi;
         w.nbiPart[i] += pd / (Ek * KEV);
+        if (fast) fast.beamBirth[kc][i] += pd;
         // energy content of the slowing-down distribution, W_b = P τ_W (the 0D pool floors τ_W at 1 ms)
         w.Wbeam[i] += pd * Math.max(fastIonEnergyTime(Math.max(Te[i], 0.01), ne[i], fs.a.A, fs.a.Z, Ek, Ec), 1e-3);
         // beam-target: n_f = S τ_th (steady slowing-down distribution), R_j = n_f n_target,j ⟨σv⟩_bt,j per channel
-        if (tab && w.nbiTmp[i] > 1e-3 * maxPd) {
+        if (!fast && tab && w.nbiTmp[i] > 1e-3 * maxPd) {
           const tsd = slowingDownTime(Math.max(Te[i], 0.01), ne[i], fs.a.A, fs.a.Z, Ek, Ec);
           const nf = (pd * tsd) / (Ek * KEV);
           w.nfast[i] += nf;
@@ -97,6 +103,8 @@ export class NbiSource implements SourceModel {
         }
       }
     }
+    // profile model: the beam density follows the energy fields (also after the beam is off), not the steady state of the source
+    if (fast) poolBeamTarget(ctx, st, K, comps, this.btTables);
     K.shine = shine;
     K.Eb = sqrtE > 0 ? sqrtE * sqrtE : Eb; // effective beam energy for current drive
     K.S_nbi = volumeIntegral(g, w.nbiPart);

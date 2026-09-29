@@ -114,7 +114,7 @@ export class ProfileModel implements SimModel {
     this.outputDt = Math.max(cfg.t_end / 800, 0.002);
     this.nState = ctx.layout.size;
     if (modules.plasmaCurrent) ctx.setCurrentProgramme(modules.plasmaCurrent);
-    this.physics = new PhysicsPipeline(ctx, modules.transport ?? createTransportModel(ctx.ps.transportModel), modules.sources ?? defaultSources());
+    this.physics = new PhysicsPipeline(ctx, modules.transport ?? createTransportModel(ctx.ps.transportModel), modules.sources ?? defaultSources(ctx));
     this.fueling = new FuelingControl(ctx);
     const ev = defaultEvents(modules.events);
     this.events = ev.list; this.elm = ev.elm; this.disruption = ev.disruption;

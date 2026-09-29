@@ -203,12 +203,15 @@ export class EquilibriumCoupling implements Checkpointable {
     const g = ctx.tg, w = ctx.w, N = ctx.N, v = ctx.view(y);
     const niB = ctx.bc.n * (w.ni[N - 1] / Math.max(v.ne[N - 1], 1));
     const pB = (ctx.bc.n * ctx.bc.Te + niB * ctx.bc.Ti) * KEV;
+    // the pressure the equilibrium is solved for: thermal, and with the 'profile' fast-ion model the pressure of the fast ions on top of it
+    // (the fast ions carry pressure that shifts the flux surfaces; isotropic, as everywhere in the model), smoothed over the resolution of the solver
+    const pc = ctx.fast ? ctx.fast.equilibriumPressure(w.p, g, (1.5 * this.gsSolver.grid.dR) / ctx.geomB.a) : w.p;
     const pAt = (r: number) => {
-      if (r <= g.rhoC[0]) return w.p[0];
-      if (r >= g.rhoC[N - 1]) { const t = (r - g.rhoC[N - 1]) / (1 - g.rhoC[N - 1]); return w.p[N - 1] + t * (pB - w.p[N - 1]); }
+      if (r <= g.rhoC[0]) return pc[0];
+      if (r >= g.rhoC[N - 1]) { const t = (r - g.rhoC[N - 1]) / (1 - g.rhoC[N - 1]); return pc[N - 1] + t * (pB - pc[N - 1]); }
       const i = centerInterval(g, r);
       const t = (r - g.rhoC[i]) / g.distF[i + 1];
-      return w.p[i] + t * (w.p[i + 1] - w.p[i]);
+      return pc[i] + t * (pc[i + 1] - pc[i]);
     };
     // flux-surface averaged ⟨j_φ/R⟩ = 2π dI/dV on the transport geometry, at the cell centres
     const jRc = new Float64Array(N);

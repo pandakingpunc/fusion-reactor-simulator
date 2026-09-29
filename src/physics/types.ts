@@ -112,6 +112,16 @@ export interface ProfileSettings {
   /** akım sürme verimleri γ [10²⁰ A W⁻¹ m⁻²] */
   nbcdEff: number;
   eccdEff: number;
+  /**
+   * Fast ions (NBI ions and the charged fusion products). 'scalar' (default): two scalar energy pools that give β its fast-ion pressure, the
+   * heating instantaneous and local (profiles/fastIons.ts). 'profile': energy fields on the radial grid, one per beam energy component and one
+   * for the fusion products, with the slowing-down delay of the heating and an orbit-width smoothing of the source; the fast pressure enters β,
+   * the Grad–Shafranov pressure table and the ballooning drive (not the bootstrap current), and the beam-target rate follows the fields
+   * (profiles/fastions/).
+   */
+  fastIonModel?: 'scalar' | 'profile';
+  /** multiplier of the rms orbit width of the fast ions in the 'profile' model (default 1; 0: no orbit smoothing) */
+  fastOrbitScale?: number;
   /** sabit ayırıcı sıcaklığı [keV]; verilmezse iki-nokta modeli */
   Tsep_keV?: number;
   /** n_sep / ⟨n_e⟩ */

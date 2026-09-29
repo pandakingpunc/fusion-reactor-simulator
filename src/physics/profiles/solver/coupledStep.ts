@@ -47,6 +47,7 @@ import { triggerScratch } from '../events/triggers';
 import { solverErrorMessage } from '../eqguard';
 import { StepFailure, isNumericalFailure } from '../failures';
 import { Checkpointable, CheckpointRecord, recNum } from '../checkpoint';
+import type { FastIonSnapshot } from '../fastions/pool';
 import { CurrentInputs, DensityInputs, HEAT_CONVECTION, HeatInputs } from '../fvsolver';
 import { currentProfiles } from '../qprofile';
 import type { ProfileState } from '../state';
@@ -109,6 +110,8 @@ interface StepSnapshot {
   /** replaced, never mutated, by a step */
   bc: ProfileContext['bc']; lastK: ProfileContext['lastK']; lastDiag: ProfileContext['lastDiag']; lastProf: ProfileContext['lastProf'];
   geo: ProfileContext['geo']; pending: number; warned: ReadonlySet<string>; forcedSteps: number;
+  /** the energy fields of the 'profile' fast-ion model (fastions/), which the source's accepted hook updates */
+  fast: FastIonSnapshot | null;
 }
 
 function snapshotStep(ctx: ProfileContext, forcedSteps: number): StepSnapshot {
@@ -116,14 +119,15 @@ function snapshotStep(ctx: ProfileContext, forcedSteps: number): StepSnapshot {
     PSOL: ctx.PSOL, GammaB: ctx.GammaB, lastVloop: ctx.lastVloop, dWdtS: ctx.dWdtS, crashE: ctx.crashE, nsepGain: ctx.nsepGain,
     alphaRatio: ctx.alphaRatio, WfAlpha: ctx.WfAlpha, WfBeam: ctx.WfBeam, Pbound: ctx.Pbound,
     bc: ctx.bc, lastK: ctx.lastK, lastDiag: ctx.lastDiag, lastProf: ctx.lastProf,
-    geo: ctx.geo, pending: ctx.pending.length, warned: new Set(ctx.warned), forcedSteps,
+    geo: ctx.geo, pending: ctx.pending.length, warned: new Set(ctx.warned), forcedSteps, fast: ctx.fast?.snapshot() ?? null,
   };
 }
 
 /** Puts the context back; returns the number of forced steps of the snapshot */
 function restoreStep(ctx: ProfileContext, s: StepSnapshot): number {
-  const { geo, pending, warned, forcedSteps, ...scalars } = s;
+  const { geo, pending, warned, forcedSteps, fast, ...scalars } = s;
   Object.assign(ctx, scalars);
+  if (fast) ctx.fast?.restoreSnapshot(fast);
   if (ctx.geo !== geo) ctx.adoptGeometry(geo);
   ctx.pending.length = pending;
   ctx.warned = new Set(warned);

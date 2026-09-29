@@ -117,6 +117,19 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 - Mesh generation for the 3D view is pure and tested in Node: closed 2-manifolds, outward normals,
   and boundary volume within 0.3 % of the equilibrium or Miller volume (limit 2 %) for eight presets
   plus ITER, JET, SPARC and MAST-U equilibria.
+- Added uncertainty quantification (`src/analysis`, `uq` CLI): seeded Monte Carlo, Latin hypercube and
+  scrambled Sobol' (Joe-Kuo) samplers, priors for H98 (IPB98(y,2) / ITPA20-IL widths), density and
+  impurity fractions, ensemble runs on the worker pool, and P(Q>=10), P(disruption), P(n/nG>1),
+  quantiles of Q and P_fus, and rank correlations with bootstrap intervals; JSON and CSV output,
+  byte-identical for the same seed at any thread count.
+- Added Sobol' sensitivity indices (Saltelli 2010 first-order, Jansen total) with bootstrap
+  confidence intervals, computed on centred outputs so they do not depend on the output offset,
+  verified on the Ishigami function.
+- Added the `scan` CLI (grid and sampled parameter scans with JSON/CSV output).
+- Added a steady-state evaluator on the POPCON fixed point and design optimisation (`optimize` CLI):
+  Nelder-Mead, augmented Lagrangian (verified on Hock-Schittkowski #71, f* = 17.0140), CMA-ES and
+  NSGA-II Pareto fronts against systems limits; all results carry an educational caveat.
+- npm scripts `uq`, `scan` and `optimize` for the three CLIs.
 
 ### Changed
 - POPCON T axis scaled to where the device operates instead of a fixed 0-40 keV: 2.5 times the

@@ -75,15 +75,16 @@ describe('pinned wizard counterexamples', () => {
 });
 
 describe('pinned wizard findings beyond one output step', () => {
-  // BUG(ws2a): "Max. fueling rate" = 0 (the control's minimum) lets the density decay without end while
-  // the heating stays on: W7-X passes T_e = 1 MeV at t ≈ 0.66 s (n_e ≈ 2e15 m⁻³) and reaches n_e ≈ 1e11 m⁻³,
-  // T_e ≈ 5e5 keV at t ≈ 1 s; nothing terminates
-  // the shot, the integrator is then pinned at dtMin (20 000 steps per 20 ms output step, the UI worker
-  // stalls) and the state overflows to NaN at t ≈ 1.39 s after ~30 s of wall time. A density-collapse
-  // termination (or a floor) is missing. Checked cheaply here through the unphysical temperature.
-  it.fails('BUG(ws2a) density collapse — W7-X without fuelling keeps T_e, T_i below 1 MeV up to 1.05 s', () => {
+  // ws2a found that "Max. fueling rate" = 0 (the control's minimum) lets the density decay without end while
+  // the heating stays on: W7-X passed T_e = 1 MeV at t ≈ 0.66 s (n_e ≈ 2e15 m⁻³) and reached n_e ≈ 1e11 m⁻³,
+  // T_e ≈ 5e5 keV at t ≈ 1 s; nothing terminated the shot, the integrator was then pinned at dtMin (20 000 steps
+  // per 20 ms output step, the UI worker stalls) and the state overflowed to NaN at t ≈ 1.39 s after ~30 s of wall
+  // time. Since v4.0 (ws2c) the shot ends with 'Density collapse — fuelling lost' when n_e falls to 10 % of the
+  // commanded target (regress/densityCollapse.test.ts). Checked cheaply here through the unphysical temperature.
+  it('density collapse — W7-X without fuelling ends the shot and keeps T_e, T_i below 1 MeV up to 1.05 s', () => {
     const sim = new Simulation(buildConfig({ method: 'stellarator', preset: 'W7X', edits: { 'fueling.maxRate_1e20s': 0 } }));
     while (sim.t < 1.05 && !sim.done) sim.advance(0.05);
+    expect(sim.done).toBe(true);
     for (const f of sim.history) {
       if (!(f.d.Te < 1000 && f.d.Ti < 1000)) expect.fail(`t = ${f.t}: T_e = ${f.d.Te} keV, T_i = ${f.d.Ti} keV, n_e = ${f.d.ne}e20 m⁻³`);
     }

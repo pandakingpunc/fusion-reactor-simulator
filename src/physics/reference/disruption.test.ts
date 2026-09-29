@@ -16,7 +16,7 @@ import { forAll, gen } from '../../testing/prop';
 
 const mu0 = 1.25663706212e-6;
 const rel = (a: number, b: number) => Math.abs(a / b - 1);
-const causes: DisruptionCause[] = ['density_limit', 'beta_limit', 'q95_limit', 'radiative_collapse', 'tungsten_accumulation', 'vde', 'ntm_locked_mode', 'magnet_quench'];
+const causes: DisruptionCause[] = ['density_limit', 'beta_limit', 'q95_limit', 'radiative_collapse', 'tungsten_accumulation', 'vde', 'ntm_locked_mode', 'magnet_quench', 'density_collapse'];
 
 const arb = gen.record({
   cause: gen.oneOf(causes), t: gen.float(0, 1000),

@@ -40,6 +40,13 @@ const IDX = { We: 0, Wi: 1, na: 2, nb: 3, nHe: 4, nZ: 5, Wa: 6, Ip: 7, Efus: 8, 
 const NSTATE = 16;
 /** ELM-averaged share of the transport loss W/τ_E (Loarte et al. 2003: 20–40 % of P_SOL) */
 const ELM_POWER_FRACTION = 0.3;
+/**
+ * Density collapse: the shot ends when the volume-averaged electron density has fallen below this fraction of the commanded target
+ * (fuelling lost, e.g. a maximum fuelling rate of 0): with the heating on and no particle source τ_E ∝ n^0.5 shrinks with n and the density
+ * falls to zero in finite time, T_e to 10⁴ keV (W7-X without fuelling: n_e = 2e15 m⁻³, T_e = 1.7 MeV at 0.66 s). The plasma starts at 0.3 of the
+ * target, a working density controller holds it within some tens of percent of it, and a lowered target lowers the reference with it.
+ */
+const DENSITY_COLLAPSE_FRACTION = 0.1;
 /** upper bound of the temperatures at which the rates are evaluated [keV] (see temps()) */
 const T_EVAL_MAX_KEV = 1e4;
 
@@ -746,6 +753,12 @@ export class MagneticModel implements SimModel {
         // Stellarator: disruption yok; radyatif çöküş (Sudo limiti) plazmayı söndürür
         if (dg.nG_frac > 1.0 && dg.P_rad > dg.P_heat && t > 0.5 && dg.Te < 0.5) { cause = 'radiative_collapse'; diag = `n/n_Sudo = ${dg.nG_frac.toFixed(2)} and P_rad > P_heat — radiative collapse (soft extinction, not a disruption)`; }
       }
+      // fuelling lost: the density has collapsed against the commanded target (both kinds of device)
+      if (cause === 'none' && dg.ne * 1e20 < DENSITY_COLLAPSE_FRACTION * this.nTarget(t)) {
+        cause = 'density_collapse';
+        diag = `n_e = ${(dg.ne * 1e20).toExponential(1)} m⁻³ is below ${(DENSITY_COLLAPSE_FRACTION * 100).toFixed(0)} % of the target ${this.nTarget(t).toExponential(1)} m⁻³, ` +
+          `T_e ${dg.Te.toFixed(1)} keV, T_i ${dg.Ti.toFixed(2)} keV, fuelling rate limit ${this.ctrl.fuelRate_1e20s} × 10²⁰ s⁻¹`;
+      }
       if (cause !== 'none') {
         this.disruptCause = cause; this.tDisrupt = t; this.Wd = W;
         this.phase = this.isStell ? 'current_quench' : 'thermal_quench';
@@ -754,7 +767,7 @@ export class MagneticModel implements SimModel {
         // the flag would stay set through the quench frames (P_α = 0 there) and the report's ignition time would
         // count them. The 1.5D model clears it at its disruption onset as well (profiles/events/disruption.ts).
         this.ignited = false;
-        ev.push({ t, kind: 'disruption', msg: `${this.isStell ? 'RADIATIVE COLLAPSE' : 'DISRUPTION'}: ${DISRUPTION_LABELS[cause]} — ${diag}` });
+        ev.push({ t, kind: 'disruption', msg: `${this.isStell ? (cause === 'density_collapse' ? 'DENSITY COLLAPSE' : 'RADIATIVE COLLAPSE') : 'DISRUPTION'}: ${DISRUPTION_LABELS[cause]} — ${diag}` });
         this.diagText = diag;
       }
     } else if (this.phase === 'thermal_quench') {

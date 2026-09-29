@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { JET, NIF } from '../physics/presets';
+import { ITER_15D, JET, NIF } from '../physics/presets';
 import type { MagneticConfig } from '../physics/types';
 import {
   CAVEAT, EnsemblePlan, EnsembleSpec, SimOutcome, ensembleHash, planEnsemble, quantileLabel, resolveSpec, runEnsemble, summarizeEnsemble, toCsv, toJson,
@@ -77,6 +77,16 @@ describe('specification and design', () => {
     expect(tasks[3].cfg).toEqual(p.config(3));
     expect(() => p.config(16)).toThrow(/outside the design/);
     expect(() => p.config(-1)).toThrow(/outside the design/);
+  });
+
+  it('a 1.5D profile setting is perturbed without losing the preset\'s other profile settings', () => {
+    const priors: PriorSet = { params: [{ path: 'profiles.pedestalWidth', dist: { type: 'uniform', lo: 0.03, hi: 0.09 } }] };
+    const p = planEnsemble(resolveSpec({ base: ITER_15D, priors, n: 8, tEnd: 1 }));
+    const c = p.config(3) as MagneticConfig;
+    expect(c.profiles).toEqual({ lcfsKappa: 1.85, lcfsDelta: 0.49, pedestalWidth: p.values[3] });
+    expect(c.profiles!.pedestalWidth).toBeGreaterThanOrEqual(0.03);
+    expect(ITER_15D.profiles).toEqual({ lcfsKappa: 1.85, lcfsDelta: 0.49 });
+    expect(() => planEnsemble(resolveSpec({ base: JET, priors, n: 8 }))).toThrow(/not a number of the tokamak configuration/);
   });
 
   it('the design is reproducible per seed and differs for another seed and another sampler', () => {

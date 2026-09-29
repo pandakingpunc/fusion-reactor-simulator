@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { JET, NIF } from '../physics/presets';
+import { ITER_15D, JET, NIF } from '../physics/presets';
 import type { MagneticConfig } from '../physics/types';
 import { METRIC_KEYS, MetricKey, RunMetrics } from './metrics';
 import { SimOutcome } from './ensemble';
@@ -73,6 +73,14 @@ describe('scan plan', () => {
     // the log axis is uniform in ln x: the median of the sample is near the geometric centre
     const logs = Array.from({ length: 16 }, (_, r) => Math.log(p.values[r * 2 + 1])).sort((a, b) => a - b);
     expect((logs[7] + logs[8]) / 2).toBeCloseTo(Math.log(0.01), 0);
+  });
+
+  it('a 1.5D profile setting can be scanned; its nominal value is the default of the profile model', () => {
+    const p = planScan({ preset: 'ITER15', base: ITER_15D, axes: [{ path: 'profiles.pedestalWidth', lo: 0.04, hi: 0.08, points: 3 }], mode: 'grid', seed: 1, maxRuns: 10, tEnd: 1 });
+    expect((p.config(1) as MagneticConfig).profiles).toEqual({ lcfsKappa: 1.85, lcfsDelta: 0.49, pedestalWidth: 0.06 });
+    const r = summarizeScan(p, Array.from({ length: 3 }, () => okOutcome()));
+    expect(r.axes[0].nominal).toBe(0.06);
+    expect(r.system.fidelity).toBe('1.5D');
   });
 
   it('rejects invalid scans', () => {

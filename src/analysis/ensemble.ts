@@ -161,7 +161,7 @@ export function planEnsemble(spec: EnsembleSpec): EnsemblePlan {
   const config = (row: number): ReactorConfig => {
     if (!Number.isInteger(row) || row < 0 || row >= runs) throw new RangeError(`run ${row} is outside the design (0 ... ${runs - 1})`);
     let c = base;
-    for (let k = 0; k < d; k++) c = setPath(c, priors.params[k].path, values[row * d + k]);
+    for (let k = 0; k < d; k++) c = setPath(c, priors.params[k].path, values[row * d + k], { createMissing: true });
     if (spec.tEnd !== undefined) c = { ...c, t_end: spec.tEnd } as ReactorConfig;
     if (spec.runSeed === 'perRow') c = { ...c, seed: mixSeed(seed, 0xa11ce + seedIndex(row)) } as ReactorConfig;
     return c;

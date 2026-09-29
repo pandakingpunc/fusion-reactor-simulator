@@ -18,7 +18,7 @@ import type { FlatTopWeighting } from '../physics/analysis/flatTop';
 import type { ReactorConfig } from '../physics/types';
 import { CAVEAT, SimOutcome, SimTask } from './ensemble';
 import type { MetricKey } from './metrics';
-import { getPath, setPath } from './priors';
+import { paramStatus, setPath } from './priors';
 import { SAMPLER_KINDS, SamplerKind, unitSample } from './samplers';
 
 export interface ScanAxis {
@@ -82,8 +82,7 @@ export function planScan(spec: ScanSpec): ScanPlan {
   for (const a of axes) {
     if (seen.has(a.path)) throw new RangeError(`parameter '${a.path}' is listed twice`);
     seen.add(a.path);
-    const v = getPath(base, a.path);
-    if (typeof v !== 'number' || !Number.isFinite(v)) throw new RangeError(`parameter '${a.path}' is not a number of the ${base.method} configuration`);
+    if (!paramStatus(base, a.path).ok) throw new RangeError(`parameter '${a.path}' is not a number of the ${base.method} configuration`);
     if (!Number.isFinite(a.lo) || !Number.isFinite(a.hi)) throw new RangeError(`${a.path}: the limits must be finite numbers`);
     if (a.hi < a.lo) throw new RangeError(`${a.path}: hi (${a.hi}) is below lo (${a.lo})`);
     if (a.log && !(a.lo > 0)) throw new RangeError(`${a.path}: a logarithmic axis needs lo > 0`);
@@ -121,7 +120,7 @@ export function planScan(spec: ScanSpec): ScanPlan {
   const config = (row: number): ReactorConfig => {
     if (!Number.isInteger(row) || row < 0 || row >= runs) throw new RangeError(`run ${row} is outside the scan (0 ... ${runs - 1})`);
     let c = base;
-    for (let k = 0; k < d; k++) c = setPath(c, axes[k].path, values[row * d + k]);
+    for (let k = 0; k < d; k++) c = setPath(c, axes[k].path, values[row * d + k], { createMissing: true });
     if (spec.tEnd !== undefined) c = { ...c, t_end: spec.tEnd } as ReactorConfig;
     if (spec.runSeed !== undefined) c = { ...c, seed: spec.runSeed } as ReactorConfig;
     return c;
@@ -176,8 +175,8 @@ export function summarizeScan(plan: ScanPlan, outcomes: readonly SimOutcome[]): 
     system: { ...(spec.preset ? { preset: spec.preset } : {}), method: base.method, fidelity: base.fidelity ?? '0D', t_end_s: spec.tEnd ?? base.t_end ?? NaN, runSeed: spec.runSeed ?? 'preset', flatTop: spec.flatTop ?? 'frame' },
     design: { mode: spec.mode, points: runs, seed: spec.mode === 'grid' ? null : spec.seed, notes: spec.mode === 'sobol' && spec.points !== undefined && (spec.points & (spec.points - 1)) !== 0 ? [`points = ${spec.points} is not a power of two: a Sobol' design keeps its balance properties only for 2^k points`] : [] },
     axes: spec.axes.map((a, k) => {
-      const v = getPath(spec.base, a.path);
-      return { path: a.path, lo: a.lo, hi: a.hi, log: !!a.log, nominal: typeof v === 'number' ? v : null, ...(plan.axisValues ? { points: plan.axisValues[k].length, values: plan.axisValues[k] } : {}) };
+      const st = paramStatus(spec.base, a.path);
+      return { path: a.path, lo: a.lo, hi: a.hi, log: !!a.log, nominal: st.ok ? st.nominal : null, ...(plan.axisValues ? { points: plan.axisValues[k].length, values: plan.axisValues[k] } : {}) };
     }),
     runs: {
       total: runs, valid: okPts.length, failed: runs - okPts.length,

@@ -47,7 +47,8 @@ designs they are conservative.
 **Priors.** Parameters are addressed by dotted paths into the configuration (`H98`, `impurity.concentration`, ...); `--param
 PATH=DIST` replaces or adds one (`lognormal:median:sigmaLog`, `normal:mean:sd[:lo:hi]`, `uniform:lo:hi`, `loguniform:lo:hi`,
 `triangular:lo:mode:hi`, `point:v`), `--priors none` starts from nothing. The defaults of a magnetic preset
-(`uq --preset ITER --list-params` prints them with their basis):
+(`uq --preset ITER --list-params` prints them with their basis). Numeric settings of the 1.5D profile model can be uncertain too on a 1.5D
+preset, e.g. `--param profiles.pedestalWidth=lognormal:0.06:0.3` (the pedestal width, ETB factor and ELM size are fixed inputs of the model):
 
 * **H98**, lognormal, sigma_ln 0.14: the RMSE of the IPB98(y,2) regression and the quoted error of its ITER prediction
   (ITER Physics Basis, Nucl. Fusion 39 (1999) 2175, ch. 2). `--h98-prior itpa20il` uses 0.44/2.79 = 15.8 %, the uncertainty of the
@@ -94,4 +95,4 @@ Ishigami function at N = 2^14 are S = 0.3139, 0.4424, 0.0000 and ST = 0.5575, 0.
   clamped at zero.
 * Non-magnetic presets have no default priors (give `--param`); they run, and the metrics that do not exist for them are NaN.
 * Ensembles of 1.5D presets work but cost seconds to minutes per shot.
-* The Sobol' sequence is limited to 256 dimensions, that is 127 parameters in a Saltelli design.
+* The Sobol' sequence is limited to 256 dimensions, that is 128 parameters in a Saltelli design.

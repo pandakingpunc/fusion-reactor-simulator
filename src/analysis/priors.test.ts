@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { ITER, JET, MASTU, NIF, SPARC, W7X } from '../physics/presets';
+import { ITER, ITER_15D, JET, MASTU, NIF, SPARC, W7X } from '../physics/presets';
 import type { ReactorConfig } from '../physics/types';
 import { DistSpec, quantile } from './distributions';
-import { H98_SIGMA, PriorSet, checkPriors, choleskyLower, defaultPriors, describeParam, getPath, logScalingSigma, setPath, transformUnit } from './priors';
+import { H98_SIGMA, PriorSet, checkPriors, choleskyLower, defaultPriors, describeParam, getPath, logScalingSigma, paramStatus, setPath, transformUnit } from './priors';
 import { unitSample } from './samplers';
 import { mean, pearson, sd } from './stats';
 
@@ -32,6 +32,37 @@ describe('configuration paths', () => {
     expect(setPath(SPARC, 'impurity.seedConcentration', 1e-3).impurity.seedConcentration).toBe(1e-3);
     expect(() => setPath(ITER, 'H98.x.y', 1)).toThrow(/not an object/);
     expect(() => setPath(ITER, 'nope.x', 1)).toThrow(/not an object/);
+  });
+});
+
+describe('parameters of the 1.5D profile model', () => {
+  it('a numeric profile setting of a 1.5D configuration is a parameter, with the default as its nominal value', () => {
+    expect(paramStatus(ITER_15D, 'profiles.pedestalWidth')).toEqual({ ok: true, nominal: 0.06 });
+    expect(paramStatus(ITER_15D, 'profiles.elmFraction')).toEqual({ ok: true, nominal: 0.35 });
+    expect(paramStatus({ ...ITER_15D, profiles: { pedestalWidth: 0.08 } }, 'profiles.pedestalWidth')).toEqual({ ok: true, nominal: 0.08 });
+    expect(paramStatus(ITER_15D, 'profiles.lcfsKappa')).toEqual({ ok: true, nominal: 1.85 }); // set by the preset
+    // not a parameter: a 0D configuration, an unknown key, a string setting, a key without a default, a deeper path
+    expect(paramStatus(ITER, 'profiles.pedestalWidth').ok).toBe(false);
+    expect(paramStatus(ITER_15D, 'profiles.nope').ok).toBe(false);
+    expect(paramStatus(ITER_15D, 'profiles.transportModel').ok).toBe(false);
+    expect(paramStatus(ITER_15D, 'profiles.Tsep_keV').ok).toBe(false);
+    expect(paramStatus(ITER_15D, 'profiles.pedestalWidth.x').ok).toBe(false);
+    expect(paramStatus(SPARC, 'impurity.seedConcentration')).toEqual({ ok: true, nominal: null });
+    expect(paramStatus(ITER, 'H98')).toEqual({ ok: true, nominal: 1 });
+  });
+
+  it('setPath creates the missing profiles object on request only; checkPriors accepts the setting and describeParam shows the default', () => {
+    expect(() => setPath(ITER_15D, 'nope.pedestalWidth', 0.1)).toThrow(/not an object/);
+    const noProfiles = { ...ITER_15D, profiles: undefined };
+    expect(() => setPath(noProfiles, 'profiles.pedestalWidth', 0.1)).toThrow(/not an object/);
+    const c = setPath(noProfiles, 'profiles.pedestalWidth', 0.1, { createMissing: true });
+    expect(c.profiles).toEqual({ pedestalWidth: 0.1 });
+    const d = setPath(ITER_15D, 'profiles.pedestalWidth', 0.1);
+    expect(d.profiles).toEqual({ lcfsKappa: 1.85, lcfsDelta: 0.49, pedestalWidth: 0.1 }); // the other settings are kept
+    const priors: PriorSet = { params: [{ path: 'profiles.pedestalWidth', dist: { type: 'lognormal', median: 0.06, sigmaLog: 0.3 } }] };
+    expect(() => checkPriors(ITER_15D, priors)).not.toThrow();
+    expect(() => checkPriors(ITER, priors)).toThrow(/is not a number of the tokamak configuration/);
+    expect(describeParam(ITER_15D, priors.params[0]).nominal).toBe(0.06);
   });
 });
 

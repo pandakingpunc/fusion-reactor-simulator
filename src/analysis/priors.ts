@@ -25,6 +25,7 @@
  *
  * Pure TypeScript, no DOM or Node API.
  */
+import { DEFAULT_PROFILE_SETTINGS } from '../physics/profiles/defaults';
 import type { ReactorConfig } from '../physics/types';
 import { DistSpec, clampUnit, normalCdf, normalQuantile, quantile, summarizeDist, validateDist } from './distributions';
 
@@ -50,6 +51,23 @@ export interface PriorSet {
 /** Paths that are allowed although the base configuration does not define them (optional fields of the configuration types). */
 const OPTIONAL_PATHS: readonly string[] = ['impurity.seedConcentration', 'stellarator.H_ISS04'];
 
+/**
+ * Whether `path` addresses a number of the configuration, and its nominal value: the value in the configuration; for the optional
+ * fields listed above (nominal null); for a numeric setting of the 1.5D profile model (profiles.pedestalWidth, ...) of a 1.5D
+ * configuration that does not set it, its default (src/physics/profiles/defaults.ts).
+ */
+export function paramStatus(cfg: ReactorConfig, path: string): { ok: true; nominal: number | null } | { ok: false } {
+  const v = getPath(cfg, path);
+  if (typeof v === 'number' && Number.isFinite(v)) return { ok: true, nominal: v };
+  if (v === undefined) {
+    const keys = path.split('.');
+    if (OPTIONAL_PATHS.includes(path) && isRecord(getPath(cfg, keys.slice(0, -1).join('.')))) return { ok: true, nominal: null };
+    const def = (DEFAULT_PROFILE_SETTINGS as unknown as Record<string, unknown>)[keys[1] ?? ''];
+    if (keys.length === 2 && keys[0] === 'profiles' && (cfg as { fidelity?: string }).fidelity === '1.5D' && typeof def === 'number') return { ok: true, nominal: def };
+  }
+  return { ok: false };
+}
+
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /** Value at a dotted path, or undefined if a segment is missing. */
@@ -66,9 +84,10 @@ export function getPath(obj: unknown, path: string): unknown {
  * A copy of `obj` with the number at `path` replaced: the objects along the path are copied, everything else is
  * shared with the original (which is left untouched).
  */
-export function setPath<T>(obj: T, path: string, value: number): T {
+export function setPath<T>(obj: T, path: string, value: number, opts: { createMissing?: boolean } = {}): T {
   const keys = path.split('.');
   const rec = (node: unknown, i: number): unknown => {
+    if (node === undefined && opts.createMissing && i > 0) node = {};
     if (!isRecord(node)) throw new RangeError(`cannot set '${path}': '${keys.slice(0, i).join('.')}' is not an object`);
     return { ...node, [keys[i]]: i === keys.length - 1 ? value : rec(node[keys[i]], i + 1) };
   };
@@ -81,12 +100,7 @@ export function checkPriors(cfg: ReactorConfig, priors: PriorSet): void {
   for (const p of priors.params) {
     if (seen.has(p.path)) throw new RangeError(`parameter '${p.path}' is listed twice`);
     seen.add(p.path);
-    const v = getPath(cfg, p.path);
-    const parent = getPath(cfg, p.path.split('.').slice(0, -1).join('.'));
-    const optional = v === undefined && OPTIONAL_PATHS.includes(p.path) && isRecord(parent);
-    if (!optional && !(typeof v === 'number' && Number.isFinite(v))) {
-      throw new RangeError(`parameter '${p.path}' is not a number of the ${cfg.method} configuration`);
-    }
+    if (!paramStatus(cfg, p.path).ok) throw new RangeError(`parameter '${p.path}' is not a number of the ${cfg.method} configuration`);
     validateDist(p.dist);
   }
   for (const c of priors.correlations ?? []) {
@@ -211,6 +225,6 @@ export function defaultPriors(cfg: ReactorConfig, opts: DefaultPriorOptions = {}
 
 /** Nominal value, prior median and 90 % interval of a parameter, for the report. */
 export function describeParam(cfg: ReactorConfig, p: ParamSpec): { path: string; nominal: number | null; prior: { median: number; p05: number; p95: number }; dist: DistSpec; basis?: string } {
-  const v = getPath(cfg, p.path);
-  return { path: p.path, nominal: typeof v === 'number' ? v : null, prior: summarizeDist(p.dist), dist: p.dist, ...(p.basis ? { basis: p.basis } : {}) };
+  const st = paramStatus(cfg, p.path);
+  return { path: p.path, nominal: st.ok ? st.nominal : null, prior: summarizeDist(p.dist), dist: p.dist, ...(p.basis ? { basis: p.basis } : {}) };
 }

@@ -6,9 +6,39 @@
   "engines": {
     "node": ">=20"
   },
+  "bin": {
+    "fusion-sim": "build/lib/fusion-sim.js"
+  },
+  "main": "./build/lib/index.cjs",
+  "module": "./build/lib/index.js",
+  "types": "./build/lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./build/lib/index.d.ts",
+      "import": "./build/lib/index.js",
+      "require": "./build/lib/index.cjs"
+    },
+    "./io": {
+      "types": "./build/lib/io.d.ts",
+      "import": "./build/lib/io.js",
+      "require": "./build/lib/io.cjs"
+    },
+    "./schema": "./schema/fusion-sim.schema.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "build/lib",
+    "schema",
+    "python",
+    "README.md",
+    "LICENSE",
+    "CITATION.cff",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "build:lib": "node scripts/build-lib.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "coverage": "vitest run --coverage --testTimeout=30000",
@@ -17,6 +47,8 @@
     "validate": "tsx src/cli/validate.cli.ts",
     "golden": "tsx src/cli/golden.cli.ts",
     "golden:update": "tsx src/cli/golden.cli.ts --update",
+    "schema": "tsx scripts/gen-schema.ts",
+    "schema:check": "tsx scripts/gen-schema.ts --check",
     "uq": "tsx src/cli/uq.cli.ts",
     "scan": "tsx src/cli/scan.cli.ts",
     "optimize": "tsx src/cli/optimize.cli.ts",

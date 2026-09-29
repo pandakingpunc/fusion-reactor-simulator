@@ -20,22 +20,25 @@ function logspace(a: number, b: number, n: number): number[] {
   return Array.from({ length: n }, (_, i) => Math.pow(10, Math.log10(a) + ((Math.log10(b) - Math.log10(a)) * i) / (n - 1)));
 }
 
+/** the reactivity functions <sigma v>(T) [m^3/s, T in keV] the figure draws; the physics module's `sigmav` by default */
+export type ReactivityRates = Pick<typeof sigmav, 'DT' | 'DD_total' | 'DHe3' | 'pB11'>;
+
 /** D–T için verilen Q'yu sağlayan n τ_E [m⁻³ s]; ulaşılamazsa NaN */
-export function ntauForQ(T: number, Q: number): number {
-  const den = (sigmav.DT(T) * E_FUS * (0.2 + (Number.isFinite(Q) ? 1 / Q : 0))) / 4 - C_B * Math.sqrt(T);
+export function ntauForQ(T: number, Q: number, rates: Pick<ReactivityRates, 'DT'> = sigmav): number {
+  const den = (rates.DT(T) * E_FUS * (0.2 + (Number.isFinite(Q) ? 1 / Q : 0))) / 4 - C_B * Math.sqrt(T);
   return den > 0 ? (3 * T * KEV) / den : NaN;
 }
 
-export function figReactivityLawson(machines: LawsonMachine[]): Figure {
+export function figReactivityLawson(machines: LawsonMachine[], rates: ReactivityRates = sigmav): Figure {
   const fig = new Figure(COL2, 2.9, { fontSize: 8, title: 'Fusion reactivity and Lawson diagram' });
   const [a, b] = fig.subplots(1, 2, { left: 0.55, right: 0.12, top: 0.22, bottom: 0.45, wspace: 0.65 });
 
   // (a) reaktiviteler — yalnız fit geçerlilik aralıkları
   const curves: [string, (T: number) => number, number, number, string, Dash][] = [
-    ['D–T', sigmav.DT, 1, 100, C.vermilion, 'solid'],
-    ['D–D (both branches)', sigmav.DD_total, 1, 100, C.blue, 'dashed'],
-    ['D–$^3$He', sigmav.DHe3, 1, 190, C.green, 'dashdot'],
-    ['p–$^{11}$B', sigmav.pB11, 10, 1000, C.purple, 'dotted'],
+    ['D–T', rates.DT, 1, 100, C.vermilion, 'solid'],
+    ['D–D (both branches)', rates.DD_total, 1, 100, C.blue, 'dashed'],
+    ['D–$^3$He', rates.DHe3, 1, 190, C.green, 'dashdot'],
+    ['p–$^{11}$B', rates.pB11, 10, 1000, C.purple, 'dotted'],
   ];
   for (const [lbl, f, lo, hi, col, dash] of curves) {
     const T = logspace(lo, hi, 160);
@@ -47,7 +50,7 @@ export function figReactivityLawson(machines: LawsonMachine[]): Figure {
   // (b) Lawson
   const T = logspace(2, 100, 300);
   const qs: [number, string, Dash, string][] = [[1, '$Q = 1$', 'dashed', C.blue], [10, '$Q = 10$', 'dashdot', C.green], [Infinity, 'ignition ($Q = \\infty$)', 'solid', C.vermilion]];
-  for (const [Q, lbl, dash, col] of qs) b.plot(T, T.map((t) => ntauForQ(t, Q)), { color: col, dash, label: lbl });
+  for (const [Q, lbl, dash, col] of qs) b.plot(T, T.map((t) => ntauForQ(t, Q, rates)), { color: col, dash, label: lbl });
   const ok = (p?: { T: number; ntau: number }) => !!p && p.T > 0 && p.ntau > 0;
   for (const m of machines) {
     const pts = [m.p0, m.p15].filter(ok) as { T: number; ntau: number }[];

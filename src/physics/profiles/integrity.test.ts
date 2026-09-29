@@ -7,6 +7,7 @@ import { Simulation } from '../simulation';
 import { DEMO_15D, ITER_15D, JET_15D, MASTU } from '../presets';
 import { MagneticConfig } from '../types';
 import { EquilibriumOptions, GSFailure, GSSolver } from '../equilibrium/gs';
+import { SingularMatrixError } from '../numerics/linalg';
 import { CURRENT_SCALE_LIMIT } from './coupling/equilibrium';
 import { ProfileModel } from './model';
 import { runAllYielding } from '../../testing/yielding';
@@ -81,29 +82,27 @@ describe('work arrays after an equilibrium swap', () => {
 describe('Grad–Shafranov updates during a shot', () => {
   afterEach(() => { vi.restoreAllMocks(); });
 
-  // 17 updates are attempted in the 5.5 s shot; the old code dropped 14 of them silently (3 accepted), the
-  // retry ladder with the Picard of before ws4 accepted all 17, with ws4's Anderson solver one update
-  // (t = 0.676 s) stalls in every stage: it is rejected, retried later and reported, as required
-  it('JET15: nearly all updates are accepted, the rest is reported, and the report counts both', () => {
+  // 15 updates are due in the 5.5 s shot; the old code dropped 14 of 17 silently (3 accepted), the retry ladder with the Picard of
+  // before ws4 accepted all 17, with ws4's Anderson solver one update (t = 0.676 s) stalled in every stage and was rejected.
+  // The outer iteration on the tables (coupling/outer.ts) accepts all 15: no update is rejected.
+  it('JET15: every update is accepted, and the report counts them', () => {
     const sim = new Simulation(JET_15D);
     const r = sim.runAll();
     const m = sim.model as ProfileModel;
     const swaps = sim.history.filter((h) => h.eq).length - 1; // frame 0 carries the initial equilibrium
-    expect(swaps).toBeGreaterThanOrEqual(14);
+    expect(swaps).toBeGreaterThanOrEqual(15);
     expect(m.eqUpdates).toBe(swaps);
     expect(r.engineering['GS updates accepted']).toBe(m.eqUpdates);
-    const rejected = r.engineering['GS updates rejected'] as number;
-    expect(rejected).toBe(m.eqRejected);
-    expect(rejected).toBeLessThanOrEqual(2);
-    expect(rejected / (m.eqUpdates + rejected)).toBeLessThan(0.15);
-    if (rejected > 0) expect(r.warnings.some((w) => w.includes('Grad–Shafranov'))).toBe(true);
+    expect(r.engineering['GS updates rejected']).toBe(0);
+    expect(m.eqRejected).toBe(0);
+    expect(r.warnings.some((w) => w.includes('Grad–Shafranov update rejected'))).toBe(false);
   }, 60000);
 
   /**
    * Table-mode (update) solves are replaced by `f(call)`: 'real' runs the solver, 'residual'
    * returns it flagged as not converged, 'rescaled' returns it as an equilibrium of a current table
    * that had to be scaled by 2 to meet I_p (with the solver's 'table-current-rescaled' warning),
-   * 'throw' raises a plain Error, 'diverged' and 'bad-input' the solver's typed GSFailure. `call` counts updateEquilibrium calls (1-based); returns the times and the
+   * 'throw' raises the linear algebra's typed SingularMatrixError, 'diverged' and 'bad-input' the solver's typed GSFailure. `call` counts updateEquilibrium calls (1-based); returns the times and the
    * proposed step sizes of those calls and the options of every table solve.
    */
   const stubUpdates = (f: (call: number) => 'real' | 'residual' | 'rescaled' | 'throw' | 'diverged' | 'bad-input') => {
@@ -114,7 +113,7 @@ describe('Grad–Shafranov updates during a shot', () => {
       if (o.profile.kind !== 'table') return solve.call(this, o);
       options.push(o);
       const what = f(call);
-      if (what === 'throw') throw new Error('GS: diverged');
+      if (what === 'throw') throw new SingularMatrixError('GS: singular system (stub)');
       if (what === 'diverged') throw new GSFailure('diverged', 'the plasma was lost (stub)', 7, 0.5);
       if (what === 'bad-input') throw new GSFailure('bad-input', 'invalid table (stub)');
       const eq = solve.call(this, o);
@@ -194,8 +193,8 @@ describe('Grad–Shafranov updates during a shot', () => {
     // the solver is asked to flag exactly what the coupling refuses
     expect(options.length).toBeGreaterThan(0);
     for (const o of options) expect(o.currentScaleWarn).toBe(CURRENT_SCALE_LIMIT);
-    // every ladder stage was tried and the reason is the one that is reported (not a residual)
-    expect(m.coupling.eqAttempts.length).toBe(3);
+    // the outer iteration solved (and converged: only the stub's c is off) and every attempt carries the reason that is reported (not a residual)
+    expect(m.coupling.eqAttempts.length).toBeGreaterThanOrEqual(1);
     expect(m.coupling.eqAttempts.every((a) => a.rejected?.includes('rescaled by 2.00'))).toBe(true);
     const evs = sim.events.filter((e) => e.kind === 'warning' && e.msg.includes('Grad–Shafranov'));
     expect(evs.length).toBe(1);
@@ -203,19 +202,31 @@ describe('Grad–Shafranov updates during a shot', () => {
     expect(r.warnings.some((w) => w.includes('Grad–Shafranov') && w.includes(`${m.eqRejected} of ${m.eqRejected}`))).toBe(true);
   }, 60000);
 
-  // ws4's solver converges MASTU15 tables that carry half of I_p on the new surfaces (c = 2.07, 1.95);
-  // taking them ended the shot in a β-limit disruption at 1.06 s instead of the scheduled end
-  it('MASTU15: current tables mapped through a stale geometry are held back, the shot ends as scheduled', () => {
+  // ws4's solver converged MASTU15 tables that carry half of I_p on the new surfaces (c = 2.07, 1.95) when they were mapped
+  // through a stale geometry; taking them ended the shot in a β-limit disruption at 1.06 s, and the gate that held them back
+  // rejected 3 of 7 updates. The outer iteration (coupling/outer.ts) maps the tables through the new equilibrium until they
+  // agree with it: every update of the shot is accepted, on tables that need no rescaling.
+  it('MASTU15: the tables are made consistent with each new equilibrium, every update is accepted and the shot ends as scheduled', () => {
     const sim = new Simulation({ ...MASTU, fidelity: '1.5D' });
     const r = sim.runAll();
     const m = sim.model as ProfileModel;
     expect(r.termination.reason).toBe('Scheduled end');
     expect(sim.events.some((e) => e.kind === 'disruption')).toBe(false);
-    expect(m.eqRejected).toBeGreaterThan(0);
-    expect(r.engineering['GS updates rejected']).toBe(m.eqRejected);
-    expect(Math.abs((m.ctx.eq.currentScale ?? 1) - 1)).toBeLessThanOrEqual(CURRENT_SCALE_LIMIT);
-    expect(r.warnings.some((w) => w.includes('Grad–Shafranov'))).toBe(true);
+    expect(m.eqUpdates).toBeGreaterThanOrEqual(7);
+    expect(m.eqRejected).toBe(0);
+    expect(r.engineering['GS updates rejected']).toBe(0);
+    expect(Math.abs((m.ctx.eq.currentScale ?? 1) - 1)).toBeLessThan(0.1); // not the 0.7-1.07 of the stale tables
   }, 120000);
+
+  // a programming error is not a rejected update: it propagates (only typed numerical failures are handled)
+  it('a plain Error of the solver is a bug, not a numerical failure: it propagates out of the run', () => {
+    const solve = GSSolver.prototype.solve;
+    vi.spyOn(GSSolver.prototype, 'solve').mockImplementation(function (this: GSSolver, o: EquilibriumOptions) {
+      if (o.profile.kind === 'table') throw new TypeError('bug in the solver (stub)');
+      return solve.call(this, o);
+    });
+    expect(() => new Simulation({ ...JET_15D, t_end: 1 }).runAll()).toThrow('bug in the solver (stub)');
+  }, 60000);
 
   it('a typed GSFailure keeps its iterations, residual and one message; bad input is not retried', () => {
     const diverged = stubUpdates(() => 'diverged');
@@ -224,7 +235,8 @@ describe('Grad–Shafranov updates during a shot', () => {
     let m = sim.model as ProfileModel;
     expect(m.eqRejected).toBe(diverged.times.length);
     expect(m.eqRejected).toBeGreaterThanOrEqual(2);
-    expect(m.coupling.eqAttempts.length).toBe(3);
+    // the whole way, then half, a quarter and an eighth of it: four attempts, none converged
+    expect(m.coupling.eqAttempts.length).toBe(4);
     for (const a of m.coupling.eqAttempts) {
       expect(a.iterations).toBe(7);
       expect(a.residual).toBe(0.5);
@@ -235,7 +247,7 @@ describe('Grad–Shafranov updates during a shot', () => {
     expect(msg).not.toContain('GSFailure');
     vi.restoreAllMocks();
 
-    // no option of the ladder changes invalid input: one attempt per update
+    // no smaller step changes invalid input: one attempt per update
     const bad = stubUpdates(() => 'bad-input');
     sim = new Simulation({ ...JET_15D, t_end: 1 });
     sim.runAll();

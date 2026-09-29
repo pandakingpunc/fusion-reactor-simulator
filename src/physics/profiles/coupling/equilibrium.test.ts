@@ -3,7 +3,7 @@
  * iteration) and what it builds the transport geometry on (the radial grid of the model).
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { JET_15D } from '../../presets';
+import { ITER_15D, JET_15D } from '../../presets';
 import { Simulation } from '../../simulation';
 import { geometryFromEquilibrium } from '../geometry1d';
 import type { TransportGeometry } from '../geometry1d';
@@ -117,6 +117,38 @@ describe('the update as a resumable computation', () => {
       expect(seen).toEqual([0.01]);
     } finally { vi.restoreAllMocks(); }
   });
+});
+
+describe('an update dropped at a yield leaves nothing behind', () => {
+  /** a fresh ITER15 model with the work arrays of its initial state, ready for an update at t = 0.01 s */
+  const fresh = () => {
+    const m = new ProfileModel({ ...ITER_15D, t_end: 0.3 });
+    const y = m.initialState();
+    m.physics.evaluateWorkArrays(0, m.ctx.view(y));
+    return { m, y };
+  };
+  const keys = (m: ProfileModel) => ({ psi: Array.from(m.ctx.eq.psi), rhoF: Array.from(m.ctx.tg.rhoF), VpC: Array.from(m.ctx.tg.VpC), g1C: Array.from(m.ctx.tg.g1C), attempts: m.eqAttempts.map((a) => [a.stage, a.iterations, a.residual]) });
+
+  // A step that is dropped is followed by a rewind (Simulation.rewindTo), after which the same solver, the same grid and the same work
+  // arrays make the next update: whatever the dropped one left in them would change the run. The drop points cover the first Picard
+  // iteration, the middle of a solve, its surface trace, and the boundary between two solves.
+  it('the next update is the one of a model that was never interrupted, whichever yield the first one was dropped at', () => {
+    const ref = fresh();
+    expect(ref.m.updateEquilibrium(0.01, ref.y)).toBe(true);
+    const want = keys(ref.m);
+    const total = (() => { const f = fresh(); const g = f.m.updateEquilibriumSlices(0.01, f.y); let n = 0; while (!g.next().done) n++; return n; })();
+    expect(total).toBeGreaterThan(8);
+    for (const at of new Set([1, 2, Math.floor(total / 4), Math.floor(total / 2), total - 3, total - 1])) {
+      const { m, y } = fresh();
+      const y0 = Float64Array.from(y);
+      const g = m.updateEquilibriumSlices(0.01, y);
+      for (let i = 0; i < at; i++) expect(g.next().done, `yield ${i + 1} of ${total}`).toBe(false);
+      g.return(false);
+      expect(Array.from(y), `dropped at yield ${at}: the update does not write y`).toEqual(Array.from(y0));
+      expect(m.updateEquilibrium(0.01, y), `dropped at yield ${at}`).toBe(true);
+      expect(keys(m), `dropped at yield ${at} of ${total}`).toEqual(want);
+    }
+  }, 120000);
 });
 
 describe('the geometry of an update is built on the radial grid of the model', () => {

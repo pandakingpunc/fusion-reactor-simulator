@@ -439,6 +439,99 @@
           "description": "Electron-cyclotron current-drive efficiency factor.",
           "default": 0
         },
+        "fastIonModel": {
+          "type": "string",
+          "enum": [
+            "scalar",
+            "profile"
+          ],
+          "description": "Fast ions (NBI ions, charged fusion products) of the 1.5D model. 'scalar': two scalar energy pools for the fast-ion pressure of beta, instantaneous local heating. 'profile': energy fields on the radial grid with the slowing-down delay of the heating and an orbit-width smoothing of the source; the fast pressure enters beta, the Grad-Shafranov pressure table and the ballooning drive (not the bootstrap current).",
+          "default": "scalar"
+        },
+        "fastOrbitScale": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Multiplier of the rms orbit width of the fast ions in the 'profile' fast-ion model (0: no orbit smoothing).",
+          "default": 1
+        },
+        "cdModel": {
+          "type": "string",
+          "enum": [
+            "legacy",
+            "physics"
+          ],
+          "description": "Current drive of the 1.5D model. 'legacy': I_CD = gamma P / (n R0) with the efficiency factors nbcdEff and eccdEff. 'physics': neutral-beam current drive from the fast-ion current of the slowing-down distribution with the shielding and trapped-electron correction of Start and Cordey (1980), electron-cyclotron current drive from the launcher `eccd` with the efficiency of Lin-Liu, Chan and Prater (2003); nbcdEff and eccdEff are not used.",
+          "default": "legacy"
+        },
+        "eccd": {
+          "type": "object",
+          "properties": {
+            "harmonic": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3,
+              "description": "Cyclotron harmonic of the absorption, 1 to 3 (default 2).",
+              "default": 2
+            },
+            "freq_GHz": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "description": "Wave frequency; if absent the frequency is the one whose Doppler-shifted resonance is at the aim. Unit: GHz.",
+              "x-unit": "GHz"
+            },
+            "nPar": {
+              "type": "number",
+              "minimum": -0.99,
+              "maximum": 0.99,
+              "description": "Parallel refractive index; positive drives current along the plasma current, negative against it (default 0.3).",
+              "default": 0.3
+            },
+            "thetaP_deg": {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180,
+              "description": "Poloidal angle of the absorption on the flux surface: 0 outboard midplane, 180 inboard. Unit: deg.",
+              "x-unit": "deg",
+              "default": 0
+            },
+            "rho": {
+              "type": "number",
+              "minimum": 0,
+              "exclusiveMaximum": 1,
+              "description": "Aim: normalised radius of the deposition layer (default ecrhRho). Unit: rho_tor.",
+              "x-unit": "rho_tor"
+            },
+            "width": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "description": "Width of the deposition layer (default ecrhWidth). Unit: rho_tor.",
+              "x-unit": "rho_tor"
+            }
+          },
+          "additionalProperties": false,
+          "description": "ECCD launcher of cdModel 'physics': harmonic, frequency, parallel index, poloidal angle of the absorption, aim and width of the layer."
+        },
+        "sawtoothTrigger": {
+          "type": "string",
+          "enum": [
+            "shear",
+            "porcelli"
+          ],
+          "description": "Sawtooth trigger. 'shear': s1 > sawtoothShear at q = 1. 'porcelli': the three conditions of Porcelli, Boucher and Rosenbluth (1996), equations 13-15 (ideal, trapped-ion and fast-ion energy of the internal kink, diamagnetic stabilisation, growth rate of the ion-kinetic layer).",
+          "default": "shear"
+        },
+        "sawtoothReconnection": {
+          "type": "string",
+          "enum": [
+            "legacy",
+            "kadomtsev"
+          ],
+          "description": "Sawtooth reconnection. 'legacy': T_e, T_i, n_e flattened inside the mixing radius, q raised to 1.01 there. 'kadomtsev': the same mixing with the poloidal flux reset of Kadomtsev's full reconnection (helical flux conserved).",
+          "default": "legacy"
+        },
         "Tsep_keV": {
           "type": "number",
           "exclusiveMinimum": 0,

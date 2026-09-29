@@ -107,6 +107,9 @@ export class NbiChord {
   private dl: number;
   private kernel: Float64Array; // K[j·N + i]: j kaynağından i'ye (Σ_i K ΔV_i = 1)
   private raw: Float64Array;
+  /** cosine of the pitch angle of the beam at each piece of the chord, R_tan/R (the parallel fraction of a beam ion born there) */
+  private xi: Float64Array;
+  private rawXi: Float64Array;
   constructor(readonly g: TransportGeometry, Rtan: number, readonly M = 400, smooth = 0.08) {
     const N = g.N;
     const Redge = g.RoutF[N];
@@ -114,11 +117,15 @@ export class NbiChord {
     const L = Math.sqrt(Redge * Redge - Rt * Rt);
     this.dl = (2 * L) / M;
     this.cell = new Int32Array(M);
+    this.xi = new Float64Array(M);
     for (let m = 0; m < M; m++) {
       const ell = L - (m + 0.5) * this.dl;
-      const r = rhoOfR(g, Math.sqrt(Rt * Rt + ell * ell));
+      const R = Math.sqrt(Rt * Rt + ell * ell);
+      const r = rhoOfR(g, R);
       this.cell[m] = r < 0 || r >= 1 ? -1 : cellIndex(g, r);
+      this.xi[m] = Rt / R;
     }
+    this.rawXi = new Float64Array(N);
     this.kernel = new Float64Array(N * N);
     for (let j = 0; j < N; j++) {
       let s = 0;
@@ -127,25 +134,35 @@ export class NbiChord {
     }
     this.raw = new Float64Array(N);
   }
-  deposit(ne: ArrayLike<number>, E_keV: number, A_beam: number, out: Float64Array): { dep: Float64Array; shine: number } {
-    const g = this.g, N = g.N, raw = this.raw;
+  /**
+   * `pitch` (optional, N cells): the mean cosine ξ = v_∥/v of the pitch angle of the ions born in each cell, R_tan/R averaged over the chord with
+   * the power deposited (the tangential beam ions are born with v_∥ = v R_tan/R; the current they drive is proportional to it), through the same
+   * smoothing kernel as the power. A cell with no birth gets R_tan over the radius of the last chord piece that is in the plasma.
+   */
+  deposit(ne: ArrayLike<number>, E_keV: number, A_beam: number, out: Float64Array, pitch?: Float64Array): { dep: Float64Array; shine: number } {
+    const g = this.g, N = g.N, raw = this.raw, rawXi = this.rawXi;
     raw.fill(0);
+    if (pitch) rawXi.fill(0);
     const sig = beamStoppingSigma(E_keV / A_beam);
-    let I = 1;
+    let I = 1, xiLast = 0.5;
     for (let m = 0; m < this.M; m++) {
       const i = this.cell[m];
       if (i < 0) continue;
       const dI = I * (1 - Math.exp(-ne[i] * sig * this.dl));
       raw[i] += dI;
+      if (pitch) { rawXi[i] += dI * this.xi[m]; xiLast = this.xi[m]; }
       I -= dI;
     }
     out.fill(0);
+    if (pitch) pitch.fill(0);
     for (let j = 0; j < N; j++) {
       const Pj = raw[j];
       if (Pj <= 0) continue;
       const row = j * N;
       for (let i = 0; i < N; i++) out[i] += Pj * this.kernel[row + i];
+      if (pitch) { const Xj = rawXi[j]; for (let i = 0; i < N; i++) pitch[i] += Xj * this.kernel[row + i]; }
     }
+    if (pitch) for (let i = 0; i < N; i++) pitch[i] = out[i] > 0 ? Math.min(pitch[i] / out[i], 1) : xiLast;
     return { dep: out, shine: I };
   }
 }

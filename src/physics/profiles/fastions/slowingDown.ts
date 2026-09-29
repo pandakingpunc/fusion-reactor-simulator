@@ -110,17 +110,17 @@ export function gaffeyDistribution(u: number, xi: number, ub: number, xib: numbe
 
 /**
  * I(y_c, Ẑ) of the parallel flow of the fast ions, ∫ v_∥ f d³v = S τ_s v_b ξ_b I: (1 + y_c³)^{Ẑ/3} ∫_0^1 [y³/(y³ + y_c³)]^{Ẑ/3 + 1} dy,
- * y_c = v_c/v_b. Gauss–Legendre (24 nodes) on panels that grow geometrically (a factor 3) from y_c to 1, where the integrand rises
+ * y_c = v_c/v_b. Gauss–Legendre (`nodes`, 24 by default) on panels that grow geometrically (a factor 3) from y_c to 1, where the integrand rises
  * from 0 to 1, and one panel on [0, y_c] where it is ∝ y^{3(Ẑ/3+1)}. With Ẑ = 0 it is ∫_0^1 y³/(y³ + y_c³) dy = 1 − y_c³ ∫_0^1 dy/(y³ + y_c³),
  * the parallel speed (in units of v_b) the ion carries until it has slowed down, when scattering is neglected.
  */
-export function gaffeyCurrentIntegral(yc: number, Zhat: number): number {
+export function gaffeyCurrentIntegral(yc: number, Zhat: number, nodes = 24): number {
   const c = Math.max(yc, 0), p = Zhat / 3 + 1;
   const f = (y: number) => {
     const y3 = y * y * y;
     return Math.pow(y3 / (y3 + c * c * c), p);
   };
-  const { x, w } = gaussLegendre(24);
+  const { x, w } = gaussLegendre(nodes);
   const bounds: number[] = [0];
   if (c > 0 && c < 1) {
     for (let b = c; b < 1; b *= 3) bounds.push(b);

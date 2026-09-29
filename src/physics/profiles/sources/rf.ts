@@ -14,6 +14,9 @@ import type { SourceModel } from './SourceModel';
 
 export class RfSource implements SourceModel {
   readonly id = 'rf';
+  /** cdModel 'physics': the ECRH layer and the driven current are those of cd/eccdSource.ts, which follows this source */
+  private readonly physicsCd: boolean;
+  constructor(ctx?: ProfileContext) { this.physicsCd = ctx?.cdParts != null; }
   /** normalised deposition profiles of ECRH and ICRH on the current geometry [1/m³] */
   private depEC!: Float64Array;
   private depIC!: Float64Array;
@@ -35,7 +38,7 @@ export class RfSource implements SourceModel {
 
   current(ctx: ProfileContext, st: ProfileState, K: StepConstants): void {
     const w = ctx.w, g = ctx.tg, N = ctx.N;
-    if (!(ctx.ps.eccdEff > 0 && K.P_EC > 0)) return;
+    if (this.physicsCd || !(ctx.ps.eccdEff > 0 && K.P_EC > 0)) return;
     const nbar20 = cdDensity20(ctx, st.ne);
     let Tw = 0; for (let i = 0; i < N; i++) Tw += this.depEC[i] * g.dV[i] * cdTeFactor(st.Te, i);
     const Icd = (Math.min(ctx.ps.eccdEff * Tw, 0.5) * K.P_EC) / (nbar20 * g.R0);

@@ -39,6 +39,23 @@ export class NbiSource implements SourceModel {
   private chord: NbiChord | null = null;
   /** beam-target reactivity tables by beam energy (geometry-independent) */
   private btTables = new Map<number, BeamTargetTable>();
+  /**
+   * cdModel 'physics': the beam-driven current is the one of cd/nbcd.ts (this source then adds none), which reads the birth power density
+   * [W m⁻³] and the pitch cosine of every energy component of the beam, kept here (empty without it)
+   */
+  private readonly physicsCd: boolean;
+  readonly birthPower: Float64Array[];
+  readonly birthPitch: Float64Array[];
+  /** finite-beam-width smoothing of the deposition: the legacy 0.08 also stands for the orbit width, which the 'profile' fast-ion model applies itself */
+  private readonly smooth: number;
+
+  constructor(ctx?: ProfileContext) {
+    this.physicsCd = ctx?.ps.cdModel === 'physics';
+    const n = this.physicsCd && ctx ? beamComponents(ctx.cfg.heating.E_NBI_keV).length : 0;
+    this.birthPower = Array.from({ length: n }, () => new Float64Array(ctx!.N));
+    this.birthPitch = Array.from({ length: n }, () => new Float64Array(ctx!.N));
+    this.smooth = ctx?.fast ? 0.05 : 0.08;
+  }
 
   geometryChanged(): void { this.chord = null; }
 
@@ -53,10 +70,11 @@ export class NbiSource implements SourceModel {
     const fast = ctx.fast;
     if (fast) for (const b of fast.beamBirth) b.fill(0);
     let shine = 0, sqrtE = 0;
+    for (const b of this.birthPower) b.fill(0);
     w.nbiDep.fill(0); w.nfast.fill(0); w.nbiPart.fill(0); w.PnbiE.fill(0); w.PnbiI.fill(0); w.Pbt.fill(0); w.Wbeam.fill(0); w.tauWb.fill(0);
     const btR = K.btR; // per channel, fresh zeros from the pipeline
     const chans = FUEL_CHANNELS[c.fuel];
-    if (!this.chord) this.chord = new NbiChord(g, ctx.ps.nbiRtan * g.R0);
+    if (!this.chord) this.chord = new NbiChord(g, ctx.ps.nbiRtan * g.R0, 400, this.smooth);
     const svBuf: number[] = chans.map(() => 0);
     // τ_W of the beam ions per cell, independent of the beam power: the fast-ion pool (fastIons.ts) relaxes with it
     // also after the beam is switched off (it is only needed while the beam is on or its pool is not yet empty)
@@ -70,7 +88,7 @@ export class NbiSource implements SourceModel {
     }
     for (const [kc, [Ek, fk]] of comps.entries()) {
       if (P_NBI <= 0) break;
-      const r = this.chord.deposit(ne, Ek, fs.a.A, w.nbiTmp);
+      const r = this.chord.deposit(ne, Ek, fs.a.A, w.nbiTmp, this.physicsCd ? this.birthPitch[kc] : undefined);
       let tab = this.btTables.get(Ek);
       if (!tab && c.fuel !== 'pB11') { tab = new BeamTargetTable(c.fuel, Ek); this.btTables.set(Ek, tab); }
       shine += fk * r.shine;
@@ -87,6 +105,7 @@ export class NbiSource implements SourceModel {
         w.PnbiE[i] += pd * (1 - fi); w.PnbiI[i] += pd * fi;
         w.nbiPart[i] += pd / (Ek * KEV);
         if (fast) fast.beamBirth[kc][i] += pd;
+        if (this.physicsCd) this.birthPower[kc][i] += pd;
         // energy content of the slowing-down distribution, W_b = P τ_W (the 0D pool floors τ_W at 1 ms)
         w.Wbeam[i] += pd * Math.max(fastIonEnergyTime(Math.max(Te[i], 0.01), ne[i], fs.a.A, fs.a.Z, Ek, Ec), 1e-3);
         // beam-target: n_f = S τ_th (steady slowing-down distribution), R_j = n_f n_target,j ⟨σv⟩_bt,j per channel
@@ -112,7 +131,7 @@ export class NbiSource implements SourceModel {
 
   current(ctx: ProfileContext, st: ProfileState, K: StepConstants): void {
     const w = ctx.w, g = ctx.tg, N = ctx.N;
-    if (!(ctx.ps.nbcdEff > 0 && K.P_NBI > 0)) return;
+    if (this.physicsCd || !(ctx.ps.nbcdEff > 0 && K.P_NBI > 0)) return;
     const nbar20 = cdDensity20(ctx, st.ne);
     const s = volumeIntegral(g, w.nbiDep) || 1;
     let Tw = 0; for (let i = 0; i < N; i++) Tw += w.nbiDep[i] * g.dV[i] * cdTeFactor(st.Te, i);

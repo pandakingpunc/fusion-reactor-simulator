@@ -147,6 +147,13 @@ export function powerTotals(ctx: ProfileContext, K: StepConstants): PowerTotals 
   return { P_fus, P_chg, P_neut, P_bt, P_aux_abs, P_beam, P_oh, P_alpha, P_brems, P_line, P_sync, P_rad, P_rad_core, P_heat, Wss_alpha: I(w.Walpha), Wss_beam: I(w.Wbeam) };
 }
 
+/** cdModel 'physics': the current driven by the neutral beams and by the electron-cyclotron waves [MA] (the total is f_cd, the fraction of I_p) */
+function currentDriveChannels(ctx: ProfileContext): Record<string, number> {
+  const g = ctx.tg, p = ctx.cdParts!;
+  const I = (jB: Float64Array) => volumeIntegral(g, jB.map((jb, i) => jb / (2 * Math.PI * g.RgeoC[i] * g.B0))) / 1e6;
+  return { I_nbcd: I(p.nbcd), I_eccd: I(p.eccd) };
+}
+
 /**
  * Writes ctx.lastDiag and ctx.lastProf for state st from the current work arrays and the global
  * totals X. Also updates ctx.alphaRatio (the pedestal α of these profiles).
@@ -217,6 +224,7 @@ export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: Globa
     q_div: qdiv, n_wall: nw, P_heat: X.P_heat / 1e6, P_charged: X.P_chg / 1e6, P_neutron: X.P_neut / 1e6,
     Efus_MJ: s.Efus / 1e6, Ein_MJ: s.Ein / 1e6, Nn: s.Nn, P_loss: X.P_loss / 1e6, dWdt: X.dWdt / 1e6, dWdt_s: ctx.dWdtS / 1e6, P_bound: X.P_bound / 1e6,
     ...edgeChannels1D(ctx, q95v, Ip),
+    ...(ctx.cdParts ? currentDriveChannels(ctx) : {}),
   };
   // profiles
   const mer = w.mercF, bal = w.ballF;

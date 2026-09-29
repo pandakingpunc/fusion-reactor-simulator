@@ -2,6 +2,8 @@
  * Source set of the 1.5D model and the assembly of the heat-equation source terms.
  */
 import { KEV, ProfileContext } from '../context';
+import { EccdSource } from '../cd/eccdSource';
+import { NbcdSource } from '../cd/nbcd';
 import { FastIonSource } from '../fastions/source';
 import { ExchangeSource } from './exchange';
 import { FusionSource } from './fusion';
@@ -14,10 +16,17 @@ export type { SourceModel } from './SourceModel';
 
 /**
  * The standard sources, in evaluation order. With the context of a shot whose ProfileSettings.fastIonModel is 'profile' the fast-ion source
- * (fastions/source.ts) follows the fusion source.
+ * (fastions/source.ts) follows the fusion source; with cdModel 'physics' the beam-driven current (cd/nbcd.ts) follows the NBI source and the
+ * ECCD source (cd/eccdSource.ts) the RF source.
  */
 export function defaultSources(ctx?: ProfileContext): SourceModel[] {
-  const list: SourceModel[] = [new NbiSource(), new RfSource(), new FusionSource()];
+  const nbi = new NbiSource(ctx);
+  const list: SourceModel[] = [nbi];
+  // cdModel 'physics': the beam-driven current of cd/nbcd.ts after the NBI source, the ECRH deposition and current of cd/eccd.ts after the RF source
+  if (ctx?.cdParts) list.push(new NbcdSource(nbi, ctx.cdParts));
+  list.push(new RfSource(ctx));
+  if (ctx?.cdParts) list.push(new EccdSource(ctx.cdParts));
+  list.push(new FusionSource());
   if (ctx?.fast) list.push(new FastIonSource(ctx));
   list.push(new RadiationSource(), new ExchangeSource());
   return list;

@@ -2,11 +2,9 @@
 import type { ScenarioKey } from './scenario.en';
 
 export const scenarioTr: Record<ScenarioKey, string> = {
-  'scn.title': 'Senaryo',
   'scn.step.note': 'İsteğe bağlı. Atışın kontrollerini (ısıtma, yakıt verme, hapsetme çarpanları, plazma akımı) zamanla yönlendirin ve kilitlemelerin plazmaya tepki vermesini sağlayın. Yapılandırmayı olduğu gibi çalıştırmak için boş bırakın.',
   'scn.intro': 'Senaryo, bir atışın kontrollerini zamanla sürer (dalga biçimleri) ve plazmanın yaptığına tepki verir (tetikleyiciler). Atışın bir parçasıdır: parmak izi, atış dosyası ve paylaşım bağlantısı onu taşır.',
   'scn.summary': '{waveforms} dalga biçimi, {triggers} tetikleyici',
-  'scn.summary.none': 'senaryo yok',
   'scn.readingModel': 'Bu yapılandırmanın kontrolleri okunuyor…',
   'scn.modelFailed': 'Bu yapılandırmanın kontrolleri okunamadı: {reason}',
   'scn.noModel': 'Model henüz bilinmiyor; bu yüzden senaryonun yalnızca yapısı denetleniyor.',

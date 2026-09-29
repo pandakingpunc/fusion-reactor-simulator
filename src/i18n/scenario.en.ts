@@ -7,11 +7,9 @@
  * src/ui/scenario/useScenarioT.ts.
  */
 export const scenarioEn = {
-  'scn.title': 'Scenario',
   'scn.step.note': 'Optional. Script the controls of the run (heating, fuelling, confinement multipliers, plasma current) and let interlocks react to the plasma. Leave it empty to run the configuration as it is.',
   'scn.intro': 'A scenario drives the controls of a run over time (waveforms) and reacts to what the plasma does (triggers). It is part of the run: its fingerprint, the run file and the share link carry it.',
   'scn.summary': '{waveforms} waveforms, {triggers} triggers',
-  'scn.summary.none': 'no scenario',
   'scn.readingModel': 'Reading the controls of this configuration…',
   'scn.modelFailed': 'The controls of this configuration could not be read: {reason}',
   'scn.noModel': 'The model is not known yet, so only the structure of the scenario is checked.',

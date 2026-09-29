@@ -288,12 +288,15 @@ describe('solver choice and the Pareto front', { timeout: 120_000 }, () => {
 
   it('is deterministic; without the seeds the front is still produced; a report carries the problem and a hash', () => {
     expect(solvePareto(spec)).toEqual(pareto);
-    const small = { ...spec, popSize: 20, generations: 8, seedWithOptima: false };
+    // without the optima as seeds a random population has to find a feasible design by itself: a population of 20 over 8 generations did so for
+    // only some seeds (2 of 5 after the v4.0 number changes, 1 of 5 before), so the size leaves a margin (a seed that finds none is a property of
+    // the seed, not of the solver)
+    const small = { ...spec, popSize: 40, generations: 12, seedWithOptima: false };
     const noSeeds = solvePareto(small);
-    expect(noSeeds.evals).toBe(20 + 8 * 20);
+    expect(noSeeds.evals).toBe(40 + 12 * 40);
     expect(noSeeds.feasibleFound).toBe(true);
     const rep = paretoReport(small, 'ITER');
-    expect(rep).toMatchObject({ schema: 1, tool: 'optimize', mode: 'pareto', problem: { preset: 'ITER', objectives: ['major-radius', 'aux-power'], popSize: 20, generations: 8, seed: 1 } });
+    expect(rep).toMatchObject({ schema: 1, tool: 'optimize', mode: 'pareto', problem: { preset: 'ITER', objectives: ['major-radius', 'aux-power'], popSize: 40, generations: 12, seed: 1 } });
     expect(rep.inputHash).toMatch(/^[0-9a-f]{64}$/);
     expect(paretoReport({ ...small, seed: 2 }).inputHash).not.toBe(rep.inputHash);
     expect(paretoReport({ ...small, seedWithOptima: true }).inputHash).not.toBe(rep.inputHash);

@@ -77,7 +77,7 @@ describe('scan plan', () => {
 
   it('a 1.5D profile setting can be scanned; its nominal value is the default of the profile model', () => {
     const p = planScan({ preset: 'ITER15', base: ITER_15D, axes: [{ path: 'profiles.pedestalWidth', lo: 0.04, hi: 0.08, points: 3 }], mode: 'grid', seed: 1, maxRuns: 10, tEnd: 1 });
-    expect((p.config(1) as MagneticConfig).profiles).toEqual({ lcfsKappa: 1.85, lcfsDelta: 0.49, pedestalWidth: 0.06 });
+    expect((p.config(1) as MagneticConfig).profiles).toEqual({ lcfsKappa: 1.85, lcfsDelta: 0.49, lcfsRef95: { kappa: 1.7, delta: 0.33 }, pedestalWidth: 0.06 });
     const r = summarizeScan(p, Array.from({ length: 3 }, () => okOutcome()));
     expect(r.axes[0].nominal).toBe(0.06);
     expect(r.system.fidelity).toBe('1.5D');

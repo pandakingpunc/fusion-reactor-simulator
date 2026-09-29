@@ -404,8 +404,13 @@ describe('scan: the table', () => {
   });
   it('--series keeps the time series of a diagnostic per point (the keepSeries hook of the worker)', async () => {
     const j = json((await cli([...base, '--param', 'seed=1', '--format', 'json', '--series', 'Q'])).out);
-    expect(j.points[0].series.t).toHaveLength(253);
-    expect(j.points[0].series.Q).toHaveLength(253);
+    // one sample per history frame of that run (the frame count depends on the ELM and sawtooth events of the model, so it is not typed in)
+    const ref = new Simulation(applyAssignments(getPreset('JET')!.cfg, ['t_end=0.5', 'seed=1']));
+    ref.runAll();
+    expect(ref.history.length).toBeGreaterThan(200);
+    expect(j.points[0].series.t).toHaveLength(ref.history.length);
+    expect(j.points[0].series.Q).toHaveLength(ref.history.length);
+    expect(j.points[0].series.t[ref.history.length - 1]).toBe(ref.history[ref.history.length - 1].t);
   });
   it('the format follows the --out extension; the file gets the output', async () => {
     const r = await cli([...base, '--param', 'seed=1', '--out', 'scan.json']);

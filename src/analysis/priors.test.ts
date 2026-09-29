@@ -58,7 +58,7 @@ describe('parameters of the 1.5D profile model', () => {
     const c = setPath(noProfiles, 'profiles.pedestalWidth', 0.1, { createMissing: true });
     expect(c.profiles).toEqual({ pedestalWidth: 0.1 });
     const d = setPath(ITER_15D, 'profiles.pedestalWidth', 0.1);
-    expect(d.profiles).toEqual({ lcfsKappa: 1.85, lcfsDelta: 0.49, pedestalWidth: 0.1 }); // the other settings are kept
+    expect(d.profiles).toEqual({ lcfsKappa: 1.85, lcfsDelta: 0.49, lcfsRef95: { kappa: 1.7, delta: 0.33 }, pedestalWidth: 0.1 }); // the other settings are kept
     const priors: PriorSet = { params: [{ path: 'profiles.pedestalWidth', dist: { type: 'lognormal', median: 0.06, sigmaLog: 0.3 } }] };
     expect(() => checkPriors(ITER_15D, priors)).not.toThrow();
     expect(() => checkPriors(ITER, priors)).toThrow(/is not a number of the tokamak configuration/);

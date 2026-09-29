@@ -1,7 +1,7 @@
 {
   "comment": "Per-file error counts of `tsc -p tsconfig.strict.json`. Written by `npm run typecheck:strict -- --update`; a file may only go down.",
   "typescript": "5.9.3",
-  "total": 41,
+  "total": 39,
   "files": {
     "src/App.tsx": 1,
     "src/physics/analysis/flatTop.test.ts": 2,
@@ -15,9 +15,7 @@
     "src/physics/profiles/profiles.test.ts": 1,
     "src/ui/ErrorBoundary.tsx": 3,
     "src/ui/charts/ProfileChart.tsx": 1,
-    "src/ui/report/Compare.tsx": 1,
     "src/ui/report/Report.tsx": 1,
-    "src/ui/report/Validation.tsx": 1,
     "src/ui/run/panels/ChartsPanel.tsx": 1,
     "src/ui/run/panels/ControlsPanel.tsx": 1,
     "src/ui/run/panels/CrossSectionPanel.tsx": 1,

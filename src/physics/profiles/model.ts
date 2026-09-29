@@ -38,6 +38,7 @@ import { CrashHook, ProfileContext, StepConstants } from './context';
 import { CheckpointStore, Checkpointable, contextCheckpoint } from './checkpoint';
 import { composition } from './composition';
 import { FuelingControl } from './control/fueling';
+import type { CurrentProgramme } from './control/plasmaCurrent';
 import { EquilibriumCoupling } from './coupling/equilibrium';
 import { PROFILE_DIAGS, stateDiagnostics } from './diagnostics';
 import { defaultEvents, EventModel } from './events';
@@ -72,6 +73,8 @@ export interface ProfileModules {
   sources?: SourceModel[];
   /** additional event models, run after the standard ones and before the disruption check */
   events?: EventModel[];
+  /** plasma-current programme I_p(t) [A], the boundary condition of the current diffusion (control/plasmaCurrent.ts); replaces ProfileSettings.IpWaveform */
+  plasmaCurrent?: CurrentProgramme;
 }
 
 /** Configurations the profile model can run */
@@ -110,6 +113,7 @@ export class ProfileModel implements SimModel {
     this.tEnd = cfg.t_end;
     this.outputDt = Math.max(cfg.t_end / 800, 0.002);
     this.nState = ctx.layout.size;
+    if (modules.plasmaCurrent) ctx.ipProgramme = modules.plasmaCurrent;
     this.physics = new PhysicsPipeline(ctx, modules.transport ?? createTransportModel(ctx.ps.transportModel), modules.sources ?? defaultSources());
     this.fueling = new FuelingControl(ctx);
     const ev = defaultEvents(modules.events);
@@ -191,7 +195,7 @@ export class ProfileModel implements SimModel {
     s.cZ = c.impurity.concentration;
     s.fA = c.fuelFracA;
     s.Cchi = 0.5; s.CI = 0.5;
-    s.Ip = Math.max(c.Ip_MA, 0.05) * 1e6;
+    s.Ip = ctx.ipAt(0) ?? Math.max(c.Ip_MA, 0.05) * 1e6;
     s.Sfuel = 0;
     ctx.bc = { Te: 0.05, Ti: 0.05, n: fsep * n0 };
     composition(ctx, Te, ne, s);

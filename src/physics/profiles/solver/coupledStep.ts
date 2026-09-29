@@ -367,6 +367,8 @@ export class CoupledStepper implements Checkpointable {
     const dtEff = TRBDF2_D * dt;
     const rtol = ctx.ps.rtol ?? DEFAULT_RTOL;
     const tolPicard = Math.min(2e-3, 0.1 * rtol);
+    // the boundary condition of the current diffusion at the end of each stage: the plasma-current programme, or the constant of the state
+    const ip1 = ctx.ipAt(t + TRBDF2_GAMMA * dt) ?? o.s.Ip, ip2 = ctx.ipAt(t + dt) ?? o.s.Ip;
     // old composition and current profiles
     composition(ctx, o.Te, o.ne, o.s);
     w.ni0.set(w.ni);
@@ -389,7 +391,8 @@ export class CoupledStepper implements Checkpointable {
     for (let i = 0; i < N; i++) { this.U0e[i] = 1.5 * o.ne[i] * o.Te[i]; this.U0i[i] = 1.5 * w.ni0[i] * o.Ti[i]; }
     const heat1: HeatInputs = this.heatInputs(dtEff, o, v, this.U0e, this.U0i, this.RTe, this.RTi);
     const dens1: DensityInputs = { dt: dtEff, n0: o.ne, D: w.D, v: w.v, S: w.Sn, nB: ctx.bc.n, X: this.Rne };
-    const cur1: CurrentInputs = { dt: dtEff, psi0: o.psi, sigma: w.sigma, jniB: w.jniB, Ip: s.Ip, rate0: this.Rpsi };
+    const cur1: CurrentInputs = { dt: dtEff, psi0: o.psi, sigma: w.sigma, jniB: w.jniB, Ip: ip1, rate0: this.Rpsi };
+    s.Ip = ip1;
     const st1 = this.solveStage(v, K, heat1, dens1, cur1, tolPicard);
     const net1 = this.endStage(v, K, heat1);
     if (!allFinite(y)) return { ok: false, change: Infinity };
@@ -409,7 +412,8 @@ export class CoupledStepper implements Checkpointable {
     }
     const heat2: HeatInputs = this.heatInputs(dtEff, o, v, this.refUe, this.refUi);
     const dens2: DensityInputs = { dt: dtEff, n0: this.refN, D: w.D, v: w.v, S: w.Sn, nB: ctx.bc.n };
-    const cur2: CurrentInputs = { dt: dtEff, psi0: this.refPsi, sigma: w.sigma, jniB: w.jniB, Ip: s.Ip };
+    const cur2: CurrentInputs = { dt: dtEff, psi0: this.refPsi, sigma: w.sigma, jniB: w.jniB, Ip: ip2 };
+    s.Ip = ip2;
     conv = this.solveStage(v, K, heat2, dens2, cur2, tolPicard) && conv;
     // power across the separatrix with the inputs of the last heat solve (before the final composition replaces w.ni):
     // closes the discrete energy balance of the step
@@ -647,7 +651,7 @@ export class CoupledStepper implements Checkpointable {
       this.ipsi[i] = w0 * o.psi[i] + w1 * g.psi[i] + w2 * v.psi[i];
       this.irat[i] = (1 - theta) * this.rOld[i] + theta * this.rNew[i];
     }
-    const ts: TriggerState = { Te: this.iTe, Ti: this.iTi, ne: this.ine, psi: this.ipsi, niOverNe: this.irat, Ip: v.s.Ip };
+    const ts: TriggerState = { Te: this.iTe, Ti: this.iTi, ne: this.ine, psi: this.ipsi, niOverNe: this.irat, Ip: o.s.Ip === v.s.Ip ? v.s.Ip : (1 - theta) * o.s.Ip + theta * v.s.Ip };
     return this.triggers[k].margin(ctx, ts, this.scratch);
   }
 

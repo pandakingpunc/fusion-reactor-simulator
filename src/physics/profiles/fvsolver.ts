@@ -9,7 +9,7 @@
  *
  *   (3/2) ∂(n T)/∂t = (1/V') ∂ρ[V' g1 n χ ∂ρT − (5/2) T Γ] + Q  ∓ (3/2) n_e ν_eq (T_e − T_i)
  *   ∂n/∂t          = −(1/V') ∂ρ Γ + S,   Γ = V'(−g1 D ∂ρn + ⟨|∇ρ̂|⟩ v n)
- *   σ∥ F⟨R⁻²⟩ ∂ψ/∂t = (1/(μ0 V')) ∂ρ(V' F g2 ∂ρψ) − ⟨j_ni·B⟩     (ψ rad başına, dışa artan)
+ *   σ∥ F⟨R⁻²⟩ ∂ψ/∂t = (F²/(μ0 V')) ∂ρ(V' g2 ∂ρψ / F) − ⟨j_ni·B⟩     (ψ rad başına, dışa artan; Hinton–Hazeltine biçimi, CurrentSolver)
  *
  * Isı denklemleri T_e/T_i için 2×2 blok üçlü-köşegen sistem olarak birlikte çözülür
  * (eşitlenme örtük → τ_eq ≪ Δt'de de kararlı). Yoğunlukta konveksiyon–difüzyon için
@@ -291,14 +291,42 @@ export class DensitySolver {
 export interface CurrentInputs {
   dt: number;
   psi0: Float64Array;
-  sigma: Float64Array; // σ∥ merkezlerde [S/m]
-  jniB: Float64Array; // ⟨j_ni·B⟩ merkezlerde [A T/m²]
-  Ip: number; // A
+  sigma: Float64Array; // σ∥ at the cell centres [S/m]
+  jniB: Float64Array; // ⟨j_ni·B⟩ at the cell centres [A T/m²]
+  /** the plasma current that fixes the enclosed current at the boundary, at the end of the interval [A] */
+  Ip: number;
   /** dψ/dt of the old state [Wb/rad/s], added as an explicit rate (the trapezoid stage of TR-BDF2); psi0 is then the reference state of the stage */
   rate0?: Float64Array;
+  /**
+   * Φ̇_b/Φ_b [1/s]: the rate of change of the toroidal flux through the boundary. The grid is ρ̂ = √(Φ/Φ_b), so when Φ_b changes a flux surface
+   * (Φ fixed) moves in ρ̂ with dρ̂/dt = −ρ̂ Φ̇_b/(2Φ_b), and the poloidal flux at fixed ρ̂ obeys ∂ψ/∂t|ρ̂ = ∂ψ/∂t|Φ + (ρ̂ Φ̇_b/(2Φ_b)) ∂ψ/∂ρ̂, the
+   * diffusion equation being the one at fixed Φ. Default 0 (a fixed boundary flux: what the model has, see CurrentSolver).
+   */
+  PhiBdotRel?: number;
 }
 
-/** Poloidal akı difüzyonu (akım difüzyonu), I_p sınır koşullu */
+/**
+ * Current diffusion (poloidal flux), I_p boundary condition, in the form of Hinton and Hazeltine (Rev. Mod. Phys. 48 (1976) 239),
+ * written for the poloidal flux ψ (per radian) on the toroidal-flux coordinate ρ̂ (ρ̂ = √(Φ/Φ_b), V' = dV/dρ̂, g2 = ⟨|∇ρ̂|²/R²⟩):
+ *
+ *   σ∥ F ⟨R⁻²⟩ (∂ψ/∂t|Φ) = (F²/(μ0 V')) ∂ρ̂( V' g2 ∂ρ̂ψ / F ) − ⟨j_ni·B⟩
+ *
+ * The right-hand side is ⟨j·B⟩ − ⟨j_ni·B⟩ with the flux-surface average of the current of an axisymmetric equilibrium, ⟨j·B⟩ = (F²/(μ0 V'))
+ * ∂ρ̂(V' g2 ∂ρ̂ψ / F): with B = F∇φ + ∇ψ×∇φ and μ0 j = ∇F×∇φ − Δ*ψ ∇φ, j·B = −F Δ*ψ/(μ0 R²) + F′|∇ψ|²/(μ0 R²) (F′ = dF/dψ; the first
+ * term is the toroidal current, the second the poloidal one) and the flux-surface average of the two gives F times the divergence of the
+ * enclosed current minus F_ρ times the enclosed current, that is F² ∂ρ̂(X/F). (The form (1/(μ0 V')) ∂ρ̂(V' F g2 ∂ρ̂ψ) that v3 and the earlier
+ * v4 stages used has the sign of the F_ρ term the other way round: the two agree for a constant F and differ by 2 F_ρ X/(μ0 V'), a few per
+ * cent of the current diffusion term where the enclosed current saturates, in the outer half of the plasma.) The equation is conservative in the
+ * flux X/F, X = V' g2 ∂ρ̂ψ = 2π μ0 I(ρ̂) with I the current enclosed by the surface: multiplied by V'/F² it is
+ *
+ *   σ∥ ⟨R⁻²⟩ (V'/F) ∂ψ/∂t = (1/μ0) ∂ρ̂(X/F) − V' ⟨j_ni·B⟩/F²,
+ *
+ * which the solver integrates over the cells. The boundary condition is X/F = 2π μ0 I_p/F at ρ̂ = 1. At fixed ρ̂ (the grid) the time derivative is
+ * ∂ψ/∂t|ρ̂ = ∂ψ/∂t|Φ + (ρ̂ Φ̇_b/(2Φ_b)) ∂ψ/∂ρ̂ (CurrentInputs.PhiBdotRel): the toroidal flux inside the LCFS changes only with the shape and the
+ * toroidal field, which are fixed in the fixed-boundary model, and the 1e-3 changes of Φ_b between successive Grad–Shafranov updates (of either
+ * sign: the accuracy of the solver) are not a rate, so the model passes 0; a free-boundary or shape-programme coupling supplies it. The V' of the
+ * conservative form is not inside the time derivative of ψ (unlike the contents of the heat and particle equations), so there is no V̇' term here.
+ */
 export class CurrentSolver {
   private a: Float64Array; private b: Float64Array; private c: Float64Array; private d: Float64Array;
   private cp: Float64Array; private dp: Float64Array;
@@ -307,41 +335,73 @@ export class CurrentSolver {
     this.a = new Float64Array(N); this.b = new Float64Array(N); this.c = new Float64Array(N); this.d = new Float64Array(N);
     this.cp = new Float64Array(N); this.dp = new Float64Array(N);
   }
-  /** G = V' F g2 (yüzeylerde) */
-  G(f: number): number { const g = this.g; return g.VpF[f] * g.FF[f] * g.g2F[f]; }
+  /** G = V' g2 / F at the faces: the flux of the equation is (1/μ0) G ∂ρ̂ψ = X/(μ0 F) */
+  G(f: number): number { const g = this.g; return (g.VpF[f] * g.g2F[f]) / g.FF[f]; }
+  /**
+   * ∂ρ̂ψ at the centre of cell i as the mean of the gradients over its two faces (the centre is the midpoint of the faces): the coefficients of
+   * ψ_{i−1}, ψ_i, ψ_{i+1} and the constant part, out[3]. The axis face has no gradient, the outer one is the boundary value 2π μ0 I_p/(V' g2),
+   * so the estimate is second order in the cells next to the ends too.
+   */
+  private derivative(i: number, Ip: number, out: [number, number, number, number]): void {
+    const g = this.g, N = g.N;
+    out[0] = 0; out[1] = 0; out[2] = 0; out[3] = 0;
+    if (i > 0) { const h = 0.5 / g.distF[i]; out[0] = -h; out[1] += h; }
+    if (i < N - 1) { const h = 0.5 / g.distF[i + 1]; out[1] -= h; out[2] = h; }
+    else out[3] = (0.5 * 2 * Math.PI * MU0 * Ip) / (g.VpF[N] * g.g2F[N]);
+  }
+  private readonly stencil: [number, number, number, number] = [0, 0, 0, 0];
   solve(h: CurrentInputs, psi: Float64Array): void {
     const g = this.g, N = g.N;
     const { a, b, c, d } = this;
+    const sw = h.PhiBdotRel ? 0.5 * h.PhiBdotRel : 0;
     for (let i = 0; i < N; i++) {
-      const m = (h.sigma[i] * g.FC[i] * g.R2invC[i] * g.dV[i]) / h.dt;
+      const M = (h.sigma[i] * g.R2invC[i] * g.dV[i]) / g.FC[i];
+      const m = M / h.dt;
       const GL = i > 0 ? this.G(i) / (MU0 * g.distF[i]) : 0;
       const GR = i < N - 1 ? this.G(i + 1) / (MU0 * g.distF[i + 1]) : 0;
       a[i] = -GL; c[i] = -GR; b[i] = m + GL + GR;
-      d[i] = m * h.psi0[i] - h.jniB[i] * g.dV[i];
-      if (h.rate0) d[i] += m * h.dt * h.rate0[i];
-      if (i === N - 1) d[i] += 2 * Math.PI * g.FF[N] * h.Ip; // (1/μ0) G ψ' = 2π F I_p
+      d[i] = m * h.psi0[i] - (h.jniB[i] * g.dV[i]) / (g.FC[i] * g.FC[i]);
+      if (h.rate0) d[i] += M * h.rate0[i];
+      if (sw) {
+        // M (ρ̂ Φ̇_b/(2Φ_b)) ∂ρ̂ψ on the right-hand side, taken implicitly
+        const q = M * sw * g.rhoC[i], s = this.stencil;
+        this.derivative(i, h.Ip, s);
+        if (i > 0) a[i] -= q * s[0];
+        b[i] -= q * s[1];
+        if (i < N - 1) c[i] -= q * s[2];
+        d[i] += q * s[3];
+      }
+      if (i === N - 1) d[i] += (2 * Math.PI * h.Ip) / g.FF[N]; // (1/μ0) G ψ' = 2π I_p / F
     }
     try { solveTridiag(a, b, c, d, psi, N, this.cp, this.dp); } catch (e) { throw asLinearAlgebraFailure('current', e); }
   }
   /**
-   * dψ/dt of the profile psi [Wb/rad/s]: the right-hand side of σ∥ F⟨R⁻²⟩ ∂ψ/∂t = (1/(μ0 V')) ∂ρ(V' F g2 ∂ρψ) − ⟨j_ni·B⟩
-   * divided by the coefficient of the time derivative, discretised as in solve() (a solution satisfies
-   * (ψ − ψ0)/dt = rate to round-off).
+   * dψ/dt of the profile psi [Wb/rad/s] at fixed ρ̂: the right-hand side of the equation above divided by the coefficient of the time
+   * derivative, discretised as in solve() (a solution satisfies (ψ − ψ0)/dt = rate to round-off).
    */
-  rate(h: Pick<CurrentInputs, 'sigma' | 'jniB' | 'Ip'>, psi: ArrayLike<number>, out: Float64Array): void {
+  rate(h: Pick<CurrentInputs, 'sigma' | 'jniB' | 'Ip' | 'PhiBdotRel'>, psi: ArrayLike<number>, out: Float64Array): void {
     const g = this.g, N = g.N;
+    const sw = h.PhiBdotRel ? 0.5 * h.PhiBdotRel : 0;
     for (let i = 0; i < N; i++) {
-      const M = h.sigma[i] * g.FC[i] * g.R2invC[i] * g.dV[i];
+      const M = (h.sigma[i] * g.R2invC[i] * g.dV[i]) / g.FC[i];
       const GL = i > 0 ? this.G(i) / (MU0 * g.distF[i]) : 0;
       const GR = i < N - 1 ? this.G(i + 1) / (MU0 * g.distF[i + 1]) : 0;
-      let r = -h.jniB[i] * g.dV[i];
+      let r = -(h.jniB[i] * g.dV[i]) / (g.FC[i] * g.FC[i]);
       if (i > 0) r -= GL * (psi[i] - psi[i - 1]);
       if (i < N - 1) r += GR * (psi[i + 1] - psi[i]);
-      else r += 2 * Math.PI * g.FF[N] * h.Ip;
+      else r += (2 * Math.PI * h.Ip) / g.FF[N];
       out[i] = r / M;
+      if (sw) {
+        const s = this.stencil;
+        this.derivative(i, h.Ip, s);
+        let dpsi = s[1] * psi[i] + s[3];
+        if (i > 0) dpsi += s[0] * psi[i - 1];
+        if (i < N - 1) dpsi += s[2] * psi[i + 1];
+        out[i] += sw * g.rhoC[i] * dpsi;
+      }
     }
   }
-  /** ψ' yüzeylerde (dış yüz I_p koşulundan) */
+  /** ψ' at the faces (the outer face from the I_p condition) */
   dpsiF(psi: Float64Array, Ip: number, out: Float64Array): Float64Array {
     const g = this.g, N = g.N;
     out[0] = 0;
@@ -349,13 +409,13 @@ export class CurrentSolver {
     out[N] = (2 * Math.PI * MU0 * Ip) / (g.VpF[N] * g.g2F[N]);
     return out;
   }
-  /** ⟨j·B⟩ merkezlerde [A T/m²] = (1/μ0 ΔV)(G ψ')|sağ − (G ψ')|sol */
+  /** ⟨j·B⟩ at the cell centres [A T/m²] = (F²/(μ0 ΔV)) [(G ψ')|right − (G ψ')|left] (Hinton–Hazeltine form) */
   jB(dpsiF: Float64Array, out: Float64Array): Float64Array {
     const g = this.g, N = g.N;
-    for (let i = 0; i < N; i++) out[i] = (this.G(i + 1) * dpsiF[i + 1] - this.G(i) * dpsiF[i]) / (MU0 * g.dV[i]);
+    for (let i = 0; i < N; i++) out[i] = (g.FC[i] * g.FC[i] * (this.G(i + 1) * dpsiF[i + 1] - this.G(i) * dpsiF[i])) / (MU0 * g.dV[i]);
     return out;
   }
-  /** Çevrelenen akım I(ρ_f) [A] = V' g2 ψ'/(2π μ0) */
+  /** Enclosed current I(ρ_f) [A] = V' g2 ψ'/(2π μ0) */
   Ienc(dpsiF: Float64Array, out: Float64Array): Float64Array {
     const g = this.g;
     for (let f = 0; f <= g.N; f++) out[f] = (g.VpF[f] * g.g2F[f] * dpsiF[f]) / (2 * Math.PI * MU0);

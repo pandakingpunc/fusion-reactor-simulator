@@ -61,6 +61,13 @@ export interface ProfileSettings {
    * (that stabilised Picard iteration alone). Default 'auto': Newton for a predictive transport model ('cgm'), Picard for 'scaling'
    */
   nonlinearSolver?: 'auto' | 'picard' | 'newton' | 'pc';
+  /**
+   * plasma-current programme, the boundary condition of the current diffusion equation as a function of time: points [t (s), I_p (MA)] in increasing
+   * time, linearly interpolated and held constant beyond the first and last point (profiles/control/plasmaCurrent.ts). `Ip_MA` is what the initial
+   * equilibrium is solved for and should equal the programme at t = 0. Default: I_p constant. A function of time is given to the model as
+   * `ProfileModules.plasmaCurrent`.
+   */
+  IpWaveform?: ReadonlyArray<readonly [number, number]>;
   /** GS ızgarası R yönü düğüm sayısı */
   eqNR: number;
   /** denge güncelleme aralığı üst sınırı [s] */

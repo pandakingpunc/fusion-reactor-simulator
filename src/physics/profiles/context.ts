@@ -14,6 +14,7 @@ import { RNG } from '../rng';
 import type { Equilibrium } from '../equilibrium/gs';
 import type { MagneticConfig, ProfileSettings, SimEvent, TerminationInfo } from '../types';
 import { DEFAULT_PROFILE_SETTINGS } from './defaults';
+import { CurrentProgramme, currentWaveform, IP_PROGRAMME_FLOOR } from './control/plasmaCurrent';
 import { gridSpec, type GridSpec, type TransportGeometry } from './geometry1d';
 import { CurrentSolver, DensitySolver, HeatSolver } from './fvsolver';
 import { volumeIntegral } from './sources/deposition';
@@ -104,6 +105,8 @@ export class ProfileContext {
   /** stochastic events (ELM size); part of the checkpoint */
   readonly rng: RNG;
   readonly ctrl: Actuators;
+  /** plasma-current programme I_p(t) [A] (control/plasmaCurrent.ts); null: I_p is the constant of the state */
+  ipProgramme: CurrentProgramme | null;
 
   // ---------------------------------------------------------------- equilibrium and geometry
   geo!: EqGeometry;
@@ -190,6 +193,7 @@ export class ProfileContext {
     const fs = FUEL_SPECIES[cfg.fuel];
     this.M = cfg.fuelFracA * fs.a.A + (1 - cfg.fuelFracA) * fs.b.A;
     this.rng = new RNG(cfg.seed);
+    this.ipProgramme = this.ps.IpWaveform ? currentWaveform(this.ps.IpWaveform) : null;
     this.ctrl = {
       P_NBI_MW: cfg.heating.P_NBI_MW, P_ICRH_MW: cfg.heating.P_ICRH_MW, P_ECRH_MW: cfg.heating.P_ECRH_MW,
       n_target_1e20: cfg.n_target / 1e20, H98: cfg.H98, cZ: cfg.impurity.concentration,
@@ -204,6 +208,12 @@ export class ProfileContext {
 
   /** Views of a state vector */
   view(y: Float64Array): ProfileState { return this.layout.view(y); }
+
+  /** The plasma current of the programme at time t [A] (at least 0.05 MA), or null without a programme */
+  ipAt(t: number): number | null {
+    const p = this.ipProgramme;
+    return p ? Math.max(p(t), IP_PROGRAMME_FLOOR) : null;
+  }
 
   /** Registers a cache that depends on the transport geometry; called now if a geometry exists and on every adoptGeometry */
   onGeometry(f: (tg: TransportGeometry) => void): void {

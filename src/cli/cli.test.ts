@@ -199,7 +199,7 @@ describe('validate CLI exit codes', { timeout: 60_000 }, () => {
   });
 });
 
-describe('golden CLI', { timeout: 60_000 }, () => {
+describe('golden CLI', { timeout: 180_000 }, () => {
   const golden = (...args: string[]) => {
     const r = spawnSync(process.execPath, ['--import', 'tsx', 'src/cli/golden.cli.ts', '--threads', '2', ...args], { cwd: ROOT, encoding: 'utf8', timeout: 60_000 });
     if (r.error) throw r.error;

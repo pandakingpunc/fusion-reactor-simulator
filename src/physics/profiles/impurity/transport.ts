@@ -64,7 +64,7 @@ export function facitTable(ctx: ProfileContext, st: ProfileState, spec: Impurity
     const inner = f < N;
     const Ti = inner ? faceValue(g, st.Ti, f) : ctx.bc.Ti;
     const Te = inner ? faceValue(g, st.Te, f) : ctx.bc.Te;
-    const Ni = inner ? 0.5 * (w.na[f - 1] + w.nb[f - 1] + w.na[f] + w.nb[f]) : (w.na[N - 1] + w.nb[N - 1]) * ratioB;
+    const Ni = inner ? faceValue(g, w.na, f) + faceValue(g, w.nb, f) : (w.na[N - 1] + w.nb[N - 1]) * ratioB;
     const Nz = inner ? faceValue(g, nz, f) : Math.max(nzB, 0.5 * nz[N - 1]);
     const Zeff = inner ? faceValue(g, w.Zeff, f) : w.Zeff[N - 1];
     const eps = (g.RoutF[f] - g.RinF[f]) / (g.RoutF[f] + g.RinF[f]);

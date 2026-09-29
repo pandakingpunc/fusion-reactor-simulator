@@ -43,7 +43,9 @@ const inner = importGeqdsk(text, { boundaryPsi: simag + 0.99 * (sibry - simag) }
 
 * The writer puts ψ on the solver's own grid (or resamples it by the bicubic spline of the state), F, p, FF′, p′ and q on a
   uniform ψ_N grid, a closed boundary polygon and an optional limiter. The 5e16.9 format holds 10 significant digits:
-  a ψ written and read back agrees to 5e−10 of its range; `digits: 15` gives 1e−14.
+  a ψ written and read back agrees to 5e−10 of its range; `digits: 15` gives 1e−14. That is the text round trip on the same grid
+  (`readGeqdsk`); through `importGeqdsk` the state is resampled onto a Shortley–Weller grid of the boundary polygon and ψ agrees to
+  6e−6 of its range (ITER-like test equilibrium, NR 65; volume 1e−4, q95 2e−5, β_p 6e−5).
 * The reader takes what real files do (fields that touch, D exponents, exponents without the E, other header widths, truncated
   files) and reports the oddities as warnings. COCOS is detected from the signs of I_p, B0, ψ_b − ψ_axis and q, and the flux unit
   (Wb or Wb/rad) from Ampère's law on the 98 % surface; σ_RφZ is not in a file, so the odd COCOS is returned. A current or field

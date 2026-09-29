@@ -63,12 +63,14 @@ export function millerBoundary(g: Geometry): ShapeBoundary {
 /**
  * Up-down asymmetric Miller shape with squareness:
  *   R(θ) = R0 + a cos(θ + arcsin(δ) sin θ),   Z(θ) = Z0 + κ a sin(θ + ζ sin 2θ),
- * the curve of Miller et al. (Phys. Plasmas 5 (1998) 973) with the squareness term ζ sin 2θ in the argument of Z, as
- * used for shaped flux surfaces in gyrokinetic Miller geometry. The upper half (sin θ ≥ 0) takes δ_u, κ_u, ζ_u and the
+ * the curve of Miller et al. (Phys. Plasmas 5 (1998) 973) with a squareness term ζ sin 2θ in the argument of Z (the form of
+ * local-equilibrium codes; this is a convention of this module, its source is not cited because it could not be checked
+ * offline, and nothing in the solver depends on it beyond the curve itself). The upper half (sin θ ≥ 0) takes δ_u, κ_u, ζ_u and the
  * lower half δ_l, κ_l, ζ_l, so the curve is continuous with a vertical tangent at the outboard and inboard points. The
  * bounding box is [R0 − a, R0 + a] × [Z0 − κ_l a, Z0 + κ_u a] (ζ does not move it); ζ > 0 pushes the boundary towards the
- * corners of the box (a squarer plasma), ζ < 0 towards a diamond. |δ| < 1 and |ζ| < 1/2 keep R and Z monotone on the four
- * arcs between the extreme points (dZ/dθ ∝ 1 + 2ζ cos 2θ > 0), which the crossings need.
+ * corners of the box (a squarer plasma), ζ < 0 towards a diamond. |arcsin δ| < 1 (|δ| < sin 1 = 0.841: dR/dθ ∝ 1 +
+ * arcsin δ cos θ > 0 for R monotone) and |ζ| < 1/2 (dZ/dθ ∝ 1 + 2ζ cos 2θ > 0 for Z monotone) keep R and Z monotone on the
+ * four arcs between the extreme points, which the crossings need; a boundary beyond them is refused.
  */
 export interface MillerShape {
   /** geometric major radius [m] */
@@ -99,7 +101,7 @@ export function millerShape(p: MillerShape): ShapeBoundary {
   const zu = p.zetaUpper ?? p.zeta ?? 0, zl = p.zetaLower ?? p.zeta ?? 0;
   if (!(Number.isFinite(R0) && Number.isFinite(a) && a > 0 && R0 - a > 0)) throw new ShapeError(`need 0 < a < R0 (R0 = ${R0}, a = ${a})`);
   for (const [name, k] of [['kappa (upper)', ku], ['kappa (lower)', kl]] as const) if (!(Number.isFinite(k) && k > 0)) throw new ShapeError(`${name} must be a positive number (got ${k})`);
-  for (const [name, d] of [['delta upper', du], ['delta lower', dl]] as const) if (!(Number.isFinite(d) && Math.abs(d) < 1)) throw new ShapeError(`${name} must be in (−1, 1) (got ${d})`);
+  for (const [name, d] of [['delta upper', du], ['delta lower', dl]] as const) if (!(Number.isFinite(d) && Math.abs(d) < Math.sin(1))) throw new ShapeError(`${name} must be in (−sin 1, sin 1) = (−0.841, 0.841), where R along the boundary stays monotone (got ${d})`);
   for (const [name, z] of [['zeta upper', zu], ['zeta lower', zl]] as const) if (!(Number.isFinite(z) && Math.abs(z) < 0.5)) throw new ShapeError(`${name} must be in (−1/2, 1/2) (got ${z})`);
   if (!Number.isFinite(Z0)) throw new ShapeError(`Z0 must be finite (got ${Z0})`);
   const xu = Math.asin(du), xl = Math.asin(dl);

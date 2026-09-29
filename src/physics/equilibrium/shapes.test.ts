@@ -115,6 +115,10 @@ describe('ShapeBoundary of a closed curve: the crossings the Shortley–Weller g
 
   it('rejects what it cannot describe: parameters out of range, a bean, no area, non-finite points', () => {
     expect(() => millerShape({ R0: 3, a: 1, kappa: 1.5, delta: 1 })).toThrow(ShapeError);
+    // the limit is arcsin δ < 1 (δ < 0.841), not |δ| < 1: R along the boundary is no longer monotone beyond it
+    expect(() => millerShape({ R0: 3, a: 1, kappa: 1.5, delta: 0.9 })).toThrow(/delta upper must be in \(−sin 1, sin 1\)/);
+    expect(() => millerShape({ R0: 3, a: 1, kappa: 1.5, deltaLower: -0.86 })).toThrow(/delta lower must be in/);
+    expect(millerShape({ R0: 3, a: 1, kappa: 1.5, delta: 0.83 }).rRange(0)).not.toBeNull();
     expect(() => millerShape({ R0: 3, a: 1, kappa: 1.5, zeta: 0.5 })).toThrow(/zeta/);
     expect(() => millerShape({ R0: 1, a: 1.2, kappa: 1.5 })).toThrow(/a < R0/);
     expect(() => millerShape({ R0: 3, a: 1, kappa: -1 })).toThrow(/kappa/);

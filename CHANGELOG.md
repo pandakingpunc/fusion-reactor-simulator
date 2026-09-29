@@ -92,6 +92,17 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 - Time charts thin long runs per pixel column (min/max level of detail) and keep event frames: ELM
   and sawtooth crashes stay visible at any run length.
 - `bench/pause-latency.ts` measures the wait of a pause request on the simulation worker (p50, p99).
+- Live values: a collapsible power-balance block shows P_alpha, P_beam_heat, P_rad_core, P_transport,
+  P_cond, P_ELM, P_ei, P_loss, dW/dt, P_bound, W, W_fast, W_alpha, W_beam, n_bar, thermal beta_N and
+  the ignited flag.
+- Chart channels for betaN_th, W_alpha, W_beam and ignited (0D and 1.5D) and P_bound (1.5D).
+- Setup wizard: stellarator H_ISS04 (blank keeps the old f_ren x H98), ICF driver and thermal
+  efficiency, mirror plug potential (tandem); the ignition-test switch is documented as a ramp-down
+  in 0D and 1.5D.
+- Setup wizard: a torus needs a < R, and 1.5D needs R > 1.06 a; RUN is blocked with an explanation
+  instead of the 1.5D model failing on start.
+- A 1.5D shot that ends in 'Numerical failure' or 'Equilibrium failure' is shown in the live panel
+  and the report with the failure named in the interface language, the diagnosis and the fix text.
 
 ### Changed
 - POPCON T axis scaled to where the device operates instead of a fixed 0-40 keV: 2.5 times the
@@ -235,6 +246,9 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 - 0D: a disruption ends the ignition state (`ignited` stayed 1 through the quench and the report's
   ignition time counted the quench frames; ITER at H98 = 1.6, beta-limit disruption while ignited:
   5.38 s -> 5.04 s of ignition, the disruption at 21.4 s). The 1.5D model did this already.
+- Rewinding a 1.5D shot to the frame before a failed step now also removes the failure's end event
+  (the event list is truncated by the kernel's event count, not by time).
+- A saved Turkish interface language is applied before the first render (no English flash).
 
 Physics results are unchanged by the 1.5D changes above: a full-precision dump of all 21 presets
 was byte-identical before and after them. The frame fix of the ELM presets is the exception (see

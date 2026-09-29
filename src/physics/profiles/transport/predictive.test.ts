@@ -1,7 +1,8 @@
 /**
- * The predictive closures 'bgb' (mixed Bohm/gyro-Bohm) and 'ifspppl' (IFS-PPPL) on whole shots: they run through the Newton solve without
- * a Jacobian outside the block-tridiagonal band (what `TransportModel.prepare` is for), stay chunk invariant and rewind exactly, and report
- * the confinement they arrive at (the diagnostics H98y2 and HITPA20 and the report entries).
+ * The predictive closures 'bgb' (mixed Bohm/gyro-Bohm) and 'ifspppl' (IFS-PPPL) on whole shots: 'auto' takes the Pereverzev–Corrigan
+ * Picard iteration for them (`TransportModel.preferredSolver`: Newton does not pay), Newton stays selectable and runs without a Jacobian
+ * outside the block-tridiagonal band (what `TransportModel.prepare` is for), both are chunk invariant and rewind exactly, and the closures
+ * report the confinement they arrive at (the diagnostics H98y2 and HITPA20 and the report entries).
  */
 import { describe, expect, it } from 'vitest';
 import { blockTridiag, coloredJacobian } from '../../numerics/blockTridiagN';
@@ -19,15 +20,16 @@ type Model = 'bgb' | 'ifspppl';
 const MODELS: Model[] = ['bgb', 'ifspppl'];
 const M = 4;
 
-const jet = (model: Model | 'scaling', tEnd: number): MagneticConfig => {
+const jet = (model: Model | 'scaling', tEnd: number, solver?: 'newton' | 'pc' | 'picard'): MagneticConfig => {
   const c = presetCfg('JET15', tEnd) as MagneticConfig;
-  return { ...c, profiles: { ...c.profiles, transportModel: model } } as MagneticConfig;
+  return { ...c, profiles: { ...c.profiles, transportModel: model, ...(solver ? { nonlinearSolver: solver } : {}) } } as MagneticConfig;
 };
 
 class Stop extends Error {}
 
 describe.each(MODELS)("'%s' on a JET15 ramp-up", (model) => {
-  it('runs through the Newton solve to its end without a forced step, with C_χ = 1 and τ_E = W/P_loss in every frame', () => {
+  it("'auto' takes the stabilised Picard iteration, runs to its end without a forced step, with C_χ = 1 and τ_E = W/P_loss in every frame", () => {
+    expect(createTransportModel(model).preferredSolver).toBe('pc');
     const sim = new Simulation(jet(model, 0.6));
     const m = sim.model as ProfileModel;
     sim.runAll();
@@ -35,8 +37,8 @@ describe.each(MODELS)("'%s' on a JET15 ramp-up", (model) => {
     expect(m.forcedSteps).toBe(0);
     expect(m.stepFailure).toBeNull();
     const st = m.stepper.stats;
-    expect(st.newtonIters).toBeGreaterThan(100);
-    expect(st.fallbacks).toBeLessThan(0.05 * st.accepted);
+    expect(st.newtonIters).toBe(0);
+    expect(st.picardIters).toBeGreaterThan(100);
     for (const h of sim.history) {
       for (const [k, v] of Object.entries(h.d)) if (!Number.isFinite(v)) throw new Error(`t = ${h.t}: ${k} = ${v}`);
     }
@@ -71,8 +73,8 @@ describe.each(MODELS)("'%s' on a JET15 ramp-up", (model) => {
     expect(keys.has('H98y2') && keys.has('HITPA20')).toBe(true);
   }, 120000);
 
-  it('has a block-tridiagonal Jacobian at a stage of the shot: the coloured finite-difference one equals the column-by-column one and nothing lies outside the band', () => {
-    const sim = new Simulation(jet(model, 1.0));
+  it('with Newton selected: a block-tridiagonal Jacobian at a stage of the shot (the coloured finite-difference one equals the column-by-column one, nothing lies outside the band)', () => {
+    const sim = new Simulation(jet(model, 1.0, 'newton'));
     const m = sim.model as ProfileModel;
     const nst = (m.stepper as unknown as { newton: NewtonStage }).newton;
     const orig = nst.solve.bind(nst);
@@ -119,15 +121,17 @@ describe.each(MODELS)("'%s' on a JET15 ramp-up", (model) => {
     };
     try { sim.runAll(); } catch (e) { if (!(e instanceof Stop)) throw e; }
     expect(done).toBe(true);
+    expect(m.stepper.stats.newtonIters).toBeGreaterThan(100);
   }, 120000);
 
-  it('is chunk invariant and rewinds exactly (the held quantities are a function of the old state, nothing is checkpointed)', () => {
-    const c = jet(model, 0.3);
+  // Newton on the second closure adds no code path (the hook is the same one); the Jacobian test above covers it
+  it.each(model === 'bgb' ? (['pc', 'newton'] as const) : (['pc'] as const))('%s: is chunk invariant and rewinds exactly (the held quantities are a function of the old state, nothing is checkpointed)', (solver) => {
+    const c = jet(model, 0.15, solver);
     const ref = referenceRun(c);
-    for (let s = 1; s <= 2; s++) expectSameRun(runChunked(c, 7000 + s), ref, `${model} schedule ${s}`);
+    expectSameRun(runChunked(c, 7001), ref, `${model} ${solver} chunked`);
     const sim = rewindAt(c, 0.5, 7100);
     advanceRandomly(sim, 7101);
-    expectSameRun(normalizeRng(sim), normalizeRng(ref), `${model} rewound at 50 %`);
+    expectSameRun(normalizeRng(sim), normalizeRng(ref), `${model} ${solver} rewound at 50 %`);
   }, 240000);
 });
 

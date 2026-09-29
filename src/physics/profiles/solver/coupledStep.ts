@@ -484,11 +484,15 @@ export class CoupledStepper implements Checkpointable {
    * How a stage is solved (ProfileSettings.nonlinearSolver): 'picard' (Picard with Anderson mixing, the fast path), 'newton'
    * (Newton–Raphson on the coupled system, with the Pereverzev–Corrigan Picard iteration as the fallback) or 'pc' (that Picard
    * iteration alone). 'auto', the default: Newton for a predictive transport model (χ depends on the gradient: the frozen-coefficient
-   * iteration is not a contraction where the differential diffusivity is more than twice χ), Picard otherwise.
+   * iteration is not a contraction where the differential diffusivity is more than twice χ) unless the model asks for 'pc'
+   * (`TransportModel.preferredSolver`: 'bgb' and 'ifspppl', where Newton costs more than it buys), Picard otherwise.
    */
   private solverMode(): 'picard' | 'newton' | 'pc' {
     const m = this.ctx.ps.nonlinearSolver ?? 'auto';
-    if (m === 'auto') return this.physics.transport.predictive ? 'newton' : 'picard';
+    if (m === 'auto') {
+      const tr = this.physics.transport;
+      return tr.predictive ? tr.preferredSolver ?? 'newton' : 'picard';
+    }
     return m;
   }
 

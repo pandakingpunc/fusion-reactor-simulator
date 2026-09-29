@@ -233,7 +233,7 @@
             "newton",
             "pc"
           ],
-          "description": "Solver of the nonlinear system of a transport stage. 'auto': Newton-Raphson for a predictive transport model ('cgm'), Picard iteration with Anderson mixing for 'scaling'; 'picard', 'newton' (with the Pereverzev-Corrigan Picard iteration as its fallback) and 'pc' (that stabilised Picard iteration alone) force one.",
+          "description": "Solver of the nonlinear system of a transport stage. 'auto': Newton-Raphson for a predictive transport model ('cgm'), the Pereverzev-Corrigan Picard iteration for the closures that ask for it ('bgb', 'ifspppl': Newton costs more than it buys there), Picard iteration with Anderson mixing for 'scaling'; 'picard', 'newton' (with the Pereverzev-Corrigan Picard iteration as its fallback) and 'pc' (that stabilised Picard iteration alone) force one.",
           "default": "auto"
         },
         "IpWaveform": {

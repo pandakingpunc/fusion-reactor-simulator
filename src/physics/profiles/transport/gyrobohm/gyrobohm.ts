@@ -24,6 +24,8 @@ import { BGB, bgbChi, nonLocalFactor, rhoStar } from './formula';
 export class BohmGyroBohmTransport implements TransportModel {
   readonly id = 'bgb';
   readonly predictive = true;
+  /** Newton does not pay here (ITER15 400 s: 23 s against 13 s; JET15 22 s against 6.5 s; the same flat-top numbers to 3·10⁻³): 'auto' takes 'pc' */
+  readonly preferredSolver = 'pc' as const;
   /** the non-local factor Λ of the old state of the step */
   private lambda = 0;
   private prepared = false;

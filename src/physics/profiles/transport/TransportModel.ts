@@ -30,6 +30,13 @@ export interface TransportModel extends Partial<Checkpointable> {
   /** true: τ_E is predicted (W/P_loss); false: W is held to the τ_E scaling by the C_χ controller */
   readonly predictive: boolean;
   /**
+   * The solver `ProfileSettings.nonlinearSolver: 'auto'` uses for this predictive model: 'newton' (the default of a predictive model) or 'pc'
+   * (the Pereverzev–Corrigan stabilised Picard iteration alone). A closure sets 'pc' where Newton does not pay: its Jacobian (12 evaluations
+   * of the physics) buys nothing when the closure is not smooth (clamps, thresholds) or the stages converge in a few Picard iterations anyway
+   * ('bgb', 'ifspppl': same flat-top numbers to 3·10⁻³, 1.3 to 3.4 times the wall time with Newton). A setting other than 'auto' wins.
+   */
+  readonly preferredSolver?: 'newton' | 'pc';
+  /**
    * Once per attempt, on the OLD state st of the step (its composition and q profile evaluated, ctx.w.qF is its q profile), and for every
    * state that no step produced (PhysicsPipeline.stepConstants runs it before the step constants). The place for what the closure holds
    * fixed over the step: a quantity that depends on the profile as a whole (a non-local temperature difference) or on second derivatives

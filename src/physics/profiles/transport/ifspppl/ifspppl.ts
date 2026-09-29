@@ -31,6 +31,12 @@ const E_CHARGE = 1.602176634e-19;
 export class IfsPpplTransport implements TransportModel {
   readonly id = 'ifspppl';
   readonly predictive = true;
+  /**
+   * Newton does not pay here: the fit is clamped to its domain and has a threshold and a kink in G, and a marginal L-mode profile sits on them
+   * (ITER15 400 s: 200 s against 71 s, with 48 % of the Newton solves falling back to the stabilised Picard iteration; JET15 51 s against 39 s;
+   * the flat-top numbers agree to 3·10⁻³): 'auto' takes 'pc'
+   */
+  readonly preferredSolver = 'pc' as const;
   /** |ŝ| on the faces from the q profile of the old state of the step (faces 0 … N) */
   private shear = new Float64Array(0);
 

@@ -10,7 +10,8 @@
 import { describe, expect, it } from 'vitest';
 import { Simulation } from '../simulation';
 import type { MagneticConfig, Method, ReactorConfig } from '../types';
-import { METHOD_INFO, PRESETS, setPath } from '../../ui/wizard/schema';
+import { EquilibriumInitFailure } from '../profiles/failures';
+import { METHOD_INFO, PRESETS, crossFieldIssues, setPath } from '../../ui/wizard/schema';
 import { NONE, WizardCase, buildConfig, canBlank, fieldArbitrary, showCase, wizardCase, wizardFields } from '../../testing/wizardCases';
 import { forAll, mulberry32 } from '../../testing/prop';
 
@@ -23,7 +24,10 @@ const STEP_BUDGET = 20000;
 
 /** advance one output step (in `slices` calls, so that a stalled integration is stopped by the budget) */
 function smoke(c: WizardCase, slices = 20): void {
-  const sim = new Simulation(buildConfig(c));
+  const cfg = buildConfig(c);
+  // an impossible torus in 1.5D is rejected by the wizard (RUN blocked), so it is never started
+  if ((cfg as { fidelity?: string }).fidelity === '1.5D' && crossFieldIssues(cfg).length > 0) return;
+  const sim = new Simulation(cfg);
   const tOut = sim.t + sim.model.outputDt;
   for (let k = 0; k < slices && sim.t < tOut - 1e-12 && !sim.done; k++) {
     sim.advance(sim.model.outputDt / slices);
@@ -89,16 +93,18 @@ describe('pinned wizard findings beyond one output step', () => {
     }
   }, 30_000);
 
-  // BUG(ws2a): the geometry controls allow a minor radius larger than the major radius (a ∈ [0.1, 4] m,
-  // R ∈ [0.3, 12] m, no cross-check). In 1.5D the kernels then throw internal, Turkish-language errors
-  // ("GS: eksende ψ ≤ 0 — çözüm ıraksadı", "solveTridiag: sıfır pivot") instead of the wizard or the
-  // model rejecting the impossible torus with a clear message. On v4/integration (ws4, ws3) the 1.5D
-  // model now refuses it with a typed EquilibriumInitFailure quoting "Grad–Shafranov (bad-input): need …
-  // R − a(1 + margin) > 0" (integrity.test.ts); the wizard still offers the combination (no cross-field
-  // check) and the run still throws, so the pin still holds there.
-  it.fails('BUG(ws2a) 1.5D with a > R — no internal solver error (MAST-U, a = 2 m, R = 0.85 m)', () => {
+  // Was BUG(ws2a): the geometry controls allow a minor radius larger than the major radius (a ∈ [0.1, 4] m,
+  // R ∈ [0.3, 12] m) and, in 1.5D, the kernels threw internal, Turkish-language errors ("GS: eksende ψ ≤ 0 —
+  // çözüm ıraksadı", "solveTridiag: sıfır pivot"). The 1.5D model now refuses such a boundary with a typed
+  // EquilibriumInitFailure (integrity.test.ts), and the wizard rejects the combination itself (schema.ts,
+  // crossFieldIssues: RUN stays blocked with a message), so the impossible torus never reaches the model.
+  it('1.5D with a > R — the wizard rejects it (MAST-U, a = 2 m, R = 0.85 m); the model still refuses it with its typed failure', () => {
     const c: WizardCase = { method: 'spherical_tokamak', preset: 'MASTU', edits: { fidelity: '1.5D', 'geometry.a': 2 } };
-    expect(() => { const sim = new Simulation(buildConfig(c)); sim.advance(sim.model.outputDt); }).not.toThrow();
+    const cfg = buildConfig(c);
+    expect(crossFieldIssues(cfg).map((i) => i.key)).toEqual(['wiz.cross.aR']);
+    expect(() => new Simulation(cfg)).toThrow(EquilibriumInitFailure);
+    // a boundary the model can solve is not rejected
+    expect(crossFieldIssues(buildConfig({ ...c, edits: { fidelity: '1.5D' } }))).toEqual([]);
   });
 });
 

@@ -38,7 +38,7 @@ parameter scans are built in.
 
 ## Quick start
 
-Requirements: Node.js 18+.
+Requirements: Node.js 20+.
 
 ```bash
 npm install

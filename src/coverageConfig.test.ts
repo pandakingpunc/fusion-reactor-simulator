@@ -48,11 +48,12 @@ describe('coverage: type-only modules are excluded by name', () => {
     }
   });
 
+  // transpiles every source file of src/ (5 to 7 s on a busy machine, over vitest's 5 s default)
   it('every type-only module of src/ is listed (none left to the checkout-path dependent count)', async () => {
     const found: string[] = [];
     for (const file of sourceFiles(path.join(ROOT, 'src'))) {
       if (await isTypeOnly(file)) found.push(path.relative(ROOT, file).split(path.sep).join('/'));
     }
     expect(found.sort()).toEqual([...TYPE_ONLY_MODULES].sort());
-  });
+  }, 60_000);
 });

@@ -7,6 +7,7 @@ import { criticalEnergy, spitzerSlowingDownTime } from '../../heating';
 import { ITER_15D, JET_15D } from '../../presets';
 import type { MagneticConfig } from '../../types';
 import { gaffeyCurrentIntegral, gaffeyDistribution, pitchScatteringZhat } from '../fastions/slowingDown';
+import { Simulation } from '../../simulation';
 import { ProfileModel } from '../model';
 import { NbiChord, volumeIntegral } from '../sources/deposition';
 import { fastIonCurrentDensity, shieldingFactor, startCordeyG } from './nbcd';
@@ -187,4 +188,27 @@ describe("the NBCD source in a JET15 model (cdModel 'physics')", () => {
     expect(at(25).gamma).toBeGreaterThan(ref.gamma);
     expect(at(12).gamma).toBeLessThan(ref.gamma);
   });
+});
+
+describe('the physics current drive in a running shot', () => {
+  it('a rewind to a frame and a replay from it is bitwise the same run, the driven-current diagnostics included (NBCD, ECCD, profile fast ions)', () => {
+    const cfg: MagneticConfig = physicsCfg({ ...JET_15D, t_end: 0.5, heating: { ...JET_15D.heating, P_ECRH_MW: 2 } }, { fastIonModel: 'profile', eccd: { rho: 0.3, nPar: 0.3 } });
+    const ref = new Simulation(cfg);
+    ref.runAll();
+    const idx = ref.history.findIndex((h) => h.t > 0.2);
+    expect(idx).toBeGreaterThan(3);
+    expect(ref.history[idx].d.I_nbcd).toBeGreaterThan(0);
+    const sim = new Simulation(cfg);
+    sim.runAll();
+    sim.rewindTo(idx);
+    sim.advance(cfg.t_end);
+    expect(sim.history.length).toBe(ref.history.length);
+    for (let k = idx + 1; k < ref.history.length; k++) {
+      expect(sim.history[k].y).toEqual(ref.history[k].y);
+      for (const key of ['I_nbcd', 'I_eccd', 'f_cd', 'q0', 'Q']) expect(sim.history[k].d[key], `${key} at frame ${k}`).toBe(ref.history[k].d[key]);
+    }
+    // the diagnostics are consistent: f_cd is the total driven current over I_p
+    const d = ref.history[ref.history.length - 1].d;
+    expect(Math.abs(d.f_cd - (d.I_nbcd + d.I_eccd) / d.Ip)).toBeLessThan(1e-9);
+  }, 120000);
 });

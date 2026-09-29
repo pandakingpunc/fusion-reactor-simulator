@@ -6,7 +6,8 @@
 import { describe, expect, it } from 'vitest';
 import { nodeFontSet } from '../fontsNode';
 import { captionBlock } from '../registry';
-import { PAPER_FIGURES, plainLabel, solverCounters, solverCountersLine, solverCountersText } from './paper';
+import { ITER, ITER_15D } from '../../physics/presets';
+import { PAPER_FIGURES, plainLabel, runFigTask, scanBaselineX, scanConfig, solverCounters, solverCountersLine, solverCountersText } from './paper';
 import { syntheticMainRun, syntheticPaperCtx } from './testdata/synthetic';
 
 const fonts = nodeFontSet();
@@ -66,5 +67,46 @@ describe('the paper registry builds from a synthetic context', () => {
     expect(plainLabel('ITER  $q_{95}$')).toBe('ITER  q_95');
     expect(plainLabel('$\\beta_N$ and $\\ell_i(3)$')).toBe('β_N and ℓ_i(3)');
     expect(plainLabel('$P_{\\mathrm{fus}}$')).toBe('P_fus');
+  });
+});
+
+describe('pool tasks (run in-process)', () => {
+  it('a preset discharge returns its report and flat-top averages', () => {
+    const r = runFigTask({ id: 'ITER', kind: 'run', cfg: { ...ITER, t_end: 40 } });
+    expect(r.ok).toBe(true);
+    expect(r.id).toBe('ITER');
+    expect(r.run!.report.termination).toBeDefined();
+    expect(Number.isFinite(r.run!.avg.Q)).toBe(true);
+    expect(r.ms).toBeGreaterThan(0);
+  }, 60_000);
+
+  it('a POPCON task returns the requested grid', () => {
+    const r = runFigTask({ id: 'popcon', kind: 'popcon', cfg: ITER_15D, res: 12, Tmax: 30, nMaxFactor: 1.35 });
+    expect(r.ok).toBe(true);
+    expect(r.popcon!.nx).toBe(12);
+    expect(r.popcon!.ny).toBe(12);
+    expect(r.popcon!.Q.length).toBe(144);
+  }, 60_000);
+
+  it('the verification task returns the convergence data', () => {
+    const r = runFigTask({ id: 'verification', kind: 'verification' });
+    expect(r.ok).toBe(true);
+    expect(r.verification!.gs.h.length).toBe(7);
+  }, 60_000);
+
+  it('a failing task reports the error instead of throwing', () => {
+    const r = runFigTask({ id: 'bad', kind: 'run', cfg: {} as never });
+    expect(r.ok).toBe(false);
+    expect(r.error).toBeTypeOf('string');
+    expect(r.error!.length).toBeGreaterThan(0);
+  });
+
+  it('scan configurations follow the line-averaged density axis', () => {
+    const c = scanConfig(5, 0, 0), d = scanConfig(5, 4, 4);
+    expect(c.H98).toBeCloseTo(0.7, 12);
+    expect(d.H98).toBeCloseTo(1.3, 12);
+    expect(d.n_target).toBeGreaterThan(c.n_target);
+    expect(scanBaselineX()).toBeGreaterThan(0.5);
+    expect(scanBaselineX()).toBeLessThan(1.1);
   });
 });

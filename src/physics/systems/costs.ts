@@ -503,7 +503,7 @@ export interface CoelcResult {
  * the decommissioning fund. Annual costs are in M$/y, electricity costs in millidollars per kWh (mills/kWh), all in 1990 dollars.
  */
 export function costOfElectricity(inp: CoelcInput, ctx: CostCtx): CoelcResult {
-  const fin = ctx.fin, u = ctx.units, lsa = fin.lsa;
+  const fin = ctx.fin, lsa = fin.lsa;
   const burn = inp.burnFraction ?? 1;
   const kwhpy = Math.max(1e3 * inp.P_net_MW * (24 * N_DAY_YEAR) * fin.availability * burn, 1e-10); // PROCESS floor: kwhpy = 0 is avoided
   const moneyint = inp.concost * (fin.fcap0 - 1);
@@ -540,7 +540,6 @@ export function costOfElectricity(inp: CoelcInput, ctx: CostCtx): CoelcResult {
   const anndecom = (fin.decomf * inp.concost * fin.fcr0) / Math.pow(1 + fin.discountRate - fin.dintrt, fin.lifePlant - fin.dtlife);
   const coedecom = (1e9 * anndecom) / kwhpy;
   const coefuelt = coefwbl + coediv + coecdr + coecp + coefuel + coewst;
-  void u;
   return { coe: coecap + coefuelt + coeoam + coedecom, coecap, coefuelt, coeoam, coedecom, coefwbl, coediv, coecdr, coecp, coefuel, coewst, moneyint, capcost, kwhpy };
 }
 
@@ -621,7 +620,7 @@ export function costAccounts(plant: CostPlant, ctx: CostCtx = costContext()): Co
   a['225'] = c225;
   // 22.6
   let c226 = 0;
-  if (skip('22.6 heat transport', plant.heat)) { const { cpp, chx, ...rest } = acc226(plant.heat!, ctx); void cpp; void chx; put(rest); c226 = rest.c226; }
+  if (skip('22.6 heat transport', plant.heat)) { const r = acc226(plant.heat!, ctx); put({ c226: r.c226, c2261: r.c2261, c2262: r.c2262, c2263: r.c2263 }); c226 = r.c226; }
   // 22.7
   let c227 = 0;
   if (skip('22.7 fuel handling (fuel throughput)', plant.fuel)) {

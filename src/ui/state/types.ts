@@ -7,7 +7,7 @@ import { SimMeta, UiFrame } from '../../worker/protocol';
 import { Locale } from '../../i18n';
 import type { RunProvenance, VerifyStatus } from '../persist/types';
 
-export type Tab = 'setup' | 'run' | 'report' | 'compare' | 'validate';
+export type Tab = 'setup' | 'run' | 'report' | 'compare' | 'validate' | 'learn';
 
 /** Rapor ekranı + karşılaştırma için saklanan tamamlanmış atış */
 export interface SavedShot {

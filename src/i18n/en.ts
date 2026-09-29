@@ -15,6 +15,7 @@ export const en = {
   'app.tab.report': 'Report',
   'app.tab.compare': 'Compare',
   'app.tab.validate': 'Validation',
+  'app.tab.learn': 'Learn',
   'app.st.idle': 'Not ready',
   'app.st.loading': 'Loading…',
   'app.st.ready': 'Ready',

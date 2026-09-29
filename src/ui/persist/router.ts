@@ -1,7 +1,8 @@
 /**
  * Hash router without dependencies.
  *
- *   #/wizard  #/run  #/report  #/compare  #/validate        the tabs of the application
+ *   #/wizard  #/run  #/report  #/compare  #/validate  #/learn  the tabs of the application
+ *   #/learn/missions[/<id>]  #/learn/glossary[/<term>]      the Learn tab's mission list, one mission, the glossary, one term
  *   #/share/<code>                                          a share link (codec.ts)
  *   #/embed/<run|report>/<code>[?lang=tr&autoplay=0]        a chrome-less view for an <iframe>
  *
@@ -17,21 +18,30 @@
 import { isLocale, Locale } from '../../i18n';
 import type { Tab } from '../state/types';
 
-export type TabRouteName = 'wizard' | 'run' | 'report' | 'compare' | 'validate';
+export type TabRouteName = 'wizard' | 'run' | 'report' | 'compare' | 'validate' | 'learn';
 export type EmbedView = 'run' | 'report';
+/** The two parts of the Learn tab. */
+export type LearnSection = 'missions' | 'glossary';
+export const LEARN_SECTIONS: readonly LearnSection[] = ['missions', 'glossary'];
+/** What a Learn id (a mission or a glossary term) may look like in an address; the screen checks it against its own lists. */
+const LEARN_ID = /^[A-Za-z0-9_.-]{1,64}$/;
 
 export type Route =
-  | { name: TabRouteName }
+  | { name: Exclude<TabRouteName, 'learn'> }
+  | { name: 'learn'; section?: LearnSection; id?: string }
   | { name: 'share'; code: string }
   | { name: 'embed'; view: EmbedView; code: string; lang?: Locale; autoplay?: boolean }
   | { name: 'unknown'; path: string };
 
-export const TAB_ROUTES: readonly TabRouteName[] = ['wizard', 'run', 'report', 'compare', 'validate'];
-const TAB_OF: Record<TabRouteName, Tab> = { wizard: 'setup', run: 'run', report: 'report', compare: 'compare', validate: 'validate' };
-const ROUTE_OF: Record<Tab, TabRouteName> = { setup: 'wizard', run: 'run', report: 'report', compare: 'compare', validate: 'validate' };
+export const TAB_ROUTES: readonly TabRouteName[] = ['wizard', 'run', 'report', 'compare', 'validate', 'learn'];
+const TAB_OF: Record<TabRouteName, Tab> = { wizard: 'setup', run: 'run', report: 'report', compare: 'compare', validate: 'validate', learn: 'learn' };
+const ROUTE_OF: Record<Tab, TabRouteName> = { setup: 'wizard', run: 'run', report: 'report', compare: 'compare', validate: 'validate', learn: 'learn' };
 
-/** The route of an application tab. */
-export const routeOfTab = (tab: Tab): Route => ({ name: ROUTE_OF[tab] });
+/** The route of an application tab (the Learn tab's own route is its start page, #/learn). */
+export function routeOfTab(tab: Tab): Route {
+  const name = ROUTE_OF[tab];
+  return name === 'learn' ? { name } : { name };
+}
 /** The tab a route shows, or null for the routes that are not a tab (share, embed, unknown). */
 export function tabOfRoute(r: Route): Tab | null {
   return (TAB_ROUTES as readonly string[]).includes(r.name) ? TAB_OF[r.name as TabRouteName] : null;
@@ -53,6 +63,14 @@ export function parseHash(hash: string): Route {
   const parts = h.split('/').filter((p) => p !== '');
   if (!parts.length) return { name: 'wizard' };
   const head = parts[0];
+  if (head === 'learn' && parts.length > 1) {
+    // #/learn/missions, #/learn/missions/<id>, #/learn/glossary, #/learn/glossary/<term>
+    const section = parts[1];
+    if (!(LEARN_SECTIONS as readonly string[]).includes(section) || parts.length > 3) return { name: 'unknown', path: parts.join('/').slice(0, 80) };
+    if (parts.length === 2) return { name: 'learn', section: section as LearnSection };
+    const id = decode(parts[2]);
+    return LEARN_ID.test(id) ? { name: 'learn', section: section as LearnSection, id } : { name: 'unknown', path: parts.join('/').slice(0, 80) };
+  }
   if ((TAB_ROUTES as readonly string[]).includes(head) && parts.length === 1) return { name: head as TabRouteName };
   if (head === 'share' && parts.length >= 2) {
     const code = decode(parts.slice(1).join('/'));
@@ -83,6 +101,7 @@ export function formatRoute(r: Route): string {
       return `#/embed/${r.view}/${r.code}${params.length ? `?${params.join('&')}` : ''}`;
     }
     case 'unknown': return `#/${r.path}`;
+    case 'learn': return `#/learn${r.section ? `/${r.section}${r.id && LEARN_ID.test(r.id) ? `/${encodeURIComponent(r.id)}` : ''}` : ''}`;
     default: return `#/${r.name}`;
   }
 }

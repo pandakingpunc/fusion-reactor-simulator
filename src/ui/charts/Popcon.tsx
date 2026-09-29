@@ -25,6 +25,8 @@ export interface PopconProps {
   cfg: MagneticConfig;
   /** the run's frames: the trajectory, and the last one is the operating point */
   frames?: readonly UiFrame[];
+  /** an operating point of its own [n in m⁻³, T in keV] instead of the last frame's (the Learn missions set it with sliders); null shows none */
+  point?: MapPoint | null;
   height?: number;
   /** auxiliary heating applied now [MW]: its contour is drawn */
   heatingMW?: number | null;
@@ -40,7 +42,7 @@ export interface PopconProps {
 /** the shot has arrived at the steering point when it is within this fraction of each axis of it */
 const TARGET_REACHED = 0.03;
 
-export function Popcon({ cfg, frames, height = 260, heatingMW, controls, onSteer, createWorker, stages }: PopconProps) {
+export function Popcon({ cfg, frames, point: given, height = 260, heatingMW, controls, onSteer, createWorker, stages }: PopconProps) {
   const t = useT();
   const { ref, width, dpr } = useCanvasSize<HTMLCanvasElement>();
   const popcon = usePopcon(cfg, { createWorker, stages });
@@ -51,7 +53,8 @@ export function Popcon({ cfg, frames, height = 260, heatingMW, controls, onSteer
   const colsRef = useRef<FrameColumns | null>(null);
   const trajectory = useMemo(() => trajectoryOf((colsRef.current ??= new FrameColumns()).sync(frames ?? []), 240), [frames]);
   const last = frames && frames.length ? frames[frames.length - 1] : null;
-  const point = useMemo<MapPoint | null>(() => (last && Number.isFinite(last.d.ne) && Number.isFinite(last.d.Ti) ? { n: last.d.ne * 1e20, T: last.d.Ti } : null), [last]);
+  const lastPoint = useMemo<MapPoint | null>(() => (last && Number.isFinite(last.d.ne) && Number.isFinite(last.d.Ti) ? { n: last.d.ne * 1e20, T: last.d.Ti } : null), [last]);
+  const point = given !== undefined ? given : lastPoint;
 
   // the contour of the heating power applied now, found again only when the grid or that power changes
   const heatingSegments = useMemo(() => (grid && heatingMW != null && heatingMW > 0 ? heatingContour(grid, heatingMW) : null), [grid, heatingMW]);

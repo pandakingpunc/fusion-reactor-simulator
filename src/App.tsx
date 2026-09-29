@@ -1,7 +1,7 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { METHOD_LABELS, ReactorConfig } from './physics/types';
 import { LOCALES, LOCALE_NAMES, Locale, MessageKey } from './i18n';
-import { useSim } from './ui/useSim';
+import { createSimWorker, useSim } from './ui/useSim';
 import { FrameScheduler, WorkerFactory, completedShotKey } from './ui/state/sim';
 import { useApp, useAppStore, useT } from './ui/state/store';
 import { SavedShot, SimStatus, Tab } from './ui/state/types';
@@ -13,8 +13,9 @@ import { RouterContext, useRoute, useRouting } from './ui/persist/routing';
 
 // Setup and Run are the first screens; the others are separate chunks, prefetched after start-up.
 const loadReport = () => import('./ui/report/Report');
-const loadCompare = () => import('./ui/report/Compare');
-const loadValidation = () => import('./ui/report/Validation');
+const loadCompare = () => import('./ui/compare/Compare');
+const loadValidation = () => import('./ui/pool/Validation');
+const loadLearn = () => import('./ui/edu/LearnView');
 const Report = lazy(() => loadReport().then((m) => ({ default: m.Report })));
 const Compare = lazy(() => loadCompare().then((m) => ({ default: m.Compare })));
 const Validation = lazy(() => loadValidation().then((m) => ({ default: m.Validation })));
@@ -22,6 +23,7 @@ const Validation = lazy(() => loadValidation().then((m) => ({ default: m.Validat
 const PersistHost = lazy(() => import('./ui/persist/PersistHost'));
 const EmbedView = lazy(() => import('./ui/persist/EmbedView'));
 const ShotBanner = lazy(() => import('./ui/persist/ShotBanner'));
+const Learn = lazy(() => loadLearn().then((m) => ({ default: m.LearnView })));
 
 const TABS: { id: Tab; label: MessageKey }[] = [
   { id: 'setup', label: 'app.tab.setup' },
@@ -29,6 +31,7 @@ const TABS: { id: Tab; label: MessageKey }[] = [
   { id: 'report', label: 'app.tab.report' },
   { id: 'compare', label: 'app.tab.compare' },
   { id: 'validate', label: 'app.tab.validate' },
+  { id: 'learn', label: 'app.tab.learn' },
 ];
 
 const STATUS_LABEL: Record<SimStatus, MessageKey> = {
@@ -72,7 +75,7 @@ export default function App({ createWorker, schedule }: Props) {
   }, [doneKey]); // state is read at the moment the key appears; archiveShot ignores repeats
 
   useEffect(() => {
-    const id = setTimeout(() => { void loadReport(); void loadCompare(); void loadValidation(); }, 1500);
+    const id = setTimeout(() => { void loadReport(); void loadCompare(); void loadValidation(); }, 1500); // the Learn chunk is loaded when its tab is opened
     return () => clearTimeout(id);
   }, []);
 
@@ -143,7 +146,8 @@ export default function App({ createWorker, schedule }: Props) {
           />
         )}
         {tab === 'compare' && <Compare shots={shots} onRemove={actions.removeShot} onLoad={actions.editShot} />}
-        {tab === 'validate' && <Validation runAll={sim.runAll} />}
+        {tab === 'validate' && <Validation createWorker={createWorker ?? createSimWorker} />}
+        {tab === 'learn' && <Learn createWorker={createWorker ?? createSimWorker} />}
         </Suspense>
         </ErrorBoundary>
       </main>

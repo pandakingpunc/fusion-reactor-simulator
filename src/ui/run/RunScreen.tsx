@@ -89,7 +89,7 @@ export function RunScreen({ sim, onReport, onSetup }: Props) {
             disrupted={status === 'done' && !!state.report?.termination?.disruption} eqFrame={eqFrame} profFrame={profFrame} />,
         )}
         {is15 && guard(<ProfilesPanel profFrame={profFrame} timeUnit={meta.timeUnit} />)}
-        {isMag && guard(<PopconPanel cfg={cfg as MagneticConfig} last={last} />)}
+        {isMag && guard(<PopconPanel cfg={cfg as MagneticConfig} last={last} frames={frames} controls={state.controls} onSteer={sim.control} steerable={status !== 'done'} />)}
         {isPulsed && guard(<ImplosionPanel meta={meta} cfg={cfg} frames={frames} t={state.t} />)}
         {guard(<GeometryPanel geometry={meta.geometry} />)}
       </div>

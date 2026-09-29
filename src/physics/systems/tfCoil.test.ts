@@ -263,6 +263,33 @@ describe('DEMO-like coil: the PROCESS stress constraint', () => {
   });
 });
 
+describe('robustness over the parameter space', () => {
+  it('300 seeded random coils give finite, consistent results (peak field, equilibrium integral, positive mass and energy)', () => {
+    // small LCG: deterministic and independent of the project's generator
+    let seed = 20260929;
+    const u = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+    const techs = ['Cu', 'NbTi', 'Nb3Sn', 'REBCO'] as const;
+    for (let i = 0; i < 300; i++) {
+      const R = 0.5 + 9.5 * u(), a = R * (0.1 + 0.5 * u());
+      const inp = {
+        R, a, kappa: 1 + 1.5 * u(), B0: 0.5 + 12 * u(), tech: techs[Math.floor(4 * u())], gap_m: 0.02 + 2 * u(), coilThickness_m: 0.05 + 2 * u(),
+        limit_MPa: 300 + 500 * u(), nCoils: 8 + Math.floor(25 * u()), noseFraction: 0.9 * u(), structureFraction: 0.05 + 0.95 * u(),
+      };
+      const r = tfCoil(inp);
+      const tag = JSON.stringify(inp);
+      for (const v of [r.tresca_MPa, r.vonMises_MPa, r.case.tresca_MPa, r.wp.tresca_MPa, r.front.tresca_MPa, r.W_J, r.totalMass_kg, r.coilLength_m, r.coldSurface_m2, r.J_wp_Am2, r.F_vertical_N, r.A_steel_m2]) {
+        expect(isFinite(v) && v >= 0, tag).toBe(true);
+      }
+      expect(r.B_peak_T, tag).toBeCloseTo((inp.B0 * R) / r.r_o, 9);
+      expect(r.r_c, tag).toBeGreaterThan(0);
+      expect(r.r_i, tag).toBeGreaterThanOrEqual(r.r_c);
+      expect(r.margin, tag).toBeCloseTo(1 - r.tresca_MPa / inp.limit_MPa, 9);
+      expect(r.overstress, tag).toBe(r.tresca_MPa > inp.limit_MPa);
+      for (const p of r.profile) expect(isFinite(p.sigR) && isFinite(p.sigT), tag).toBe(true);
+    }
+  });
+});
+
 describe('technologies and degenerate inputs', () => {
   it('every technology yields a finite result with a positive mass and energy', () => {
     for (const tech of ['Cu', 'NbTi', 'Nb3Sn', 'REBCO'] as const) {

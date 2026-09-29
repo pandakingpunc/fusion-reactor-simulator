@@ -447,7 +447,7 @@ Appendix A lists the 7 `it.fails` pins that remain.
 
 ## 8. What the gate changed
 
-Only the following commits were made on `v4/integration` (no physics number moved: golden matches without a
+Only the following commits were made on `v4/integration` (the last row is this report) (no physics number moved: golden matches without a
 re-record):
 
 | Commit | Change |
@@ -455,6 +455,7 @@ re-record):
 | `d245073` fix(bench) | `bench:convergence`: the time-step series failed for all three dtMax values ("this model has no internal time step to limit") because the limiter patched a private numeric `dt` of the 1.5D model, which the `model.ts` split moved to `ctx.dt`. New `bench/limitStep.ts` (uses `ctx.dt`) with `bench/limitStep.test.ts` (a capped 3 s ITER15 shot takes at least 1500 steps; a 0D model is refused). The study runs again (section 3, D4) |
 | `9297a7d` test | dropped the `INTEGRATOR_FIXED` switch (constant true since ws5's `dafd2bf`), `src/testing/pinUntil.ts` and `knownBugs.ts`; the two integrator pins and the NaN-step-size wizard cases are plain regression tests |
 | `953443d` docs | profiles README and CHANGELOG: `StepConstants.btR` is one array per channel (`K.btR[j][i]`), a plug-in written for the v3 single array reads `undefined`; `test/golden/CHANGES.md` addendum (append-only, no golden file changed) with the T_ped, f_bs, ELM/sawtooth/GS-update moves of the nine 1.5D cases that the 22:27 and 23:45 reasons did not list, each with its cause, and the note that no golden frame is ignited; CHANGELOG line for the bench fix |
+| `e4a98ed` docs(golden) | the MASTU15 neutron factor of that addendum is x59 (measured on the final goldens), not the lane's earlier x53 |
 | (this report) | `docs/v4-wave1-report.md` |
 
 Not changed on purpose: `kernel/testkit.ts` `tick()` and `testing/yielding.ts` `tick()` look like duplicates

@@ -181,6 +181,7 @@ const systemsSettings = opt(object<Systems>({
     swingFraction: opt(num({ exMin: 0, max: 1, doc: 'Share of the +B to -B field swing of the solenoid that is used (default 1).' })),
     pfFlux_Vs: opt(num({ min: 0, max: 1e4, unit: 'V s', doc: 'Flux supplied by the poloidal-field coils (default 0).' })),
     li: opt(num({ exMin: 0, max: 5, doc: 'Internal inductance l_i(3) of the plasma for the inductive flux (default 0.85, or the 1.5D value).' })),
+    ejima: opt(num({ min: 0, max: 2, doc: 'Ejima coefficient C_E of the resistive flux of the current ramp-up, C_E mu0 R I_p (default 0.4: the middle of the experiments and the PROCESS value; 0.45 is the ITER design value).' })),
   }, { doc: 'Central-solenoid flux budget. Giving this block turns the flux check on: a warning if the solenoid cannot supply the pulse.' })),
   blanket: opt(object<SystemsBlanket>({
     inboardDepth_m: opt(num({ min: 0, max: 20, unit: 'm', doc: 'Inboard breeding-blanket depth (default: 56 % of the space behind the first wall).' })),

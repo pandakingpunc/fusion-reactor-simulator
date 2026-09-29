@@ -80,7 +80,7 @@ const EDGE_OPTION_TYPES: Record<keyof EdgeOptions, LeafType> = {
 const SYSTEMS_OPTION_TYPES: { [K in keyof SystemsConfig]-?: NonNullable<SystemsConfig[K]> extends number ? LeafType : { [J in keyof NonNullable<SystemsConfig[K]>]-?: LeafType } } = {
   pulseLength_s: 'number',
   tf: { nCoils: 'number', noseFraction: 'number', structureFraction: 'number', turnCurrent_A: 'number', verticalInboardFraction: 'number' },
-  cs: { currentDensity_MAm2: 'number', B_max_T: 'number', swingFraction: 'number', pfFlux_Vs: 'number', li: 'number' },
+  cs: { currentDensity_MAm2: 'number', B_max_T: 'number', swingFraction: 'number', pfFlux_Vs: 'number', li: 'number', ejima: 'number' },
   blanket: { inboardDepth_m: 'number', breederFraction: 'number' },
 };
 

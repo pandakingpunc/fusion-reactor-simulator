@@ -1178,6 +1178,12 @@
                   "exclusiveMinimum": 0,
                   "maximum": 5,
                   "description": "Internal inductance l_i(3) of the plasma for the inductive flux (default 0.85, or the 1.5D value)."
+                },
+                "ejima": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 2,
+                  "description": "Ejima coefficient C_E of the resistive flux of the current ramp-up, C_E mu0 R I_p (default 0.4: the middle of the experiments and the PROCESS value; 0.45 is the ITER design value)."
                 }
               },
               "additionalProperties": false,

@@ -257,6 +257,12 @@ export interface SystemsConfig {
     pfFlux_Vs?: number;
     /** internal inductance l_i(3) of the plasma for the inductive flux (default 0.85, or the 1.5D value) */
     li?: number;
+    /**
+     * Ejima coefficient C_E of the resistive flux of the current ramp-up, Psi_res = C_E mu0 R I_p (default 0.4, the middle of the experiments
+     * and the PROCESS value; 0.45 is the ITER design value): the ramp-up before t = 0 of a shot that starts at the full current, in
+     * both plasma models and in the budget of the shot report
+     */
+    ejima?: number;
   };
   blanket?: {
     /** inboard breeding-blanket depth [m] (default: 56 % of the space behind the first wall) */

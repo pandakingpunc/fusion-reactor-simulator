@@ -47,6 +47,8 @@ export interface SystemsAssessment {
   breederFraction?: number;
   /** flux budget; null for a stellarator, without plasma current or if the CS does not fit */
   cs: FluxBudget | null;
+  /** the design gives the solenoid (`systems.cs`): only then is the flux budget a statement about the machine (report keys, warning) */
+  csDesigned: boolean;
   cryo: CryoResult;
   /** plasma pulse length the pulsed-field load of the cryoplant was computed with [s] */
   pulseLength_s: number;
@@ -90,7 +92,7 @@ export function assessSystems(inp: SystemsInput): SystemsAssessment {
     cs = fluxBudget({
       R: inp.g.R, a: inp.g.a, kappa: inp.g.kappa, Ip_MA: c.Ip_MA, li: sys?.cs?.li ?? inp.li, tech, r_outer_m: r_cs, height_m: tf.legHeight_m,
       currentDensity_Am2: sys?.cs?.currentDensity_MAm2 !== undefined ? sys.cs.currentDensity_MAm2 * 1e6 : undefined, B_max_T: sys?.cs?.B_max_T ?? spec.Bmax_coil, swingFraction: sys?.cs?.swingFraction,
-      pfFlux_Vs: sys?.cs?.pfFlux_Vs, burn: inp.flux ? { Vloop_V: inp.flux.Vloop_V, duration_s: inp.flux.duration_s } : undefined,
+      pfFlux_Vs: sys?.cs?.pfFlux_Vs, burn: inp.flux ? { Vloop_V: inp.flux.Vloop_V, duration_s: inp.flux.duration_s } : undefined, ejima: sys?.cs?.ejima,
     }, inp.flux?.measurement);
   }
 
@@ -111,16 +113,16 @@ export function assessSystems(inp: SystemsInput): SystemsAssessment {
   if (cs && sys?.cs !== undefined && isFinite(cs.margin) && cs.psiCS_Vs < (1 - PF_FLUX_SHARE_MAX) * cs.psiRequired_Vs) {
     warnings.push(`CS flux swing ${cs.psiAvailable_Vs.toFixed(0)} V s is ${(100 * cs.psiAvailable_Vs / cs.psiRequired_Vs).toFixed(0)} % of the ${cs.psiRequired_Vs.toFixed(0)} V s the pulse needs — the PF coils would have to supply more than ${(100 * PF_FLUX_SHARE_MAX).toFixed(0)} % of it; enlarge the solenoid, raise its field or give the PF flux (systems.cs.pfFlux_Vs).`);
   }
-  return { tf, build, tbr, breederFraction: sys?.blanket?.breederFraction, cs, cryo, pulseLength_s, notes: [...notes, ...tf.notes], nuclearHeating_W: Qnuc, coldMass_kg: coldMass, warnings };
+  return { tf, build, tbr, breederFraction: sys?.blanket?.breederFraction, cs, csDesigned: sys?.cs !== undefined, cryo, pulseLength_s, notes: [...notes, ...tf.notes], nuclearHeating_W: Qnuc, coldMass_kg: coldMass, warnings };
 }
 
 /**
  * The new `engineering` keys of the shot report (the old ones are written by buildMagneticReport). Numbers are rounded like the old
  * ones. Keys of a subsystem that does not apply (no CS in a stellarator, no cryoplant for copper coils, no blanket) are left out.
  */
-export function systemsReportKeys(s: SystemsAssessment): Record<string, number> {
+export function systemsReportKeys(s: SystemsAssessment): Record<string, number | string> {
   const r = (x: number, d: number) => +x.toFixed(d);
-  const k: Record<string, number> = {
+  const k: Record<string, number | string> = {
     'TF coils': s.tf.nCoils,
     'TF winding pack J (MA/m²)': r(s.tf.J_wp_Am2 / 1e6, 1),
     'TF case Tresca (MPa)': r(s.tf.case.tresca_MPa, 0),
@@ -129,10 +131,16 @@ export function systemsReportKeys(s: SystemsAssessment): Record<string, number> 
     'TF vertical tension per coil (MN)': r(s.tf.T_inboard_N / 1e6, 1),
     'TF mass (t)': r(s.tf.totalMass_kg / 1e3, 0),
   };
-  if (s.cs) {
+  // The flux budget is a statement about a machine only when the design gives its solenoid (`systems.cs`): the radial build of the presets does
+  // not resolve the CS (ITER: TF inner radius 2.0 m against a CS outer radius of 2.08 m), and the swing it would give is not the one of the
+  // machine (the CS flux margin of every preset but DEMO came out negative). Without the block the keys are left out, with a note.
+  if (s.cs && s.csDesigned) {
     k['CS flux swing (V s)'] = r(s.cs.psiCS_Vs, 1);
     k['Flux required (V s)'] = r(s.cs.psiRequired_Vs, 1);
     if (isFinite(s.cs.margin)) k['Flux margin'] = r(s.cs.margin, 3);
+    if (isFinite(s.cs.flatTopLimit_s)) k['Flux-limited flat top (s)'] = r(s.cs.flatTopLimit_s, 0);
+  } else if (s.cs) {
+    k['CS flux budget'] = 'not evaluated: no systems.cs block (the solenoid of this design is not given)';
   }
   if (s.cryo.Q_total_W > 0) {
     k['TF nuclear heating (kW)'] = r(s.nuclearHeating_W / 1e3, 2);

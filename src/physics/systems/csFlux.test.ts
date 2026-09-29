@@ -73,6 +73,31 @@ describe('flux requirement', () => {
     expect(b1.margin).toBeGreaterThan(b0.margin);
   });
 
+  it('the Ejima coefficient defaults to 0.4 (PROCESS) and can be set: the resistive flux scales with it and nothing else moves', () => {
+    expect(EJIMA_COEFFICIENT).toBe(0.4);
+    const d = fluxBudget(ITER_IN), i = fluxBudget({ ...ITER_IN, ejima: 0.45 });
+    expect(i.psiResistive_Vs / d.psiResistive_Vs).toBeCloseTo(0.45 / 0.4, 12);
+    expect(i.psiInductive_Vs).toBe(d.psiInductive_Vs);
+    expect(i.psiCS_Vs).toBe(d.psiCS_Vs);
+    // the ITER design value moves the requirement by 2 %
+    expect(i.psiRequired_Vs / d.psiRequired_Vs - 1).toBeGreaterThan(0.01);
+    expect(i.psiRequired_Vs / d.psiRequired_Vs - 1).toBeLessThan(0.03);
+  });
+
+  it('the flat top the flux allows is the burn window plus the reserve over the loop voltage (shorter than the window for a shortfall, at least 0)', () => {
+    const b = fluxBudget({ ...ITER_IN, pfFlux_Vs: 100, burn: { Vloop_V: 0.05, duration_s: 400 } });
+    expect(b.flatTopLimit_s).toBeCloseTo(400 + (b.psiAvailable_Vs - b.psiRequired_Vs) / 0.05, 9);
+    const short = fluxBudget({ ...ITER_IN, burn: { Vloop_V: 0.5, duration_s: 100 } });
+    expect(short.margin).toBeLessThan(0);
+    expect(short.flatTopLimit_s).toBeLessThan(100);
+    expect(short.flatTopLimit_s).toBeGreaterThanOrEqual(0);
+    // a loop voltage that draws more than the whole solenoid in the window: the flat top the flux allows is a fraction of a second, never negative
+    const absurd = fluxBudget({ ...ITER_IN, burn: { Vloop_V: 5000, duration_s: 100 } }).flatTopLimit_s;
+    expect(absurd).toBeGreaterThanOrEqual(0);
+    expect(absurd).toBeLessThan(0.1);
+    expect(fluxBudget(ITER_IN).flatTopLimit_s).toBe(Infinity); // no burn window
+  });
+
   it('the burn duration the leftover flux supports is the flux over the loop voltage', () => {
     const b = fluxBudget({ ...ITER_IN, pfFlux_Vs: 100, burn: { Vloop_V: 0.05, duration_s: 400 } });
     const left = b.psiAvailable_Vs - b.psiInductive_Vs - b.psiResistive_Vs;
@@ -137,6 +162,22 @@ describe('hook for a current/flux model (WS6c)', () => {
     expect(b.measurement.psiBurn_Vs).toBeUndefined(); // no hook key: only the mean loop voltage is taken from the ohmic power
     expect(b.Vloop_V).toBeCloseTo(0.05, 12);
     expect(b.duration_s).toBeCloseTo(4, 12);
+  });
+
+  it('with the cumulative flux of the model the burn window is a difference of psi_used, not a sum over noisy frame voltages, and the parts are measured too', () => {
+    // psi_used rises by 0.02 V s per s; the V_loop of the frames is noise around 0
+    const h = [0, 1, 2, 3, 4].map((t) => frame(t, { Ip: 15, V_loop: t % 2 ? 3 : -3, psi_used: 200 + 0.02 * t, psi_res: 50 + 0.01 * t, psi_ind: 150 + 0.01 * t }));
+    const r = fluxFromHistory(h, 2)!;
+    expect(r.measurement.psiTotal_Vs).toBeCloseTo(200.08, 9);
+    expect(r.measurement.psiBurn_Vs).toBeCloseTo(0.04, 9);
+    expect(r.Vloop_V).toBeCloseTo(0.02, 9);
+    expect(r.duration_s).toBe(2);
+    expect(r.measurement.psiResistive_Vs).toBeCloseTo(50.04, 9);
+    expect(r.measurement.psiInductive_Vs).toBeCloseTo(150.04, 9);
+    // the budget takes them: the requirement is the total, and the burn flux is left out of what the burn window is asked to be supported by
+    const b = fluxBudget({ ...ITER_IN, burn: { Vloop_V: r.Vloop_V, duration_s: r.duration_s } }, r.measurement);
+    expect(b.psiRequired_Vs).toBeCloseTo(200.08, 9);
+    expect(b.source).toBe('measured');
   });
 
   it('a published psi_used total becomes the requirement; a history with fewer than two frames gives nothing', () => {

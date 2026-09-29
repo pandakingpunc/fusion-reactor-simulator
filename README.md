@@ -31,7 +31,7 @@ parameter scans are built in.
 | **Sources** | 3-component NBI beam attenuation + beam–target fusion, Gaussian ECRH/ICRH deposition, NBCD/ECCD |
 | **MHD** | Kadomtsev sawtooth (shear-triggered), type-I ELM (α_crit + KBM), modified Rutherford NTM, L–H hysteresis |
 | **Numerical verification** | GS 2nd order (2.05), FV heat 2nd order (1.94), backward Euler 1st order (0.99), DP5 vs RK4/Euler work–precision; 44 unit tests |
-| **POPCON** | Same physics as the 0D model: dilution (Be/Ar/He ash), line + synchrotron radiation, P_loss = P_heat − P_rad |
+| **POPCON** | Same physics as the 0D model: dilution (Be/Ar/He ash), line + synchrotron radiation, loss power P_L = P_heat − P_rad,core (steady state; the 0D and 1.5D models also subtract dW/dt) |
 | **Figures** | Dependency-free plotting engine → SVG + PDF (Times/Symbol, mini-TeX labels, Okabe–Ito palette, journal column widths); `npm run figures` |
 | **Multi-core** | `worker_threads` pool: validation and parameter scans run in parallel |
 | **User interface** | 0D/1.5D choice and 1.5D settings in the wizard, live radial profile plot, cross-section with GS flux surfaces, SVG/PDF figure export from the report, 1.5D validation test |

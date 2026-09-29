@@ -194,9 +194,9 @@ model take part as soon as they implement the hooks; other parts are listed in
 - Grad–Shafranov updates are quasi-static: a table-mode solve whose current table had to be
   rescaled by more than `CURRENT_SCALE_LIMIT` (0.5) to meet I_p is rejected like a solve that does
   not converge (the geometry the table was mapped through is stale). MASTU15 (hollow current at
-  β_p ≈ 1.8) still holds back most of its updates (2 accepted, 5 rejected: the geometry stays near
-  the start-up equilibrium for most of the shot), and so do fast transients such as the JET15
-  L–H transition (one of 16 attempts rejected). A converged answer needs a table consistent with
+  β_p ≈ 1.8) still holds back part of its updates (4 accepted, 3 rejected: the geometry stays near
+  the start-up equilibrium for much of the shot), and so do fast transients such as the JET15
+  L–H transition (one of 15 attempts rejected). A converged answer needs a table consistent with
   the new geometry, i.e. an outer iteration between the transport tables and the solver.
 - The transport-geometry cell volumes are ∫V' dρ̂ over each cell, scaled once to the volume of the equilibrium. The tables
   sit at ψ_N = (k/50)², so the last interval before the separatrix is wide in ρ̂ (ITER15 0.955 → 1, MASTU15 0.886 → 1) and

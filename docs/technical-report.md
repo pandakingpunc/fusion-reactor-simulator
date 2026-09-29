@@ -121,7 +121,9 @@ S(x)   = 1 + stiffness · min(max(x/x_crit − 1, 0), 5)        (yalnız ρ < 0.
 ```
 
 C_χ bir **PI denetleyicisiyle** depolanan enerjiyi ölçekleme hedefine çeker:
-W → τ_T · P_loss, τ_T = H98·τ_IPB98(P_loss)·f_NTM (H-kipi; L-kipinde ITER89-P). İntegral
+W → τ_T · P_L, τ_T = H98·τ_IPB98(P_L)·f_NTM (H-kipi; L-kipinde ITER89-P). Kayıp gücü
+P_L = P_ısıtma − P_rad,çekirdek − dW/dt'dir (çekirdek: ρ < 0.6; dW/dt τ_E ile süzülür ve ELM
+kayıplarını içerir; 0D modelle aynı tanım). İntegral
 terimi, difüzyon tahmini C_est = a²κ_a/(6 τ (1 + c/2)) çevresinde [0.1, 10]·C_est ile
 sınırlanır (anti-windup). Böylece küresel dinamik doğrulanmış 0D ölçeklemeyle tutarlı kalır;
 profil **şekli** ise kaynak birikimi, sertlik, pedestal, testere dişi, bootstrap ve akım
@@ -164,7 +166,8 @@ parçacık oranı dengeden **tam** hesaplanır (§4.3).
 * **NTM:** modifiye Rutherford denklemi (La Haye 2006):
   `dw/dt = 1.22 (η/μ0) [ Δ′₀ + a_bs √ε β_θ (L_q/L_p) w/(w² + w_d²) − a_pol w_d²/w³ ]`;
   hapsetmeye etkisi kuşak modeliyle f_NTM = 1 − 4 Σ ρ_s² w/a.
-* **L–H geçişi:** Martin (2008) eşiği, 0.7 histerezisli.
+* **L–H geçişi:** P_L ≥ P_LH; Martin (2008) eşiği + Ryter (2014) düşük yoğunluk kolu (çizgi-ortalama
+  yoğunlukla), 0.7 histerezisli.
 * **Kararlılık teşhisi:** Mercier D_M ve s–α balonlama sınırı (Connor–Hastie–Taylor) profilleri.
 
 ## 4. Grad–Shafranov dengesi
@@ -283,9 +286,9 @@ Q ≈ 11 tasarım tahmininin altındadır (yalnız ICRH, W safsızlığı ve H98
 
 POPCON (Houlberg–Attenberger–Hively 1982), 0D modelle **aynı fiziği** kullanır: yarı-nötrallikten
 yakıt seyrelmesi (ana safsızlık, tohum, öz-tutarlı He külü n_He = R_füz τ_He/V), bremsstrahlung
-+ Mavrin çizgi + Albajar senkrotron ışınımı, P_loss = P_heat − P_rad'da değerlendirilen
-H98·IPB98(y,2). Kararlı durum P_loss = W/τ_E(P_loss) sabit-nokta iterasyonuyla (τ ∝ P^−0.69 ⇒
-yakınsak) çözülür; `P_aux = P_loss + P_rad − P_α`. Bu tutarlılık sayesinde 1.5D atışın son
++ Mavrin çizgi + Albajar senkrotron ışınımı, P_L = P_heat − P_rad,çekirdek'te (dW/dt = 0) değerlendirilen
+H98·IPB98(y,2). Kararlı durum P_L = W/τ_E(P_L) + P_rad,manto sabit-nokta iterasyonuyla (τ ∝ P^−0.69 ⇒
+yakınsak) çözülür; `P_aux = W/τ_E + P_rad − P_α`. Bu tutarlılık sayesinde 1.5D atışın son
 durumu (⟨n_e⟩ ≈ 0.8×10²⁰ m⁻³, ⟨T⟩ ≈ 9.5 keV) POPCON'da Q ≈ 9 bölgesine düşer (Şekil 4) —
 basit (seyreltmesiz) POPCON'un aksine ITER'de ateşlenmiş bölge yoktur.
 

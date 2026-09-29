@@ -32,10 +32,13 @@
     "P_oh": 1.5346361511701434,
     "P_rad": 39.24223106710278,
     "P_rad_core": 21.039079438945546,
+    "P_sep_R": 19.12801212077959,
     "P_sync": 3.920227983206679,
     "P_transport": 119.99940810508942,
     "Q": 10.036159708104021,
     "S_fuel": 111.89545702127491,
+    "T_t": 283.39912453743216,
+    "T_u": 394.9245505187744,
     "Te": 9.27104536242796,
     "Ti": 8.84381402476868,
     "Ti0": 19.048214822578696,
@@ -49,17 +52,24 @@
     "betaT": 2.3837574025675172,
     "burnFrac": 0.0440410553743916,
     "cZ": 0.02086929306988495,
+    "cz_det": 0.39774070478305557,
     "dWdt": -2.7747865946163595,
+    "detach": 0,
     "fHe": 0.033066032465863884,
+    "f_pwr": 0.7000000000000008,
     "fuelFracA": 0.5,
     "ignited": 0,
+    "lambda_q": 0.5669410127546154,
     "lawson": 0.6883084177447824,
     "nG_frac": 0.8369282099817863,
     "n_wall": 0.5219205399017713,
     "nbar": 0.9990094622373966,
     "ne": 0.8998905637287974,
+    "p_div": 1.745855997702474,
     "q95": 2.9963385636587665,
+    "q_det": 37.78762486960825,
     "q_div": 30.025522038812372,
+    "q_peak": 26.41541528341266,
     "tauE": 2.59492308423805,
     "triple": 2.0649252532343485e+21
   },
@@ -247,6 +257,13 @@
       "missing": 0,
       "nonFinite": 0
     },
+    "P_sep_R": {
+      "max": 22.69604090353561,
+      "mean": 18.913761725021455,
+      "min": 2.0028800459160943,
+      "missing": 0,
+      "nonFinite": 0
+    },
     "P_sync": {
       "max": 6.759895240043206,
       "mean": 3.9252813276203185,
@@ -272,6 +289,20 @@
       "max": 146.65080185231324,
       "mean": 111.2424120506041,
       "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "T_t": {
+      "max": 409.6018908161027,
+      "mean": 286.73016334280203,
+      "min": 115.95749981774779,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "T_u": {
+      "max": 474.2450664943041,
+      "mean": 395.2946792000708,
+      "min": 195.6813477957089,
       "missing": 0,
       "nonFinite": 0
     },
@@ -366,6 +397,13 @@
       "missing": 0,
       "nonFinite": 0
     },
+    "cz_det": {
+      "max": 1,
+      "mean": 0.4166120637264441,
+      "min": 0.3694851218583852,
+      "missing": 0,
+      "nonFinite": 0
+    },
     "dWdt": {
       "max": 18.916796526878155,
       "mean": -2.2129350465500686,
@@ -373,10 +411,24 @@
       "missing": 0,
       "nonFinite": 0
     },
+    "detach": {
+      "max": 0,
+      "mean": 0,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
     "fHe": {
       "max": 0.033870649691998427,
       "mean": 0.031357855029884946,
       "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "f_pwr": {
+      "max": 0.7,
+      "mean": 0.700000000000032,
+      "min": 0.7,
       "missing": 0,
       "nonFinite": 0
     },
@@ -391,6 +443,13 @@
       "max": 0,
       "mean": 0,
       "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "lambda_q": {
+      "max": 0.5669410127546167,
+      "mean": 0.5669410127545856,
+      "min": 0.5669410127546167,
       "missing": 0,
       "nonFinite": 0
     },
@@ -429,6 +488,13 @@
       "missing": 0,
       "nonFinite": 0
     },
+    "p_div": {
+      "max": 1.8264372503083974,
+      "mean": 1.6715775842219416,
+      "min": 0.04820787448981106,
+      "missing": 0,
+      "nonFinite": 0
+    },
     "q95": {
       "max": 2.996338563658756,
       "mean": 2.9963385636585653,
@@ -436,10 +502,24 @@
       "missing": 0,
       "nonFinite": 0
     },
+    "q_det": {
+      "max": 354.9579058342409,
+      "mean": 42.564836666130184,
+      "min": 34.68882986055142,
+      "missing": 0,
+      "nonFinite": 0
+    },
     "q_div": {
       "max": 35.626309312225736,
       "mean": 29.689210040522127,
       "min": 3.1439502746038794,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "q_peak": {
+      "max": 31.342794116327628,
+      "mean": 26.119539625092774,
+      "min": 2.765938658009278,
       "missing": 0,
       "nonFinite": 0
     },
@@ -499,12 +579,16 @@
     "engineering.Net P_electric (MW)": 40,
     "engineering.Neutron wall load (MW/m²)": 0.52,
     "engineering.P_recirculating (MW)": 180,
+    "engineering.P_sep/R (MW/m)": 19.1,
     "engineering.P_thermal (MW)": 628,
     "engineering.Stress limit (MPa)": 660,
     "engineering.TBR": 1.199,
     "engineering.TF stress (MPa)": 82,
+    "engineering.Target T_e, two-point (eV)": 283.4,
+    "engineering.Target q_peak, two-point (MW/m²)": 26.4,
     "engineering.Technology B_max (T)": 13,
     "engineering.Tritium burn fraction": 0.044,
+    "engineering.c_z for detachment, Lengyel upper bound (%)": 39.77,
     "engineering.dpa/year": 3.1,
     "extras.ELM count": 1359,
     "extras.He ash fraction (final)": 0.034,

@@ -13,7 +13,7 @@
  */
 import { ActuatorEntry, EdgeOptions, Method, METHOD_LABELS, ProfileSettings, ReactorConfig, SystemsConfig } from '../../physics/types';
 import { DEFAULT_PROFILE_SETTINGS } from '../../physics/profiles/defaults';
-import { IMPURITIES } from '../../physics/constants';
+import type { ImpuritySpecies } from '../../physics/constants';
 import { fieldVisible, getPath, METHOD_DEFAULT, missingRequired, PRESETS, stepsFor } from '../wizard/schema';
 
 /** Limits that keep a hostile or corrupt input from becoming a large object graph. */
@@ -95,6 +95,8 @@ const PROFILE_SERIES = ['profiles.IpWaveform'];
 /** The profile-resolved impurity settings (no default value either: absent is the scalar model), exhaustive over their choices like the solver above */
 const IMPURITY_TRANSPORT_CHOICES: Record<NonNullable<ProfileSettings['impurityTransport']>, true> = { legacy: true, anomalous: true, facit: true };
 const IMPURITY_SETPOINT_CHOICES: Record<NonNullable<ProfileSettings['impuritySetpoint']>, true> = { average: true, separatrix: true };
+/** a type-only exhaustive list: importing the species table would split physics/constants into a chunk of its own and grow the main one */
+const IMPURITY_SPECIES_CHOICES: Record<ImpuritySpecies, true> = { Be: true, C: true, Ne: true, Ar: true, W: true };
 
 function walk(v: unknown, path: string, leaves: Map<string, LeafType>, sections?: string[]): void {
   if (v === undefined || v === null) return;
@@ -130,7 +132,7 @@ function templateFor(method: Method): Template {
     enums.set('profiles.nonlinearSolver', new Set(Object.keys(NONLINEAR_SOLVER_CHOICES)));
     for (const s of PROFILE_SERIES) series.add(s);
     for (const k of ['impurityDoverDe', 'impurityPinchOverPe', 'impurityExtraConcentration']) leaves.set(`profiles.${k}`, 'number');
-    for (const [k, choices] of [['impurityTransport', IMPURITY_TRANSPORT_CHOICES], ['impuritySetpoint', IMPURITY_SETPOINT_CHOICES], ['impurityExtraSpecies', IMPURITIES]] as const) {
+    for (const [k, choices] of [['impurityTransport', IMPURITY_TRANSPORT_CHOICES], ['impuritySetpoint', IMPURITY_SETPOINT_CHOICES], ['impurityExtraSpecies', IMPURITY_SPECIES_CHOICES]] as const) {
       leaves.set(`profiles.${k}`, 'string');
       enums.set(`profiles.${k}`, new Set(Object.keys(choices)));
     }

@@ -2,7 +2,7 @@
  * Systems-lite assessment (lane ws7b): the API of the facade (`engineering.ts`), `checkMagnet` compatibility with v3, the orchestrator
  * and the report keys, and the shot report of a short ITER run.
  */
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { C } from '../constants';
 import { MAGNET_TECH, checkMagnet, economics, neutronWallLoad, tritiumBreedingRatio } from '../engineering';
 import * as systems from './index';
@@ -10,11 +10,12 @@ import { ITER, JET, SPARC, W7X, DEMO } from '../presets';
 import { Simulation } from '../simulation';
 import type { MagneticConfig } from '../types';
 import { assessSystems, PF_FLUX_SHARE_MAX, systemsReportKeys } from './assess';
+import { DEFAULT_PULSE_LENGTH_S } from './cryo';
 
 const MU0 = C.mu0;
 
 const inputOf = (cfg: MagneticConfig, over: Partial<Parameters<typeof assessSystems>[0]> = {}) => ({
-  cfg, g: cfg.geometry, isStellarator: cfg.method === 'stellarator', P_fus_MW: 500, P_neutron_MW: 400, duration_s: 400, ...over,
+  cfg, g: cfg.geometry, isStellarator: cfg.method === 'stellarator', P_fus_MW: 500, P_neutron_MW: 400, ...over,
 });
 
 describe('engineering.ts facade and checkMagnet', () => {
@@ -147,6 +148,45 @@ describe('assessSystems', () => {
   });
 });
 
+describe('pulsed-field load of the cryoplant follows the design pulse of the plant', () => {
+  it('defaults to the PROCESS-time plant pulse, reports it and says so in the notes', () => {
+    const s = assessSystems(inputOf(ITER));
+    expect(s.pulseLength_s).toBe(DEFAULT_PULSE_LENGTH_S);
+    expect(DEFAULT_PULSE_LENGTH_S).toBe(1055);
+    expect(s.cryo.Q_ac_W).toBeGreaterThan(0);
+    expect(s.notes.join(' ')).toContain('systems.pulseLength_s');
+    expect(systemsReportKeys(s)['Cryo pulse length (s)']).toBe(1055);
+  });
+
+  it('the AC load is inversely proportional to systems.pulseLength_s, every other heat load is unchanged', () => {
+    const a = assessSystems(inputOf({ ...ITER, systems: { pulseLength_s: 1000 } }));
+    const b = assessSystems(inputOf({ ...ITER, systems: { pulseLength_s: 4000 } }));
+    expect(a.pulseLength_s).toBe(1000);
+    expect(a.cryo.Q_ac_W / b.cryo.Q_ac_W).toBeCloseTo(4, 12);
+    expect(a.cryo.Q_static_W).toBe(b.cryo.Q_static_W);
+    expect(a.cryo.Q_leads_W).toBe(b.cryo.Q_leads_W);
+    expect(a.cryo.Q_nuclear_W).toBe(b.cryo.Q_nuclear_W);
+    expect(a.cryo.P_cryo_MW).toBeGreaterThan(b.cryo.P_cryo_MW);
+    // a given pulse is not a default: no note that asks for one
+    expect(a.notes.join(' ')).not.toContain('give systems.pulseLength_s');
+  });
+
+  it('the pulse of the call overrides the pulse of the configuration', () => {
+    const s = assessSystems(inputOf({ ...ITER, systems: { pulseLength_s: 1000 } }, { pulseLength_s: 2000 }));
+    expect(s.pulseLength_s).toBe(2000);
+  });
+
+  it('a non-positive or non-finite pulse falls back to the default with a note, no division by a shot length', () => {
+    const ref = assessSystems(inputOf(ITER));
+    for (const bad of [0, -5, NaN, Infinity]) {
+      const s = assessSystems(inputOf({ ...ITER, systems: { pulseLength_s: bad } }));
+      expect(s.pulseLength_s, String(bad)).toBe(DEFAULT_PULSE_LENGTH_S);
+      expect(s.cryo.Q_ac_W, String(bad)).toBe(ref.cryo.Q_ac_W);
+      expect(s.notes.join(' '), String(bad)).toContain('not a positive number');
+    }
+  });
+});
+
 describe('shot report of a short ITER run', () => {
   const cfg: MagneticConfig = { ...ITER, t_end: 60 };
   const sim = new Simulation(cfg);
@@ -181,5 +221,47 @@ describe('shot report of a short ITER run', () => {
     // 0.05 P_fus + 20 MW house load + cryoplant + heating wall-plug power
     const Pfus = e['Avg. P_fusion (MW)'] as number;
     expect(e['P_recirculating (MW)']).toBeGreaterThan(0.05 * Pfus + 20 + (e['Cryoplant power (MW)'] as number) - 1);
+  });
+});
+
+describe('the engineering report of a machine does not depend on the simulated length of the shot', () => {
+  // Regression (review of ws7b): the pulsed-field load of the cryoplant used to be divided by the simulated time, so the same ITER
+  // reported a 108 MW cryoplant for t_end = 20 s, 60 MW for 60 s and 35 MW for 400 s, and net electric power from -117 to +13 MW.
+  // What may still differ with the run is what is measured from the shot: the flat-top mean fusion power (a 20 s run has not reached
+  // the burn) and through it the nuclear heating of the coils and the fusion-proportional house load.
+  const reports: Record<string, Record<string, number | string | boolean>> = {};
+  const runs: Record<string, Partial<MagneticConfig>> = {
+    't20': { t_end: 20 },
+    't60': { t_end: 60 },
+    't400': { t_end: 400 },
+    // a shot that is aborted after 0.35 s: the density-limit disruption ends it long before t_end
+    'aborted': { t_end: 400, limits: { ...ITER.limits, greenwald_limit: 0.3 } },
+  };
+  beforeAll(() => {
+    for (const [k, over] of Object.entries(runs)) reports[k] = new Simulation({ ...ITER, ...over }).runAll().engineering;
+  }, 240_000);
+
+  /** the part of the heat load that belongs to the machine: static + AC + leads = Q / 1.45 - Q_nuclear [kW] */
+  const machineLoad = (e: Record<string, number | string | boolean>) => (e['Cryo heat load (kW)'] as number) / 1.45 - (e['TF nuclear heating (kW)'] as number);
+
+  it('the plant pulse of the cryoplant is the design pulse for every t_end and for an aborted shot', () => {
+    for (const k of Object.keys(runs)) expect(reports[k]['Cryo pulse length (s)'], k).toBe(DEFAULT_PULSE_LENGTH_S);
+  });
+
+  it('static, pulsed-field and lead loads are those of the machine: equal for every t_end and for an aborted shot (to the rounding of the keys)', () => {
+    const ref = machineLoad(reports['t400']);
+    for (const k of Object.keys(runs)) expect(Math.abs(machineLoad(reports[k]) - ref), k).toBeLessThan(0.1);
+  });
+
+  it('ITER: recirculating power and cryoplant power at t_end = 60 s and 400 s agree (2.5 % and 6 %; the rest is the flat-top mean fusion power)', () => {
+    const a = reports['t60'], b = reports['t400'];
+    expect(Math.abs((a['P_recirculating (MW)'] as number) / (b['P_recirculating (MW)'] as number) - 1)).toBeLessThan(0.025);
+    expect(Math.abs((a['Cryoplant power (MW)'] as number) / (b['Cryoplant power (MW)'] as number) - 1)).toBeLessThan(0.06);
+  });
+
+  it('an aborted shot has the cryoplant of the machine, not a 1 s pulse (a few GW)', () => {
+    const e = reports['aborted'];
+    expect(e['Cryoplant power (MW)'] as number).toBeGreaterThan(5);
+    expect(e['Cryoplant power (MW)'] as number).toBeLessThan(40);
   });
 });

@@ -3,7 +3,7 @@
  * fractions of the table, and the heat load of an ITER-like magnet system.
  */
 import { describe, expect, it } from 'vitest';
-import { CRYO_COEFFS, CRYO_TEMPERATURE, carnotFraction, cryoPlant } from './cryo';
+import { CRYO_COEFFS, CRYO_TEMPERATURE, DEFAULT_PULSE_LENGTH_S, carnotFraction, cryoPlant, plantPulseLength_s } from './cryo';
 import { MAGNET_TECH } from './magnets';
 
 const base = {
@@ -78,6 +78,26 @@ describe('heat load (Slack, as in PROCESS power.py)', () => {
     const r = cryoPlant({ ...base, tech: 'Cu', wattsPerWatt: 0 });
     expect(r.Q_total_W).toBe(0);
     expect(r.P_cryo_MW).toBe(0);
+  });
+});
+
+describe('design pulse of the plant', () => {
+  it('the default is the plasma-present pulse of the PROCESS default times: 30 + 10 + 1000 + 15 s', () => {
+    expect(DEFAULT_PULSE_LENGTH_S).toBe(1055);
+  });
+
+  it('a positive finite design pulse is used as given, anything else gives the default', () => {
+    expect(plantPulseLength_s(7200)).toBe(7200);
+    expect(plantPulseLength_s(0.5)).toBe(0.5);
+    for (const bad of [undefined, 0, -1, NaN, Infinity, -Infinity]) expect(plantPulseLength_s(bad), String(bad)).toBe(DEFAULT_PULSE_LENGTH_S);
+  });
+
+  it('the AC load is E/t_pulse: a 1 s pulse would give a GW-class plant, the design pulse of the ITER-like case a few tens of MW', () => {
+    const wrong = cryoPlant({ ...base, pulseLength_s: 1 });
+    const right = cryoPlant({ ...base, pulseLength_s: DEFAULT_PULSE_LENGTH_S });
+    expect(right.Q_ac_W).toBeCloseTo((1e3 * 7000) / 1055, 6);
+    expect(wrong.P_cryo_MW).toBeGreaterThan(1000);
+    expect(right.P_cryo_MW).toBeLessThan(40);
   });
 });
 

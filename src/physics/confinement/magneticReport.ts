@@ -73,7 +73,7 @@ export function buildMagneticReport(ctx: MagneticReportContext, hist: HistoryFra
   // integral over the frames after the start-up (V_loop where the model has it, else P_ohmic / I_p), l_i(3) the flat-top mean where known.
   const flux = ctx.isStell ? undefined : fluxFromHistory(hist, tStartup);
   const li = hist.some((h) => h.d.li !== undefined) ? avg('li') : undefined;
-  const sys = assessSystems({ cfg: c, g: ctx.g, isStellarator: ctx.isStell, P_fus_MW: Pfus_avg, P_neutron_MW: Pn_avg, duration_s: last.t, li, flux });
+  const sys = assessSystems({ cfg: c, g: ctx.g, isStellarator: ctx.isStell, P_fus_MW: Pfus_avg, P_neutron_MW: Pn_avg, li, flux });
   const tbr = sys.tbr;
   const P_recirc_other = 0.05 * Pfus_avg + 20 + (c.magnet.tech === 'Cu' ? 0.02 * mag.storedEnergy_GJ * 1e3 * 10 : sys.cryo.P_cryo_MW); // pumps and house load (APPROXIMATION); cryoplant power of the superconducting coils (heat load x W/W, systems/cryo.ts) or the copper coil resistance (APPROXIMATION)
   const eco = economics({

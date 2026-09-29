@@ -147,6 +147,12 @@ export interface MagneticConfig {
  * design-typical value of the magnet technology; the plasma models never read them, only the shot report does.
  */
 export interface SystemsConfig {
+  /**
+   * design length of the plasma pulse of the plant [s] (current ramp-up + flat top + ramp-down): the time over which the pulsed-field
+   * energy of the PF system and CS is spread in the cryoplant load. A property of the machine, NOT of the simulated shot: the shot
+   * report gives the same cryoplant power for any t_end. Default: DEFAULT_PULSE_LENGTH_S of systems/cryo.ts (1055 s).
+   */
+  pulseLength_s?: number;
   tf?: {
     /** number of TF coils (default 18; 24 for copper coils; 50 for a stellarator) */
     nCoils?: number;

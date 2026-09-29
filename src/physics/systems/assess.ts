@@ -7,7 +7,7 @@ import { Geometry } from '../geometry';
 import type { MagneticConfig } from '../types';
 import { TBROptions, tritiumBreedingRatio } from './breeding';
 import { CS_TF_GAP, FluxBudget, FluxMeasurement, fluxBudget } from './csFlux';
-import { CryoResult, cryoPlant } from './cryo';
+import { CryoResult, DEFAULT_PULSE_LENGTH_S, cryoPlant, plantPulseLength_s } from './cryo';
 import { MAGNET_TECH } from './magnets';
 import { RadialBuild, radialBuild, tfNuclearHeating_W } from './radialBuild';
 import { TFCoilResult, tfCoil, TF_TECH } from './tfCoil';
@@ -26,8 +26,12 @@ export interface SystemsInput {
   /** flat-top mean fusion power and neutron power [MW] */
   P_fus_MW: number;
   P_neutron_MW: number;
-  /** plasma pulse length [s] */
-  duration_s: number;
+  /**
+   * plasma-present pulse length of the plant [s] for the pulsed-field load of the cryoplant: a design quantity that overrides
+   * `cfg.systems.pulseLength_s`; without either, DEFAULT_PULSE_LENGTH_S. It is never the length of the simulated shot: the machine
+   * does not change with the t_end of a run, a disruption or an abort (see cryo.ts).
+   */
+  pulseLength_s?: number;
   /** l_i(3) of the plasma if known (1.5D) */
   li?: number;
   /** burn-phase loop voltage [V], its duration [s] and the flux quantities a current model measured (see csFlux.ts) */
@@ -44,6 +48,8 @@ export interface SystemsAssessment {
   /** flux budget; null for a stellarator, without plasma current or if the CS does not fit */
   cs: FluxBudget | null;
   cryo: CryoResult;
+  /** plasma pulse length the pulsed-field load of the cryoplant was computed with [s] */
+  pulseLength_s: number;
   /** approximations and extrapolations that apply to this assessment */
   notes: string[];
   /** nuclear heating of the TF coil [W] */
@@ -90,9 +96,13 @@ export function assessSystems(inp: SystemsInput): SystemsAssessment {
 
   // cryogenic plant
   const coldMass = tf.totalMass_kg * (1 + PF_MASS_FACTOR) + (cs?.mass_kg ?? 0);
+  const designPulse = inp.pulseLength_s ?? sys?.pulseLength_s;
+  const pulseLength_s = plantPulseLength_s(designPulse);
+  if (designPulse === undefined) notes.push(`cryoplant pulsed-field load: the plant pulse is ${DEFAULT_PULSE_LENGTH_S} s (default, PROCESS times); give systems.pulseLength_s for the pulse of the machine`);
+  else if (pulseLength_s !== designPulse) notes.push(`systems.pulseLength_s = ${designPulse} is not a positive number: the default ${DEFAULT_PULSE_LENGTH_S} s was used`);
   const cryo = cryoPlant({
     tech, wattsPerWatt: spec.cryo_W_per_W, coldMass_kg: coldMass, tfShellArea_m2: tf.coldSurface_m2, nuclearHeating_W: Qnuc,
-    pfEnergy_J: cs?.W_cs_J ?? 0, pulseLength_s: inp.duration_s, nCoils: tf.nCoils, turnCurrent_A: opts.turnCurrent_A ?? TF_TECH[tech].turnCurrent_A,
+    pfEnergy_J: cs?.W_cs_J ?? 0, pulseLength_s, nCoils: tf.nCoils, turnCurrent_A: opts.turnCurrent_A ?? TF_TECH[tech].turnCurrent_A,
   });
 
   if (tf.overstress) warnings.push(`TF coil stress ${tf.tresca_MPa.toFixed(0)} MPa > ${spec.stress_MPa} MPa limit.`);
@@ -101,7 +111,7 @@ export function assessSystems(inp: SystemsInput): SystemsAssessment {
   if (cs && sys?.cs !== undefined && isFinite(cs.margin) && cs.psiCS_Vs < (1 - PF_FLUX_SHARE_MAX) * cs.psiRequired_Vs) {
     warnings.push(`CS flux swing ${cs.psiAvailable_Vs.toFixed(0)} V s is ${(100 * cs.psiAvailable_Vs / cs.psiRequired_Vs).toFixed(0)} % of the ${cs.psiRequired_Vs.toFixed(0)} V s the pulse needs — the PF coils would have to supply more than ${(100 * PF_FLUX_SHARE_MAX).toFixed(0)} % of it; enlarge the solenoid, raise its field or give the PF flux (systems.cs.pfFlux_Vs).`);
   }
-  return { tf, build, tbr, breederFraction: sys?.blanket?.breederFraction, cs, cryo, notes: [...notes, ...tf.notes], nuclearHeating_W: Qnuc, coldMass_kg: coldMass, warnings };
+  return { tf, build, tbr, breederFraction: sys?.blanket?.breederFraction, cs, cryo, pulseLength_s, notes: [...notes, ...tf.notes], nuclearHeating_W: Qnuc, coldMass_kg: coldMass, warnings };
 }
 
 /**
@@ -128,6 +138,7 @@ export function systemsReportKeys(s: SystemsAssessment): Record<string, number> 
     k['TF nuclear heating (kW)'] = r(s.nuclearHeating_W / 1e3, 2);
     k['Cryo heat load (kW)'] = r(s.cryo.Q_total_W / 1e3, 1);
     k['Cryoplant power (MW)'] = r(s.cryo.P_cryo_MW, 1);
+    k['Cryo pulse length (s)'] = r(s.pulseLength_s, 0);
   }
   if (s.tbr > 0) {
     k['Inboard blanket (m)'] = r(s.build.blanketInboard_m, 2);

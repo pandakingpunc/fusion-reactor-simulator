@@ -23,6 +23,21 @@ export const CRYO_COEFFS = { staticPerKg: 4.3e-4, staticPerM2: 2.0, acPerMJ: 1e3
 export const CRYO_TEMPERATURE: Record<MagnetTech, number> = { Cu: 293, NbTi: 4.5, Nb3Sn: 4.5, REBCO: 20 };
 export const T_WARM = 293;
 
+/**
+ * Design length of the plasma pulse of the plant [s] used for the pulsed-field (AC) heat load when the design gives none
+ * (`SystemsConfig.pulseLength_s`). The AC load is the energy dissipated per pulse divided by the pulse (PROCESS `power.py` `cryo`:
+ * `qac = 1e3 ensxpfm / t_plant_pulse_plasma_present`), so it belongs to the machine and must not follow the length of a simulated
+ * shot. APPROXIMATION: the plasma-present pulse of the PROCESS default times (`times_variables`: current ramp-up 30 s, fusion ramp
+ * 10 s, flat top 1000 s, ramp-down 15 s), 1055 s. The order of the ITER pulse (400 s burn plus ramps) and well below the 2 h of the EU DEMO
+ * (10364 s in the PROCESS unit test); give the pulse of the machine to change it.
+ */
+export const DEFAULT_PULSE_LENGTH_S = 30 + 10 + 1000 + 15;
+
+/** The pulse length to use: the design value if it is a positive finite number, else the default (never the length of a simulated shot). */
+export function plantPulseLength_s(design?: number): number {
+  return design !== undefined && Number.isFinite(design) && design > 0 ? design : DEFAULT_PULSE_LENGTH_S;
+}
+
 export interface CryoInput {
   tech: MagnetTech;
   /** electric watts per watt removed at the operating temperature */
@@ -35,7 +50,7 @@ export interface CryoInput {
   nuclearHeating_W: number;
   /** stored energy of the CS and PF system [J] */
   pfEnergy_J: number;
-  /** length of the plasma pulse [s] */
+  /** plasma-present pulse length of the plant [s]: a design quantity (DEFAULT_PULSE_LENGTH_S), not the length of a simulated shot */
   pulseLength_s: number;
   nCoils: number;
   turnCurrent_A: number;

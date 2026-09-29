@@ -1,0 +1,439 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:fusion-reactor-simulator:schema:scenario",
+  "title": "Fusion Reactor Simulator: scenario",
+  "description": "Waveforms of the actuator controls and triggers on the frame diagnostics that drive one shot (`new Simulation(cfg, { scenario })`, `--scenario FILE` of the command line tools, the scenario editor of the app). Generated from src/cli/scenarioSchema.ts (npm run schema:scenario); do not edit.",
+  "type": "object",
+  "required": [
+    "schema"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "version of the JSON form"
+    },
+    "name": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "free label (not part of the fingerprint of a run)"
+    },
+    "rampStep": {
+      "type": "number",
+      "minimum": 0.000001,
+      "description": "upper bound of the time between step boundaries on a ramping segment of a pwl waveform (default: none); at least 0.000001, and at least t_end / 10000 for the shot it is used with"
+    },
+    "waveforms": {
+      "type": "object",
+      "maxProperties": 64,
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
+        "not": {
+          "enum": [
+            "__proto__",
+            "constructor",
+            "prototype"
+          ]
+        }
+      },
+      "description": "waveform of a control, by the key of the control (the keys the model exposes; the known ones are listed here with their limits)",
+      "properties": {
+        "P_NBI_MW": {
+          "$ref": "#/$defs/waveform_range_0_any",
+          "title": "NBI power",
+          "x-unit": "MW"
+        },
+        "P_ICRH_MW": {
+          "$ref": "#/$defs/waveform_range_0_any",
+          "title": "ICRH power",
+          "x-unit": "MW"
+        },
+        "P_ECRH_MW": {
+          "$ref": "#/$defs/waveform_range_0_any",
+          "title": "ECRH power",
+          "x-unit": "MW"
+        },
+        "P_aux_MW": {
+          "$ref": "#/$defs/waveform_range_0_any",
+          "title": "auxiliary power",
+          "x-unit": "MW"
+        },
+        "n_target_1e20": {
+          "$ref": "#/$defs/waveform_range_0_any",
+          "title": "density target (volume average)",
+          "x-unit": "1e20 m⁻³"
+        },
+        "H98": {
+          "$ref": "#/$defs/waveform_range_0_any",
+          "title": "confinement multiplier H98"
+        },
+        "H_ISS04": {
+          "$ref": "#/$defs/waveform_range_0_any",
+          "title": "confinement multiplier H_ISS04"
+        },
+        "cZ": {
+          "$ref": "#/$defs/waveform_range_0_any",
+          "title": "impurity concentration"
+        },
+        "fuelRate_1e20s": {
+          "$ref": "#/$defs/waveform_range_0_any",
+          "title": "fuelling rate limit",
+          "x-unit": "1e20 s⁻¹"
+        },
+        "kappa_conf": {
+          "$ref": "#/$defs/waveform_range_0_any",
+          "title": "confinement factor"
+        },
+        "muonRate_per_s": {
+          "$ref": "#/$defs/waveform_range_0_any",
+          "title": "muon rate",
+          "x-unit": "s⁻¹"
+        },
+        "Ip_MA": {
+          "$ref": "#/$defs/waveform_range_0_any",
+          "title": "plasma current",
+          "x-unit": "MA"
+        }
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/waveform"
+      }
+    },
+    "triggers": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "$ref": "#/$defs/trigger"
+      }
+    }
+  },
+  "x-rules": [
+    {
+      "id": "step-distinct-times",
+      "description": "the points of a step waveform have distinct times (points are sorted by time by the loader)"
+    },
+    {
+      "id": "known-keys",
+      "description": "a waveform, a patch and a trigger name only controls and diagnostics that the model of the run exposes"
+    },
+    {
+      "id": "ramp-grid",
+      "description": "rampStep is at least t_end / 10000 of the shot it is used with"
+    }
+  ],
+  "$defs": {
+    "key": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
+      "not": {
+        "enum": [
+          "__proto__",
+          "constructor",
+          "prototype"
+        ]
+      }
+    },
+    "time": {
+      "type": "number",
+      "minimum": 0,
+      "description": "time from the start of the shot, in the time unit of the model (s for the magnetic-confinement models)"
+    },
+    "waveform": {
+      "type": "object",
+      "required": [
+        "kind",
+        "points"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "pwl",
+            "step"
+          ],
+          "description": "'pwl': piecewise linear between the points, constant after the last; 'step': holds each value from its time on"
+        },
+        "points": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4096,
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "prefixItems": [
+              {
+                "$ref": "#/$defs/time"
+              },
+              {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            ],
+            "items": false
+          }
+        }
+      }
+    },
+    "waveform_range_0_any": {
+      "type": "object",
+      "required": [
+        "kind",
+        "points"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "pwl",
+            "step"
+          ],
+          "description": "'pwl': piecewise linear between the points, constant after the last; 'step': holds each value from its time on"
+        },
+        "points": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4096,
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "prefixItems": [
+              {
+                "$ref": "#/$defs/time"
+              },
+              {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0
+              }
+            ],
+            "items": false
+          }
+        }
+      }
+    },
+    "trigger": {
+      "type": "object",
+      "required": [
+        "diag",
+        "op",
+        "value",
+        "set"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[^\\u0000-\\u001f]+$",
+          "description": "label for the event log (default: \"<diag> <op> <value>\")"
+        },
+        "diag": {
+          "$ref": "#/$defs/key",
+          "description": "key of the frame diagnostics (Q, H_mode, betaN, nG_frac, ...)"
+        },
+        "op": {
+          "enum": [
+            ">",
+            ">=",
+            "<",
+            "<="
+          ]
+        },
+        "value": {
+          "type": "number"
+        },
+        "hold": {
+          "type": "number",
+          "minimum": 0,
+          "description": "dwell time (default 0): the condition must have held on consecutive frames for this long"
+        },
+        "after": {
+          "type": "number",
+          "minimum": 0,
+          "description": "earliest firing time (default 0), independent of hold"
+        },
+        "set": {
+          "type": "object",
+          "description": "control values written when the trigger fires",
+          "minProperties": 1,
+          "maxProperties": 32,
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
+            "not": {
+              "enum": [
+                "__proto__",
+                "constructor",
+                "prototype"
+              ]
+            }
+          },
+          "properties": {
+            "P_NBI_MW": {
+              "type": "number",
+              "minimum": 0
+            },
+            "P_ICRH_MW": {
+              "type": "number",
+              "minimum": 0
+            },
+            "P_ECRH_MW": {
+              "type": "number",
+              "minimum": 0
+            },
+            "P_aux_MW": {
+              "type": "number",
+              "minimum": 0
+            },
+            "n_target_1e20": {
+              "type": "number",
+              "minimum": 0
+            },
+            "H98": {
+              "type": "number",
+              "minimum": 0
+            },
+            "H_ISS04": {
+              "type": "number",
+              "minimum": 0
+            },
+            "cZ": {
+              "type": "number",
+              "minimum": 0
+            },
+            "fuelRate_1e20s": {
+              "type": "number",
+              "minimum": 0
+            },
+            "kappa_conf": {
+              "type": "number",
+              "minimum": 0
+            },
+            "muonRate_per_s": {
+              "type": "number",
+              "minimum": 0
+            },
+            "Ip_MA": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "mode": {
+          "enum": [
+            "once",
+            "repeat"
+          ],
+          "description": "'once' (default) or 'repeat'"
+        },
+        "hysteresis": {
+          "type": "number",
+          "minimum": 0,
+          "description": "repeat only: how far the diagnostic must cross back over value before the trigger re-arms (default 0)"
+        },
+        "release": {
+          "type": "object",
+          "description": "repeat only: control values written when the trigger re-arms",
+          "minProperties": 1,
+          "maxProperties": 32,
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
+            "not": {
+              "enum": [
+                "__proto__",
+                "constructor",
+                "prototype"
+              ]
+            }
+          },
+          "properties": {
+            "P_NBI_MW": {
+              "type": "number",
+              "minimum": 0
+            },
+            "P_ICRH_MW": {
+              "type": "number",
+              "minimum": 0
+            },
+            "P_ECRH_MW": {
+              "type": "number",
+              "minimum": 0
+            },
+            "P_aux_MW": {
+              "type": "number",
+              "minimum": 0
+            },
+            "n_target_1e20": {
+              "type": "number",
+              "minimum": 0
+            },
+            "H98": {
+              "type": "number",
+              "minimum": 0
+            },
+            "H_ISS04": {
+              "type": "number",
+              "minimum": 0
+            },
+            "cZ": {
+              "type": "number",
+              "minimum": 0
+            },
+            "fuelRate_1e20s": {
+              "type": "number",
+              "minimum": 0
+            },
+            "kappa_conf": {
+              "type": "number",
+              "minimum": 0
+            },
+            "muonRate_per_s": {
+              "type": "number",
+              "minimum": 0
+            },
+            "Ip_MA": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": {
+            "type": "number"
+          }
+        }
+      },
+      "if": {
+        "not": {
+          "required": [
+            "mode"
+          ],
+          "properties": {
+            "mode": {
+              "const": "repeat"
+            }
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "release"
+          ]
+        },
+        "properties": {
+          "hysteresis": {
+            "maximum": 0
+          }
+        }
+      }
+    }
+  }
+}

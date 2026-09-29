@@ -49,6 +49,8 @@ const SCALINGS = keysOf<MagneticConfig['scaling']>({ IPB98y2: 0, ITPA20: 0, 'ITP
 const TRANSPORT_MODELS = keysOf<ProfileSettings['transportModel']>({ scaling: 0, cgm: 0 });
 const EDGE_MODELS = keysOf<NonNullable<ProfileSettings['edgeModel']>>({ legacy: 0, twoPoint: 0 });
 const NONLINEAR_SOLVERS = keysOf<NonNullable<ProfileSettings['nonlinearSolver']>>({ auto: 0, picard: 0, newton: 0, pc: 0 });
+const IMPURITY_TRANSPORTS = keysOf<NonNullable<ProfileSettings['impurityTransport']>>({ legacy: 0, anomalous: 0, facit: 0 });
+const IMPURITY_SETPOINTS = keysOf<NonNullable<ProfileSettings['impuritySetpoint']>>({ average: 0, separatrix: 0 });
 const EDGE_LOSS_FITS = keysOf<NonNullable<EdgeOptions['lossFit']>>({ stangeby1: 0, stangeby2: 0, body2025: 0 });
 const EDGE_RADIATIONS = keysOf<NonNullable<EdgeOptions['radiation']>>({ prescribed: 0, lengyel: 0 });
 const MAGNETIC_METHODS = keysOf<MagneticConfig['method']>({ tokamak: 0, spherical_tokamak: 0, stellarator: 0 });
@@ -111,6 +113,12 @@ const profileSettings = partial<ProfileSettings>({
   atol: opt(num({ min: 0, max: 1, def: PS.atol, doc: 'Absolute tolerance of the error control of the transport time step, as a fraction of the profile maximum (0: a purely relative tolerance).' })),
   dtMax: opt(num({ min: STEP_DT_MIN, max: 1e5, unit: 's', def: PS.dtMax, doc: 'Longest transport time step.' })),
   nonlinearSolver: opt(oneOf(NONLINEAR_SOLVERS, "Solver of the nonlinear system of a transport stage. 'auto': Newton-Raphson for a predictive transport model ('cgm'), Picard iteration with Anderson mixing for 'scaling'; 'picard', 'newton' (with the Pereverzev-Corrigan Picard iteration as its fallback) and 'pc' (that stabilised Picard iteration alone) force one.", 'auto')),
+  impurityTransport: opt(oneOf(IMPURITY_TRANSPORTS, "Impurities and helium ash of the 1.5D model. 'legacy': the scalar inventories (one He-ash content with tau_He* = (tau_He* over tau_E) tau_E, one uniform impurity concentration). 'anomalous': n_He(rho) and the impurity densities are evolved on the particle-transport solver with the electron D and v scaled by impurityDoverDe and impurityPinchOverPe, the He ash sourced by the local fusion rate, the impurities fixed to their concentration at the separatrix (tungsten with a wall source). 'facit': the same with the neoclassical D, K, H of FACIT (Fajardo et al. 2022) added.", 'legacy')),
+  impuritySetpoint: opt(oneOf(IMPURITY_SETPOINTS, "Meaning of the configured impurity concentrations in the profile-resolved modes. 'average': the volume-average concentration N_z/N_e (a slow controller sets the separatrix value that gives it); 'separatrix': the concentration at the separatrix (a fixed boundary value).", 'average')),
+  impurityDoverDe: opt(num({ min: 0, max: 1000, def: 1, doc: 'Anomalous impurity diffusivity over the electron particle diffusivity (impurityTransport other than legacy).' })),
+  impurityPinchOverPe: opt(num({ min: 0, max: 1000, def: 1, doc: 'Anomalous impurity convection over the electron convection, the turbulent pinch (impurityTransport other than legacy).' })),
+  impurityExtraSpecies: opt(oneOf(SPECIES, 'Third impurity species of the profile-resolved module, besides impurity.species and impurity.seedSpecies.')),
+  impurityExtraConcentration: opt(num({ min: 0, max: 1, doc: 'Concentration n_Z/n_e of the third species at the separatrix.' })),
   IpWaveform: opt(series({
     x: { min: 0, max: 1e7, unit: 's' }, y: { exMin: 0, max: 200, unit: 'MA' }, minItems: 1, maxItems: 10000,
     doc: 'Plasma-current programme I_p(t): the boundary condition of the current diffusion as points [t (s), I_p (MA)] in increasing time, linearly interpolated and held constant beyond the first and last point. Ip_MA is what the initial equilibrium is solved for and should equal the programme at t = 0. Absent: I_p constant (and a live control).',

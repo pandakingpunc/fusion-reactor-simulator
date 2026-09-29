@@ -236,6 +236,56 @@
           "description": "Solver of the nonlinear system of a transport stage. 'auto': Newton-Raphson for a predictive transport model ('cgm'), Picard iteration with Anderson mixing for 'scaling'; 'picard', 'newton' (with the Pereverzev-Corrigan Picard iteration as its fallback) and 'pc' (that stabilised Picard iteration alone) force one.",
           "default": "auto"
         },
+        "impurityTransport": {
+          "type": "string",
+          "enum": [
+            "legacy",
+            "anomalous",
+            "facit"
+          ],
+          "description": "Impurities and helium ash of the 1.5D model. 'legacy': the scalar inventories (one He-ash content with tau_He* = (tau_He* over tau_E) tau_E, one uniform impurity concentration). 'anomalous': n_He(rho) and the impurity densities are evolved on the particle-transport solver with the electron D and v scaled by impurityDoverDe and impurityPinchOverPe, the He ash sourced by the local fusion rate, the impurities fixed to their concentration at the separatrix (tungsten with a wall source). 'facit': the same with the neoclassical D, K, H of FACIT (Fajardo et al. 2022) added.",
+          "default": "legacy"
+        },
+        "impuritySetpoint": {
+          "type": "string",
+          "enum": [
+            "average",
+            "separatrix"
+          ],
+          "description": "Meaning of the configured impurity concentrations in the profile-resolved modes. 'average': the volume-average concentration N_z/N_e (a slow controller sets the separatrix value that gives it); 'separatrix': the concentration at the separatrix (a fixed boundary value).",
+          "default": "average"
+        },
+        "impurityDoverDe": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000,
+          "description": "Anomalous impurity diffusivity over the electron particle diffusivity (impurityTransport other than legacy).",
+          "default": 1
+        },
+        "impurityPinchOverPe": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000,
+          "description": "Anomalous impurity convection over the electron convection, the turbulent pinch (impurityTransport other than legacy).",
+          "default": 1
+        },
+        "impurityExtraSpecies": {
+          "type": "string",
+          "enum": [
+            "Be",
+            "C",
+            "Ne",
+            "Ar",
+            "W"
+          ],
+          "description": "Third impurity species of the profile-resolved module, besides impurity.species and impurity.seedSpecies."
+        },
+        "impurityExtraConcentration": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Concentration n_Z/n_e of the third species at the separatrix."
+        },
         "IpWaveform": {
           "type": "array",
           "items": {

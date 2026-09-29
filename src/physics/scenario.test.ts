@@ -87,9 +87,13 @@ describe('validateScenario and the JSON form', () => {
     expect(issuePaths({ schema: 1, name: 'x'.repeat(121) })).toEqual(['name']);
     expect(issuePaths({ schema: 1, waveforms: { H98: { kind: 'step', points: [[Infinity, 1]] } } })).toEqual(['waveforms.H98.points[0][0]']);
     // a control that is not in the table has no limits
-    expect(validateScenario({ schema: 1, waveforms: { Ip_MA: { kind: 'step', points: [[5, -1]] } } }).ok).toBe(true);
+    expect(validateScenario({ schema: 1, waveforms: { delta_shape: { kind: 'step', points: [[5, -1]] } } }).ok).toBe(true);
+    // the plasma current of the 1.5D model is in the table (a negative current is nonsense)
+    expect(issuePaths({ schema: 1, waveforms: { Ip_MA: { kind: 'step', points: [[5, -1]] } } })).toEqual(['waveforms.Ip_MA.points[0][1]']);
+    expect(validateScenario({ schema: 1, waveforms: { Ip_MA: { kind: 'step', points: [[5, 12]] } } }).ok).toBe(true);
     // custom limits replace the table
-    expect(issuePaths({ schema: 1, waveforms: { Ip_MA: { kind: 'step', points: [[5, -1]] } } }, { controlInfo: { Ip_MA: { label: 'I_p', unit: 'MA', min: 0 } } })).toEqual(['waveforms.Ip_MA.points[0][1]']);
+    expect(issuePaths({ schema: 1, waveforms: { delta_shape: { kind: 'step', points: [[5, -1]] } } }, { controlInfo: { delta_shape: { label: 'δ', unit: '', min: 0 } } })).toEqual(['waveforms.delta_shape.points[0][1]']);
+    expect(validateScenario({ schema: 1, waveforms: { Ip_MA: { kind: 'step', points: [[5, -1]] } } }, { controlInfo: {} }).ok).toBe(true);
   });
 
   it('bounds rampStep from below: an absolute floor, and with the end time of the model a grid of at most 1e4 points (a share link cannot make a run endless)', () => {

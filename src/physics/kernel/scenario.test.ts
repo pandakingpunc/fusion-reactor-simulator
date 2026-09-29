@@ -6,8 +6,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import { Simulation, type SimulationOptions } from '../simulation';
-import { dropTemplate, interlockTemplate, mergeScenarios, parseScenario, rampTemplate, scenarioFromJSON, type ScenarioSpec } from '../scenario';
-import type { DiagSpec, HistoryFrame, ReactorConfig, ShotReport, SimEvent, SimModel, TerminationInfo } from '../types';
+import { SCENARIO_CONTROLS, dropTemplate, interlockTemplate, mergeScenarios, parseScenario, rampTemplate, scenarioFromJSON, validateScenario, type ScenarioSpec } from '../scenario';
+import type { DiagSpec, HistoryFrame, MagneticConfig, ReactorConfig, ShotReport, SimEvent, SimModel, TerminationInfo } from '../types';
 import { canonicalString } from './canonical';
 import { ScenarioError } from './errors';
 import { runFingerprint, runDigest } from './fingerprint';
@@ -312,8 +312,50 @@ describe('the run fingerprint covers the scenario', () => {
   });
 });
 
+describe('the plasma current of the 1.5D model is a control a scenario drives (ws3s)', () => {
+  const cfg = presetCfg('JET15', 0.6) as MagneticConfig;
+  const ip = (sim: Simulation, t: number) => sim.history.filter((h) => h.t <= t + 1e-9).at(-1)!.d.Ip;
+
+  it('a ramp of Ip_MA reaches the boundary condition of the current diffusion: the current follows the waveform and holds the end value', () => {
+    const configured = cfg.Ip_MA;
+    const target = 0.7 * configured;
+    const sim = new Simulation(cfg, { scenario: { ...rampTemplate('Ip_MA', 0.2, 0.4, target), rampStep: 0.02 } });
+    expect(Object.keys(sim.model.getControls())).toContain('Ip_MA');
+    sim.runAll();
+    expect(ip(sim, 0.15)).toBeCloseTo(configured, 2);
+    expect(ip(sim, 0.3)).toBeLessThan(configured - 0.05 * configured);
+    expect(ip(sim, 0.3)).toBeGreaterThan(target);
+    expect(ip(sim, 0.6)).toBeCloseTo(target, 2);
+    expect(sim.report().termination.reason).toBe('Scheduled end');
+  }, 120000);
+
+  it('a run without a scenario keeps the configured current, and a change of the fingerprint follows the scenario', () => {
+    const plain = new Simulation(cfg);
+    plain.runAll();
+    expect(ip(plain, 0.6)).toBeCloseTo(cfg.Ip_MA, 2);
+    const a = new Simulation(cfg, { scenario: rampTemplate('Ip_MA', 0.2, 0.4, 2) });
+    const b = new Simulation(cfg, { scenario: rampTemplate('Ip_MA', 0.2, 0.4, 2.5) });
+    expect(a.fingerprint('4.0.0')).not.toBe(plain.fingerprint('4.0.0'));
+    expect(a.fingerprint('4.0.0')).not.toBe(b.fingerprint('4.0.0'));
+  });
+
+  it('a run whose current is driven by a programme has no Ip_MA control: a scenario that names it is refused', () => {
+    const programme = { ...cfg, profiles: { ...cfg.profiles, IpWaveform: [[0, cfg.Ip_MA], [0.3, 0.8 * cfg.Ip_MA]] as [number, number][] } } as ReactorConfig;
+    const sim = new Simulation(programme);
+    expect(Object.keys(sim.model.getControls())).not.toContain('Ip_MA');
+    expect(() => new Simulation(programme, { scenario: rampTemplate('Ip_MA', 0.2, 0.4, 2) })).toThrow(ScenarioError);
+    expect(() => new Simulation(programme, { scenario: rampTemplate('Ip_MA', 0.2, 0.4, 2) })).toThrow(/unknown control 'Ip_MA'/);
+  });
+
+  it('the sanity limit of the control: a negative current is a scenario issue with an editor label', () => {
+    const r = validateScenario({ schema: 1, waveforms: { Ip_MA: { kind: 'step', points: [[0.3, -1]] } } }, { controlInfo: SCENARIO_CONTROLS });
+    expect(r.ok).toBe(false);
+    expect(SCENARIO_CONTROLS.Ip_MA).toMatchObject({ label: 'plasma current', unit: 'MA', min: 0 });
+  });
+});
+
 describe('errors', () => {
-  it('a scenario that names a control the model does not expose (I_p before WS6c) or a diagnostic the frames do not carry is refused', () => {
+  it('a scenario that names a control the model does not expose (I_p of a 0D model) or a diagnostic the frames do not carry is refused', () => {
     const ip = rampTemplate('Ip_MA', 100, 130, 0);
     expect(() => new Simulation(presetCfg('ITER'), { scenario: ip })).toThrow(ScenarioError);
     expect(() => new Simulation(presetCfg('ITER'), { scenario: ip })).toThrow(/unknown control 'Ip_MA' \(this model exposes: H98, P_ECRH_MW, P_ICRH_MW, P_NBI_MW, cZ, fuelRate_1e20s, n_target_1e20\)/);

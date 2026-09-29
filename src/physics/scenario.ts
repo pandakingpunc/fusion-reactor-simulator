@@ -72,8 +72,10 @@
  *    therefore in force exactly as its replay is.
  *
  * Extension. The controls a scenario may name are the keys the model exposes in getControls(); the table
- * SCENARIO_CONTROLS only adds labels, units and sanity limits. When WS6c exposes the plasma current and the
- * shape (I_p, κ, δ, ...) as controls, the keys work in waveforms at once and get an entry here.
+ * SCENARIO_CONTROLS only adds labels, units and sanity limits. The 1.5D model exposes the plasma current as the
+ * control Ip_MA (the boundary condition of its current diffusion: a waveform of it is a staircase of the model's
+ * steps, so give it a rampStep); the shape keys (κ, δ, ...) work in waveforms at once when a model exposes them
+ * and get an entry here.
  */
 import { canonicalString } from './kernel/canonical';
 import { ScenarioError, type ScenarioIssue } from './kernel/errors';
@@ -164,7 +166,7 @@ export interface ControlInfo {
 /**
  * The control keys of the models that a scenario is most likely to drive, with sanity limits for the
  * validation and labels for an editor. A key that a model exposes but that is not listed here is valid
- * (without limits). Add I_p and the shape keys here when WS6c exposes them.
+ * (without limits). Add the shape keys here when a model exposes them.
  */
 export const SCENARIO_CONTROLS: Readonly<Record<string, ControlInfo>> = {
   P_NBI_MW: { label: 'NBI power', unit: 'MW', min: 0 },
@@ -178,6 +180,7 @@ export const SCENARIO_CONTROLS: Readonly<Record<string, ControlInfo>> = {
   fuelRate_1e20s: { label: 'fuelling rate limit', unit: '1e20 s⁻¹', min: 0 },
   kappa_conf: { label: 'confinement factor', unit: '', min: 0 },
   muonRate_per_s: { label: 'muon rate', unit: 's⁻¹', min: 0 },
+  Ip_MA: { label: 'plasma current', unit: 'MA', min: 0 },
 };
 
 /** What a scenario asks for at one step boundary. */
@@ -406,7 +409,7 @@ export function dropTemplate(key: string, t: number, to = 0): ScenarioSpec {
 }
 
 /**
- * 'Ramp <key> from t0 to t1 to the value `to`', e.g. rampTemplate('Ip_MA', 100, 130, 0) once a model exposes I_p.
+ * 'Ramp <key> from t0 to t1 to the value `to`', e.g. rampTemplate('Ip_MA', 100, 130, 2) for the plasma current of the 1.5D model.
  * It starts at `from` (default: the configured value of the control) and holds `to` afterwards.
  */
 export function rampTemplate(key: string, t0: number, t1: number, to: number, from: number | null = null): ScenarioSpec {

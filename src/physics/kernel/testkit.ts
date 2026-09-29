@@ -72,6 +72,23 @@ export function advanceRandomly(sim: Simulation, seed: number): Simulation {
   return sim;
 }
 
+/**
+ * advanceRandomly() with a `yieldWhen` that stops at a fraction `pStop` of the yields of a resumable step (SimModel.stepSlices):
+ * the run is suspended in the middle of a step again and again, and the next call continues it. report() is called only at a
+ * step boundary (it reads the model, see the header of simulation.ts).
+ */
+export function advanceSliced(sim: Simulation, seed: number, pStop = 0.5): Simulation {
+  const rng = new RNG(seed);
+  const stop = new RNG(seed ^ 0x5bd1e995);
+  const yieldWhen = () => stop.next() < pStop;
+  let guard = 0;
+  while (!sim.done && guard++ < 1e7) {
+    sim.advance(randomChunk(rng, sim.model.tEnd), { yieldWhen });
+    if (rng.next() < 0.03 && !sim.stepInProgress) sim.report();
+  }
+  return sim;
+}
+
 /** A fresh run to the end with a seeded random chunk schedule. */
 export function runChunked(cfg: ReactorConfig, seed: number, opts: SimulationOptions = {}): Simulation {
   return advanceRandomly(new Simulation(cfg, opts), seed);

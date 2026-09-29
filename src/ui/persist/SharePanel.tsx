@@ -7,7 +7,12 @@ import { APP_VERSION } from './version';
 
 type EmbedView = 'run' | 'report';
 
-/** Share dialog: the link to the configuration, and the HTML to embed it in a page. */
+/**
+ * Share dialog: the link to the configuration, and the HTML to embed it in a page.
+ * The link carries the configuration and its name only. The codec and the landing also read a link with an actuator
+ * log, breakpoints, a scenario and a fingerprint (exact-run links), but this dialog does not make one yet: the
+ * simulation worker does not report a live run's actuator log to the page (see the run file, runRecord.ts).
+ */
 export default function SharePanel({ cfg, name, onClose }: { cfg: ReactorConfig; name: string; onClose(): void }) {
   const p = usePersistT();
   const deps = usePersistDeps();

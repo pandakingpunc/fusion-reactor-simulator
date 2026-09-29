@@ -118,7 +118,12 @@ export interface MagneticConfig {
     seedSpecies?: ImpuritySpecies; seedConcentration?: number;
   };
   H98: number; H89: number;
-  scaling: 'IPB98y2' | 'ST_Valovic';
+  /**
+   * H-mode τ_E scaling (see transport.ts tauHmode): IPB98(y,2) (default), the spherical-tokamak scaling after Valovič, or the
+   * ITPA20 / ITPA20-IL scalings of Verdoolaege et al., Nucl. Fusion 61 (2021) 076006 (opt-in; they take the areal elongation and
+   * the average LCFS triangularity, `profiles.lcfsDelta ?? geometry.delta`, not the 95 % values). Stellarators use ISS04.
+   */
+  scaling: 'IPB98y2' | 'ITPA20' | 'ITPA20-IL' | 'ST_Valovic';
   stellarator: {
     iota23: number;
     /** @deprecated alias: if H_ISS04 is not given, τ_E = f_ren · H98 · τ_ISS04 (the old behaviour) */

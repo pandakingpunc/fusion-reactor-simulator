@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { MagneticModel } from '../confinement/magnetic';
-import { plasmaSurface } from '../geometry';
+import { boundaryShape, plasmaSurface } from '../geometry';
 import { lineAverageFactor } from '../limits';
 import { ITER, JET } from '../presets';
 import { nLHmin, pLH_Martin, pLH_threshold } from '../transport';
@@ -37,7 +37,8 @@ describe('L–H threshold with the Ryter (2014) low-density branch', () => {
       const d = m.diagnostics(0, m.initialState());
       const nbar = lineAverageFactor(cfg.transport.alpha_n) * d.ne * 1e20;
       const M = cfg.fuelFracA * 2.014 + (1 - cfg.fuelFracA) * 3.016;
-      const ref = pLH_threshold(nbar, cfg.B0, plasmaSurface(cfg.geometry), M, cfg.Ip_MA, cfg.geometry.a, cfg.geometry.R) / 1e6;
+      // the surface is that of the boundary (LCFS) shape (geometry.boundaryShape), as in Martin's database
+      const ref = pLH_threshold(nbar, cfg.B0, plasmaSurface(boundaryShape(cfg)), M, cfg.Ip_MA, cfg.geometry.a, cfg.geometry.R) / 1e6;
       expect(d.P_LH / ref).toBeCloseTo(1, 12);
     }
   });

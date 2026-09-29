@@ -13,8 +13,8 @@
  * APPROXIMATION: T_i = T_e; H-mode (H98·IPB98) everywhere; no beam-target fusion and no ohmic power.
  */
 import { MagneticConfig } from './types';
-import { boundaryShape, plasmaSurface, plasmaVolume, profileIntegral, profileIntegralSplit } from './geometry';
-import { tauIPB98y2, tauISS04, tauSTValovic, pLH_threshold, stellaratorHISS04 } from './transport';
+import { arealElongation, boundaryShape, plasmaSurface, plasmaVolume, profileIntegral, profileIntegralSplit } from './geometry';
+import { tauHmode, tauISS04, pLH_threshold, stellaratorHISS04 } from './transport';
 import { FUEL_CHANNELS, FUEL_SPECIES, pairDensity } from './reactivity';
 import { bremsstrahlung, coolingRate, meanCharge, synchrotronTotal, RHO_CORE } from './radiation';
 import { greenwaldDensity, betaToroidal, betaNormalized, lineAverageFactor } from './limits';
@@ -41,6 +41,7 @@ export function computePopcon(cfg: MagneticConfig, o: { nx?: number; ny?: number
   const NX = o.nx ?? 44, NY = o.ny ?? 44, TMAX = o.Tmax ?? 40;
   // volume and surface of the boundary (LCFS) shape, as in the 0D model (geometry.boundaryShape)
   const g = cfg.geometry, gB = boundaryShape(cfg), V = plasmaVolume(gB), S = plasmaSurface(gB);
+  const gITPA = { R: g.R, a: g.a, kappa: arealElongation(gB), delta: gB.delta }; // ITPA20 scalings: κ_a and the average LCFS δ
   const stell = cfg.method === 'stellarator';
   const aN = cfg.transport.alpha_n, aT = cfg.transport.alpha_T;
   const nG = greenwaldDensity(cfg.Ip_MA, g.a) / lineAverageFactor(aN);
@@ -59,7 +60,7 @@ export function computePopcon(cfg: MagneticConfig, o: { nx?: number; ny?: number
   const fLine = lineAverageFactor(aN);
   const tauOf = (ne: number, P: number) => stell
     ? tauISS04(g, cfg.B0, fLine * ne, P, cfg.stellarator.iota23, stellaratorHISS04(cfg.stellarator, cfg.H98))
-    : (cfg.scaling === 'ST_Valovic' ? tauSTValovic : tauIPB98y2)(g, cfg.Ip_MA, cfg.B0, fLine * ne, P, M) * cfg.H98;
+    : tauHmode(cfg.scaling, cfg.scaling === 'ITPA20' || cfg.scaling === 'ITPA20-IL' ? gITPA : g, cfg.Ip_MA, cfg.B0, fLine * ne, P, M) * cfg.H98;
 
   const Paux = new Float64Array(NX * NY), Pfus = new Float64Array(NX * NY), Q = new Float64Array(NX * NY);
   const betaN = new Float64Array(NX * NY), PLH_ok = new Uint8Array(NX * NY), fHeA = new Float64Array(NX * NY);

@@ -21,10 +21,10 @@
  * APPROXIMATION: 0D. Profiles are fixed, n∝(1−ρ²)^αn, T∝(1−ρ²)^αT; pedestal, Shafranov shift,
  * turbulence and MHD enter only through the τ_E scaling and the threshold events (ELM/sawtooth/NTM/disruption).
  */
-import { Geometry, plasmaVolume, plasmaSurface, crossSectionArea, boundaryShape, q95ForMethod, profileIntegral, profileIntegralSplit } from '../geometry';
+import { Geometry, plasmaVolume, plasmaSurface, crossSectionArea, boundaryShape, arealElongation, q95ForMethod, profileIntegral, profileIntegralSplit } from '../geometry';
 import { FUEL_CHANNELS, FUEL_SPECIES, beamTargetReactivity, beamTargetDensity, burnPerReaction, pairDensity } from '../reactivity';
 import { bremsstrahlung, synchrotronTotal, coolingRate, meanCharge, RHO_CORE } from '../radiation';
-import { tauIPB98y2, tauITER89P, tauISS04, tauSTValovic, pLH_threshold, equilibrationRate, stellaratorHISS04 } from '../transport';
+import { tauHmode, tauITER89P, tauISS04, pLH_threshold, equilibrationRate, stellaratorHISS04 } from '../transport';
 import { resistivity, ohmicPower, criticalEnergy, ionHeatingFraction, slowingDownTime, nbiShineThrough, fastIonEnergyTime, fastPoolMix, FastSpecies } from '../heating';
 import { greenwaldDensity, betaToroidal, betaNormalized, betaPoloidal, lineAverageFactor } from '../limits';
 import { disruptionReport, DisruptionCause, DISRUPTION_LABELS, DISRUPTION_FIXES } from '../disruption';
@@ -110,6 +110,8 @@ export class MagneticModel implements SimModel {
   private g: Geometry;
   /** boundary (LCFS) shape of V, S, A: profiles.lcfsKappa/lcfsDelta where given, else g (geometry.boundaryShape) */
   private gB: Geometry;
+  /** geometry of the ITPA20 scalings: areal elongation and average LCFS triangularity */
+  private gITPA: Geometry;
   /** n̄/⟨n⟩ (from the profile exponent α_n) */
   private fLine: number;
   private V: number;
@@ -162,6 +164,8 @@ export class MagneticModel implements SimModel {
     this.V = plasmaVolume(this.gB);
     this.S = plasmaSurface(this.gB);
     this.A = crossSectionArea(this.gB);
+    // ITPA20 scalings: areal elongation κ_a = V/(2π² R a²) and the average LCFS triangularity (Verdoolaege et al. 2021)
+    this.gITPA = { R: this.g.R, a: this.g.a, kappa: arealElongation(this.gB), delta: this.gB.delta };
     this.eps = this.g.a / this.g.R;
     this.fLine = lineAverageFactor(cfg.transport.alpha_n);
     const fs = FUEL_SPECIES[cfg.fuel];
@@ -345,15 +349,15 @@ export class MagneticModel implements SimModel {
     return { P_brems, P_line, P_sync, P_rad: P_brems + P_line + P_sync, P_rad_core };
   }
 
-  /** τ_E scaling; IPB98(y,2), ITER89-P, ST and ISS04 are fitted to the line-averaged density: n̄ = f_line ⟨n_e⟩ */
+  /** τ_E scaling; IPB98(y,2), ITPA20, ITER89-P, ST and ISS04 are fitted to the line-averaged density: n̄ = f_line ⟨n_e⟩ */
   private tauE(neVol: number, P_loss: number, hmode: boolean): number {
     const c = this.cfg;
     const ne = this.fLine * neVol;
     if (this.isStell) return tauISS04(this.g, c.B0, ne, P_loss, c.stellarator.iota23, this.ctrl.H_ISS04);
     const Ip = Math.max(this.Ip0 / 1e6, 0.05);
     if (hmode) {
-      const base = c.scaling === 'ST_Valovic' ? tauSTValovic(this.g, Ip, c.B0, ne, P_loss, this.M) : tauIPB98y2(this.g, Ip, c.B0, ne, P_loss, this.M);
-      return this.ctrl.H98 * base;
+      const itpa = c.scaling === 'ITPA20' || c.scaling === 'ITPA20-IL';
+      return this.ctrl.H98 * tauHmode(c.scaling, itpa ? this.gITPA : this.g, Ip, c.B0, ne, P_loss, this.M);
     }
     return c.H89 * tauITER89P(this.g, Ip, c.B0, ne, P_loss, this.M);
   }

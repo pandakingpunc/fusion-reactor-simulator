@@ -304,6 +304,17 @@ describe('Popcon: trajectory and operating point', () => {
     expect(everything().some((c) => c.name === 'setLineDash' && (c.args[0] as number[]).join() === '3,3')).toBe(true);
   });
 
+  it('an operating point of its own (the Learn missions) replaces the one of the last frame, and null shows none', () => {
+    const own = { n: 0.75e20, T: 10 };
+    const { step, rerender, f } = mount({ point: own, frames: frames(50) });
+    const [m] = step();
+    const ring = arcs().find((c) => c.strokeStyle === '#ffffff' && c.args[2] === 5)!;
+    expect(ring.args[0]).toBeCloseTo(toPx(viewOf(m), own.n, own.T).x, 9);
+    expect(ring.args[1]).toBeCloseTo(toPx(viewOf(m), own.n, own.T).y, 9);
+    rerender(React.createElement(Popcon, { cfg: ITER, height: H, createWorker: f.create, point: null, frames: frames(50) }));
+    expect(arcs().some((c) => c.strokeStyle === '#ffffff' && c.args[2] === 5)).toBe(false);
+  });
+
   it('a frame without a density or temperature has no operating point (and no crash)', () => {
     const { step } = mount({ frames: [{ t: 0, d: {} }] });
     step();

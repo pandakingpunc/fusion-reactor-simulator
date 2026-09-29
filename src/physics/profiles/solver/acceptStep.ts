@@ -3,8 +3,8 @@
  * integrated explicitly over the step, in this order:
  *
  *   power totals, fast-ion pools and stored energy (dW/dt from the old state with the old ion density) → boundary
- *   outflux Γ_b and loop voltage → ELM power average → lagged P_SOL → smoothed dW/dt → loss power
- *   and confinement times → C_χ controller → separatrix density gain → He ash, impurity and fuel
+ *   outflux Γ_b and loop voltage → ELM power average → smoothed dW/dt → lagged P_SOL (from the smoothed,
+ *   ELM-inclusive dW/dt) → loss power and confinement times → C_χ controller → separatrix density gain → He ash, impurity and fuel
  *   mix → energy, neutron and tritium counters → NTM islands → the transport model's and the
  *   sources' `accepted` hooks → diagnostics of the new state.
  *
@@ -38,13 +38,14 @@ export function acceptStep(ctx: ProfileContext, fueling: FuelingControl, physics
   ctx.lastVloop = (2 * Math.PI * (v.psi[N - 1] - o.psi[N - 1])) / dt;
   // ELM power, exponential memory τ = 1 s
   s.Pelm = o.s.Pelm * Math.exp(-dt / 1.0);
-  updatePsol(ctx, dt, P.P_heat, P.P_rad, dWdt);
   // smoothed dW/dt of the loss power: the average rate of change of W, which includes the energy the ELM
   // crashes took out of the plasma between the previous step and this one (booked in ctx.crashE), so that it
   // vanishes in a steady H-mode; low-pass filtered with τ_E of the previous step (5 ms at least), as in the 0D model
   const dWdtTotal = (W - W0 - ctx.crashE) / dt;
   ctx.crashE = 0;
   ctx.dWdtS += (dWdtTotal - ctx.dWdtS) * (1 - Math.exp(-dt / Math.max(ctx.lastDiag.tauE ?? 0.1, 5e-3)));
+  // P_SOL: the ELM-averaged power that crosses the separatrix, P_heat − P_rad − (dW/dt including the ELM crashes)
+  updatePsol(ctx, dt, P.P_heat, P.P_rad, ctx.dWdtS);
   // confinement
   const nbar = ctx.lineAvg(v.ne);
   const P_loss = lossPower(ctx, P.P_heat, P.P_rad_core, ctx.dWdtS);

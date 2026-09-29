@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { Simulation } from '../simulation';
-import { JET_15D } from '../presets';
+import { ITER_15D, JET_15D } from '../presets';
 import type { MagneticConfig, SimEvent } from '../types';
 import { ProfileModel, SourceModel, TransportModel, EventModel } from './model';
 import { defaultSources } from './sources';
@@ -288,4 +288,29 @@ describe('plug-in interfaces', () => {
     const again = run(0);
     expect(again).toEqual(first);
   }, 60000);
+});
+
+describe('the LCFS shape of the Grad-Shafranov boundary (ProfileContext.geomB)', () => {
+  const model = (geometry: Partial<MagneticConfig['geometry']>, profiles: MagneticConfig['profiles'] = ITER_15D.profiles) =>
+    new Simulation({ ...ITER_15D, t_end: 1, geometry: { ...ITER_15D.geometry, ...geometry }, profiles }).model as ProfileModel;
+
+  it('is the preset LCFS shape (1.85, 0.49) at the preset 95 % shape and follows an edited kappa or delta in the ratio to lcfsRef95, as the 0D volume does', () => {
+    const nominal = model({});
+    expect(nominal.geomB.kappa).toBe(1.85);
+    expect(nominal.geomB.delta).toBe(0.49);
+    const edited = model({ kappa: 1.87, delta: 0.363 });
+    expect(edited.geomB.kappa).toBeCloseTo(1.85 * (1.87 / 1.7), 12);
+    expect(edited.geomB.delta).toBeCloseTo(0.49 * (0.363 / 0.33), 12);
+    // the initial equilibrium is built on it: a more elongated boundary encloses a larger volume
+    expect(edited.eq.volume).toBeGreaterThan(nominal.eq.volume * 1.05);
+  });
+
+  it('without lcfsRef95 the LCFS values are absolute, and without LCFS values the boundary is the geometry', () => {
+    const noRef = model({ kappa: 1.87 }, { lcfsKappa: 1.85, lcfsDelta: 0.49 });
+    expect(noRef.geomB.kappa).toBe(1.85);
+    expect(noRef.geomB.delta).toBe(0.49);
+    const plain = model({ kappa: 1.87, delta: 0.4 }, {});
+    expect(plain.geomB.kappa).toBe(1.87);
+    expect(plain.geomB.delta).toBe(0.4);
+  });
 });

@@ -7,7 +7,7 @@
  * Modules keep their own private state (event timers, caches) and register geometry-dependent
  * caches with onGeometry so that they are rebuilt whenever an equilibrium is adopted.
  */
-import type { Geometry } from '../geometry';
+import { boundaryShape, type Geometry } from '../geometry';
 import { FUEL_SPECIES } from '../reactivity';
 import type { DisruptionCause } from '../disruption';
 import { RNG } from '../rng';
@@ -204,7 +204,10 @@ export class ProfileContext {
     this.layout = new StateLayout(this.N);
     this.w = allocateWorkArrays(this.N);
     const g0 = cfg.geometry;
-    this.geomB = { R: g0.R, a: g0.a, kappa: this.ps.lcfsKappa ?? g0.kappa, delta: this.ps.lcfsDelta ?? g0.delta };
+    // the LCFS shape of the boundary is the one the 0D volume, surface and scalings use (geometry.boundaryShape): an edited geometry.kappa or
+    // geometry.delta of a preset that carries profiles.lcfsRef95 (ITER15, DEMO15) moves it in the ratio to the 95 % shape (bitwise unchanged at the presets)
+    const gb = boundaryShape({ geometry: g0, profiles: this.ps });
+    this.geomB = { R: gb.R, a: gb.a, kappa: gb.kappa, delta: gb.delta };
     const fs = FUEL_SPECIES[cfg.fuel];
     this.M = cfg.fuelFracA * fs.a.A + (1 - cfg.fuelFracA) * fs.b.A;
     this.rng = new RNG(cfg.seed);

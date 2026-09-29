@@ -663,6 +663,9 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   dtMin and overflowed to NaN after 30 s of wall time (now it ends at 0.50 s at 8.5 keV in 32 steps). The 1.5D
   model is not changed.
 - A two-knot clamped `CubicSpline` honours its end slopes (it was the straight line between the knots).
+- 1.5D: the Grad-Shafranov boundary of ITER15 and DEMO15 follows an edited `geometry.kappa` or `geometry.delta` in the ratio to
+  `profiles.lcfsRef95`, as the 0D volume, surface and scalings already did (`ProfileContext.geomB` read the absolute LCFS values,
+  so q95 and the scalings moved but the 1.5D boundary did not); bitwise unchanged at the presets.
 
 Physics results are unchanged by the 1.5D changes above: a full-precision dump of all 21 presets
 was byte-identical before and after them. The frame fix of the ELM presets is the exception (see

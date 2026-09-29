@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  bool, checkNumber, closest, describeRange, describeValue, formatIssue, int, nodeToJsonSchema, num, object, oneOf, opt, partial, pointerOf,
+  bool, checkNumber, closest, describeRange, describeValue, formatIssue, int, nodeToJsonSchema, num, object, oneOf, opt, partial, pointerOf, series,
   validateNode, type Field, type NumberNode, type Rule, type Shape, type ValidationIssue,
 } from './dsl';
 
@@ -124,6 +124,64 @@ describe('JSON Schema of each node', () => {
       description: 'Two numbers. Rule r1: a is below b', 'x-rules': [{ id: 'r1', description: 'a is below b', reads: ['a', 'b'] }],
     });
     expect(nodeToJsonSchema(object<{ a?: number }>({ a: opt(num()) }).node)).toEqual({ type: 'object', properties: { a: { type: 'number' } }, additionalProperties: false });
+  });
+});
+
+describe('series of [x, y] points', () => {
+  const ramp = series({ x: { min: 0, unit: 's' }, y: { exMin: 0, max: 100, unit: 'MA' }, minItems: 1, maxItems: 4, doc: 'A current programme.' });
+  it('accepts points with x increasing and both numbers in their bounds', () => {
+    expect(issuesOf(ramp, [[0, 1]])).toEqual([]);
+    expect(issuesOf(ramp, [[0, 1], [2.5, 15], [40, 15.5], [41, 0.1]])).toEqual([]);
+  });
+  it('names the point and the number that is wrong (paths are dotted with the indices, which are JSON Pointer tokens too)', () => {
+    const at = (v: unknown) => issuesOf(ramp, v).map((i) => [i.path, i.pointer, i.code]);
+    expect(at('ramp')).toEqual([['', '', 'type']]);
+    expect(at([[0, 1], [1]])).toEqual([['1', '/1', 'type']]);
+    expect(at([[0, 1, 2]])).toEqual([['0', '/0', 'type']]);
+    expect(at([[0, '1']])).toEqual([['0.1', '/0/1', 'type']]);
+    expect(at([[-1, 1]])).toEqual([['0.0', '/0/0', 'range']]);
+    expect(at([[0, 0]])).toEqual([['0.1', '/0/1', 'range']]);
+    expect(at([[0, 1], [NaN, 2]])).toEqual([['1.0', '/1/0', 'non_finite']]);
+    expect(at([[0, 1], [0, 2]])).toEqual([['1.0', '/1/0', 'cross_field']]);
+    expect(at([[5, 1], [4, 2], [6, 3]])).toEqual([['1.0', '/1/0', 'cross_field']]);
+    expect(at([[0, 1], [1, 1], [2, 1], [3, 1], [4, 1]])).toEqual([['', '', 'range']]);
+    expect(at([])).toEqual([['', '', 'range']]);
+    expect(at([[0, 1], [1, 200], [2, 1]])).toEqual([['1.1', '/1/1', 'range']]);
+  });
+  it('reports every wrong point, not just the first, and the message says what is expected', () => {
+    const r = issuesOf(ramp, [[0, 1], [-1, -1], [3]]);
+    expect(r.map((i) => i.path)).toEqual(['1.0', '1.1', '2']);
+    expect(r[0].message).toBe('must be >= 0, got -1');
+    expect(r[1].message).toBe('must be > 0 and <= 100, got -1');
+    expect(r[2].message).toBe('must be a [s, MA] pair, got an array');
+    expect(issuesOf(ramp, 4)[0].message).toBe('must be an array of [s, MA] points, got 4');
+    expect(issuesOf(ramp, [])[0].message).toBe('must have between 1 and 4 points, got 0');
+  });
+  it('is an optional property of an object like any other, with the path of the point in the issue', () => {
+    const obj = partial<{ prog: ReadonlyArray<readonly [number, number]> }>({ prog: ramp });
+    const out: ValidationIssue[] = [];
+    validateNode(obj.node, { prog: [[0, 1], [0, 1]] }, 'profiles', out);
+    expect(out.map((i) => `${i.path}:${i.code}`)).toEqual(['profiles.prog.1.0:cross_field']);
+    expect(issuesOf(obj, {})).toEqual([]);
+  });
+  it('emits a JSON Schema array of number pairs; the increase of x is stated in the description (a schema cannot express it)', () => {
+    const s = nodeToJsonSchema(ramp.node) as Record<string, any>;
+    expect(s.type).toBe('array');
+    expect(s.minItems).toBe(1);
+    expect(s.maxItems).toBe(4);
+    expect(s.items).toMatchObject({ type: 'array', minItems: 2, maxItems: 2, items: false });
+    expect(s.items.prefixItems).toEqual([
+      { type: 'number', minimum: 0, description: 'Unit: s.', 'x-unit': 's' },
+      { type: 'number', exclusiveMinimum: 0, maximum: 100, description: 'Unit: MA.', 'x-unit': 'MA' },
+    ]);
+    expect(s.description).toMatch(/A current programme\. Points \[s, MA\], the first number strictly increasing\./);
+  });
+  it('the type of a series is the array of pairs of ProfileSettings.IpWaveform (compile-time: it fits no other type)', () => {
+    const f: Field<ReadonlyArray<readonly [number, number]>> = ramp;
+    // @ts-expect-error a series does not describe a plain number
+    const wrong: Field<number> = ramp;
+    void [f, wrong];
+    expect(true).toBe(true);
   });
 });
 

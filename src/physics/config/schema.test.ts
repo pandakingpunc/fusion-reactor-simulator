@@ -11,6 +11,9 @@ import { PRESETS } from '../presets';
 import { closest } from './dsl';
 import { GOLDEN_CASES, caseConfig } from '../../regression/golden';
 import { stepsFor } from '../../ui/wizard/schema';
+import { currentWaveform } from '../profiles/control/plasmaCurrent';
+import { DEFAULT_PROFILE_SETTINGS } from '../profiles/defaults';
+import { STEP_DT_MIN, checkProfileSettings } from '../profiles/settings';
 import type { Method, ReactorConfig } from '../types';
 import { METHOD_LABELS } from '../types';
 import {
@@ -93,6 +96,76 @@ describe('the v4.0 edge model options', () => {
     expect(fieldInfo('tokamak', 'divertor.edge.radiation')).toMatchObject({ kind: 'enum', values: ['prescribed', 'lengyel'] });
     expect(fieldInfo('tokamak', 'divertor.edge.lossFit')).toMatchObject({ kind: 'enum', values: ['stangeby1', 'stangeby2', 'body2025'] });
     expect(fieldInfo('tokamak', 'profiles.edgeModel')).toMatchObject({ kind: 'enum', optional: true, values: ['legacy', 'twoPoint'], def: 'legacy' });
+  });
+});
+
+describe('the 1.5D solver settings (ws3s): grid packing, tolerances, step limit, nonlinear solver, plasma-current programme', () => {
+  const solver = {
+    gridPacking: 0, rtol: 1e-3, atol: 0, dtMax: 0.05, nonlinearSolver: 'pc',
+    IpWaveform: [[0, 12], [30, 15], [400, 15], [430, 2]],
+  };
+  it('a configuration with every one of them validates, and so does the JSON Schema', () => {
+    const c = preset('ITER15');
+    Object.assign(c.profiles, solver);
+    expect(validateConfig(c).issues.map(formatIssue)).toEqual([]);
+    const schema = configJsonSchema();
+    expect(evaluate(schema, schema, c)).toEqual([]);
+  });
+  it('every choice of the solver and the edges of the bounds validate: no packing, atol 0, the shortest step, a one-point programme', () => {
+    for (const nonlinearSolver of ['auto', 'picard', 'newton', 'pc']) {
+      const c = preset('JET15');
+      c.profiles = { ...c.profiles, nonlinearSolver };
+      expect(validateConfig(c).issues.map(formatIssue), nonlinearSolver).toEqual([]);
+    }
+    const c = preset('JET15');
+    c.profiles = { ...c.profiles, gridPacking: 0, atol: 0, dtMax: 1e-6, rtol: 1, IpWaveform: [[0, 3]] };
+    expect(validateConfig(c).issues.map(formatIssue)).toEqual([]);
+  });
+  it('the settings are described: defaults of the step control, the choice of the solver, a series for the programme', () => {
+    expect(fieldInfo('tokamak', 'profiles.gridPacking')).toMatchObject({ kind: 'number', optional: true, min: 0, def: 4 });
+    expect(fieldInfo('tokamak', 'profiles.rtol')).toMatchObject({ kind: 'number', optional: true, exMin: 0, def: 1e-2 });
+    expect(fieldInfo('tokamak', 'profiles.atol')).toMatchObject({ kind: 'number', optional: true, min: 0, def: 1e-4 });
+    expect(fieldInfo('tokamak', 'profiles.dtMax')).toMatchObject({ kind: 'number', optional: true, min: 1e-6, unit: 's', def: 0.5 });
+    expect(fieldInfo('tokamak', 'profiles.nonlinearSolver')).toMatchObject({ kind: 'enum', optional: true, values: ['auto', 'picard', 'newton', 'pc'], def: 'auto' });
+    expect(fieldInfo('tokamak', 'profiles.IpWaveform')).toMatchObject({ kind: 'series', optional: true });
+    expect(leafPaths('tokamak')).toEqual(expect.arrayContaining(['profiles.gridPacking', 'profiles.rtol', 'profiles.atol', 'profiles.dtMax', 'profiles.nonlinearSolver', 'profiles.IpWaveform']));
+  });
+  it('the bounds contain exactly what the step control runs with (profiles/settings.ts replaces the rest by the default)', () => {
+    const ok = (ps: Record<string, unknown>) => { const x = preset('ITER15'); Object.assign(x.profiles, ps); return validateConfig(x).ok; };
+    // valid: what checkProfileSettings leaves as it is
+    for (const ps of [{ rtol: 1e-14 }, { atol: 0 }, { dtMax: STEP_DT_MIN }]) {
+      expect(ok(ps), JSON.stringify(ps)).toBe(true);
+      expect(checkProfileSettings({ ...DEFAULT_PROFILE_SETTINGS, ...ps }).notes, JSON.stringify(ps)).toEqual([]);
+    }
+    // invalid: what it replaces
+    for (const ps of [{ rtol: 0 }, { rtol: -1 }, { rtol: NaN }, { atol: -1 }, { atol: NaN }, { dtMax: 0 }, { dtMax: -1 }, { dtMax: NaN }, { dtMax: 0.5 * STEP_DT_MIN }]) {
+      expect(ok(ps), JSON.stringify(ps)).toBe(false);
+      expect(checkProfileSettings({ ...DEFAULT_PROFILE_SETTINGS, ...ps }).notes.length, JSON.stringify(ps)).toBeGreaterThan(0);
+    }
+  });
+  it('the schema defaults are the model defaults', () => {
+    for (const k of ['gridPacking', 'rtol', 'atol', 'dtMax'] as const) {
+      expect(fieldInfo('tokamak', `profiles.${k}`)?.def, k).toBe(DEFAULT_PROFILE_SETTINGS[k]);
+    }
+  });
+  it('a programme that validates is one the model takes (the model refuses an empty list, a time that does not increase and a number that is not finite)', () => {
+    const good = preset('ITER15');
+    good.profiles.IpWaveform = [[0, 12], [30, 15]];
+    expect(validateConfig(good).ok).toBe(true);
+    expect(() => currentWaveform([[0, 12], [30, 15]])).not.toThrow();
+    for (const bad of [[], [[0, 15], [0, 16]], [[0, NaN]]]) {
+      const c = preset('ITER15');
+      c.profiles.IpWaveform = bad;
+      expect(validateConfig(c).ok, JSON.stringify(bad)).toBe(false);
+      expect(() => currentWaveform(bad as [number, number][])).toThrow();
+    }
+  });
+  it('a configuration with the settings survives a JSON round trip and validates again (the file of the command line, the share link)', () => {
+    const c = preset('DEMO15');
+    Object.assign(c.profiles, solver);
+    const again = JSON.parse(JSON.stringify(c));
+    expect(again).toEqual(c);
+    expect(validateConfig(again).ok).toBe(true);
   });
 });
 
@@ -264,6 +337,27 @@ const MUTANTS: Mutant[] = [
   m('reference of the LCFS as a number', 'ITER15', set('profiles.lcfsRef95', 1.7), 'profiles.lcfsRef95', 'type'),
   m('profiles is a string', 'ITER15', set('profiles', 'on'), 'profiles', 'type'),
   m('misspelled 1.5D setting', 'ITER15', set('profiles.chiShap', 3), 'profiles.chiShap', 'unknown_key', /did you mean 'chiShape'/),
+  // the 1.5D solver settings (ws3s): the domain the step control can run with (profiles/settings.ts replaces a value outside it by the default)
+  m('negative grid packing', 'ITER15', set('profiles.gridPacking', -1), 'profiles.gridPacking', 'range'),
+  m('infinite grid packing', 'ITER15', set('profiles.gridPacking', Infinity), 'profiles.gridPacking', 'non_finite'),
+  m('zero relative tolerance', 'ITER15', set('profiles.rtol', 0), 'profiles.rtol', 'range'),
+  m('relative tolerance above 1', 'ITER15', set('profiles.rtol', 2), 'profiles.rtol', 'range'),
+  m('negative absolute tolerance', 'ITER15', set('profiles.atol', -1e-4), 'profiles.atol', 'range'),
+  m('NaN absolute tolerance', 'ITER15', set('profiles.atol', NaN), 'profiles.atol', 'non_finite'),
+  m('zero longest transport step', 'ITER15', set('profiles.dtMax', 0), 'profiles.dtMax', 'range'),
+  m('longest transport step below the step floor', 'ITER15', set('profiles.dtMax', 1e-9), 'profiles.dtMax', 'range'),
+  m('unknown nonlinear solver', 'ITER15', set('profiles.nonlinearSolver', 'quasi'), 'profiles.nonlinearSolver', 'enum'),
+  m('nonlinear solver in upper case', 'ITER15', set('profiles.nonlinearSolver', 'Newton'), 'profiles.nonlinearSolver', 'enum', /did you mean 'newton'/),
+  m('current programme as a number', 'ITER15', set('profiles.IpWaveform', 15), 'profiles.IpWaveform', 'type'),
+  m('empty current programme', 'ITER15', set('profiles.IpWaveform', []), 'profiles.IpWaveform', 'range'),
+  m('current programme point that is not a pair', 'ITER15', set('profiles.IpWaveform', [[0, 15], [1]]), 'profiles.IpWaveform.1', 'type'),
+  m('current programme point of three numbers', 'ITER15', set('profiles.IpWaveform', [[0, 15, 1]]), 'profiles.IpWaveform.0', 'type'),
+  m('current programme with a current as a string', 'ITER15', set('profiles.IpWaveform', [[0, '15']]), 'profiles.IpWaveform.0.1', 'type'),
+  m('current programme with a negative current', 'ITER15', set('profiles.IpWaveform', [[0, 15], [10, -1]]), 'profiles.IpWaveform.1.1', 'range'),
+  m('current programme with a zero current', 'ITER15', set('profiles.IpWaveform', [[0, 0]]), 'profiles.IpWaveform.0.1', 'range'),
+  m('current programme with a negative time', 'ITER15', set('profiles.IpWaveform', [[-1, 15]]), 'profiles.IpWaveform.0.0', 'range'),
+  m('current programme with a time that is not a number', 'ITER15', set('profiles.IpWaveform', [[0, 15], [NaN, 15]]), 'profiles.IpWaveform.1.0', 'non_finite'),
+  m('current programme with times that do not increase', 'ITER15', set('profiles.IpWaveform', [[0, 15], [10, 15], [10, 16]]), 'profiles.IpWaveform.2.0', 'cross_field'),
   m('unknown method', 'ITER', set('method', 'tokamak2'), 'method', 'enum', /did you mean 'tokamak'/),
   m('method missing', 'ITER', del('method'), 'method', 'required'),
   m('method is a number', 'ITER', set('method', 3), 'method', 'type'),
@@ -488,7 +582,8 @@ function evaluate(schema: JsonSchema, root: JsonSchema, value: unknown, at = '')
       : s.type === 'integer' ? typeof value === 'number' && Number.isInteger(value)
         : s.type === 'boolean' ? typeof value === 'boolean'
           : s.type === 'string' ? typeof value === 'string'
-            : s.type === 'object' ? isObj : false;
+            : s.type === 'array' ? Array.isArray(value)
+              : s.type === 'object' ? isObj : false;
     if (!ok) return [...out, `${at}: not of type ${String(s.type)}`];
   }
   if (s.enum && !s.enum.includes(value)) out.push(`${at}: not in enum`);
@@ -497,6 +592,16 @@ function evaluate(schema: JsonSchema, root: JsonSchema, value: unknown, at = '')
     if (s.exclusiveMinimum !== undefined && value <= s.exclusiveMinimum) out.push(`${at}: not above exclusiveMinimum`);
     if (s.maximum !== undefined && value > s.maximum) out.push(`${at}: above maximum`);
     if (s.exclusiveMaximum !== undefined && value >= s.exclusiveMaximum) out.push(`${at}: not below exclusiveMaximum`);
+  }
+  if (Array.isArray(value)) {
+    if (s.minItems !== undefined && value.length < s.minItems) out.push(`${at}: fewer than ${String(s.minItems)} items`);
+    if (s.maxItems !== undefined && value.length > s.maxItems) out.push(`${at}: more than ${String(s.maxItems)} items`);
+    const prefix: any[] = s.prefixItems ?? [];
+    value.forEach((x, k) => {
+      if (k < prefix.length) out.push(...evaluate(prefix[k], root, x, `${at}.${k}`));
+      else if (s.items === false) out.push(`${at}.${k}: additional item`);
+      else if (s.items) out.push(...evaluate(s.items, root, x, `${at}.${k}`));
+    });
   }
   if (isObj) {
     const v = value as Record<string, unknown>;

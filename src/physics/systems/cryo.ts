@@ -1,0 +1,82 @@
+/**
+ * Cryogenic plant (systems-lite, lane ws7b): the heat load on the cold magnets and the electric power of the refrigerator.
+ *
+ * The heat load follows the model of D. Slack (memo SCMDG 88-5-1-059, LLNL ITER-88-054, Aug. 1988) as implemented in the PROCESS
+ * systems code (UKAEA, `power.py` `cryo`; PROCESS also documents "13 % of Carnot" for the ITER plant):
+ *   Q_static  = 4.3e-4 W/kg x cold mass + 2.0 W/m^2 x area of the shells covering the TF coils   (conduction and radiation)
+ *   Q_nuclear = nuclear heating of the TF coils                                                  (radial build, `radialBuild`)
+ *   Q_AC      = 1e3 x E_PF[MJ] / t_cycle  [W]   (pulsed-field losses: 1 kJ per MJ of the stored energy of the PF system and CS per cycle)
+ *   Q_leads   = 13.6e-3 W/A x N_TF x I_turn                                                      (current leads)
+ *   Q_misc    = 0.45 x (Q_static + Q_nuclear + Q_AC + Q_leads)                                   (piping, reserves)
+ *   Q = Q_static + Q_nuclear + Q_AC + Q_leads + Q_misc
+ * and the electric power is P = Q x cryo_W_per_W of the magnet technology (the table `MAGNET_TECH`: 300 W/W at 4.5 K, 40 W/W
+ * at 20 K, the wall-plug power per watt removed at the operating temperature). `carnotFraction` reports the fraction of the
+ * Carnot efficiency these values imply for a warm end of 293 K (PROCESS: 13 %): 300 W/W at 4.5 K is 20 %, 40 W/W at 20 K is 34 %.
+ * Resistive (copper) coils have no cryogenic plant.
+ */
+import type { MagnetTech } from '../types';
+
+/** heat-load coefficients of the Slack model */
+export const CRYO_COEFFS = { staticPerKg: 4.3e-4, staticPerM2: 2.0, acPerMJ: 1e3, leadPerAmp: 13.6e-3, misc: 0.45 } as const;
+/** operating temperature of the cold magnets [K] and warm end [K] */
+export const CRYO_TEMPERATURE: Record<MagnetTech, number> = { Cu: 293, NbTi: 4.5, Nb3Sn: 4.5, REBCO: 20 };
+export const T_WARM = 293;
+/** dwell time between pulses that enters the cycle time of the pulsed-field losses [s] (PROCESS default dwell time 1800 s) */
+export const DWELL_S = 1800;
+
+export interface CryoInput {
+  tech: MagnetTech;
+  /** electric watts per watt removed at the operating temperature */
+  wattsPerWatt: number;
+  /** cold mass: TF coils, CS and PF coils and their structure [kg] */
+  coldMass_kg: number;
+  /** area of the shells covering the TF coils [m^2] */
+  tfShellArea_m2: number;
+  /** nuclear heating of the TF coils [W] */
+  nuclearHeating_W: number;
+  /** stored energy of the CS and PF system [J] */
+  pfEnergy_J: number;
+  /** length of the plasma pulse [s] (the dwell time is added) */
+  pulseLength_s: number;
+  nCoils: number;
+  turnCurrent_A: number;
+}
+
+export interface CryoResult {
+  /** heat loads at the operating temperature [W] */
+  Q_static_W: number;
+  Q_nuclear_W: number;
+  Q_ac_W: number;
+  Q_leads_W: number;
+  Q_misc_W: number;
+  Q_total_W: number;
+  /** electric power of the cryoplant [MW] */
+  P_cryo_MW: number;
+  temperature_K: number;
+  /** COP in electric W per W at the cold end and the corresponding fraction of the Carnot efficiency */
+  wattsPerWatt: number;
+  carnotFraction: number;
+}
+
+export function cryoPlant(inp: CryoInput): CryoResult {
+  if (inp.tech === 'Cu' || inp.wattsPerWatt <= 0) {
+    return { Q_static_W: 0, Q_nuclear_W: 0, Q_ac_W: 0, Q_leads_W: 0, Q_misc_W: 0, Q_total_W: 0, P_cryo_MW: 0, temperature_K: CRYO_TEMPERATURE.Cu, wattsPerWatt: 0, carnotFraction: 0 };
+  }
+  const T = CRYO_TEMPERATURE[inp.tech];
+  const Qs = CRYO_COEFFS.staticPerKg * inp.coldMass_kg + CRYO_COEFFS.staticPerM2 * inp.tfShellArea_m2;
+  const Qn = Math.max(inp.nuclearHeating_W, 0);
+  const cycle = Math.max(inp.pulseLength_s, 1) + DWELL_S;
+  const Qa = (CRYO_COEFFS.acPerMJ * (inp.pfEnergy_J / 1e6)) / cycle;
+  const Ql = CRYO_COEFFS.leadPerAmp * inp.nCoils * inp.turnCurrent_A;
+  const Qm = CRYO_COEFFS.misc * (Qs + Qn + Qa + Ql);
+  const Q = Qs + Qn + Qa + Ql + Qm;
+  return {
+    Q_static_W: Qs, Q_nuclear_W: Qn, Q_ac_W: Qa, Q_leads_W: Ql, Q_misc_W: Qm, Q_total_W: Q, P_cryo_MW: (Q * inp.wattsPerWatt) / 1e6,
+    temperature_K: T, wattsPerWatt: inp.wattsPerWatt, carnotFraction: carnotFraction(T, inp.wattsPerWatt),
+  };
+}
+
+/** fraction of the Carnot efficiency of a refrigerator that needs `wattsPerWatt` electric watts per cold watt at T [K] */
+export function carnotFraction(T: number, wattsPerWatt: number, Twarm = T_WARM): number {
+  return wattsPerWatt > 0 ? (Twarm - T) / (T * wattsPerWatt) : 0;
+}

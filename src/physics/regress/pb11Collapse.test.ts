@@ -1,7 +1,10 @@
 /**
  * Regression tests (lane ws2b review, finding 3): why the ITER-pB11 golden case (ITER with p-11B fuel,
- * 100 s, 50 MW of external heating, Z_eff ~ 4.6) now ends in a radiative collapse at ~28 s although the
- * v3 baseline (3d04e96) ran to the scheduled end.
+ * 100 s, 50 MW of external heating, Z_eff ~ 4.6) ended in a radiative collapse at ~28 s although the
+ * v3 baseline (3d04e96) ran to the scheduled end. Since v4.0 (ws2c) the ITER preset's density target is re-based
+ * to the design n̄/n_G = 0.85 (0.914e20 m^-3 volume average instead of 1.0e20), which is on the surviving side of
+ * this marginal balance: the golden case ITER-pB11 now runs to the scheduled end, and the tests below use the
+ * former target (1.0e20) where they pin the collapse.
  *
  * The baseline survived because of an ELM artefact, not because of physics. At 60 s it took off
  *   - an ELM-averaged power of 0.3 P_heat = 23.3 MW, 5.5 times the whole transport loss W/tau_E = 4.2 MW
@@ -18,11 +21,13 @@ import { describe, expect, it } from 'vitest';
 import { ITER } from '../presets';
 import { Simulation } from '../simulation';
 
-const PB11 = { ...ITER, fuel: 'pB11' as const, t_end: 100 };
+/** the ITER preset's target before the v4.0 re-base (0.914e20 now), with which the collapse was found and pinned */
+const N_OLD = 1.0e20;
+const PB11 = { ...ITER, fuel: 'pB11' as const, t_end: 100, n_target: N_OLD };
 const run = (over: object = {}) => { const sim = new Simulation({ ...PB11, ...over }); sim.runAll(); return sim; };
 
 describe('ITER-pB11: the radiative collapse follows from the density ramp, not from the ELM model', { timeout: 120_000 }, () => {
-  it('the target density of the golden case (1.0e20 m^-3) collapses at ~28 s, with ELMs on or off', () => {
+  it('a target of 1.0e20 m^-3 (the former golden case) collapses at ~28 s, with ELMs on or off', () => {
     for (const events of [ITER.events, { ...ITER.events, elms: false }]) {
       const sim = run({ events });
       const disr = sim.events.find((e) => e.kind === 'disruption');
@@ -40,6 +45,14 @@ describe('ITER-pB11: the radiative collapse follows from the density ramp, not f
       expect(d, `H98 = ${H98}`).toBeDefined();
       expect(Math.abs(d!.t - t0)).toBeLessThan(5);
     }
+  });
+
+  it('the golden case ITER-pB11 (target 0.914e20 m^-3 since v4.0: n̄/n_G = 0.85 of the design point) survives to the scheduled end, radiating < P_heat', () => {
+    const sim = run({ n_target: ITER.n_target });
+    expect(ITER.n_target).toBe(0.914e20);
+    expect(sim.model.terminated?.natural).toBe(true);
+    const tail = sim.history.filter((f) => f.t > 60);
+    expect(Math.max(...tail.map((f) => f.d.P_rad / f.d.P_heat))).toBeLessThan(1); // marginal: 0.93 of P_heat at 100 s
   });
 
   it('a target of 0.85e20 m^-3 (n/n_G ~ 0.85) survives to the scheduled end, radiating < P_heat', () => {

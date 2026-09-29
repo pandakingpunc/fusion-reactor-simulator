@@ -198,10 +198,11 @@ describe('heating by the charged products', () => {
       .toBeLessThan(ionHeatingFraction(alpha.E_MeV * 1e3, criticalEnergy(T, alpha.A, w.ionSum[3])));
   });
 
-  it('D-T: the α gives the Stix fraction of its 3.5 MeV to the ions; the rest of the power goes to the electrons', () => {
+  it('D-T: the α gives the Stix fraction of its 3.561 MeV to the ions; the rest of the power goes to the electrons', () => {
     const T = 20;
     const { w } = uniform({ heating: NO_HEATING }, T);
-    const G = ionHeatingFraction(3500, criticalEnergy(T, 4.001506, w.ionSum[0]));
+    const G = ionHeatingFraction(FUEL_CHANNELS.DT[0].products[0].E_MeV * 1e3, criticalEnergy(T, 4.001506, w.ionSum[0]));
+    expect(FUEL_CHANNELS.DT[0].products[0].E_MeV).toBe(3.561); // exact two-body kinematics of Q = 17.589 MeV (reactivity.ts)
     expect(G).toBeGreaterThan(0.2);
     expect(G).toBeLessThan(0.7);
     expect(rel(w.PaI[0], G * w.Pchg[0])).toBeLessThan(1e-9);

@@ -140,8 +140,10 @@ export interface GSGridOptions {
   /** box margin around the plasma, in units of a; default 0.06 */
   margin?: number;
   /**
-   * Plasma boundary (default: Miller shape of geom). It must be up-down symmetric and cut every
-   * grid line at most twice. Grids with a custom boundary are never cached.
+   * Plasma boundary (default: Miller shape of geom). Every grid line must cut it at most twice. Without `zBottom`
+   * and `zRange` it must be up-down symmetric about Z = 0 (the grid is symmetric, with a Z = 0 row); an asymmetric or
+   * shifted boundary (millerShape, polygonBoundary, fourierBoundary) declares its extent and the grid covers it.
+   * Grids with a custom boundary are never cached.
    */
   boundary?: ShapeBoundary;
   /** GSSolver only: reuse the per-worker grid/LU cache for identical parameters (default true) */
@@ -223,6 +225,7 @@ export class GSGrid {
   /** per row j / column i: horizontal and vertical boundary crossings */
   private readonly rowRange: ([number, number] | null)[];
   private readonly colTop: (number | null)[];
+  private readonly colBot: (number | null)[];
   private readonly lu: BandedLU;
   private readonly plan: ExtensionPlan;
 
@@ -237,14 +240,31 @@ export class GSGrid {
     const b = (this.boundary = opts.boundary ?? millerBoundary(geom));
     const Rlo = geom.R - geom.a * (1 + m), Rhi = geom.R + geom.a * (1 + m);
     const dR = (Rhi - Rlo) / (NR - 1);
-    const Zext = geom.kappa * geom.a * (1 + m);
-    const NZ = 2 * Math.ceil(Zext / dR) + 1; // odd → a Z = 0 row exists
-    const dZ = (2 * Zext) / (NZ - 1);
-    this.NR = NR; this.NZ = NZ; this.Rmin = Rlo; this.Zmin = -Zext; this.dR = dR; this.dZ = dZ;
+    // vertical extent: symmetric about Z = 0 with an odd number of rows (a Z = 0 row exists), or — for a boundary that
+    // declares zRange (up-down asymmetric or shifted shapes) — the boundary's extent plus the same margin
+    let Zlo: number, NZ: number, dZ: number;
+    if (b.zRange) {
+      const zm = m * geom.kappa * geom.a;
+      Zlo = b.zRange[0] - zm;
+      const Zhi = b.zRange[1] + zm;
+      NZ = Math.ceil((Zhi - Zlo) / dR) + 1;
+      dZ = (Zhi - Zlo) / (NZ - 1);
+    } else {
+      const Zext = geom.kappa * geom.a * (1 + m);
+      NZ = 2 * Math.ceil(Zext / dR) + 1;
+      dZ = (2 * Zext) / (NZ - 1);
+      Zlo = -Zext;
+    }
+    this.NR = NR; this.NZ = NZ; this.Rmin = Rlo; this.Zmin = Zlo; this.dR = dR; this.dZ = dZ;
     const N = NR * NZ;
     // boundary crossings of every grid line (evaluated once: custom boundaries may be expensive)
     this.rowRange = Array.from({ length: NZ }, (_, j) => b.rRange(this.Z(j)));
     this.colTop = Array.from({ length: NR }, (_, i) => b.zTop(this.R(i)));
+    this.colBot = Array.from({ length: NR }, (_, i) => {
+      if (b.zBottom) return b.zBottom(this.R(i));
+      const zt = this.colTop[i];
+      return zt === null ? null : -zt;
+    });
     const kind = (this.kind = new Int8Array(N));
     const snap = 1e-3;
     for (let j = 0; j < NZ; j++) {
@@ -254,10 +274,10 @@ export class GSGrid {
       for (let i = 0; i < NR; i++) {
         const R = this.R(i);
         if (R <= rr[0] || R >= rr[1]) continue;
-        const zt = this.colTop[i];
+        const zt = this.colTop[i], zb = this.colBot[i];
         const dh = Math.min(R - rr[0], rr[1] - R) / dR;
-        const dv = zt === null ? 0 : (zt - Math.abs(Z)) / dZ;
-        if (zt === null || dv <= 0) continue;
+        const dv = zt === null || zb === null ? 0 : Math.min(zt - Z, Z - zb) / dZ;
+        if (zt === null || zb === null || dv <= 0) continue;
         kind[j * NR + i] = dh < snap || dv < snap ? 2 : 1;
       }
     }
@@ -278,11 +298,11 @@ export class GSGrid {
     for (let u = 0; u < nIn; u++) {
       const k = ins[u], i = k % NR, j = (k - i) / NR;
       const R = this.R(i), Z = this.Z(j);
-      const rr = this.rowRange[j]!, zt = this.colTop[i]!;
+      const rr = this.rowRange[j]!, zt = this.colTop[i]!, zb = this.colBot[i]!;
       // arm lengths (to the boundary crossing when the neighbour is outside)
       const outW = kind[k - 1] === 0, outE = kind[k + 1] === 0, outS = kind[k - NR] === 0, outN = kind[k + NR] === 0;
       const h1 = outW ? R - rr[0] : dR, h2 = outE ? rr[1] - R : dR;
-      const k1 = outS ? Z + zt : dZ, k2 = outN ? zt - Z : dZ;
+      const k1 = outS ? Z - zb : dZ, k2 = outN ? zt - Z : dZ;
       const den = h1 * h2 * (h1 + h2);
       const cE = (2 * h1 - (h1 * h1) / R) / den;
       const cW = (2 * h2 + (h2 * h2) / R) / den;
@@ -298,7 +318,7 @@ export class GSGrid {
       };
       arm(0, k - 1, cW, outW, rr[0], Z);
       arm(1, k + 1, cE, outE, rr[1], Z);
-      arm(2, k - NR, cS, outS, R, -zt);
+      arm(2, k - NR, cS, outS, R, zb);
       arm(3, k + NR, cN, outN, R, zt);
     }
     lu.factor();
@@ -480,9 +500,9 @@ export class GSGrid {
           if (!rr) continue;
           Rb = di > 0 ? rr[1] : rr[0]; Zb = ZI; hb = Math.abs(Rb - RI);
         } else {
-          const zt = this.colTop[i1];
-          if (zt === null) continue;
-          Rb = RI; Zb = dj > 0 ? zt : -zt; hb = Math.abs(Zb - ZI);
+          const zEdge = dj > 0 ? this.colTop[i1] : this.colBot[i1];
+          if (zEdge === null) continue;
+          Rb = RI; Zb = zEdge; hb = Math.abs(Zb - ZI);
         }
         hb = Math.min(hb, h);
         const gb = g ? g(Rb, Zb) : 0;

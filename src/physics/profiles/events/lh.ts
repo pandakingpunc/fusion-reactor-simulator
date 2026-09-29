@@ -5,6 +5,15 @@
  * P_LH in the diagnostics), back to L-mode below 0.7 P_LH (hysteresis). No transition in the first
  * 50 ms. The mode switches the edge transport barrier (transport/pedestal.ts) and the confinement
  * scaling (control/confinement.ts).
+ *
+ * Frames at a flip. A 1.5D frame carries ctx.lastDiag, which the step wrote together with its own
+ * H_mode, so the frame of the flip step shows the mode the step was taken in and its τ_E, and the next
+ * frame shows the new mode: a flip changes no state, takes effect with the next step, and needs no
+ * refresh here (the 0D model reads its live flags in diagnostics(), and refreshes its cache at a flip:
+ * MagneticModel.postStep). A refresh through ctx.diagStale would not do: it is consumed only when a
+ * frame is recorded, and the kernel records no frame at a flip, so the flag would stay set until a
+ * later step and make that frame carry a re-evaluation instead of the diagnostics of its own step.
+ * tests: kernel/modeFlipFrames.test.ts.
  */
 import type { SimEvent } from '../../types';
 import type { ProfileContext } from '../context';

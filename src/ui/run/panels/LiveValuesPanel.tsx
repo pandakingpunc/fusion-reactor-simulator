@@ -49,8 +49,8 @@ export function LiveValuesPanel({ meta, last, report, frames }: Props) {
         </details>
       )}
       {frames && last && last.d.P_aux !== undefined && (
-        <details className="kpi-more" open={flowOpen} onToggle={(e) => setFlowOpen((e.currentTarget as HTMLDetailsElement).open)}>
-          <summary className="small muted">{te('pf.title')}</summary>
+        <details className="kpi-more" open={flowOpen}>
+          <summary className="small muted" onClick={(e) => { e.preventDefault(); setFlowOpen((o) => !o); }}>{te('pf.title')}</summary>
           {flowOpen && <PowerFlow frames={frames} initialWindow="shot" />}
         </details>
       )}

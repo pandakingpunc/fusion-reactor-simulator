@@ -970,3 +970,9 @@ Node v24.19.0 · `npm run golden:update` · all cases
   - MASTU15: 2423 keys moved; max rel. diff 1.73e+0
     - moved, largest change first: profiles.last.prof.shear[4], profiles.mid.prof.shear[8], profiles.last.prof.shear[8], profiles.mid.prof.shear[12], profiles.mid.prof.shear[4], profiles.last.prof.shear[12], profiles.last.prof.shear[7], profiles.last.prof.shear[9], profiles.mid.prof.shear[7], profiles.mid.prof.shear[9], profiles.last.prof.shear[13], profiles.mid.prof.shear[13], … (+2411 more)
 - Unchanged (21): ITER, JET, SPARC, DIIID, JT60SA, MASTU, W7X, DEMO, NIF, DIRECT, Z, GF, FRXL, ZAP, TAE, MIRROR, MUON, ITER-DHe3, ITER-pB11, TAE-pB11, MIRROR-DHe3
+
+## 2026-09-29 16:27 UTC — ws6c: new golden case SPARC15-redl, SPARC15 (1.5D, 8.7 MA, full shot) with profiles.neoclassicalModel 'redl' The Redl, Angioni, Belli and Sauter coefficients of the bootstrap current and of the neoclassical conductivity (Phys. Plasmas 28 (2021) 022502, eqs. 10-21; current/redl.ts) are an opt-in module beside the Sauter coefficients (default, unchanged); the case pins the option so that a change of the coefficient set, of the way it is selected or of the current sources it feeds is seen. Recorded on the code of the ws6c lane after the change of the bootstrap and conductivity selection, together with the conservative remap at the adoption of an equilibrium and the I_p trigger of the equilibrium update (same physics as the re-record of the existing cases that follows).
+
+Node v24.19.0 · `npm run golden:update` · --only SPARC15-redl
+
+- Added (1): SPARC15-redl

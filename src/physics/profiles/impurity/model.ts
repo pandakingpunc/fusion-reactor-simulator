@@ -32,7 +32,11 @@
  *    design point of a preset (Z_eff, radiation). `impuritySetpoint` 'separatrix' turns the controller off (m = 1: the set-point is the
  *    separatrix concentration and the profile is whatever the transport makes of it: with the electron D and v the core concentration is the
  *    separatrix value times about n_sep/n_e,axis). Tungsten (`impurity.species` = 'W') has in addition the wall source of the scalar model,
- *    S_W = W_source_frac P_SOL/(5 MeV), deposited in the outer layer, whose steady inventory S_W tau_Z/N_e of the scalar model is added to the set-point.
+ *    S_W = W_source_frac P_SOL/(5 MeV) (per particle: the volume-average basis of the scalar model and of the 0D model, S_W/N_e = S_W/(n-bar V),
+ *    is the same in both fidelities and independent of the density definition of the fuelling), deposited in the outer layer. Its steady
+ *    inventory, S_W times the confinement time that the D and v of the species give it (a steady solve, `wallInventory`), is added to the
+ *    set-point: it replaces the scalar model's S_W tau_Z, tau_Z x 4 without ELMs and sawteeth (the crashes are in the profiles here, and the
+ *    inward neoclassical convection of W lengthens tau_W where it matters).
  *  - ELM crashes flush every species like the electrons (the fraction of the excess over the separatrix value that n_e loses at each cell,
  *    elmCrash) and sawtooth crashes flatten every species inside the mixing radius conserving its particles (flattenConserving).
  *
@@ -70,6 +74,8 @@ const NEVER = -1e9;
 export const M_MIN = 0.02;
 export const M_MAX = 50;
 const M_STEP = 0.3;
+/** the interval of the steady solve of the wall source [s]: many orders beyond the confinement times of the model (b = dV/dt is then negligible against the fluxes) */
+const STEADY_DT = 1e9;
 
 /**
  * Particle balance of helium: content, particles exhausted by the pumps, helium expelled by ELMs and not yet booked, the time integral of the ash
@@ -295,12 +301,14 @@ export class ImpurityModel implements SourceModel {
     // set-point controller of the separatrix concentration: ln m follows the error of the volume-average concentration (the particle time of the scalar model)
     const Ne = Math.max(volumeIntegral(g, v.ne), 1);
     if (ps.impuritySetpoint !== 'separatrix') {
-      const tau_p = Math.max(c.transport.tau_p_over_tau_E * tauT, 1e-2);
-      const tauZ = tau_p * (c.impurity.species === 'W' && (!c.events.elms || !c.events.sawteeth) ? 4 : 1);
+      const tauZ = Math.max(c.transport.tau_p_over_tau_E * tauT, 1e-2);
+      // the wall source adds what the transport keeps of it (the steady inventory of the source, S_W times the confinement time of D and v below)
+      // to the set-point: the scalar model's S_W tau_Z (with tau_Z x 4 without ELMs and sawteeth) is not used, the crashes are in the profiles
+      const cWall = S_W > 0 ? this.wallInventory(S_W) / Ne : 0;
       for (let k = 0; k < this.nSp; k++) {
         const cSet = this.setpoint(k);
         if (k === this.iHe || !(cSet > 0)) continue;
-        const cTarget = cSet + (k === this.iZ ? (S_W * tauZ) / Ne : 0);
+        const cTarget = cSet + (k === this.iZ ? cWall : 0);
         const cVol = volumeIntegral(g, this.block(v.s, k)) / Ne;
         const err = Math.log(cTarget / Math.max(cVol, 1e-3 * cTarget));
         this.mult[k] = Math.min(Math.max(this.mult[k] * Math.exp(Math.min(Math.max((dt / tauZ) * err, -M_STEP), M_STEP)), M_MIN), M_MAX);
@@ -314,6 +322,18 @@ export class ImpurityModel implements SourceModel {
     const g = this.ctx.tg;
     st.s.NHe = volumeIntegral(g, this.block(st.s, this.iHe));
     if (this.iZ >= 0) st.s.cZ = volumeIntegral(g, this.block(st.s, this.iZ)) / Math.max(volumeIntegral(g, st.ne), 1);
+  }
+
+  /**
+   * The steady content of the intrinsic species that the wall source S_W [1/s] keeps with the face coefficients of the last advance (zero boundary value,
+   * the source in the outer layer): the solve of one interval that is long against every transport time, N = S_W tau_W with tau_W the confinement time
+   * of the source (the inward neoclassical convection of a heavy impurity makes it long; an outward one short).
+   */
+  private wallInventory(S_W: number): number {
+    const k = this.iZ, N = this.N, S = this.S, u = this.unit;
+    for (let i = 0; i < N; i++) S[i] = S_W * this.edgeDep[i];
+    this.solver.solve({ dt: STEADY_DT, n0: this.zeros, D: this.Dface[k], v: this.vface[k], S, nB: 0 }, u);
+    return volumeIntegral(this.ctx.tg, u);
   }
 
   /**

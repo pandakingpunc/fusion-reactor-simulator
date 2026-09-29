@@ -16,9 +16,10 @@ import { flatTopAverages } from '../../analysis/flatTop';
 import { advanceRandomly, expectSameRun, normalizeRng, referenceRun, rewindAt, runChunked, tick } from '../../kernel/testkit';
 import { ProfileModel } from '../model';
 import { StateLayout, N_SCALARS } from '../state';
-import { volumeIntegral } from '../sources/deposition';
+import { DensitySolver } from '../fvsolver';
+import { edgeDeposition, volumeIntegral } from '../sources/deposition';
 import { impurityMode, impuritySpecies, impurityStateSize } from './config';
-import { ImpurityModel, M_MAX, NEO_REFRESH } from './model';
+import { EDGE_LAMBDA, ImpurityModel, M_MAX, NEO_REFRESH } from './model';
 
 type Mode = 'anomalous' | 'facit';
 const withImpurities = (cfg: MagneticConfig, profiles: NonNullable<MagneticConfig['profiles']>, tEnd?: number): MagneticConfig =>
@@ -307,6 +308,50 @@ describe('impurities: boundary, set-point, wall source and particle balance', ()
     for (let k = 0; k < 3; k++) expect(Math.abs(balance(h.imp, h, k))).toBeLessThan(1e-11);
     const bal = h.imp.heliumBalance(h.st);
     expect((bal.N + bal.pumped + bal.inTransit - bal.remap) / bal.ash - 1).toBeCloseTo(0, 11);
+  });
+
+  it('an ELM right after an equilibrium adoption books the volume change first: the balance closes with the crash on the new volumes', () => {
+    const h = harness({ impurityTransport: 'anomalous' });
+    h.analytic(1.0); h.ctx.lastDiag.tauE = 2.0;
+    for (let n = 0; n < 40; n++) h.imp.accepted(h.ctx, n * 0.5, 0.5, h.st, h.st);
+    const tg = h.ctx.tg;
+    const dV = Float64Array.from(tg.dV, (x, i) => x * (1 + 0.02 * Math.cos(0.7 * i)));
+    h.ctx.adoptGeometry({ eq: h.ctx.eq, tg: { ...tg, dV } });
+    h.imp.elmCrash(h.st, 0.94, 0.3, 0.15);
+    for (let k = 0; k < 3; k++) expect(Math.abs(balance(h.imp, h, k)), `after the crash, species ${k}`).toBeLessThan(1e-11);
+    expect(Math.abs(h.imp.Nremap[1])).toBeGreaterThan(0);
+    h.imp.accepted(h.ctx, 20, 0.5, h.st, h.st);
+    for (let k = 0; k < 3; k++) expect(Math.abs(balance(h.imp, h, k)), `after the next step, species ${k}`).toBeLessThan(1e-11);
+  });
+
+  it('the wall source adds its steady inventory (S_W times the confinement time of the transport) to the set-point, with no x 4 without ELMs and sawteeth', () => {
+    const wCfg = (ev: { elms: boolean; sawteeth: boolean }) => ({
+      ...ITER_15D, events: { ...ITER_15D.events, ...ev },
+      impurity: { ...ITER_15D.impurity, species: 'W' as const, concentration: 2e-5, W_source_frac: 1, seedSpecies: undefined, seedConcentration: undefined },
+    });
+    const run = (cfg: MagneticConfig) => {
+      const h = harness({ impurityTransport: 'anomalous' }, cfg);
+      h.analytic(6.0); h.ctx.lastDiag.tauE = 2.0; h.ctx.PSOL = 150e6; // an inward pinch: the heavy impurity keeps what the wall gives
+      for (let n = 0; n < 400; n++) h.imp.accepted(h.ctx, n * 0.5, 0.5, h.st, h.st);
+      const d: Record<string, number> = {};
+      h.imp.diagnostics(h.st, d);
+      return { h, d };
+    };
+    const on = run(wCfg({ elms: true, sawteeth: true }));
+    // the steady content of the source with the coefficients the module used: an independent solve of the same operator
+    const { h } = on, kW = 1, SW = (1 * 150e6) / (5000 * 1.602176634e-16);
+    const S = edgeDeposition(h.ctx.tg, EDGE_LAMBDA).map((x) => SW * x); // per volume: integrates to S_W
+    expect(volumeIntegral(h.ctx.tg, S) / SW).toBeCloseTo(1, 12);
+    const u = new Float64Array(h.N);
+    new DensitySolver(h.ctx.tg).solve({ dt: 1e9, n0: new Float64Array(h.N), D: h.imp.Dface[kW], v: h.imp.vface[kW], S, nB: 0 }, u);
+    const cWall = volumeIntegral(h.ctx.tg, u) / volumeIntegral(h.ctx.tg, h.st.ne);
+    expect(cWall).toBeGreaterThan(10 * 2e-5); // the wall source dominates the design concentration in this case
+    expect(on.d.cZ / (2e-5 + cWall)).toBeGreaterThan(0.97);
+    expect(on.d.cZ / (2e-5 + cWall)).toBeLessThan(1.03);
+    // the crashes are in the profiles, not in a factor: the set-point does not read the switches of the events
+    const off = run(wCfg({ elms: false, sawteeth: false }));
+    expect(off.d.cZ).toBe(on.d.cZ);
+    expect(off.d.mZ).toBe(on.d.mZ);
   });
 
   it('a disruption quench takes every species out with the electrons and books the loss', () => {

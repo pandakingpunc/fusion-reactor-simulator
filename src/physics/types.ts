@@ -138,6 +138,45 @@ export interface MagneticConfig {
   /** '1.5D' → profil taşınımı + Grad–Shafranov (stellarator için yok sayılır) */
   fidelity?: Fidelity;
   profiles?: Partial<ProfileSettings>;
+  /** optional inputs of the systems-lite engineering models (TF coil, CS flux, radial build); only the shot report reads them */
+  systems?: SystemsConfig;
+}
+
+/**
+ * Optional inputs of the systems-lite engineering models (src/physics/systems, v4.0). Every field defaults to a documented
+ * design-typical value of the magnet technology; the plasma models never read them, only the shot report does.
+ */
+export interface SystemsConfig {
+  tf?: {
+    /** number of TF coils (default 18; 24 for copper coils; 50 for a stellarator) */
+    nCoils?: number;
+    /** share of the inboard-leg thickness that is solid steel case nose */
+    noseFraction?: number;
+    /** load-bearing area fraction of the winding pack region (steel jacket, plates, side walls) */
+    structureFraction?: number;
+    /** operating current per turn [A] (current-lead heat load) */
+    turnCurrent_A?: number;
+    /** share of the vertical tension in the inboard leg (0.5 for a D-shaped coil) */
+    verticalInboardFraction?: number;
+  };
+  cs?: {
+    /** smeared current density of the CS winding at the peak field [MA/m^2] (default by technology, 13.6 for Nb3Sn); sets the CS thickness B/(mu0 J) */
+    currentDensity_MAm2?: number;
+    /** peak field of the CS conductor [T] (default: the technology limit) */
+    B_max_T?: number;
+    /** share of the +B to -B swing that is used */
+    swingFraction?: number;
+    /** flux supplied by the PF coils [V s] (default 0) */
+    pfFlux_Vs?: number;
+    /** internal inductance l_i(3) of the plasma for the inductive flux (default 0.85, or the 1.5D value) */
+    li?: number;
+  };
+  blanket?: {
+    /** inboard breeding-blanket depth [m] (default: 56 % of the space behind the first wall) */
+    inboardDepth_m?: number;
+    /** HCPB breeder fraction Li4SiO4 / (Li4SiO4 + Be12Ti) (default: the tritium-optimal one) */
+    breederFraction?: number;
+  };
 }
 
 export interface ICFConfig {

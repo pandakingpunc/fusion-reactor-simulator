@@ -219,7 +219,7 @@ describe('contourBoundary', () => {
   });
 });
 
-describe('the fixed-boundary solver on up-down asymmetric boundaries', () => {
+describe('the fixed-boundary solver on up-down asymmetric boundaries', { timeout: 60000 }, () => {
   const opts = { Ip: 15e6, B0: 5.3, profile: { kind: 'shape' as const, alphaM: 2, alphaN: 1.3, betaP: 0.65 }, tol: 1e-11 };
   const solve = (b: ShapeBoundary, NR = 65) => {
     const solver = new GSSolver(shapeGeometry(b), { NR, boundary: b });

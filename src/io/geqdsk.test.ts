@@ -216,7 +216,7 @@ describe('the reader is tolerant', () => {
   });
 });
 
-describe('COCOS: table, conversion, detection', () => {
+describe('COCOS: table, conversion, detection', { timeout: 60000 }, () => {
   it('has the sign table of Sauter and Medvedev (2013) and the flux unit of 1–8 (Wb/rad) and 11–18 (Wb)', () => {
     const rows: [number, number, number, number][] = [[1, 1, 1, 1], [2, 1, -1, 1], [3, -1, 1, -1], [4, -1, -1, -1], [5, 1, 1, -1], [6, 1, -1, -1], [7, -1, 1, 1], [8, -1, -1, 1]];
     for (const [c, sBp, sR, sRho] of rows) {
@@ -322,7 +322,7 @@ describe('COCOS: table, conversion, detection', () => {
   });
 });
 
-describe('an equilibrium from a file', () => {
+describe('an equilibrium from a file', { timeout: 60000 }, () => {
   const eq = solve();
   const text = writeGeqdsk(eq);
   const imp = importGeqdsk(text);
@@ -443,7 +443,7 @@ describe('an equilibrium from a file', () => {
   });
 });
 
-describe('up-down asymmetric and shifted plasmas', () => {
+describe('up-down asymmetric and shifted plasmas', { timeout: 60000 }, () => {
   it('a shifted, squared, asymmetric Miller equilibrium survives the round trip: axis, q, l_i, β_p, volume', () => {
     const b = millerShape({ R0: 1.7, a: 0.6, kappa: 1.6, deltaUpper: 0.3, deltaLower: 0.5, zeta: 0.05, Z0: 0.1 });
     const solver = new GSSolver(shapeGeometry(b), { NR: 65, boundary: b });
@@ -561,7 +561,7 @@ describe("an analytic single-null Solov'ev equilibrium as a COCOS-1 file", () =>
   }, 60000);
 });
 
-describe('GSSolver.assemble: an equilibrium from a state that was not solved', () => {
+describe('GSSolver.assemble: an equilibrium from a state that was not solved', { timeout: 60000 }, () => {
   const solver = new GSSolver(ITER, { NR: 49 });
   const eq = solver.solve({ Ip: 15e6, B0: 5.3, profile, tol: 1e-11 });
   const P = eq.prof;

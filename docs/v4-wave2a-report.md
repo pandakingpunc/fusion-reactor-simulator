@@ -370,7 +370,7 @@ each of them.
 
 ## 8. What the gate changed
 
-Four commits on top of `f8d39cc`, none of which moves a golden number (golden 30/30 after the one that touches code, no re-record):
+Five commits on top of `f8d39cc` (three of code, tests and data, two of this report), none of which moves a golden number (golden 30/30 after the one that touches code, no re-record):
 
 - `0d61ac5` fix(profiles): `ProfileContext.geomB` is `boundaryShape` of the configuration. The ws2c and ws4i merge reports
   carried this over: an edited `geometry.kappa` or `geometry.delta` of ITER15 or DEMO15 moved q95 and the scalings but not the
@@ -379,7 +379,7 @@ Four commits on top of `f8d39cc`, none of which moves a golden number (golden 30
   tests of the profiles, edge, reference, regress, regression, analysis and fusion-sim directories were re-run after it.
 - `7d6a40c` docs(readme): the quick start says Node.js 20+ (`engines.node` is `>=20`; ws8 carried it over).
 - `0a7d525` bench: `bench/perf-baseline.json` re-recorded on the idle machine (section 1; ws3s and ws10w asked for it).
-- this report.
+- `c0a1ab5`, then a wording commit: this report.
 
 Second pass after these commits: `tsc --noEmit` exit 0, `npm run golden -- --threads 4` "all 30 cases match", targeted vitest
 (1081 tests) green; `ci:local` was not repeated in full because only `context.ts` and one test file changed (the full 3018-test run

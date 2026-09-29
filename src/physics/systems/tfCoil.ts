@@ -444,6 +444,7 @@ export function tfCoil(inp: TFCoilInput): TFCoilResult {
 
   notes.push('winding pack smeared as a full annulus (side case and wedge shape not resolved)');
   notes.push('CS/PF field and out-of-plane forces neglected (as PROCESS); the design values of the structure fraction, nose fraction and turn current are technology-typical');
+  notes.push('the leg is a free cylinder: no support of the nose by the solenoid (bucking, SPARC) or by the neighbouring legs (wedging, ITER and DEMO), so a bucked design reads over-stressed');
   if (inp.tech === 'Cu') notes.push('resistive coil: the copper carries the load (E = 117 GPa)');
 
   return {

@@ -1178,6 +1178,27 @@
                   "exclusiveMinimum": 0,
                   "maximum": 5,
                   "description": "Internal inductance l_i(3) of the plasma for the inductive flux (default 0.85, or the 1.5D value)."
+                },
+                "outerRadius_m": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 20,
+                  "description": "Outer radius of the solenoid (default: the TF inner radius minus the gap between the solenoid and the TF nose). Unit: m.",
+                  "x-unit": "m"
+                },
+                "thickness_m": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 20,
+                  "description": "Radial thickness of the solenoid winding; sets the current density B_max / (mu0 t) and takes precedence over currentDensity_MAm2. Unit: m.",
+                  "x-unit": "m"
+                },
+                "height_m": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 100,
+                  "description": "Height of the solenoid stack (default: the height of the straight TF leg; only the stored energy and the mass depend on it). Unit: m.",
+                  "x-unit": "m"
                 }
               },
               "additionalProperties": false,

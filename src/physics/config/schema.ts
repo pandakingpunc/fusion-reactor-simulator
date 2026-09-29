@@ -181,6 +181,9 @@ const systemsSettings = opt(object<Systems>({
     swingFraction: opt(num({ exMin: 0, max: 1, doc: 'Share of the +B to -B field swing of the solenoid that is used (default 1).' })),
     pfFlux_Vs: opt(num({ min: 0, max: 1e4, unit: 'V s', doc: 'Flux supplied by the poloidal-field coils (default 0).' })),
     li: opt(num({ exMin: 0, max: 5, doc: 'Internal inductance l_i(3) of the plasma for the inductive flux (default 0.85, or the 1.5D value).' })),
+    outerRadius_m: opt(num({ exMin: 0, max: 20, unit: 'm', doc: 'Outer radius of the solenoid (default: the TF inner radius minus the gap between the solenoid and the TF nose).' })),
+    thickness_m: opt(num({ exMin: 0, max: 20, unit: 'm', doc: 'Radial thickness of the solenoid winding; sets the current density B_max / (mu0 t) and takes precedence over currentDensity_MAm2.' })),
+    height_m: opt(num({ exMin: 0, max: 100, unit: 'm', doc: 'Height of the solenoid stack (default: the height of the straight TF leg; only the stored energy and the mass depend on it).' })),
   }, { doc: 'Central-solenoid flux budget. Giving this block turns the flux check on: a warning if the solenoid cannot supply the pulse.' })),
   blanket: opt(object<SystemsBlanket>({
     inboardDepth_m: opt(num({ min: 0, max: 20, unit: 'm', doc: 'Inboard breeding-blanket depth (default: 56 % of the space behind the first wall).' })),

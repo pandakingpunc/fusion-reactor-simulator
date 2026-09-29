@@ -127,6 +127,20 @@ export function columnsFor(history: readonly HistoryFrame[], diagSpecs: readonly
   return [...ordered, ...rest].map(info);
 }
 
+/**
+ * The source without the frames whose time does not increase. The kernel records one such frame: the terminal
+ * frame of a shot that ended in a step that made no progress in time (a 1.5D 'Numerical failure'), which repeats
+ * the time and the state of the frame before it and only carries the termination (see HistoryFrame). Coordinate
+ * formats (NetCDF, IMAS) need a strictly increasing time axis, so they drop it; CSV and NDJSON keep every frame.
+ * `dropped` is how many frames were left out.
+ */
+export function strictTimeSource(src: RunSource): { src: RunSource; dropped: number } {
+  const keep: HistoryFrame[] = [];
+  for (const f of src.history) if (!keep.length || f.t > keep[keep.length - 1].t) keep.push(f);
+  const dropped = src.history.length - keep.length;
+  return dropped ? { src: { ...src, history: keep }, dropped } : { src, dropped: 0 };
+}
+
 /** Every history frame as one row of named numbers. `keys` selects and orders the columns; unknown keys read as NaN. */
 export function tableFromSource(src: RunSource, keys?: readonly string[]): RunTable {
   const columns = columnsFor(src.history, src.diagSpecs, keys);

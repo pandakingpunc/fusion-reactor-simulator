@@ -9,6 +9,11 @@ the events, the model's diagnostics table (`DiagSpec`: key, label, unit, group),
 optional provenance (`RunMeta`: version, commit, preset, fingerprint, configuration hash; a creation date only if
 you pass one, so the same run always gives the same bytes). A diagnostic a frame lacks is NaN there.
 
+**The terminal frame.** A 1.5D shot that ends in a step that made no progress in time ('Numerical failure') records
+one frame at the time of the frame before it (kernel contract, `HistoryFrame`). CSV and NDJSON keep every frame, so
+that file has a repeated time. NetCDF and IMAS need a strictly increasing time axis and leave that frame out; they say
+so (`simulation_dropped_frames` in the NetCDF global attributes, `format.dropped_frames` in the IMAS document).
+
 | Format | Writer | Reader | What it holds |
 |---|---|---|---|
 | CSV (RFC 4180) | `writeCsv` | `parseCsv` | one row per frame: `t` and the chosen diagnostics; NaN is an empty field; shortest round-trip numbers; optional `# ` comment lines |

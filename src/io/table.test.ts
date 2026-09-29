@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cfTimeUnit, cfUnit, columnsFor, formatNumber, profilesFromSource, secondsPer, tableFromSource, utf8, utf8Decode } from './table';
+import { cfTimeUnit, cfUnit, columnsFor, formatNumber, profilesFromSource, secondsPer, strictTimeSource, tableFromSource, utf8, utf8Decode } from './table';
 import { jet, nif, sparc15 } from './testdata/fixtures';
 
 describe('cfUnit: model units in UDUNITS spelling', () => {
@@ -93,5 +93,19 @@ describe('tables of a run', () => {
     const p = profilesFromSource(src, { every: 10, keys: ['q', 'Te', 'missing'] })!;
     expect(p.t).toEqual(all.t.filter((_, i) => i % 10 === 0));
     expect(p.columns.map((c) => c.key)).toEqual(['q', 'Te']);
+  });
+});
+
+describe('strictTimeSource: the terminal frame of a failed step', () => {
+  const again = <T extends { history: readonly unknown[] }>(src: T): T => ({ ...src, history: [...src.history, src.history[src.history.length - 1]] });
+  it('drops frames whose time does not increase, and says how many', () => {
+    const { src } = jet();
+    const same = strictTimeSource(src);
+    expect(same.dropped).toBe(0);
+    expect(same.src).toBe(src);
+    const r = strictTimeSource(again(src));
+    expect(r.dropped).toBe(1);
+    expect(r.src.history).toHaveLength(src.history.length);
+    expect(strictTimeSource(again(again(src))).dropped).toBe(2);
   });
 });

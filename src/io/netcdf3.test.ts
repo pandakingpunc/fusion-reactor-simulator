@@ -307,3 +307,18 @@ describe('a run as a CF dataset', () => {
     expect(ds.vars.map((v) => v.name)).toEqual(['time', 'Q', 'Q_2']);
   });
 });
+
+describe('a shot that ended in a step that made no progress (repeated last time)', () => {
+  it('NetCDF has a strictly increasing time axis and says a frame was left out; CSV keeps every frame', () => {
+    const { src } = sparc15();
+    const last = src.history[src.history.length - 1];
+    const failed = { ...src, history: [...src.history, { ...last }] };
+    const f = readNetcdf3(writeRunNetcdf(failed));
+    expect(f.dims[0].size).toBe(src.history.length);
+    const t = f.vars.time.data as Float64Array;
+    for (let i = 1; i < t.length; i++) expect(t[i]).toBeGreaterThan(t[i - 1]);
+    expect(f.attrs.simulation_dropped_frames).toEqual({ type: 'int', value: [1] });
+    expect(f.dims.find((d) => d.name === 'profile_time')!.size).toBe(src.history.filter((h) => h.prof).length);
+    expect(readNetcdf3(writeRunNetcdf(src)).attrs.simulation_dropped_frames).toBeUndefined();
+  });
+});

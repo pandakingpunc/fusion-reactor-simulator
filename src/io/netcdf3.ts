@@ -19,7 +19,7 @@
  * numbers of the shot report (`report_*`). NaN marks a value that is not available. The time axis is model
  * time in the model's unit (no calendar), so it carries `axis = "T"` and no reference date.
  */
-import { type RunSource, cfTimeUnit, cfUnit, profilesFromSource, tableFromSource, utf8, utf8Decode } from './table';
+import { type RunSource, cfTimeUnit, cfUnit, profilesFromSource, strictTimeSource, tableFromSource, utf8, utf8Decode } from './table';
 
 export type NcType = 'byte' | 'char' | 'short' | 'int' | 'float' | 'double';
 
@@ -359,7 +359,8 @@ const finiteReport = (o: unknown, prefix: string, out: Record<string, NcAttr>): 
 };
 
 /** The netCDF dataset of a run (see the file header for the layout). */
-export function netcdfFromRun(src: RunSource, opts: RunNetcdfOptions = {}): NcDataset {
+export function netcdfFromRun(source: RunSource, opts: RunNetcdfOptions = {}): NcDataset {
+  const { src, dropped } = strictTimeSource(source);
   const tab = tableFromSource(src, opts.keys);
   const prof = opts.profiles === false ? undefined : profilesFromSource(src, { every: opts.profileEvery });
   const dims: NcDimension[] = [{ name: 'time', size: tab.t.length }];
@@ -404,6 +405,7 @@ export function netcdfFromRun(src: RunSource, opts: RunNetcdfOptions = {}): NcDa
     ...(src.cfg && typeof (src.cfg as { seed?: unknown }).seed === 'number' ? { simulation_seed: (src.cfg as { seed: number }).seed } : {}),
     simulation_time_unit: src.timeUnit,
     simulation_events: { type: 'int', value: src.events.length },
+    ...(dropped ? { simulation_dropped_frames: { type: 'int' as const, value: dropped } } : {}),
   };
   if (src.report) {
     g.simulation_end_reason = src.report.termination.reason;

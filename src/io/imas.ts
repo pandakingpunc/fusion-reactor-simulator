@@ -27,7 +27,7 @@
  *
  * Pure TypeScript, browser-safe.
  */
-import { type RunSource, profilesFromSource, secondsPer, tableFromSource } from './table';
+import { type RunSource, profilesFromSource, secondsPer, strictTimeSource, tableFromSource } from './table';
 
 export const IMAS_FORMAT_VERSION = 1;
 
@@ -90,7 +90,8 @@ export interface ImasOptions {
 const finiteSome = (a: readonly number[]): boolean => a.some(Number.isFinite);
 
 /** The IMAS-like document of a magnetic-confinement run. Throws for a method outside magnetic confinement. */
-export function imasFromRun(src: RunSource, opts: ImasOptions = {}): Obj {
+export function imasFromRun(source: RunSource, opts: ImasOptions = {}): Obj {
+  const { src, dropped } = strictTimeSource(source);
   if (src.method !== undefined && !MAGNETIC.has(src.method)) {
     throw new Error(`the IMAS-like export covers magnetic-confinement runs (tokamak, spherical_tokamak, stellarator), not '${src.method}'`);
   }
@@ -123,6 +124,7 @@ export function imasFromRun(src: RunSource, opts: ImasOptions = {}): Obj {
     format: {
       name: 'imas-like-json', version: IMAS_FORMAT_VERSION, cocos: 11,
       note: 'IDS names and units follow the IMAS Data Dictionary (3.x spelling); not validated against a Data Dictionary release. Missing values are null. Time in seconds.',
+      ...(dropped ? { dropped_frames: dropped } : {}),
     },
     summary,
   };

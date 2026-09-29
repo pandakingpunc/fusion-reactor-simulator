@@ -177,3 +177,17 @@ describe('IMAS-like JSON of a 1.5D run', () => {
     expect(thin.equilibrium.time_slice).toHaveLength(Math.ceil(nEq / 50));
   });
 });
+
+describe('a shot that ended in a step that made no progress (repeated last time)', () => {
+  it('the IDS time bases stay strictly increasing and the document says a frame was left out', () => {
+    const { src } = sparc15();
+    const last = src.history[src.history.length - 1];
+    const doc = JSON.parse(writeImasJson({ ...src, history: [...src.history, { ...last }] })) as Obj;
+    expect(doc.format.dropped_frames).toBe(1);
+    for (const time of [doc.summary.time, doc.core_profiles.time, doc.equilibrium.time] as number[][]) {
+      for (let i = 1; i < time.length; i++) expect(time[i]).toBeGreaterThan(time[i - 1]);
+    }
+    expect(doc.summary.time).toHaveLength(src.history.length);
+    expect(JSON.parse(writeImasJson(src)).format.dropped_frames).toBeUndefined();
+  });
+});

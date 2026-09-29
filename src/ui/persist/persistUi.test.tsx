@@ -235,6 +235,21 @@ describe('persistence UI: sharing', () => {
     expect(screen.queryByText(/from a shared link/)).toBeNull();
   });
 
+  it('drops the "Opened from a shared link" notice when a different preset is picked and run, and keeps it while the shared configuration is edited', async () => {
+    const code = await encodeShare({ cfg: { ...TAE, name: 'from a link' } as ReactorConfig, name: 'Linked FRC', appVersion: APP_VERSION });
+    window.location.hash = `#/share/${code}`;
+    const h = mount();
+    expect(await screen.findByText(/Opened "Linked FRC" from a shared link/)).toBeTruthy();
+    // editing the shared configuration (a wizard field) is still that configuration
+    act(() => h.store.actions.setCfg({ ...h.store.getState().cfg, seed: 99 } as ReactorConfig));
+    expect(screen.getByText(/Opened "Linked FRC" from a shared link/)).toBeTruthy();
+    // running another preset from the list replaces the configuration and its name: the notice is stale
+    fireEvent.click(presetRunButton('MIRROR'));
+    h.roundTrip();
+    await waitFor(() => expect(screen.queryByText(/from a shared link/)).toBeNull());
+    expect(h.store.getState().cfgName).not.toBe('Linked FRC');
+  });
+
   it('a shared link opened while the Learn tab shows (ws10e x ws10b) lands in the wizard with its notice, and Learn deep links still work afterwards', async () => {
     const h = mount();
     fireEvent.click(await screen.findByRole('button', { name: 'Learn' }));
@@ -316,6 +331,10 @@ describe('persistence UI: embed views', () => {
     expect(await screen.findByText('Results summary', {}, { timeout: 15000 })).toBeTruthy();
     expect(sim.runAll).toHaveBeenCalledTimes(1);
     expect(store.getState().cfg).toEqual(TAE);
+    // the results without the toolbar of exports and buttons (the link to the full simulator is the embed's own bar)
+    expect(screen.queryByText('Run again')).toBeNull();
+    expect(screen.queryByText('SVG ↓')).toBeNull();
+    expect(screen.queryByText('Summary CSV ↓')).toBeNull();
   }, 30000);
 });
 

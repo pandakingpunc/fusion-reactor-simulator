@@ -10,13 +10,24 @@ import type { Viz3DSource } from './input';
 const loadViz3D = () => import('./Viz3D');
 const Viz3D = lazy(loadViz3D);
 
-/** kept for the whole session so that the choice survives switching between the run screen and the report */
-let openByDefault = false;
+/** where the Show / Hide choice is kept (per browser; storage may be blocked, then the choice lasts for the session only) */
+export const VIZ3D_OPEN_KEY = 'fusion-sim.viz3d.open';
+/** the choice of the session: it survives switching between the run screen and the report even without storage */
+let openByDefault: boolean | null = null;
+
+function readOpen(): boolean {
+  if (openByDefault !== null) return openByDefault;
+  try { return localStorage.getItem(VIZ3D_OPEN_KEY) === '1'; } catch { return false; }
+}
+function writeOpen(open: boolean): void {
+  openByDefault = open;
+  try { localStorage.setItem(VIZ3D_OPEN_KEY, open ? '1' : '0'); } catch { /* storage unavailable: the choice lasts for this page view */ }
+}
 
 export function Viz3DPanel(props: Viz3DSource) {
   const t = useT();
-  const [open, setOpen] = useState(openByDefault);
-  const toggle = () => { openByDefault = !open; setOpen(!open); };
+  const [open, setOpen] = useState(readOpen);
+  const toggle = () => { writeOpen(!open); setOpen(!open); };
   return (
     <div className="panel tight">
       <div className="panel-title">

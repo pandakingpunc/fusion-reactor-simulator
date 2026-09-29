@@ -147,6 +147,10 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   model called them: limits are checked in `postStep()`).
 
 ### Fixed
+- `npm run bench:convergence`: the time-step series (dtMax) failed with "this model has no internal time step
+  to limit" since the split of `profiles/model.ts` moved the step proposal to `ctx.dt`; the limiter is now
+  `bench/limitStep.ts` (with a test), and the study runs again (ITER15 flat-top Q 10.34 / 10.40 / 10.47 at
+  dtMax 0.5 / 0.05 / 0.01 s, 8.94 / 10.34 / 10.51 at 25 / 50 / 100 radial cells).
 - The worker pool no longer hangs when a worker exits or crashes while running a task, or when a
   task cannot be sent to a worker (not structured-cloneable): it rejects with an error naming the
   task, and an invalid thread count raises a typed error.
@@ -183,7 +187,9 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   channel (the D-D side channels of D-3He consume two D each), the beam-target rate has the target
   species of its channel (the beam-target neutrons of D-D, booked on the neutron-free D(d,p)T
   branch, are now counted: x4 in DIII-D 1.5D, x53 in MAST-U 1.5D) and the heating by every charged
-  product uses its own Stix critical energy.
+  product uses its own Stix critical energy. `StepConstants.btR` (the beam-target rate a `SourceModel`
+  sees as `K.btR`) is one array per channel of the fuel, `K.btR[j][i]`, instead of one array: a plug-in
+  that reads `K.btR[i]` must index the channel first.
 - 1.5D: a blank profile setting in the wizard keeps its default (it overwrote it with undefined and
   crashed or misbehaved); the implicit step retries only numerical failures (typed
   `NumericalFailure`, `LinearAlgebraFailure`, `GSFailure`) and lets programming errors of plug-ins

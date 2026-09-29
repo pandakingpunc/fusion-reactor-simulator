@@ -113,7 +113,10 @@ that should run in every shot is registered as below.
 All hooks are optional:
 
 - `prepare(ctx, t, st, K)`: on the old state, once per attempt; deposition that is held fixed over
-  the step, fields of `K` (`StepConstants`);
+  the step, fields of `K` (`StepConstants`). `K.btR` is one array per channel of the fuel
+  (`FUEL_CHANNELS` order), `K.btR[j][i]` for channel j and cell i, filled with zeros by the pipeline
+  before `prepare`: a source that reads it as a single array (`K.btR[i]`, the layout of v3) gets
+  `undefined` and NaN power;
 - `particles(ctx, t, dt, st, K)`: once per attempt, after the fueling control assigned `w.Sn`; add
   the source's particle source density [m⁻³ s⁻¹] into `w.Sn` (the density solve uses the sum; the
   fueling feedback on n̄ closes the electron balance, but a source that changes the fuel mix or

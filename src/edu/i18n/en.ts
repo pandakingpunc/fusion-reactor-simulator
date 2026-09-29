@@ -129,7 +129,7 @@ export const eduEn = {
   'mis.kink.lesson': 'Current is limited by field: q95 ∝ B / I_p. A large current in a small machine needs a strong field, which is why compact devices use high-temperature superconductors.',
   'mis.kink.answer': 'Raising the toroidal field to 3.0 T restores q95 above 2 at 5.5 MA. Less heating would not change q95 at all.',
 
-  'mis.sparcQ.title': 'Q above 1 on SPARC',
+  'mis.sparcQ.title': 'Q above 3 on SPARC',
   'mis.sparcQ.brief': 'SPARC is fuelled to 4.5e20 m⁻³ with its 25 MW of ICRH. At this density the L-H threshold is out of reach, the plasma stays in L-mode and the fusion gain is tiny. Bring the average Q_sci above 3.',
   'mis.sparcQ.hint1': 'Compare P_LH with the heating in the live values. The threshold grows with density.',
   'mis.sparcQ.hint2': 'You can raise the ICRH power or lower the density. Check how far the ICRH power would have to go.',

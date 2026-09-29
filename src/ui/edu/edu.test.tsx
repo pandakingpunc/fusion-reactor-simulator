@@ -311,7 +311,7 @@ describe('Learn screen', () => {
   it('every mission opens, has a control for each lever and a goal list', () => {
     mount();
     for (const m of MISSIONS) {
-      openMission(m.id === 'hmode' ? 'Reach H-mode' : { density: 'Stay below the density limit', beta: 'Beat the beta limit', kink: 'Carry more current', sparcQ: 'Q above 1 on SPARC', ignition: 'Find ignition in POPCON', elm: 'Survive an ELM storm', fuel: 'Fuel JET for the record', nif: 'Ignite the capsule', tungsten: 'Keep the core clean' }[m.id]!);
+      openMission(m.id === 'hmode' ? 'Reach H-mode' : { density: 'Stay below the density limit', beta: 'Beat the beta limit', kink: 'Carry more current', sparcQ: 'Q above 3 on SPARC', ignition: 'Find ignition in POPCON', elm: 'Survive an ELM storm', fuel: 'Fuel JET for the record', nif: 'Ignite the capsule', tungsten: 'Keep the core clean' }[m.id]!);
       expect(screen.getAllByRole('listitem')).toHaveLength(m.goals.length);
       expect(document.querySelectorAll('.lever')).toHaveLength(m.levers.length);
       fireEvent.click(screen.getByRole('button', { name: /All missions/ }));

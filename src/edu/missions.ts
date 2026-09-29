@@ -286,7 +286,7 @@ export const MISSIONS: Mission[] = [
     ],
     goals: [{ metric: 'noDisruption', op: '>=', target: 1 }, { metric: 'qAvg', op: '>=', target: 3 }],
     solution: () => ({ wConc: 1.5e-5 }),
-    // ten times less tungsten avoids the collapse but leaves the plasma cold and in L-mode
+    // three times less tungsten (1e-4 against 3e-4) avoids the collapse but leaves the plasma cold and in L-mode
     control: { wConc: 1e-4 },
     terms: ['tungsten', 'radiative', 'zeff', 'qSci'],
   },

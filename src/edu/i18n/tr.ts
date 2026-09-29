@@ -129,7 +129,7 @@ export const eduTr: EduDict = {
   'mis.kink.lesson': 'Akımı alan sınırlar: q95 ∝ B / I_p. Küçük bir makinede büyük akım güçlü alan ister; kompakt cihazların yüksek sıcaklık süperiletkenleri kullanmasının nedeni budur.',
   'mis.kink.answer': 'Toroidal alanı 3,0 T\'ye çıkarmak, 5,5 MA\'da q95\'i yeniden 2\'nin üstüne taşır. Daha az ısıtma q95\'i hiç değiştirmezdi.',
 
-  'mis.sparcQ.title': 'SPARC\'ta Q 1\'in üstüne',
+  'mis.sparcQ.title': 'SPARC\'ta Q 3\'ün üstüne',
   'mis.sparcQ.brief': 'SPARC 25 MW ICRH ile 4,5e20 m⁻³\'e kadar yakıtlanıyor. Bu yoğunlukta L-H eşiğine ulaşılamıyor, plazma L-modunda kalıyor ve füzyon kazancı çok küçük. Ortalama Q_sci\'yi 3\'ün üstüne çıkarın.',
   'mis.sparcQ.hint1': 'Canlı değerlerde P_LH ile ısıtmayı karşılaştırın. Eşik yoğunlukla artar.',
   'mis.sparcQ.hint2': 'ICRH gücünü artırabilir ya da yoğunluğu düşürebilirsiniz. ICRH gücünün ne kadar artması gerektiğine bakın.',

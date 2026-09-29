@@ -40,7 +40,7 @@ describe('work arrays after an equilibrium swap', () => {
     expect(zero).toBe(0);
     expect(tiFlattened.length).toBeGreaterThanOrEqual(minSawteeth);
     expect(tiFlattened.every(Boolean)).toBe(true);
-  }, 180000);
+  }, 300000);
 
   // The work arrays are persistent, so after a swap the stale ones are nonzero and finite: a
   // positivity check alone cannot see them. Compare against a fresh evaluation on the new state.
@@ -237,7 +237,7 @@ describe('Grad–Shafranov updates during a shot', () => {
     expect(r.engineering['GS updates rejected']).toBe(0);
     expect(sim.history.filter((h) => h.eq).length).toBe(m.eqUpdates + 1);
     expect(Math.abs((m.ctx.eq.currentScale ?? 1) - 1)).toBeLessThan(0.1);
-  }, 120000);
+  }, 240000);
 
   // The fixed-boundary problem has a fold near what the boundary can hold: here no equilibrium of tables whose axis pressure is
   // more than 90 % of the way from the last accepted equilibrium's to the transport's, in the four updates of the ramp-up. Each of
@@ -689,5 +689,5 @@ describe('checkpoints and replays', () => {
       sim.rewindTo(idx);
       expect(sim.model.diagnostics(sim.t, sim.y)).toEqual(want);
     }
-  }, 60000);
+  }, 180_000); // 120 s of ITER15 with ELMs: over 60 s when ten processes share the machine
 });

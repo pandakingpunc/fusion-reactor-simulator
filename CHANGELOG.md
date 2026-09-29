@@ -5,6 +5,10 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 ## [Unreleased]
 
 ### Added
+- Wave-2B tooling: 58 mutation-smoke cases cover TR-BDF2, Anderson, edge losses, TF Tresca stress and equilibrium iterations; M21 is currently detected by timeout.
+- Coverage gates now include IO, analysis and education; "npm run coverage:levels" reports measured levels and suggested thresholds.
+- Local CI accepts CI_LOCAL_WORKERS, CI_LOCAL_THREADS and CI_LOCAL_BUNDLE, with a dry run and the production bundle budget.
+- Shared-machine test defaults: 30-second tests, 120-second hooks and 15-second Testing Library waits; lazy translation loading no longer sets state after unmount.
 - **Golden regression harness**: `npm run golden` compares 30 deterministic run snapshots (all
   presets, every method, 0D and 1.5D, plus variants for every fuel in 0D and 1.5D, 1.5D D-D and
   1.5D spherical tokamak) with `test/golden/*.json` at a relative tolerance of 1e-9 (1e-6 across

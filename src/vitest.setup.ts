@@ -17,7 +17,7 @@
 // per test (Windows timers tick at 15.6 ms), 10-15 s of idle time over the whole suite.
 //
 // It does not shorten anything: a test that blocks for minutes still blocks its worker for minutes (and one that
-// yields is still bound by its test timeout, see the `coverage` script), it just no longer fails the run.
+// yields is still bound by its test timeout, see `testTimeout` in vite.config.ts), it just no longer fails the run.
 import { setTimeout as delay } from 'node:timers/promises';
 import { afterEach, beforeEach } from 'vitest';
 
@@ -31,3 +31,13 @@ const yieldToEventLoop: (resolve: () => void) => void =
 
 beforeEach(() => delay(DRAIN_MS));
 afterEach(() => new Promise<void>((resolve) => yieldToEventLoop(resolve)));
+
+// Testing Library's findBy* and waitFor give up after 1 s by default. A lazy-loaded screen (React.lazy import of a chunk that
+// vitest transforms on first use) needs longer than that on a machine that is busy with a coverage run or with other agents,
+// which turned the tabs of src/ui/edu/shell.test.tsx red without any change of code. The wait ends the moment the element
+// appears, so a generous ceiling costs nothing when the machine is idle; a test that really fails still fails, after 15 s.
+// Only in a DOM environment (jsdom, chosen per file); the physics tests never load the library.
+if (typeof document !== 'undefined') {
+  const { configure } = await import('@testing-library/dom');
+  configure({ asyncUtilTimeout: 15_000 });
+}

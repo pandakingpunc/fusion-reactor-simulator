@@ -8,6 +8,12 @@
  * 3221225477 = 0xC0000005), listing the tally. It is a tripwire for the one unexplained 0xC0000005 crash of a
  * `validate` run (not reproduced since, cause unknown); it cannot prove that the crash is gone.
  *
+ * Soak record (ws1d, 2026-09-30, Node v24.19.0, Windows 11, 12 cores shared with ten other agents, 8 busy-loop processes on top):
+ * 400 runs of this script at concurrency 12 (through the tsx loader) and 1440 runs of scripts/build-lib.stress.mjs at concurrency 8 to 12
+ * (the compiled fusion-sim, no tsx loader) all ended with the expected exit code; the Windows Application event log holds no
+ * faulting-module record for node.exe. So the loader thread is neither shown to be the cause nor cleared: the crash stays
+ * unreproduced (about 3400 runs in all since it was seen, with the 1600+ of ws1c). A crash dump (WER LocalDumps for node.exe) is the next step if it recurs.
+ *
  * src/cli/exitStress.test.ts is the small version of this that runs in `npm test`.
  */
 import { spawn } from 'node:child_process';

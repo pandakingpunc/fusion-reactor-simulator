@@ -27,7 +27,11 @@ export function usePersistT(): PersistT {
   const locale = useApp((s) => s.locale);
   const [ready, setReady] = useState(tr !== null);
   useEffect(() => {
-    if (locale === 'tr' && !tr) void loadPersistTr().then(() => setReady(true));
+    // no state update after the component is gone: in a test that ends first, the chunk arrives after jsdom's teardown
+    // and the update throws "window is not defined" as an unhandled rejection (vitest exit code 1 with every test green)
+    let live = true;
+    if (locale === 'tr' && !tr) void loadPersistTr().then(() => { if (live) setReady(true); });
+    return () => { live = false; };
   }, [locale]);
   return useMemo(() => persistTranslator(locale), [locale, ready]);
 }

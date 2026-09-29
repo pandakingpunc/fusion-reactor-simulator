@@ -109,11 +109,11 @@ export const eduEn = {
   'mis.hmode.answer': '6 MW of beam power is well above the threshold; the plasma turns to H-mode early in the ramp and stays there. Fuelling more does not help: the threshold power grows with the density.',
 
   'mis.density.title': 'Stay below the density limit',
-  'mis.density.brief': 'The same DIII-D shot is fuelled to 1.0e20 m⁻³, a little above the Greenwald density for its 1.6 MA. Change the shot so that it runs to the end without a density-limit disruption, and still reaches at least 0.5e20 m⁻³: an empty plasma is no answer.',
+  'mis.density.brief': 'The same DIII-D shot is fuelled to a setpoint of 1.0e20 m⁻³. The Greenwald density for its 1.6 MA is about 1.1e20 m⁻³, so the setpoint is just below it, but the density overshoots its setpoint during the ramp and crosses the limit. Change the shot so that it runs to the end without a density-limit disruption, and still reaches at least 0.5e20 m⁻³: an empty plasma is no answer.',
   'mis.density.hint1': 'The Greenwald density n_G = I_p / (π a²) grows with the plasma current. The live values show n̄/n_G, which has to stay below 1.',
   'mis.density.hint2': 'Either fuel less or carry more current. Lowering the density is the simplest.',
   'mis.density.lesson': 'Past n_G the edge radiates and cools until the current channel shrinks and the plasma disrupts. Density and current are tied together.',
-  'mis.density.answer': '0.7e20 m⁻³ puts n̄/n_G at about 0.7: comfortably below the limit and above the 0.5e20 goal.',
+  'mis.density.answer': 'A setpoint of 0.7e20 m⁻³ peaks at about 0.8e20 m⁻³ after the overshoot, which is n̄/n_G of about 0.7 (n_G is about 1.1e20 m⁻³): comfortably below the limit and above the 0.5e20 goal.',
 
   'mis.beta.title': 'Beat the beta limit',
   'mis.beta.brief': 'DIII-D with 30 MW of beam power: the pressure grows until the plasma reaches the Troyon limit and disrupts in under half a second. Keep at least 25 MW of heating and bring the shot to its end.',

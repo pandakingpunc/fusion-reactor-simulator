@@ -109,11 +109,11 @@ export const eduTr: EduDict = {
   'mis.hmode.answer': '6 MW demet gücü eşiğin çok üzerindedir; plazma rampanın başında H-moduna geçer ve orada kalır. Daha çok yakıtlamak işe yaramaz: eşik gücü yoğunlukla artar.',
 
   'mis.density.title': 'Yoğunluk sınırının altında kal',
-  'mis.density.brief': 'Aynı DIII-D atışı, 1,6 MA akımı için Greenwald yoğunluğunun biraz üstünde, 1,0e20 m⁻³\'e kadar yakıtlanıyor. Atışı, yoğunluk sınırı disrupsiyonu olmadan sonuna kadar gidecek ve en az 0,5e20 m⁻³\'e ulaşacak biçimde değiştirin: boş bir plazma cevap değildir.',
+  'mis.density.brief': 'Aynı DIII-D atışı 1,0e20 m⁻³ hedef yoğunluğuna yakıtlanıyor. 1,6 MA akımı için Greenwald yoğunluğu yaklaşık 1,1e20 m⁻³\'tür; yani hedef sınırın hemen altındadır, ancak yoğunluk yükselme sırasında hedefini aşar ve sınırı geçer. Atışı, yoğunluk sınırı disrupsiyonu olmadan sonuna kadar gidecek ve en az 0,5e20 m⁻³\'e ulaşacak biçimde değiştirin: boş bir plazma cevap değildir.',
   'mis.density.hint1': 'Greenwald yoğunluğu n_G = I_p / (π a²) plazma akımıyla artar. Canlı değerler, 1\'in altında kalması gereken n̄/n_G\'yi gösterir.',
   'mis.density.hint2': 'Ya daha az yakıt verin ya da daha çok akım taşıyın. En basiti yoğunluğu düşürmektir.',
   'mis.density.lesson': 'n_G\'nin ötesinde kenar ışır ve soğur; akım kanalı daralır ve plazma disrupsiyona uğrar. Yoğunluk ile akım birbirine bağlıdır.',
-  'mis.density.answer': '0,7e20 m⁻³, n̄/n_G\'yi yaklaşık 0,7\'ye getirir: sınırın rahatça altında ve 0,5e20 hedefinin üstünde.',
+  'mis.density.answer': '0,7e20 m⁻³ hedefi, aşım sonrası yaklaşık 0,8e20 m⁻³\'e çıkar; bu n̄/n_G ≈ 0,7 demektir (n_G yaklaşık 1,1e20 m⁻³): sınırın rahatça altında ve 0,5e20 hedefinin üstünde.',
 
   'mis.beta.title': 'Beta sınırını aş',
   'mis.beta.brief': '30 MW demet gücüyle DIII-D: basınç, plazma Troyon sınırına varana kadar artar ve yarım saniyeden kısa sürede disrupsiyona uğrar. En az 25 MW ısıtmayı koruyun ve atışı sonuna kadar götürün.',

@@ -66,7 +66,7 @@
 .explain { position: relative; display: inline-flex; align-items: baseline; gap: 3px; }
 .explain-btn { background: transparent; border: 1px solid var(--border); color: var(--accent); border-radius: 50%; width: 15px; height: 15px; line-height: 1; padding: 0; font-size: 10px; cursor: pointer; align-self: center; }
 .explain-btn:hover, .explain-btn[aria-expanded=true] { border-color: var(--accent); background: var(--panel2); }
-.explain-pop { position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; width: 300px; max-width: 80vw; background: var(--panel2); border: 1px solid var(--accent); border-radius: 8px; padding: 10px 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--text); text-align: left; }
+.explain-pop { position: fixed; z-index: 1000; width: 300px; box-sizing: border-box; display: block; max-width: 80vw; background: var(--panel2); border: 1px solid var(--accent); border-radius: 8px; padding: 10px 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--text); text-align: left; }
 .explain-pop .ep-name { font-weight: 600; font-size: 13px; }
 .explain-pop .ep-sym { font-family: var(--mono); color: var(--accent); font-size: 12px; margin-left: 6px; }
 .explain-pop .ep-def { display: block; margin: 6px 0; font-size: 12px; line-height: 1.5; }

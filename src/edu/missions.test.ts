@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computePopcon } from '../physics/popcon';
+import { greenwaldDensity } from '../physics/limits';
 import { MagneticConfig } from '../physics/types';
 import { ignitionCells, playMission, popconMetrics, readPopcon, runMetrics, solveMission, goalMet, judge, RunData, METRIC_UNITS } from './missionEval';
 import { MISSIONS, buildConfig, findMission, leverStart, leverValues, missionKey, operatingPoint } from './missions';
@@ -142,6 +143,41 @@ describe.each(MISSIONS)('mission $id', (m) => {
     expect(control.outcome.passed, 'the negative control must fail').toBe(false);
     expect(solved.outcome.passed, JSON.stringify(solved.outcome.results)).toBe(true);
   }, 120_000);
+});
+
+describe('the density mission text', () => {
+  const m = findMission('density')!;
+  const cfg = buildConfig(m, {}) as MagneticConfig;
+  const nG = greenwaldDensity(cfg.Ip_MA, cfg.geometry.a);
+
+  it('starts with a setpoint just below the Greenwald density, as the brief says, and the overshoot crosses the limit', () => {
+    expect(nG).toBeGreaterThan(1.05e20);
+    expect(nG).toBeLessThan(1.2e20);
+    expect(cfg.n_target).toBeLessThan(nG);
+    expect(cfg.n_target / nG).toBeGreaterThan(0.8);
+    const r = playMission(m, {});
+    expect(r.run).toBeDefined();
+    // the density overshoots its setpoint during the ramp: that, not the setpoint, crosses n_G
+    expect(runMetrics(r.run!).nbarMax! * 1e20).toBeGreaterThanOrEqual(nG * 0.98);
+    expect(r.run!.report.termination.disruption?.cause).toBe('density_limit');
+  });
+
+  it('says so in English and Turkish, and quotes n_G as about 1.1e20 (not "above the limit")', () => {
+    expect(eduEn['mis.density.brief']).toContain('just below');
+    expect(eduEn['mis.density.brief']).toContain('overshoots');
+    expect(eduEn['mis.density.brief']).not.toContain('above the Greenwald');
+    expect(eduTr['mis.density.brief']).toContain('hemen altında');
+    expect(eduTr['mis.density.brief']).not.toContain('biraz üstünde');
+    for (const txt of [eduEn['mis.density.brief'], eduEn['mis.density.answer']]) expect(txt).toMatch(/1\.1e20/);
+    for (const txt of [eduTr['mis.density.brief'], eduTr['mis.density.answer']]) expect(txt).toMatch(/1,1e20/);
+    // the solution's own numbers: a 0.7e20 setpoint peaks near 0.8e20, which is n̄/n_G ≈ 0.7
+    const sol = playMission(m, solveMission(m));
+    const peak = runMetrics(sol.run!).nbarMax! * 1e20; // the metric is in 1e20 m⁻³
+    expect(peak).toBeGreaterThan(0.75e20);
+    expect(peak).toBeLessThan(0.85e20);
+    expect(peak / nG).toBeGreaterThan(0.65);
+    expect(peak / nG).toBeLessThan(0.75);
+  });
 });
 
 describe('the POPCON mission', () => {

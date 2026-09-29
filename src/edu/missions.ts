@@ -132,7 +132,7 @@ const withHeating = (b: MagneticConfig, h: Partial<MagneticConfig['heating']>): 
 
 /** DIII-D on 0.5 MW of neutral beam and no ECRH: far too little power to leave L-mode */
 const HMODE_BASE = withHeating(dd, { P_NBI_MW: 0.5, P_ECRH_MW: 0 });
-/** DIII-D at 1.0e20 m⁻³ (a bit above its Greenwald density) */
+/** DIII-D with a 1.0e20 m⁻³ setpoint (0.88 n_G for 1.6 MA); the density overshoots it to about 1.14e20 = n_G and disrupts at 1.2 s */
 const DENSITY_BASE: MagneticConfig = { ...dd, n_target: 1.0e20 };
 /** DIII-D with 30 MW of beam power: beta-limit disruption at 0.4 s */
 const BETA_BASE = withHeating(dd, { P_NBI_MW: 30 });

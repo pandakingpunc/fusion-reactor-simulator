@@ -51,6 +51,26 @@ describe('Explain popover', () => {
     expect(screen.getByRole('dialog')).toBeTruthy();
   });
 
+  it('renders the popover in a fixed-position portal outside a scrolling ancestor, so that it cannot be clipped', () => {
+    withStore(
+      <div data-testid="panel" style={{ overflowX: 'auto' }}>
+        <table><tbody><tr><td><Explain term="betaN"><span>β_N</span></Explain></td></tr></tbody></table>
+      </div>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Explain/ }));
+    const dlg = screen.getByRole('dialog');
+    expect(screen.getByTestId('panel').contains(dlg)).toBe(false);
+    expect(dlg.parentElement).toBe(document.body);
+    expect(dlg.style.position).toBe('fixed');
+    expect(dlg.style.visibility).toBe('visible');
+    // Escape inside the portal still closes it, and a mouse-down inside it does not count as outside
+    fireEvent.mouseDown(within(dlg).getByText('Normalised beta'));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    fireEvent.keyDown(dlg, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.body.querySelector('.explain-pop')).toBeNull();
+  });
+
   it('switches to a related term inside the popover, and goes back to its own term when closed', () => {
     withStore(<Explain term="betaN"><span>β_N</span></Explain>);
     fireEvent.click(screen.getByRole('button', { name: /Explain/ }));

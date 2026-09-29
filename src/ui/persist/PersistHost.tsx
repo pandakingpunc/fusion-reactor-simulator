@@ -55,6 +55,8 @@ export default function PersistHost({ slot, router, route, createWorker, exactRu
   const shots = useApp((s) => s.shots);
   const [panel, setPanel] = useState<'share' | 'library' | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const pRef = useRef(p);
+  pRef.current = p;
 
   // ── completed runs go to the archive ──────────────────────────────────────
   const saved = useRef(new Set<number>());
@@ -85,6 +87,20 @@ export default function PersistHost({ slot, router, route, createWorker, exactRu
       if (r.ok) {
         const { payload, warnings } = r.value;
         const name = payload.name ?? 'Shared';
+        // the scenario against the model of the link's configuration (its controls, diagnostics and end time), before anything is applied; when
+        // the model cannot be built here (no worker) the structural check of the decoder is what remains, and the run itself reports the rest
+        if (payload.scenario && createWorker) {
+          const [{ problems, editorContext }, { probeOnce }] = await Promise.all([import('../scenario/model'), import('../scenario/useModel')]);
+          const meta = await probeOnce(payload.cfg, createWorker).catch(() => null);
+          if (!alive) return;
+          const issues = meta ? problems(payload.scenario as ScenarioSpec, editorContext(meta)) : [];
+          if (issues.length) {
+            const why = issues.slice(0, 3).map((i) => (i.path ? `${i.path}: ${i.message}` : i.message)).join('; ');
+            setNotice({ kind: 'failed', reason: pRef.current('persist.notice.scenarioNoFit', { reason: why }) });
+            router.navigate(routeOfTab('setup'), { replace: true });
+            return;
+          }
+        }
         actions.setCfg(payload.cfg);
         actions.setCfgName(name);
         // the scenario of the link (checked with the rest of the payload: an invalid one is refused before this point); a link without one clears the old
@@ -98,7 +114,7 @@ export default function PersistHost({ slot, router, route, createWorker, exactRu
       router.navigate(routeOfTab('setup'), { replace: true });
     })();
     return () => { alive = false; landed.current = null; };
-  }, [shareCode, actions, router]);
+  }, [shareCode, actions, router, createWorker]);
 
   const reproduce = async (share: DecodedShare) => {
     const { payload } = share;

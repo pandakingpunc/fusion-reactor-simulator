@@ -19,13 +19,26 @@ type Note = { kind: 'busy' } | { kind: 'ok'; n: number } | { kind: 'none' } | { 
 
 let lastToken = 0;
 
-export default function ScenarioPanel({ sim }: { sim: SimApi }) {
+/** `embedded`: a run view without a Setup to go to (the embed page): the lanes are shown, the editing and record controls are not. */
+export default function ScenarioPanel({ sim, embedded = false }: { sim: SimApi; embedded?: boolean }) {
   const t = useScenarioT();
   const { actions } = useAppStore();
   const s = sim.state;
   const { meta, frames, trace, scenario, logAnswer } = s;
   const [note, setNote] = useState<Note | null>(null);
   const [waiting, setWaiting] = useState<number | null>(null);
+  // The configured values of the controls. The meta of a run with a scenario already has the t = 0 values of the scenario applied, so a null point
+  // ("the configured value") and the dashed configured line must not be resolved against it: the model of the configuration is probed instead
+  // (meta.controls until the answer is in; without a scenario the meta is the configured values anyway).
+  const [configured, setConfigured] = useState<{ cfg: unknown; controls: Record<string, number> } | null>(null);
+  const cfg = s.cfg;
+  useEffect(() => {
+    if (!cfg || !scenario) return;
+    let alive = true;
+    probeOnce(cfg, sim.createWorker).then((m) => { if (alive) setConfigured({ cfg, controls: m.controls }); }, () => undefined);
+    return () => { alive = false; };
+  }, [cfg, scenario, sim.createWorker]);
+  const baseOf = (key: string): number => (scenario && configured && configured.cfg === cfg ? configured.controls[key] : undefined) ?? meta?.controls[key] ?? 0;
 
   // a different run: an answer that has not come will not come
   useEffect(() => { setWaiting(null); setNote(null); }, [s.runId]);
@@ -67,7 +80,7 @@ export default function ScenarioPanel({ sim }: { sim: SimApi }) {
     <div className="panel scn" data-testid="scenario-panel">
       <div className="panel-title">
         <h3>{t('scn.run.title')}{scenario?.name ? ` · ${scenario.name}` : ''}</h3>
-        <button type="button" className="btn sm" onClick={() => actions.setTab('setup')}>{t('scn.run.edit')}</button>
+        {!embedded && <button type="button" className="btn sm" onClick={() => actions.setTab('setup')}>{t('scn.run.edit')}</button>}
       </div>
       {lanes.length > 0 && <p className="hint">{t('scn.run.legend')}</p>}
       {lanes.map((key) => {
@@ -80,15 +93,15 @@ export default function ScenarioPanel({ sim }: { sim: SimApi }) {
               <b>{info.label === key ? key : `${info.label} (${key})`}{info.unit && <span className="muted"> [{info.unit}]</span>}</b>
               <span className="scn-legend"><span><i className="sw" />{t('scn.run.programmed')}</span><span><i className="sw actual" />{t('scn.run.actual')}</span></span>
             </div>
-            <WaveformLane ctlKey={key} label={info.label} unit={info.unit} wf={scenario?.waveforms?.[key] ?? null} base={meta.controls[key] ?? 0} tEnd={meta.tEnd}
+            <WaveformLane ctlKey={key} label={info.label} unit={info.unit} wf={scenario?.waveforms?.[key] ?? null} base={baseOf(key)} tEnd={meta.tEnd}
               timeUnit={meta.timeUnit} actual={actual} now={s.t} />
           </div>
         );
       })}
-      <div className="row" style={{ marginTop: 6 }}>
+      {!embedded && <div className="row" style={{ marginTop: 6 }}>
         <button type="button" className="btn sm primary" disabled={s.interventions === 0 || waiting !== null} title={t('scn.run.recordHint')} onClick={record}>{t('scn.run.record')}</button>
         <span className="muted small">{s.interventions ? t('scn.run.interventions', { n: s.interventions }) : t('scn.run.none')}</span>
-      </div>
+      </div>}
       {note && (
         <p role="status" className={`small ${note.kind === 'fail' ? 'warn' : note.kind === 'ok' ? 'ok' : 'muted'}`}>
           {note.kind === 'busy' ? t('scn.run.recording') : note.kind === 'ok' ? t('scn.run.recorded', { n: note.n }) : note.kind === 'none' ? t('scn.run.none') : t('scn.run.recordFailed', { reason: note.reason })}

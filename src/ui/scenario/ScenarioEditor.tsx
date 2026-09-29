@@ -7,7 +7,7 @@
  * `ctx` (the controls, diagnostics and end time of the model) is null while the model is being read; then nothing can be added and the
  * text form is checked for its structure only.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ScenarioError } from '../../physics/kernel/errors';
 import type { ScenarioSpec, WaveformKind } from '../../physics/scenario';
 import { fmtNum } from '../format';
@@ -178,6 +178,7 @@ function TextForm({ spec, scenario, ctx, valid, onChange, copy, download }: {
   const [text, setText] = useState(shown);
   const [error, setError] = useState<string[] | null>(null);
   const [copied, setCopied] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   useEffect(() => { setText(shown); setError(null); }, [shown]);
 
   const apply = (source: string) => {
@@ -198,10 +199,10 @@ function TextForm({ spec, scenario, ctx, valid, onChange, copy, download }: {
         <button type="button" className="btn sm primary" onClick={() => apply(text)}>{t('scn.jsonApply')}</button>
         <button type="button" className="btn sm" disabled={!canonical} onClick={() => { void copy(canonical).then(() => setCopied(true), () => setCopied(false)); }}>{copied ? t('scn.jsonCopied') : t('scn.jsonCopy')}</button>
         <button type="button" className="btn sm" disabled={!canonical} onClick={() => download(`${(spec.name ?? 'scenario').replace(/[^\w.-]+/g, '_')}.scenario.json`, canonical + '\n')}>{t('scn.jsonDownload')}</button>
-        <label className="btn sm" style={{ cursor: 'pointer' }}>{t('scn.jsonLoad')}
-          <input type="file" accept="application/json,.json" hidden aria-label={t('scn.jsonLoad')}
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) void f.text().then((s) => { setText(s); apply(s); }); e.target.value = ''; }} />
-        </label>
+        {/* a real button (a tab stop) opens the file chooser; the input itself is out of the tab order and hidden from assistive technology, but not display:none */}
+        <button type="button" className="btn sm" onClick={() => fileRef.current?.click()}>{t('scn.jsonLoad')}</button>
+        <input ref={fileRef} type="file" accept="application/json,.json" className="scn-file" tabIndex={-1} aria-hidden="true" data-testid="scn-file"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) void f.text().then((s) => { setText(s); apply(s); }); e.target.value = ''; }} />
       </div>
       {error && (
         <div role="alert" className="diag-box" style={{ marginTop: 6 }}>

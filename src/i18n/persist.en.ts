@@ -36,6 +36,7 @@ export const persistEn = {
   'persist.notice.opened': 'Opened "{name}" from a shared link.',
   'persist.notice.odd': 'The link has {n} unusual values (unknown fields, or values outside the wizard\'s range).',
   'persist.notice.failed': 'The shared link could not be opened: {reason}',
+  'persist.notice.scenarioNoFit': 'its scenario does not fit the configuration ({reason})',
   'persist.notice.dismiss': 'Dismiss',
   'persist.notice.extras': 'The link also carries the exact run (live interventions, breakpoints or a scenario).',
   'persist.notice.reproduce': 'Reproduce the run',

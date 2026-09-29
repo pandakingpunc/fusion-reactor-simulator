@@ -7,11 +7,11 @@
  */
 import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { IDBFactory } from 'fake-indexeddb';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../../App';
 import { PRESETS, TAE } from '../../physics/presets';
 import { Simulation } from '../../physics/simulation';
-import { dropTemplate } from '../../physics/scenario';
+import { dropTemplate, type ScenarioSpec } from '../../physics/scenario';
 import { FakeWorker, fakeWorkerFactory } from '../../worker/fakeWorker';
 import { AppStore, AppStoreContext, createAppStore } from '../state/store';
 import { installDomStubs } from '../testing/dom';
@@ -24,6 +24,7 @@ import { APP_VERSION } from '../persist/version';
 
 // the first test loads the lazy editor chunk (a cold transform): on a machine shared with other jobs it takes longer than the 1 s default
 beforeAll(() => { installDomStubs(); configure({ asyncUtilTimeout: 8000 }); });
+vi.setConfig({ testTimeout: 30000 }); // the lazy editor chunk and the workers are slow on a loaded machine
 beforeEach(() => { window.location.hash = ''; });
 afterEach(() => { cleanup(); window.location.hash = ''; });
 
@@ -295,6 +296,25 @@ describe('the wizard\'s Scenario step', () => {
     expect(scenarioOf(h)).toBeNull();
   });
 
+  it('loading a scenario file is a real button (reachable by keyboard); the file input is out of the way but not display:none', async () => {
+    const h = mount();
+    await openScenarioStep(h);
+    const input = screen.getByTestId('scn-file') as HTMLInputElement;
+    expect(input.hasAttribute('hidden')).toBe(false);
+    expect(input.tabIndex).toBe(-1);
+    const button = screen.getByRole('button', { name: 'Load file' }) as HTMLButtonElement;
+    expect(button.tagName).toBe('BUTTON');
+    let clicked = 0;
+    input.addEventListener('click', () => { clicked++; });
+    fireEvent.click(button);
+    expect(clicked).toBe(1);
+    const text = JSON.stringify(dropTemplate('P_NBI_MW', T / 2, 2));
+    const file = new File([text], 'drop.scenario.json', { type: 'application/json' });
+    if (typeof file.text !== 'function') Object.defineProperty(file, 'text', { value: async () => text });
+    fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() => expect(scenarioOf(h)).toEqual(dropTemplate('P_NBI_MW', T / 2, 2)));
+  });
+
   it('shows the problems of a scenario that does not fit the model, live', async () => {
     const h = mount({ scenario: { schema: 1, waveforms: { not_a_control: { kind: 'step', points: [[0.01, 1]] } }, triggers: [{ diag: 'nope', op: '>', value: 1, set: { P_NBI_MW: 0 } }] } });
     await openScenarioStep(h);
@@ -339,6 +359,32 @@ describe('a run with a scenario', () => {
     expect(within(panel).getByText('No live interventions yet.')).toBeTruthy();
   });
 
+  it('the programmed lane resolves a null point (and the configured line) against the configured value, not the t = 0 value the scenario applied', async () => {
+    const configured = new Simulation({ ...TAE }).model.getControls().P_NBI_MW;
+    const start = configured + 3;
+    const scenario: ScenarioSpec = { schema: 1, waveforms: { P_NBI_MW: { kind: 'pwl', points: [[0, start], [T * 0.5, null]] as [number, number | null][] } } };
+    // the meta of this run has the scenario's t = 0 value: the trap
+    expect(new Simulation({ ...TAE }, { scenario }).model.getControls().P_NBI_MW).toBe(start);
+    const h = mount({ scenario });
+    // the run of the wizard's configuration: the store keeps the very object the run used, which the probes of the panel are keyed by (a preset object is shared between tests)
+    fireEvent.click(within(document.querySelector('.steps') as HTMLElement).getByText('RUN'));
+    fireEvent.click(await screen.findByRole('button', { name: '▶ START SHOT' }));
+    h.roundTrip();
+    h.advance(T * 0.7);
+    const panel = await screen.findByTestId('scenario-panel');
+    await answerProbe(h, 2); // the configured values of the controls
+    const l = within(panel).getByTestId('run-lane-P_NBI_MW');
+    const baseTitle = () => l.querySelector('line.scn-base title')!.textContent!;
+    await waitFor(() => expect(baseTitle()).toContain(String(Number(configured.toPrecision(4)))));
+    expect(baseTitle()).not.toContain(String(Number(start.toPrecision(4))));
+    // the programmed line ends where the dashed configured line is: no false discrepancy with what the run does
+    const d = l.querySelector('[data-testid="prog-P_NBI_MW"]')!.getAttribute('d')!;
+    const lastY = d.split(' ').pop()!.split(',')[1];
+    expect(lastY).toBe(Number(l.querySelector('line.scn-base')!.getAttribute('y1')).toFixed(1));
+    // and the first point is off that line (the scenario starts at another value)
+    expect(d.split(' ')[0].split(',')[1]).not.toBe(lastY);
+  });
+
   it('a run without a scenario or intervention has no scenario panel; the first intervention brings it', async () => {
     const h = mount();
     fireEvent.click(screen.getAllByTitle('Run this preset directly')[PRESETS.findIndex((p) => p.id === 'TAE')]);
@@ -380,7 +426,9 @@ describe('a run with a scenario', () => {
 
   it('record mode: the live interventions become a scenario for the next run, next to what the scenario already programs', async () => {
     const h = mount({ scenario: dropTemplate('P_NBI_MW', T * 0.9, 0) });
-    fireEvent.click(screen.getAllByTitle('Run this preset directly')[PRESETS.findIndex((p) => p.id === 'TAE')]);
+    // the run of the wizard's configuration: the store keeps the very object the run used, which the probes of the panel are keyed by (a preset object is shared between tests)
+    fireEvent.click(within(document.querySelector('.steps') as HTMLElement).getByText('RUN'));
+    fireEvent.click(await screen.findByRole('button', { name: '▶ START SHOT' }));
     h.roundTrip();
     h.advance(T * 0.3);
     fireEvent.change(screen.getByRole('slider', { name: 'P_NBI' }), { target: { value: '4' } });
@@ -470,6 +518,7 @@ describe('sharing and loading with a scenario', () => {
     const code = await encodeShare({ cfg: { ...TAE }, name: 'Linked', appVersion: APP_VERSION, scenario });
     window.location.hash = `#/share/${code}`;
     const h = mount({ scenario: dropTemplate('P_NBI_MW', 0.01, 9) });
+    await answerProbe(h, 2); // the model of the link's configuration vouches for its scenario
     expect(await screen.findByText(/Opened "Linked" from a shared link/)).toBeTruthy();
     expect(scenarioOf(h)).toEqual(scenario);
     // the notice offers to reproduce the exact run (a scenario is part of it)
@@ -509,5 +558,34 @@ describe('sharing and loading with a scenario', () => {
     window.location.hash = `#/embed/run/${code}?autoplay=0`;
     const h = mount();
     await waitFor(() => expect(h.live.last('init')).toMatchObject({ autoPlay: false, scenario }));
+  });
+
+  it('an embedded run with a scenario shows the lanes but no Edit-in-Setup or Record controls (the embed has no Setup)', async () => {
+    const scenario = dropTemplate('P_NBI_MW', T / 2, 2);
+    const code = await encodeShare({ cfg: { ...TAE }, name: 'embedded', appVersion: APP_VERSION, scenario });
+    window.location.hash = `#/embed/run/${code}?autoplay=1`;
+    const h = mount();
+    await waitFor(() => expect(h.live.last('init')).toMatchObject({ scenario }));
+    h.roundTrip();
+    h.advance(T * 0.3);
+    const panel = await screen.findByTestId('scenario-panel');
+    expect(within(panel).getByTestId('run-lane-P_NBI_MW')).toBeTruthy();
+    expect(within(panel).queryByRole('button', { name: 'Edit in Setup' })).toBeNull();
+    expect(within(panel).queryByRole('button', { name: 'Record interventions as a scenario' })).toBeNull();
+  });
+
+  it('opening a link whose scenario names a control the configuration lacks is refused up front (checked against the model), and changes nothing', async () => {
+    const bad = { schema: 1, waveforms: { bogus_control: { kind: 'step', points: [[0.01, 5]] } } } as never;
+    const code = await encodeShare({ cfg: { ...TAE }, name: 'Bad', appVersion: APP_VERSION, scenario: bad });
+    window.location.hash = `#/share/${code}`;
+    const keep = dropTemplate('P_NBI_MW', 0.01, 9);
+    const h = mount({ scenario: keep });
+    await answerProbe(h, 2);
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/could not be opened/);
+    expect(alert.textContent).toMatch(/does not fit the configuration/);
+    expect(alert.textContent).toMatch(/unknown control 'bogus_control'/);
+    expect(scenarioOf(h)).toEqual(keep);
+    expect(h.store.getState().cfgName).not.toBe('Bad');
   });
 });

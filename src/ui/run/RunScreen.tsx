@@ -21,7 +21,8 @@ const ProfilesPanel = lazy(() => import('./panels/ProfilesPanel').then((m) => ({
 const ImplosionPanel = lazy(() => import('./panels/ImplosionPanel').then((m) => ({ default: m.ImplosionPanel })));
 const ScenarioPanel = lazy(() => import('../scenario/ScenarioPanel'));
 
-interface Props { sim: SimApi; onReport: () => void; onSetup: () => void }
+/** `embedded`: the chrome-less embed page, which has no Setup: the scenario panel then only shows the lanes */
+interface Props { sim: SimApi; onReport: () => void; onSetup: () => void; embedded?: boolean }
 
 /** 1.5D: son profil karesi ve son denge anlık görüntüsü */
 export function latestProfileFrames(frames: UiFrame[]): { profFrame: UiFrame | null; eqFrame: UiFrame | null } {
@@ -34,7 +35,7 @@ export function latestProfileFrames(frames: UiFrame[]): { profFrame: UiFrame | n
 }
 
 /** Live run screen: layout only; each panel lives in ./panels. */
-export function RunScreen({ sim, onReport, onSetup }: Props) {
+export function RunScreen({ sim, onReport, onSetup, embedded = false }: Props) {
   const t = useT();
   const { state } = sim;
   const { meta, frames, events, status } = state;
@@ -89,7 +90,7 @@ export function RunScreen({ sim, onReport, onSetup }: Props) {
       <div className="center">
         {guard(<ChartsPanel meta={meta} frames={frames} events={events} groupsOn={groupsOn} onToggleGroup={toggleGroup}
           live={status === 'running'} resetKey={state.runId} onSeek={canSeek ? seekT : undefined} />)}
-        {(state.scenario || state.interventions > 0) && lazyGuard(<ScenarioPanel sim={sim} />)}
+        {(state.scenario || state.interventions > 0) && lazyGuard(<ScenarioPanel sim={sim} embedded={embedded} />)}
       </div>
 
       <div className="right">

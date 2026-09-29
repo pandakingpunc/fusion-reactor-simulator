@@ -31,6 +31,7 @@ export const persistTr: Record<PersistKey, string> = {
   'persist.notice.opened': '"{name}" paylaşılan bağlantıdan açıldı.',
   'persist.notice.odd': 'Bağlantıda {n} alışılmadık değer var (bilinmeyen alanlar ya da sihirbazın aralığı dışındaki değerler).',
   'persist.notice.failed': 'Paylaşılan bağlantı açılamadı: {reason}',
+  'persist.notice.scenarioNoFit': 'senaryosu yapılandırmaya uymuyor ({reason})',
   'persist.notice.dismiss': 'Kapat',
   'persist.notice.extras': 'Bağlantı ayrıca atışın kendisini de taşıyor (canlı müdahaleler, kesme noktaları ya da bir senaryo).',
   'persist.notice.reproduce': 'Atışı yeniden üret',

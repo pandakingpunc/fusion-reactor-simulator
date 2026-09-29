@@ -72,7 +72,7 @@ export default function EmbedView({ route, sim }: { route: EmbedRoute; sim: SimA
     <div className="persist-embed">
       <div className="row persist-embed-bar"><span className="muted small">{loaded.name}</span><span className="spacer" />{link}</div>
       {route.view === 'run'
-        ? <RunScreen sim={sim} onReport={() => undefined} onSetup={() => undefined} />
+        ? <RunScreen sim={sim} onReport={() => undefined} onSetup={() => undefined} embedded />
         : shot
           ? <Report shot={shot} onRerun={() => compute(loaded.cfg, loaded.name, loaded.scenario)} onEdit={() => window.open(openHref, '_blank', 'noopener')} />
           : <div className="panel muted" role="status">{p('persist.imp.checking', { pct })}</div>}

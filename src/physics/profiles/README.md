@@ -359,7 +359,7 @@ on a shot they can both run (`lossPower.test.ts`, `ignition.test.ts`, `fastIons.
 
 `ProfileSettings.pedestalModel = 'fixed'` (the default) is the pedestal of the settings: width `pedestalWidth` (0.06), barrier depth
 `etbFactor` (0.08), an ELM when α_ped/α_crit > 1 (`alphaCritFactor`) and a crash of `elmFraction` (0.35) × U(0.8, 1.2) of the pedestal region. `'eped1'`
-replaces all four with an EPED1-type pedestal (`pedestal/`; formulae, sources and what is anchored to what are in the headers of `eped1.ts`,
+replaces the width and trigger and adapts the barrier depth with an EPED1-type pedestal (`pedestal/`; formulae, sources and what is anchored to what are in the headers of `eped1.ts`,
 `PedestalModel.ts`, `loarte.ts` and `elmSize.ts`); `elmLoss = 'loarte'` replaces the crash size alone. The defaults change nothing (golden unchanged).
 
 - **Width and height.** The KBM width Δψ = 0.076 β_p,ped^{1/2} (Snyder et al. 2009; Groebner et al., GA-A26243) and a peeling–ballooning height that is

@@ -214,6 +214,16 @@ describe('library build', { timeout: 300_000 }, () => {
     expect(existsSync(join(LIB, 'presetRunner.worker.js'))).toBe(true);
   });
 
+  it('the exit-status soak script runs against a build (a handful of runs) and checks its arguments', () => {
+    const soak = join(ROOT, 'scripts', 'build-lib.stress.mjs');
+    const r = node([soak, '4', '2', '--lib', LIB], { cwd: ROOT });
+    expect(r.err).toBe('');
+    expect(r.out).toMatch(/all 4 runs of the compiled fusion-sim ended with the expected exit code/);
+    expect(r.code).toBe(0);
+    expect(node([soak, '0'], { cwd: ROOT }).code).toBe(2);
+    expect(node([soak, '3', '--lib'], { cwd: ROOT }).code).toBe(2);
+  });
+
   it('refuses to clean a directory it did not make', () => {
     const foreign = join(WORK, 'foreign');
     mkdirSync(foreign);

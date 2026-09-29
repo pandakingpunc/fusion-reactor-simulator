@@ -100,8 +100,11 @@ export interface EdgeResult {
   q_det: number; p_div: number;
   /**
    * seed concentration of the SOL at which the Lengyel model has a state with T_t = detachTt_eV, its sheath and the
-   * heat flux that survives the radiation in balance (0: such a state exists without seed; Infinity: no cooling); the concentration of
-   * the onset of detachment: at high recycling the attached branch collapses within a few percent to ×1.5 of it. An UPPER BOUND
+   * heat flux that survives the radiation in balance (0: such a state exists without seed, in particular a run of the
+   * 'prescribed' radiation that is already at or below that temperature; Infinity: no cooling); the concentration of
+   * the onset of detachment: at high recycling the attached branch collapses within a few percent to ×1.5 of it. For an
+   * attached run of the 'prescribed' radiation it is the requirement of the unradiated tube, that is, of a seed that does all of
+   * the divertor radiation (the prescribed f_rad,div is not subtracted from it). An UPPER BOUND
    * (lengyel.ts). The species it refers to (the seed, else neon) and the share of its cooling integral from below 100 eV follow
    */
   cz_det: number; cz_species: ImpuritySpecies; cz_belowFit: number;
@@ -222,7 +225,11 @@ export function solveEdge(pl: EdgePlasma, par: EdgeParams = DEFAULT_EDGE_PARAMS)
   // detachment
   const species: ImpuritySpecies = pl.seed?.species ?? 'Ne';
   const q_det = detachmentQualifier(g.P_sep, R, n_u, g.lint, pl.seed);
-  const cz = requiredSeedConcentration(par, species, g, n_u, m_i);
+  // 'prescribed' radiation stands in for whatever radiates in the divertor: a run that is already at or below the
+  // detachment temperature needs no (further) seed, whatever the unradiated tube would need. In the 'lengyel' mode
+  // the solution is that of the seed itself and the requirement is the onset concentration, reported as is.
+  const detachedAlready = par.radiation !== 'lengyel' && Tt <= par.detachTt_eV;
+  const cz = detachedAlready ? { c: 0, belowFit: 0 } : requiredSeedConcentration(par, species, g, n_u, m_i);
 
   return {
     lambda_q_mm: g.lq, S_mm: g.S, lambda_int_mm: g.lint, b: g.b,
@@ -241,7 +248,8 @@ export function solveEdge(pl: EdgePlasma, par: EdgeParams = DEFAULT_EDGE_PARAMS)
 /**
  * Lengyel concentration of the species at which the target temperature is the detachment temperature
  * (par.detachTt_eV): the heat flux that the sheath can take at T_det, q_cc = q_sheath/(1 − f_cool), against the heat flux
- * that arrives, q_u/b. Independent of the radiation mode of the run.
+ * that arrives, q_u/b. Independent of the radiation mode and of the solution of the run (solveEdge sets it to 0 for a
+ * 'prescribed' run that is already detached).
  */
 function requiredSeedConcentration(par: EdgeParams, species: ImpuritySpecies, g: Geometry, n_u: number, m_i: number): { c: number; belowFit: number } {
   const Tdet = par.detachTt_eV;

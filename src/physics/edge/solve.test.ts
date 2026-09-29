@@ -302,6 +302,44 @@ describe('detachment diagnostics of the solution', () => {
     const dead = resolveEdgeParams({ lambdaQ_mm: 2 }, { Ar: new LengyelIntegral(() => 0) });
     expect(solveEdge({ ...iter, seed: { species: 'Ar', c: 0 } }, dead).cz_det).toBe(Infinity);
   });
+
+  it('a run of the prescribed divertor radiation that is already at or below the detachment temperature needs no seed: c_z = 0, not the requirement of the unradiated tube', () => {
+    // f_rad,div = 0.9: attached (T_t ≈ 19 eV), the requirement is that of a seed that does all of the radiation
+    const attached = solveEdge({ ...iter, f_rad_div: 0.9 });
+    expect(attached.T_t).toBeGreaterThan(DEFAULT_EDGE_PARAMS.detachTt_eV);
+    expect(attached.cz_det).toBeGreaterThan(0);
+    expect(attached.cz_det).toBe(solveEdge({ ...iter, f_rad_div: 0 }).cz_det);
+    // f_rad,div = 0.95 and beyond: the target is at the temperature floor, detached, and no seed is needed
+    for (const f of [0.95, 0.99, 1]) {
+      const r = solveEdge({ ...iter, f_rad_div: f });
+      expect(r.state).toBe(DETACHED);
+      expect(r.T_t).toBeLessThanOrEqual(DEFAULT_EDGE_PARAMS.detachTt_eV);
+      expect(r.cz_det).toBe(0);
+      expect(r.cz_belowFit).toBe(0);
+    }
+    // c_z = 0 exactly when T_t is at or below the onset temperature, over the whole range of the prescribed radiation
+    for (let k = 0; k <= 20; k++) {
+      const r = solveEdge({ ...iter, f_rad_div: k / 20 });
+      expect(r.cz_det === 0, `f_rad,div = ${k / 20}, T_t = ${r.T_t}`).toBe(r.T_t <= DEFAULT_EDGE_PARAMS.detachTt_eV);
+    }
+    // the criterion is the onset temperature of the parameters: raising it to 30 eV takes the 19 eV run into "detached already"
+    const at30 = solveEdge({ ...iter, f_rad_div: 0.9 }, resolveEdgeParams({ detachTt_eV: 30 }));
+    expect(at30.T_t).toBeCloseTo(attached.T_t, 6);
+    expect(at30.cz_det).toBe(0);
+  });
+
+  it('with the Lengyel radiation the requirement is the onset concentration of the seed, whatever the state of the run', () => {
+    const par = resolveEdgeParams({ radiation: 'lengyel' });
+    const p: EdgePlasma = { ...iter, n_sep: 1.2e20, f_rad_div: 0.99, seed: { species: 'Ne', c: 0 } };
+    const r = solveEdge(p, par);
+    expect(r.cz_det).toBeGreaterThan(0); // an attached, unseeded run of the seed's mode: the concentration that would detach it
+    expect(r.T_t).toBeGreaterThan(DEFAULT_EDGE_PARAMS.detachTt_eV);
+    // a seed above the onset concentration detaches the run, and the requirement (a property of the SOL) does not change to 0
+    const seeded = solveEdge({ ...p, seed: { species: 'Ne', c: 3 * r.cz_det } }, par);
+    expect(seeded.T_t).toBeLessThanOrEqual(DEFAULT_EDGE_PARAMS.detachTt_eV);
+    expect(seeded.cz_det).toBeGreaterThan(0);
+    expect(rel(seeded.cz_det, r.cz_det)).toBeLessThan(0.05);
+  });
 });
 
 describe('robustness and purity', () => {

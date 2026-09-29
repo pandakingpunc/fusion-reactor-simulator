@@ -34,6 +34,32 @@ radiated power is checked against the cooling integrals (`closure`, `closureLeng
 
 `cz_det` is the seed concentration at which the Lengyel model has a state with `T_t = detachTt_eV` (5 eV); at high recycling
 the attached branch collapses within a few percent to a factor 1.5 of it (a partially detached window a few percent wide).
+`cz_det = 0` means that no seed is needed: a state with `T_t <= detachTt_eV` exists without one. That includes a run of the
+`'prescribed'` radiation that is already at or below that temperature (the prescribed `f_rad_div` stands in for whatever radiates in the
+divertor; the MAST-U presets are of this kind); for an attached `'prescribed'` run `cz_det` is the requirement of the unradiated
+tube, that is, of a seed that does all of the divertor radiation (the prescribed fraction is not subtracted). In the `'lengyel'` mode
+it is always the onset concentration of the seed. The `cz_det` channel is capped at 1 (`CZ_CAP`): a concentration of one or more is no
+attainable seeding, and a channel value at the cap reads "more than 100 %".
+
+### Report rows
+
+* `c_z for detachment, Lengyel upper bound (%)`: the flat-top mean in percent; `0` where no seed is needed; `n/a (> 100 %)` where the model
+  finds no attainable seeding in the whole flat top (the JET, SPARC, DIII-D and JT-60SA presets: the coronal cooling function is deficient
+  below 100 eV, where the seed radiates most; this is not the same as 100 %); `≥ X (> 100 % in N % of the flat top)` where only part of it
+  is capped: the mean of the channel, which counts a capped frame as one, is then a lower bound of the mean requirement (the ITER p-B11 case,
+  whose flat top swings between detached and attached frames, is of this kind). The species of the row is the seed of the configuration (neon
+  without one). The Kallenbach qualifier is not turned into a second row: `EdgeResult.cz_qdet` has the concentration at which `q_det = 1`
+  (ITER preset flat top: 35 % of argon and 70 % of neon, against the 34 % of argon of the Lengyel row), but the scaling is outside its range
+  at ITER-size P_sep/R and the channel `q_det` carries the information.
+* **Two divertor-load rows.** `Divertor q_max (MW/m²)` is the legacy engineering estimate: the maximum over the whole shot (the start-up
+  transient and the ELM peaks included) of `P_SOL (1 - f_rad_div) (2/3) / A_wet` with `lambda_int = 2.64 lambda_q` (`S = lambda_q`), the
+  configured radiated fraction and no momentum or power loss factors. `Target q_peak, two-point (MW/m²)` is the flat-top mean of the
+  plasma sheath load of the two-point solution: the power that reaches the plate after `f_cool` and the radiation of the leg, over the wetted
+  area of the Eich/Makowski width (`S = 1.22 lambda_q` by default, so `lambda_int = 3.0 lambda_q`). They agree in order of magnitude where
+  the divertor is attached at the configured `f_rad_div` (ITER 38 against 25, JET 8.8 against 7.3) and differ where the two-point solution
+  detaches the target (MAST-U 1.2 against 0, ITER D-He3 12 against 0.1): the momentum and power losses of the sheath solution take the
+  heat flux off the plate, which the engineering row, with its fixed radiated fraction, cannot show. The first is a maximum over the
+  shot, the second a flat-top mean; neither is a design limit.
 
 ## Where it is used
 
@@ -70,4 +96,4 @@ Options: `MagneticConfig.divertor.edge` (`EdgeOptions` in `types.ts`, resolved b
 `scalings.test.ts` (Eich, Makowski, loss fits), `twoPoint.test.ts` ((q L)^{2/7} law, sheath), `lengyel.test.ts` (cumulative integrals against brute-force
 quadrature, the flux-tube equations integrated with RK4, the T_u approximation), `detachment.test.ts`, `solve.test.ts` (structure, power closure to 1e-8 including an independent
 quadrature of the radiated power, ITER unseeded and seeded in the regime of Pitts et al., NME 20 (2019) 100696 and Lore et al. 2022, robustness),
-`integration.test.ts` (0D, 1.5D, POPCON, the ELM-inclusive P_SOL).
+`integration.test.ts` (0D, 1.5D, POPCON, the ELM-inclusive P_SOL, the c_z row of the report).

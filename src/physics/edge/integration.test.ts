@@ -6,11 +6,11 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { runAllYielding } from '../../testing/yielding';
 import { flatTopMean } from '../analysis/flatTop';
 import { computePopcon } from '../popcon';
-import { ITER, JET, W7X } from '../presets';
+import { ITER, JET, MASTU, W7X } from '../presets';
 import { Simulation } from '../simulation';
 import type { MagneticConfig } from '../types';
 import { FUEL_SPECIES } from '../reactivity';
-import { EDGE_DIAGS, edgeDiagnostics, edgePlasma0D, edgeReportEntries, edgeSetup, separatrixDensity, solveEdge } from './index';
+import { EDGE_DIAGS, edgeDiagnostics, edgePlasma0D, edgeReportEntries, edgeReportEntriesOf, edgeSetup, separatrixDensity, solveEdge } from './index';
 
 const EDGE_KEYS = EDGE_DIAGS.map((d) => d.key);
 
@@ -79,6 +79,42 @@ describe('edge diagnostics of the 0D model', { timeout: 120_000 }, () => {
     expect(e['Detachment state']).toBe('attached');
     expect(edgeReportEntries((k) => (k === 'T_t' ? 5 : 1), true)['Detachment state']).toBe('partially detached');
     expect(edgeReportEntries((k) => (k === 'T_t' ? 0.6 : 1), true)['Detachment state']).toBe('detached');
+  });
+
+  it('c_z row of the report: "n/a (> 100 %)" when the flat top is at the cap (no attainable seeding), never a clipped 100 %; 0 when no seed is needed; a lower bound with the share of capped frames when mixed', () => {
+    const CZ = 'c_z for detachment, Lengyel upper bound (%)';
+    /** ten frames; the flat top is the last three (index 7 to 9); cz per frame */
+    const hist = (cz: number[], Tt = 100) => cz.map((c, i) => ({ t: i, d: { T_t: Tt, P_sep_R: 10, q_peak: 5, cz_det: c } }));
+    const row = (cz: number[]) => edgeReportEntriesOf(hist(cz))[CZ];
+    expect(edgeReportEntriesOf([])).toEqual({});
+    expect(edgeReportEntriesOf([{ t: 0, d: { P_heat: 1 } }])).toEqual({});
+    expect(row([0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 1, 1, 1])).toBe('n/a (> 100 %)');
+    expect(row([1, 1, 1, 1, 1, 1, 1, 0.25, 0.25, 0.25])).toBe(25);
+    expect(row(Array(10).fill(0))).toBe(0);
+    expect(row([0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.2, 0.2, 1])).toBe('≥ 46.67 (> 100 % in 33 % of the flat top)');
+    expect(row([0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 1, 1, 0.1])).toBe('≥ 70.00 (> 100 % in 67 % of the flat top)');
+    expect(row([0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.2, 0.2, NaN])).toBe('n/a');
+    // the other rows are those of the flat-top means with the same convention as the report
+    const e = edgeReportEntriesOf(hist([0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5], 5));
+    expect(e['Detachment state']).toBe('partially detached');
+    expect(e['Target T_e, two-point (eV)']).toBe(5);
+    expect(e['P_sep/R (MW/m)']).toBe(10);
+    // with a capped frame in the flat top, the mean-based function keeps its own contract: capShare is an input
+    expect(edgeReportEntries(() => 1, true, 1)[CZ]).toBe('n/a (> 100 %)');
+    expect(edgeReportEntries(() => 0.3, true)[CZ]).toBe(30);
+  });
+
+  it('the report of runs the model detaches by its prescribed divertor radiation (MAST-U) needs no seed (0 %), and where no seeding is attainable (JET) it says so', async () => {
+    const CZ = 'c_z for detachment, Lengyel upper bound (%)';
+    const mastu = new Simulation(MASTU as MagneticConfig); await runAllYielding(mastu);
+    const em = mastu.runAll().engineering as Record<string, number | string>;
+    expect(em['Detachment state']).toBe('detached');
+    expect(flatTopMean(mastu.history, 'cz_det')).toBe(0);
+    expect(em[CZ]).toBe(0);
+    const jet = new Simulation(JET as MagneticConfig); await runAllYielding(jet);
+    const ej = jet.runAll().engineering as Record<string, number | string>;
+    expect(ej[CZ]).toBe('n/a (> 100 %)');
+    expect(ej['Detachment state']).toBe('attached');
   });
 
   it('is finite in the start-up transient and after a disruption too (JET: disrupted and short shots)', () => {

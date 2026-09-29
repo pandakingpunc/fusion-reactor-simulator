@@ -41,11 +41,11 @@ fusion-sim run --preset ITER15 --format imas --out iter15.imas.json --no-profile
 `--format` defaults to the `--out` extension (`.csv`, `.nc`, `.ndjson`, `.json`, `.txt`), else `json`: the shot
 report, the flat-top and burn-weighted averages, event counts, the resolved configuration and a provenance block.
 `--series KEY,...` (or `all`) adds time series to the JSON and selects columns for csv, ndjson and netcdf; `--every N`
-thins frames. NetCDF is binary: it needs `--out FILE` (or `--out -` on a pipe). The formats are described in
+thins frames (the first and the last frame are always kept). NetCDF is binary: it needs `--out FILE` (or `--out -` on a pipe). The formats are described in
 `src/io/README.md`. IMAS-like JSON covers magnetic-confinement runs only.
 
 **Output is deterministic.** The provenance block holds the software version, the concept DOI, the git commit and
-dirty flag (null outside a checkout), Node and V8 versions, the preset, the seed, the SHA-256 of the canonical
+dirty flag (null unless the package is the top level of its own git checkout: an installed copy under some project's node_modules never reports that project's commit), Node and V8 versions, the preset, the seed, the SHA-256 of the canonical
 configuration and the run fingerprint (`runFingerprint`); no path, user name, time or duration. The same
 configuration gives the same bytes.
 

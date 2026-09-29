@@ -13,7 +13,7 @@ export async function restoreLocaleThenRender(store: Pick<AppStore, 'actions'>, 
   try {
     await store.actions.restoreLocale();
   } catch (err) {
-    console.warn('Could not restore the saved interface language; starting in English.', err);
+    console.warn('Saved language not restored; starting in English.', err);
   } finally {
     render();
   }

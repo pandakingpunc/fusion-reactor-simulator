@@ -76,7 +76,7 @@ describe('how a finished shot is shown', () => {
       React.createElement(LiveValuesPanel, { meta, last: toUiFrame(sim.history[0]), report })));
     expect(markup).toContain('Equilibrium failure');
     expect(markup).toContain(equilibrium.fix);
-    expect(markup).toContain('Power balance and stored energy');
+    expect(markup).toContain('Power balance and energy');
     expect(markup).toContain('title="P_beam (NBI ions, deposited)"');
     expect(markup).toContain('>no<'); // the ignited tile is a word, not 0
   }, 60_000);

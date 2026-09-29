@@ -40,7 +40,7 @@ export function TerminationBox({ term, timeUnit, full, style }: Props) {
   const t = useT();
   const failure = solverFailureTitle(term);
   return (
-    <div className={`diag-box ${terminationClass(term)}`} style={style} data-testid="termination">
+    <div className={`diag-box ${terminationClass(term)}`} style={style}>
       <div>
         <b>{failure ? t(failure) : term.reason}</b>
         {full && <span className="muted small"> @ {fmtTime(term.t, timeUnit)}</span>}

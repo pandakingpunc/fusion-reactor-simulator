@@ -23,7 +23,7 @@ current equilibrium and transport geometry, work arrays, plasma and controller s
 | `settings.ts` | the check of the step-control settings: `rtol`, `atol` and `dtMax` outside their domain are replaced by the default and reported |
 | `boundary/sol.ts` | separatrix values (two-point T_sep, n_sep), lagged P_SOL |
 | `sources/` | `SourceModel` plug-ins: `nbi`, `rf`, `fusion`, `radiation`, `exchange`; `current.ts` (σ_neo, bootstrap, ohmic); `deposition.ts` (profiles, NBI chord). `fusion` evaluates every channel of the fuel with the helpers the 0D model uses (`pairDensity`, `burnPerReaction`, the products of `FUEL_CHANNELS`) |
-| `transport/` | `TransportModel` plug-ins: `scaling`, `cgm`; `coefficients.ts` adds barrier (`pedestal.ts`), D and pinch, NTM islands, neoclassical floor |
+| `transport/` | `TransportModel` plug-ins: `scaling`, `cgm`, `bgb` (`gyrobohm/`: mixed Bohm/gyro-Bohm, Erba et al.), `ifspppl` (`ifspppl/`: IFS-PPPL, Kotschenreuther et al.); `coefficients.ts` adds barrier (`pedestal.ts`), D and pinch, NTM islands, neoclassical floor |
 | `control/` | heating (with the ignition-test ramp-down) and density programmes, the plasma-current programme I_p(t) (`plasmaCurrent.ts`), fueling feedback, loss power P_L, τ_E scaling and the C_χ controller |
 | `solver/` | `pipeline.ts` (evaluation order), `coupledStep.ts` (the TR-BDF2 step: the stage solver, error control, event localisation, failures), `newtonStage.ts` (Newton–Raphson on a stage; the block-tridiagonal LU, the coloured Jacobian and the damped Newton iteration are `numerics/blockTridiagN.ts` and `numerics/newton.ts`), `trbdf2.ts` (method constants, error estimate, controller), `localise.ts` (dense output and event crossing), `acceptStep.ts` (update after an accepted step) |
 | `coupling/equilibrium.ts` | Grad–Shafranov coupling: initial solve (guarded, `eqguard.ts`), update policy, the update as a self-consistent solve (`coupling/outer.ts`: outer iteration of the tables on the equilibrium's own surfaces; `coupling/tables.ts`: node and table helpers); a geometry that replaces another one is built on the radial grid of the one it replaces |
@@ -166,7 +166,8 @@ model: the differential diffusivity is 20 times χ near the threshold): a third 
 stage: under 3 % of the attempts are repeated and the 10 s run takes about 3 s. It is the fast path of the `scaling` model, whose χ is a smooth
 function of the gradient, and stays that (bit for bit) whatever else changes.
 
-**Newton** (`ProfileSettings.nonlinearSolver`: `'auto'`, the default, uses it for a predictive model, `'newton'` for every model, `'picard'`
+**Newton** (`ProfileSettings.nonlinearSolver`: `'auto'`, the default, uses it for a predictive model unless the model names another solver in
+`TransportModel.preferredSolver` (`'bgb'` and `'ifspppl'` name `'pc'`, "Cost of the predictive closures" below), `'newton'` for every model, `'picard'`
 and `'pc'` never). A stage is a root of F(z) = 0 for z = (T_e, T_i, n_e, ψ) of the N cells: the balance of each field over the stage interval,
 F = (content − reference)/Δ − explicit rate − R(z), where R is the right-hand side of the finite-volume solvers (`residual`, `rate`) with every
 coefficient evaluated at z (`solver/newtonStage.ts`). A fixed point of the Picard iteration is a root of F and the other way round (a test
@@ -240,6 +241,67 @@ The scatter of the flat-top means between neighbouring runs (0.1 to 0.5 %) is th
 oscillatory convergence (the GCI of the finest runs is 1 to 15 % for these four means, the observed orders of the smooth ones 0.4 to 4): the differences
 above are the statement, not the extrapolation. The means moved by the current-diffusion form between the previous stage's table and this one (Q 10.56 → 10.65,
 ℓ_i 0.743 → 0.739, f_bs 0.2286 → 0.2300, T_ped 3.401 → 3.421 keV at the defaults) but not their convergence.
+
+## Predictive closures: 'bgb' and 'ifspppl'
+
+Two published closures, opt-in (`profiles.transportModel`; the default stays `'scaling'`), both `predictive: true`: τ_E = W/P_loss and C_χ = 1, so confinement
+is what the physics gives. Every coefficient is the paper's (nothing is fitted here); each source file carries the equations and the adaptations.
+
+- **`'bgb'`** (`transport/gyrobohm/`; Erba et al., Plasma Phys. Control. Fusion 39 (1997) 261 and Nucl. Fusion 38 (1998) 1013; the form of the NTCC
+  JETTO module): χ_e = α_Be χ_B + α_gBe χ_gB, χ_i = α_Bi χ_B + α_gBi χ_gB with α_Be = 8·10⁻⁵, α_Bi = 2 α_Be, α_gBe = 3.5·10⁻², α_gBi = α_gBe/2, the
+  Bohm term χ_B = (T_e/eB) (a|∇p_e|/p_e) q² Λ with the non-local factor Λ = [T_e(0.8) − T_e(edge)]/T_e(edge), and the gyro-Bohm term
+  χ_gB = (T_e/eB) (a|∇T_e|/T_e) ρ*. Λ is held over the step (`prepare`). The edge is the separatrix value in L-mode and **the top of the pedestal
+  (1 − `pedestalWidth`) in H-mode** (an assumption: with the separatrix as the reference Λ is 40 in an ITER H-mode and χ_B 30 m²/s; the paper's H-mode
+  treatment is not in the open text).
+- **`'ifspppl'`** (`transport/ifspppl/`; Kotschenreuther, Dorland, Beer and Hammett, Phys. Plasmas 2 (1995) 2381, equations (1)–(4), checked against
+  the journal pages): the ion critical gradient R/L_Tcrit^(1) and the stiffness G(x) = min(x, √x) H(x) of the deuterium mode, the carbon mode, and
+  χ_e from the ratio of the electron to the ion flux, in units of ρ_i² v_ti/R with C0 = 12. It replaces the constants of `'cgm'` (κ_c = 4.5, q^3/2,
+  a 0.05 m²/s floor); `'cgm'` stays. The fit is clamped to its domain of validity (q, ŝ, R/L_n, T_i/T_e, Z_eff, ν), the beam charge fraction σ_b is
+  neglected, ŝ comes from the q profile of the old state (`prepare`). The paper predicts r/a < 0.8 with the measured T at 0.8 as the boundary, and says
+  of its equations that they hold for circular geometry and cannot yet be compared quantitatively with most H-modes (elongation, X-point, rotation
+  shear); here the fit is used out to the separatrix, with the barrier of `coefficients.ts` on top.
+
+**What they arrive at.** The diagnostics `H98y2` = τ_E/τ_IPB98(y,2) and `HITPA20` = τ_E/τ_ITPA20 (same loss power, line-averaged density and geometry, H = 1,
+no NTM factor; `control/confinement.ts` `emergentH`) are written only when the transport model is predictive, and the report gets their flat-top means and
+the emergent τ_E. Flat-top means (`nonlinearSolver: 'auto'`, defaults, ITER15 400 s, JET15 the preset's 5.5 s, the others 2.5 s of the ramp-up; ws6b, Wave 2B):
+
+| | `'bgb'` H98 / H(ITPA20) / Q / T_ped [keV] / α_ped/α_crit | `'ifspppl'` |
+| --- | --- | --- |
+| ITER15 | 0.70 / 0.82 / 5.98 / 1.53 / 0.29 (τ_E 2.45 s, W 224 MJ) | 0.29 / 0.34 / 0.20 / 0.53 / 0.07; L-mode at the target density (P_loss 39 MW against P_LH 69 MW; it is in H-mode at 10 s, while the density is low, and falls back) |
+| JET15 | 1.02 / 1.10 / 0.63 / 1.60 / 0.80 | 0.44 / 0.47 / 0.17 / 0.95 / 0.97 |
+| SPARC15 (2.5 s) | 0.63 / 0.60 / 1.52 / 1.28 / 0.14 | 0.30 / 0.28 / 0.09 / 1.23 / 0.22 |
+| DIII-D 1.5D (2.5 s, D-D) | 1.09 / 1.08 / – / 0.60 / 0.95 | 0.52 / 0.51 / – / 0.39 / 0.90 |
+| MAST-U 1.5D (2.5 s, D-D) | 0.93 / 0.94 / – / 0.088 / 1.09 | 0.46 / 0.46 / – / 0.078 / 0.82 |
+
+The target of 0.8 to 1.2 is met by `'bgb'` on JET15 (the machine of its coefficients), DIII-D and MAST-U, not on ITER15 (0.70) and SPARC15, and by no case of
+`'ifspppl'`. Nothing was tuned to move these. The pattern is the pedestal: where the predicted pedestal reaches the ballooning limit (α_ped/α_crit near 1:
+JET15, DIII-D, MAST-U) `'bgb'` gives H98 near 1; on ITER15 and SPARC15 the fixed barrier (`etbFactor` 0.08, `pedestalWidth` 0.06, inputs made for the
+`'scaling'` closure where C_χ absorbs them) leaves the pedestal transport-limited at 0.14 to 0.29 of the limit, 1.5 keV against the 3.5 keV of the scaling run
+and the EPED-type 4.5 keV. Inside the barrier the Bohm χ ∝ a|∇p|/p grows with the local steepness of the pedestal, so the
+factor of 0.08 brings it back only to about the core value (χ_e before the barrier about 5.6 m²/s there, 0.45 after it, against 0.55 in the core). As a sensitivity, not a setting (`etbFactor` in
+`profiles`): ITER15 `'bgb'` with etbFactor 0.08 / 0.04 / 0.02 / 0.01 gives H98 0.70 / 0.83 / 0.89 / 0.95, T_ped 1.53 / 2.42 / 3.68 / 3.56 keV,
+α_ped/α_crit 0.29 / 0.52 / 0.83 / 0.80 and Q 6.0 / 9.3 / 10.6 / 14.4 (P_fus 305 / 472 / 531 / 724 MW; H(ITPA20) 0.82 / 0.96 / 1.03 / 1.09); JET15 at 0.02:
+H98 1.14, SPARC15 0.82. A pedestal that stops at the ballooning limit whatever the barrier (the pedestal lane's job) is the physical cure. `'ifspppl'`
+does not move with the barrier (JET15 0.44 to 0.45 at 0.02: its pedestal is already at the limit): the fit's own confinement is low for these H-mode
+plasmas, as its authors warn, and its τ_E is set by the temperature at r/a = 0.8 (their sensitivity, because a profile near marginal stability hardly answers to the amplitude: τ_E ∝ C0^−0.13 and T_0 ∝ C0^−0.25).
+
+**Cost of the predictive closures** (wall seconds on a machine shared by about ten agents: read the ratios; same run, the solvers differ by 3·10⁻³ or
+less in every flat-top number): Newton / stabilised Picard (`'pc'`) / Picard with Anderson mixing.
+
+| run | `'bgb'` | `'ifspppl'` |
+| --- | --- | --- |
+| ITER15 400 s | 23.0 / 13.2 / 15.8 (4 fallbacks of 3842 steps) | 199.7 / 71.3 / not run (4174 fallbacks of 8751 steps) |
+| JET15 5.5 s | 22.4 / 6.5 / 8.0 | 50.9 / 38.7 / 150.1 (4125 failed attempts) |
+| SPARC15 2.5 s | 9.1 / 4.4 / – | 13.5 / 10.2 / – |
+| DIII-D 1.5D 2.5 s | 13.2 / 7.6 / – | 113.7 / 83.4 / – |
+| MAST-U 1.5D 2.5 s | 324.8 / 164.7 / – | 650 / 650 / – |
+
+Newton does not pay for either closure (the fit of `'ifspppl'` has clamps, a threshold and a kink at G = 1, and a marginal L-mode profile sits on them: a
+C¹ smoothing of the threshold over 0.1 to 0.4 in R/L_T left the fallback rate at 13 to 18 %, 15 % without it, ITER15 80 s), so `preferredSolver` is `'pc'` for both; the failed attempts of `'pc'` are
+cheap (dt × 0.4 retries: about 5 % of the accepted steps of `'ifspppl'` in ITER15, JET15 and DIII-D) and the shots end normally. Newton stays selectable and tested (the coloured Jacobian of
+both closures equals the column-by-column one, nothing outside the band). The Jacobian is still not kept from one step to the next (chunk invariance and exact
+rewind need no cache); within a step it is reused as before (chord method, the second stage starts from the first's). `'cgm'` shows the same pattern (README
+above: 3.9 s Newton against 1.8 s PC for its ramp-up) and keeps Newton: a default that moves its results is an owner decision.
 
 ## Current diffusion and the plasma-current programme
 
@@ -398,7 +460,11 @@ anomalous χ on the N + 1 faces; barrier, particle transport, islands and floors
 evaluation: idempotent). `predictive: true` leaves confinement to the model (τ_E = W/P_loss,
 C_χ = 1); `false` puts the amplitude under the C_χ controller that tracks the τ_E scaling. Optional
 `accepted(ctx, t, dt, yOld, y)` (runs before the sources' hooks) and `geometryChanged(ctx, tg)`
-work as for sources.
+work as for sources. Optional `prepare(ctx, t, st)` runs once per attempt on the OLD state, before any evaluation of `diffusivities` of that
+attempt (and for a state no step produced): a closure holds there what would break the block-tridiagonal Jacobian of the Newton solve (a cell couples
+to its two neighbours: a temperature difference between two far cells, the magnetic shear from the second derivative of ψ). It is a function of
+the old state only, so a step stays a function of its inputs (chunk invariance, exact rewind) and nothing is checkpointed; the lag is first
+order in the step. Optional `preferredSolver` (`'newton'`, the default of a predictive model, or `'pc'`) is what `nonlinearSolver: 'auto'` uses.
 
 **EventModel** (`events/EventModel.ts`), added in `defaultEvents()` (`events/index.ts`) before the
 disruption check: `afterStep(ctx, t, st, d, ev)` after every accepted step of the normal phase,
@@ -489,9 +555,15 @@ model take part as soon as they implement the hooks; other parts are listed in
   slower: the steps are shorter). Its stages are solved by Newton, which is about 1.3 to 1.5 times the cost of Picard with Anderson
   mixing: the Jacobian is 12 evaluations of the whole physics, and reusing it from step to step would need it in the checkpoint.
 - P_SOL (two-point T_sep) follows the lagged global balance P_heat − P_rad − dW/dt, not P_bound, on
-  purpose: the instantaneous flux would couple T_sep and the edge gradient step by step. The raw dW/dt of the last step still
-  makes P_SOL and T_sep oscillate from step to step at Δt above about 15 ms (the outermost cells then hold the step near
-  10 ms in the ITER15 H-mode); the smoothed dW/dt (`ctx.dWdtS`) would not (an open issue of the edge work).
+  purpose: the instantaneous flux would couple T_sep and the edge gradient step by step. Its dW/dt is the smoothed, ELM-inclusive one
+  (`ctx.dWdtS`, since the edge lane): the raw dW/dt of the last step made P_SOL and T_sep oscillate from step to step at Δt above about 15 ms and held the step
+  near 10 ms in the ITER15 H-mode; with the smoothed one the flat-top steps of ITER15 (`'scaling'`, 100 to 150 s) are 14 ms at the median, 40 ms at the 90th
+  percentile, 92 ms at most. P_SOL itself is a first-order lag (τ = 20 ms, exponential in the step) on the balance of the end of the step, so a step cut
+  short carries the lag of the last one. That lag is not what makes the energy residual of a step (`energyResidual`) large: in the `'cgm'` ITER15 ramp-up
+  (10 s) the residual is 7·10⁻⁷ of P_heat on the 770 ordinary steps of 10 to 30 ms and up to 1.3·10⁻³ on the few steps shorter than 0.5 ms, which are the steps
+  right after a discontinuity (the start-up at 0.24 s: 1.3·10⁻³; the L–H transition at 8.45 s: 1 to 3·10⁻⁴ over four steps of 0.3 to 1.2 ms; a sawtooth crash at
+  9.02 s: up to 1·10⁻⁴), where the coefficients of the old state and of the step differ. It scales as 1/Δt and does not correlate with the change of P_SOL over the
+  step (r = −0.07); an item for the solver owner, not for the boundary.
 - The step is second order in the transport equations only. The quantities that are updated once per accepted step (C_χ, P_SOL and the
   boundary values, the fueling command, the source deposition, the inventories) are first order, and the flat-top numbers of the
   ELM H-mode keep a dependence on Δt that the tolerance does not remove ("Time stepping").
@@ -521,6 +593,8 @@ model take part as soon as they implement the hooks; other parts are listed in
 | `fastIons.test.ts` | fast-ion pressure in β, β_N,th, the steady content per cell; the pools: exact relaxation, W ≤ ∫P dt after every step, JET15 with 300 and 500 keV beams to their scheduled end, decay after the beam is off, replay from a start-up frame, disruption |
 | `checkpoint.test.ts` | the checkpoint contract: key collisions, numeric records, restore from a record with missing keys |
 | `transport/transport.test.ts` | 'cgm' smoke test (ITER15 ramp-up; runs through `runAllYielding`) |
+| `transport/gyrobohm/gyrobohm.test.ts`, `transport/ifspppl/ifspppl.test.ts` | the two closures: the published coefficients and equations against separately evaluated reference points, the structure (Bohm ∝ q² Λ a/L_p, gyro-Bohm ∝ ρ*; the trends the IFS-PPPL paper states, the threshold, G, the domain clamp), the models on a JET15 state (registered, predictive, Λ and ŝ of the old state, finite χ) |
+| `transport/predictive.test.ts` | `'bgb'` and `'ifspppl'` on JET15 ramp-ups: `'auto'` takes the stabilised Picard iteration, no forced step, τ_E = W/P_loss, `H98y2` and `HITPA20` against `tauHmode` in every frame and in the report, the Newton Jacobian of both closures is block-tridiagonal (coloured against column-by-column, nothing outside the band), chunk invariance and exact rewind (stabilised Picard, and Newton for `'bgb'`), the `prepare` hook (once per attempt, before the diffusivities, on the old state) |
 | `integrity.test.ts` | equilibrium swaps (fresh work arrays), GS failures, the current-scale gate and retry timing, step failures (numerical failures retried, programming errors propagate with the state put back, also from the update after the accepted step), reported τ_E, initial equilibrium, replays from quench frames |
 | `grid.test.ts` | the radial grid: the uniform path double for double, the packed grid (cells across the pedestal, smoothness, one map for every N), lookups; diffusion operator with a manufactured solution (observed order 2.0 on the packed grid), conservation of energy, particles and enclosed current, `alphaMHD` with the separatrix face; pins of two uniform-grid shots |
 | `profiles.test.ts` | solver verification (analytic), neoclassical, MHD helpers, integration runs |

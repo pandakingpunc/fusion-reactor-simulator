@@ -19,6 +19,10 @@
  *    and the fit is used across the whole minor radius, although the paper predicts r/a < 0.8 and finds the formula below the
  *    measured χ in the outer 10-20 %: L-mode edge temperatures come out too high, in H-mode the pedestal is the barrier's.
  * The fit was made for D-T-like hydrogenic plasmas with carbon or beam dilution; a seeded or heavy impurity enters only through Z_eff.
+ * The authors state that equations (1)-(4) hold for circular geometry and cannot yet be compared quantitatively with most H-modes (elongated
+ * plasmas with an X-point, rotation shear), and that the confinement follows from the temperature at r/a = 0.8: on the shaped H-mode presets the
+ * emergent H98(y,2) is 0.3 to 0.5 (README of profiles/, "Predictive closures"), which is what the fit gives there, not a calibration to fix.
+ * Newton does not pay for it (preferredSolver).
  */
 import { AMU, KEV, type ProfileContext } from '../../context';
 import { faceValue } from '../../geometry1d';

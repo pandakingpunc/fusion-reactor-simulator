@@ -308,13 +308,28 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   runs on it: the tests and the preset scan run in parallel, show progress per run and can be cancelled.
 - The POPCON chart takes an operating point of its own (`point`), which the Learn ignition mission sets with sliders; by default it
   is still the last frame of the run.
+- Report, Compare and the exports show every engineering, edge and systems key with an English and a Turkish label and its unit
+  (`src/ui/report/keys.ts`; the raw key stays as the row tooltip and in the files, and a test checks the table against every key of the
+  golden reports). The summary CSV gains `label` and `unit` columns after `key,value`.
+- Explain popovers on the Report summary quantities, the KPI labels and the live values of the run screen; the power-flow diagram in the
+  Report (magnetic runs) and as a collapsible in the live values; Compare shows the verification badge of verified shots and, on request,
+  their engineering values.
+- Setup wizard, Advanced section (a lazy chunk, closed until opened): the plant pulse length and the remaining divertor edge model
+  options on the driver step, and the 1.5D solver settings (`rtol`, `atol`, `dtMax`, `gridPacking`, `nonlinearSolver`) on the heating step.
+  The defaults shown are read from the model's own constants, and a value is written to the configuration only when edited.
+- POPCON edge maps computed in the POPCON worker: a Divertor edge switch, the q_peak and T_t contours, the 10 MW/m2 limit, the
+  detachment boundaries and a readout of P_sep/R, q_peak and T_t (an additive optional `edge` flag; the worker protocol version is
+  unchanged).
+- `npm run check:bundle` (`scripts/check-bundle.mjs`) fails when the main JS chunk of the build is above 250 kB (85 kB gzip); `ci:local`
+  and the CI workflow build and check it after the golden regression.
 
 ### Changed
 - The Report's JSON button writes `<name>_run.json` (the run file above) instead of
   `<name>_report.json` (configuration, report and events only); the export is loaded on demand.
 - POPCON T axis scaled to where the device operates instead of a fixed 0-40 keV: 2.5 times the
   temperature its installed heating alone would hold at its own density, bounded by the beta limit
-  there (ITER 15 keV, DEMO 20, SPARC 20, JET 8, MAST-U and W7-X 2.5); p-11B keeps a wide axis.
+  there (ITER 15 keV, DEMO 20, SPARC 20, JET 8, MAST-U and W7-X 1.75, where the peak ion temperature was 34 % of the axis at
+  2.5); p-11B keeps a wide axis.
 - Charts: canvases follow their CSS width and the device pixel ratio without reallocating the
   backing store on each redraw; the POPCON map is drawn once per grid into an offscreen layer.
 - Simulation worker is time-sliced: a pause, control or rewind request is served within about one
@@ -579,6 +594,14 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   6.318 -> 6.290, DEMO15 23.49 -> 23.50; T_ped 4 to 11 % lower with the packed pedestal grid, l_i up to 1.5 % higher; q(0) and the
   sawtooth count, which follow the core current, move most; every Grad-Shafranov update accepted; MASTU15 ends as scheduled; all 21
   other cases bit-identical); `test/golden/CHANGES.md` has the headline moves and their causes.
+- Main JS chunk 262.46 -> 217.81 kB (72.05 kB gzip): the run screen is a chunk of its own, fetched 200 ms after start-up. No physics
+  or golden number moves.
+- The wizard's previously English-only labels, hints, options, step titles, method cards and preset descriptions have Turkish text
+  (a lazy dictionary, `src/i18n/wizard.tr.ts`, kept in step with the schema by a test).
+- The 3D Show/Hide choice is remembered; the step-control settings warning is translated and still shown in the event log after a
+  rewind to before the first step; the "opened from a shared link" banner clears when a different preset is picked; the embedded
+  report has no toolbar.
+- The default vitest `testTimeout` is 30 s (was 5 s): CLI and lazy-chunk tests timed out under a shared CPU while passing alone.
 
 ### Fixed
 - `npm run bench:convergence`: the time-step series (dtMax) failed with "this model has no internal time step

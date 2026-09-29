@@ -15,7 +15,7 @@ describe('limitStep (the time-step series of bench:convergence)', () => {
     // needs at least 1500 of them
     expect(capped.nSteps).toBeGreaterThanOrEqual(3 / 0.002);
     expect(capped.nSteps).toBeGreaterThan(free.nSteps);
-  });
+  }, 60000); // a free and a capped 3 s 1.5D ITER shot: 5 s on a loaded machine, over the 5 s default
 
   it('refuses a model that has no internal time step (the 0D model integrates with Dormand-Prince)', () => {
     expect(() => limitStep(new Simulation(ITER), 0.1)).toThrow('no internal time step');

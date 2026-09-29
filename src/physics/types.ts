@@ -107,19 +107,20 @@ export interface ProfileSettings {
    * (2009) 056118): the width follows the KBM constraint Δ = 0.076 β_p,ped^{1/2}, the height is limited by the peeling–ballooning
    * constraint, the barrier depth adapts to hold the pedestal-top pressure at that limit and the ELM fires when it is exceeded.
    * `pedestalWidth` is then only the width until the first evaluation (the radial grid is packed for the EPED width, 0.045 in ρ̂), `etbFactor` is the barrier
-   * depth at the limit (it deepens up to 4 times below it) and the α_ped/α_crit test is not applied
+   * depth at the limit (in H-mode it deepens up to 16 times below it) and the α_ped/α_crit test is not applied
    */
   pedestalModel?: 'fixed' | 'eped1';
-  /** dimensionless peeling–ballooning pressure gradient dβ_p/dψ_N of the 'eped1' pedestal (default: the DIII-D ITER-demonstration discharges, 7.08) */
+  /** dimensionless peeling–ballooning pressure gradient dβ_p/dψ_N of the 'eped1' pedestal (default 6.2: the DIII-D fit of the maximum gradient before an ELM at I_p B_T = 3.2 MA T, Groebner et al., GA-A26243) */
   pedPbGradient?: number;
   /** KBM coefficient of the width Δ = c β_p,ped^{1/2} of the 'eped1' pedestal (default 0.076) */
   pedKbmCoefficient?: number;
-  /** exponent of the pedestal density n_ped/n_G in the pedestal beta of the 'eped1' pedestal (default 0.64, EPED1.6 for ITER; 0: the height does not depend on the density) */
+  /** exponent of the pedestal density n_ped/n_G in the pedestal beta of the 'eped1' pedestal (default 0.34: least-squares power law through the EPED prediction for the ITER baseline, Snyder 2015; 0: the height does not depend on the density) */
   pedDensityExponent?: number;
   /**
    * ELM energy loss: 'fixed' (default): the fraction `elmFraction` × U(0.8, 1.2) of the pedestal-region energy. 'loarte': ΔW_ELM = f W_ped U(0.8, 1.2) with
    * f the fit to the pedestal-collisionality correlation of Loarte et al., Plasma Phys. Control. Fusion 45 (2003) 1549 (profiles/pedestal/loarte.ts)
-   * and W_ped = (3/2) n_e,ped (T_e,ped + T_i,ped) V
+   * and W_ped = (3/2) n_e,ped (T_e,ped + T_i,ped) V; the depth of the crash and, for the largest ELMs, the width of its region are those that carry that energy
+   * (profiles/pedestal/elmSize.ts)
    */
   elmLoss?: 'fixed' | 'loarte';
   /** testere dişi tetik kayması s₁ */

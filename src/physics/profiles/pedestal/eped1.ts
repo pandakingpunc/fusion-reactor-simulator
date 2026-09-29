@@ -3,46 +3,51 @@
  * pedestal-top pressure p_ped, as pure functions of the poloidal beta β_p,ped = 2 μ0 p_ped / B̄_p². Free of the 1.5D context: the
  * model that applies them to a shot is `PedestalModel` (PedestalModel.ts).
  *
- * KBM width constraint (Snyder et al., Phys. Plasmas 16 (2009) 056118; Snyder et al., Nucl. Fusion 51 (2011) 103016; the form as
- * tested against DIII-D in Groebner et al., 22nd IAEA Fusion Energy Conference, Geneva 2008, EX/P3-5, GA-A26243):
+ * KBM width constraint (Snyder et al., Phys. Plasmas 16 (2009) 056118; Snyder et al., Nucl. Fusion 51 (2011) 103016). EPED1 takes the width from
+ * the empirical DIII-D scaling of Groebner et al. (General Atomics report GA-A26243, 22nd IAEA Fusion Energy Conference, Geneva 2008, EX/P3-5):
  *
  *     Δ = 0.076 β_p,ped^{1/2}                                                  (KBM, "EPED1")
  *
- * with β_p,ped = 2 μ0 p_ped / B̄_p² built from the total pedestal pressure p_ped = 2 n_ped T_ped (the pedestal ions have the
- * electron temperature and density) and B̄_p, the flux-surface average poloidal field at the separatrix, B̄_p = μ0 I_p / L with
- * L the length of the poloidal cross-section of the last closed flux surface. Δ is the average of the full widths of the density
- * and the temperature pedestal (twice the parameter of the modified-tanh fit), in ψ_N. The coefficient 0.076 was fitted to the DIII-D
- * data (Snyder 2009); EPED1.6 finds Δ = G(ν*, ε) β_p,ped^{1/2} with G between 0.07 and 0.1 for AUG, JET and DIII-D (Beurskens et al.,
- * Phys. Plasmas 18 (2011) 056120, quoting Snyder). Validity: type-I ELMing H-mode, β_p,ped 0.2 to 1.4 (the DIII-D scan of the test).
+ * where β_p,ped = 2 μ0 p_ped / B̄_p² with the TOTAL pedestal pressure p_ped (taken as 2 n_e,ped T_e,ped there: T_i = T_e, n_i = n_e) and B̄_p the
+ * flux-surface average poloidal field at the separatrix, B̄_p = μ0 I_p / L with L the length of the poloidal cross-section of the last closed
+ * flux surface; Δ is the average of the full widths of the density and the temperature pedestal (twice the parameter of the modified-tanh fit). Data:
+ * type-I ELMing DIII-D discharges over a wide range of I_p, B_T and heating power, including ITER-shape demonstration discharges, from the last 80 % of
+ * the ELM cycle. EPED1.6 keeps the form and calculates the coefficient, Δ = β_p,ped^{1/2} G(ν*, ε, ...) (Snyder, 53rd APS-DPP, Chicago 2010).
  *
- * Peeling–ballooning height constraint. EPED1 obtains it from ELITE stability calculations of model equilibria (Snyder 2009, 2011):
- * there is no closed-form fit in the cited papers, only the statement that at fixed width the critical pedestal pressure rises
- * roughly as Δ^{3/4} (Snyder et al., invited talk, 53rd APS-DPP meeting, Chicago 2010; the KBM curve rises as Δ²). This module therefore uses a reduced
- * form that is anchored to published data and says so:
+ * Peeling–ballooning height constraint. EPED obtains it from ELITE stability calculations of model equilibria: there is no closed-form fit in
+ * the cited papers, only two published statements about its dependences: at fixed width it rises roughly linearly with I_p B_T
+ * (Groebner, GA-A26243, section 2, quoting Snyder 2009) and, at fixed I_p B_T, roughly as Δ^{3/4} (β_N,ped ~ Δ_ψ^{3/4}; the KBM curve rises as Δ²;
+ * Snyder, APS-DPP 2010, slides "The Peeling-Ballooning Model Explains ELM Onset" and "Mechanics of the EPED Predictive Model"). This module uses a
+ * reduced form that is anchored to published data and says so:
  *
  *     β_PB(Δ) = β_ref (Δ/Δ_ref)^{3/4},     β_ref = (0.076 C)²,   Δ_ref = 0.076² C,
  *
- * where C = dβ_p/dψ_N is the maximum normalised pedestal pressure gradient at the onset of the ELM (the P–B limit at the
- * operating width), dimensionless. C comes from the one published parametric fit of that limit, the DIII-D EPED1 test of Groebner et al.
- * (GA-A26243, Fig. 3): (∇p)_max = 103 (I_p B_T)^0.94 kPa per unit ψ_N, I_p in MA, B_T in T, over I_p B_T = 0.3 to 3.3 MA T (I_p 0.5 to 1.5 MA,
- * B_T 0.7 to 2.1 T, triangularity 0.2 to 0.55, β_N ≈ 2, n_ped/n_G 0.4 to 0.6, type-I ELMing H-mode), evaluated at the top of that range,
- * where the ITER-shaped demonstration discharges lie (PB_GRADIENT below; those discharges themselves lie 10 to 20 % above the fit, which
- * would raise C by that much and the pedestal pressure by twice as much). The pair (Δ_ref, β_ref) lies on the KBM curve, so for a given C the two
- * constraints intersect there for every machine of the same shape family: p_ped = β_ref B̄_p²/(2 μ0) ∝ I_p²/L², Δ = Δ_ref: the content of the
- * EPED1 prediction that this reduced model keeps. ITER 15 MA (L = 18.4 m): Δ = 0.036, β_p,ped = 0.223, p_ped = 93 kPa; the EPED1.6 baseline
- * of Snyder et al. (Nucl. Fusion 51 (2011) 103016; talk at the 2011 Pedestal and ELM workshop) is Δ ≈ 0.04 (4.4 cm), β_N,ped ≈ 0.6 (p_ped ≈ 95 kPa,
- * T_ped ≈ 4.5 keV) at n_ped = 7·10¹⁹ m⁻³ and global β_N = 1.7, and β_N,top ≈ 0.74 one half-width further in.
+ * where C = dβ_p/dψ_N = 2 μ0 (∇p)_max / B̄_p² is the normalised maximum pressure gradient before an ELM (for a tanh pedestal the maximum gradient is
+ * p_ped/Δ, so it is the P–B limit at the operating width). C comes from the published parametric fit of that gradient, Groebner et al. (GA-A26243, Fig. 3;
+ * the data of the EPED1 test of the same report):
  *
- * Density. The height of the ELITE constraint rises with the pedestal density (a weaker peeling drive): the EPED1.6 scan for ITER of the same talk
- * gives β_N,ped = 0.581, 0.643, 0.678, 0.781 at n_ped = 6.97, 8.13, 9.05, 11.03·10¹⁹ m⁻³ (global β_N = 1.7; read from the vector graphics of the
- * slide), a power law n_ped^0.64 (0.71 for the value one half-width further in; the higher curves of β_N = 2.5, the larger Shafranov shift, are not modelled). The
- * intersection of the two curves is taken to scale so with n̂ = n_ped/n_G (Greenwald density), relative to n̂ = 0.5, the middle of the range of the DIII-D
- * dataset that fixes C (ASSUMPTION: the ITER scan is in absolute density and one machine; normalising by n_G is this reduction's choice):
+ *     (∇p)_max = 103 (I_p B_T)^0.94   [kPa per unit ψ_N, I_p in MA, B_T in T]
  *
- *     β_p,ped = β_ref (n̂/0.5)^{0.64},     the P–B curve scaling as (n̂/0.5)^{0.64 (1 − 3/8)} so that the intersection does.
+ * over I_p B_T ≈ 0.4 to 3.1 MA T (a factor of 3 in B_T, I_p and in average triangularity; n_e,ped/n_G = 0.4 to 0.6, β_N ≈ 2, type-I ELMing), evaluated at
+ * the top of that range, I_p B_T = 3.2 MA T, where the ITER-shape demonstration discharges lie (the fit gives 307 kPa/ψ_N; those discharges lie 10 to 20 % above it,
+ * which would raise C by that much and the pedestal pressure by twice as much). The pair (Δ_ref, β_ref) lies on the KBM curve, so the two constraints intersect there:
+ * a similarity closure, P–B height in β_N-like units and KBM width in β_p coincide for machines of the shape and safety factor of that reference (the ITER
+ * demonstration discharges were run to match the ITER shape, q95 and β_N), so p_ped = β_ref B̄_p²/(2 μ0) ∝ I_p²/L² and Δ = Δ_ref (ASSUMPTION: shape and q95 of
+ * the reference; the P–B dependence on them is not modelled). It was not fitted to any ITER prediction; for ITER at 15 MA (L = 18.4 m) it gives
+ * Δ = 0.036, β_p,ped = 0.223, p_ped = 93 kPa, against 92 kPa (Snyder 2009, quoted by Saarelma et al., Nucl. Fusion 52 (2012) 103020, who find 107 to
+ * 110 kPa with their own stability analysis) and β_N,ped = 0.6 to 0.7, Δ_ψ ≈ 0.04, i.e. 95 to 111 kPa (Snyder, APS-DPP 2010, summary slide).
  *
- * ITER at the density of the EPED baseline (n̂ = 0.59) then gives β_p,ped = 0.248, p_ped = 103 kPa, 8 % above the published 95 kPa. Not kept: the
- * dependence on the global β_N and on the shape (open).
+ * Density. The EPED height rises with the pedestal density (a weaker peeling drive at lower ν*). The published EPED prediction for the ITER baseline
+ * (Snyder, ITER International School, December 2015, slide "Predicted Super H-Mode Regime Should Enable further ITER Optimization", the H-mode branch) is
+ * p_ped = 64, 74, 81, 89, 100, 105 kPa at n_ped Z_eff^{1/2} = 4, 5.7, 7.1, 11.3, 14.1, 15.6·10¹⁹ m⁻³ (read from the vector graphics of the slide; `EPED_ITER_2015` in
+ * the tests), a power law p_ped ∝ n_ped^0.34 (least squares over 4 to 15.6, rms scatter of ln p 2 %). The intersection of the two curves is taken to scale so with
+ * n̂ = n_ped/n_G (Greenwald density), relative to n̂ = 0.5, the middle of the range of the DIII-D dataset that fixes C (ASSUMPTIONS: the published scan is in
+ * absolute density and Z_eff^{1/2} n_ped for one machine, and normalising by n_G, dropping Z_eff, is this reduction's choice):
+ *
+ *     β_p,ped = β_ref (n̂/0.5)^{0.34},     the P–B curve scaling as (n̂/0.5)^{0.34 (1 − 3/8)} so that the intersection does.
+ *
+ * ITER at n_ped = 7·10¹⁹ m⁻³ (n̂ = 0.59) then gives β_p,ped = 0.236, p_ped = 98 kPa. Not kept: the dependence on the global β_N (the Shafranov shift of higher
+ * β_N raises the EPED height), on the shape and on ν* beyond the density.
  */
 
 /** μ0 [H/m] (the constant of the 1.5D model) */
@@ -54,25 +59,25 @@ export const KBM_COEFFICIENT = 0.076;
 /** Exponent of the width in the peeling–ballooning height, p_ped ∝ Δ^ζ (roughly 3/4, Snyder 2011; the KBM curve has 2) */
 export const PB_EXPONENT = 0.75;
 
-/** Exponent of n̂ = n_ped/n_G in the pedestal poloidal beta of the intersection (EPED1.6 for ITER, Snyder 2011 talk: β_N,ped ∝ n_ped^0.64) and the n̂ it is 1 at */
-export const PB_DENSITY_EXPONENT = 0.64;
+/** Exponent of n̂ = n_ped/n_G in the pedestal poloidal beta of the intersection (least-squares power law through the EPED prediction for the ITER baseline, Snyder 2015) and the n̂ it is 1 at */
+export const PB_DENSITY_EXPONENT = 0.34;
 export const PB_DENSITY_REF = 0.5;
 
 /**
  * The DIII-D fit of the maximum pedestal pressure gradient before an ELM (Groebner et al., GA-A26243, Fig. 3): (∇p)_max = 103 (I_p B_T)^0.94
- * kPa per unit ψ_N, valid for I_p B_T = 0.3 to 3.3 MA T; `IpBT` is the point it is evaluated at for C (the top of the range, I_p = 1.5 MA, the
+ * kPa per unit ψ_N, from data over I_p B_T ≈ 0.4 to 3.1 MA T; `IpBT` is the point it is evaluated at for C (the top of the range, I_p = 1.5 MA, the
  * ITER-shaped demonstration discharges: the fit gives 307 kPa/ψ_N there). L: the poloidal perimeter of the LCFS of a plasma of that shape and
  * minor radius 0.58 m, 1.467 · 2π a (the ratio of the ITER equilibrium of this code, 18.43 m for a = 2 m, κ = 1.85, δ = 0.49); the perimeter is an
  * estimate of this reduction, the shape of those discharges is not in the report (C scales with L², so ±5 % in L is ±10 % in C).
  */
-export const DIIID_PB_FIT = { coefficient: 103e3, exponent: 0.94, IpBTRange: [0.3, 3.3], IpBT: 3.2, Ip: 1.5e6, a: 0.58, perimeterPerCircumference: 1.467 } as const;
+export const DIIID_PB_FIT = { coefficient: 103e3, exponent: 0.94, IpBTRange: [0.4, 3.1], IpBT: 3.2, Ip: 1.5e6, a: 0.58, perimeterPerCircumference: 1.467 } as const;
 
 /** dβ_p/dψ_N = (dp/dψ_N)/(B̄_p²/2 μ0) for a gradient dp/dψ_N [Pa per unit ψ_N] at the current I_p [A] and the perimeter L [m] of the LCFS */
 export function normalisedGradient(gradP: number, Ip: number, perimeter: number): number {
   return (2 * gradP * perimeter * perimeter) / (MU0 * Ip * Ip);
 }
 
-/** C: the maximum normalised pedestal gradient at the ELM onset of the DIII-D fit at its ITER-shaped reference point, 6.2 */
+/** C: the maximum normalised pedestal gradient at the ELM onset of the DIII-D fit at its ITER-shaped reference point, 6.22 */
 export const PB_GRADIENT = normalisedGradient(
   DIIID_PB_FIT.coefficient * Math.pow(DIIID_PB_FIT.IpBT, DIIID_PB_FIT.exponent), DIIID_PB_FIT.Ip, DIIID_PB_FIT.perimeterPerCircumference * 2 * Math.PI * DIIID_PB_FIT.a,
 );

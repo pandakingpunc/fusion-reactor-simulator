@@ -7,6 +7,10 @@
  * (the kernel steps forever at t = 0), a tolerance that is not a number makes every error estimate infinite, and a zero relative
  * and a zero absolute tolerance together reject every step down to the floor. Such a value is replaced by the default, and the
  * replacement is reported (a warning at t = 0), instead of hanging the run or repeating the failure in every step.
+ *
+ * The same holds for the three numbers of the EPED1-type pedestal (`pedestalModel: 'eped1'`, pedestal/eped1.ts): the P–B gradient and the KBM
+ * coefficient must be positive (the width and the height are products of them: a zero or a NaN has no pedestal, and the solver refuses it) and the
+ * density exponent must be a finite number of at least zero.
  */
 import type { ProfileSettings } from '../types';
 import { DEFAULT_PROFILE_SETTINGS } from './defaults';
@@ -26,7 +30,7 @@ const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.is
 export function checkProfileSettings(ps: ProfileSettings): { ps: ProfileSettings; notes: SettingNote[] } {
   const notes: SettingNote[] = [];
   const out: ProfileSettings = { ...ps };
-  const replace = (key: 'rtol' | 'atol' | 'dtMax', used: number, why: string, unit = '') => {
+  const replace = (key: 'rtol' | 'atol' | 'dtMax' | 'pedPbGradient' | 'pedKbmCoefficient' | 'pedDensityExponent', used: number, why: string, unit = '') => {
     const given = ps[key];
     out[key] = used;
     notes.push({ key, given, used, message: `ProfileSettings.${key} = ${String(given)} ${why}: ${used}${unit} is used` });
@@ -37,6 +41,14 @@ export function checkProfileSettings(ps: ProfileSettings): { ps: ProfileSettings
   if (ps.dtMax !== undefined) {
     if (!(isNumber(ps.dtMax) && ps.dtMax > 0)) replace('dtMax', DEFAULT_PROFILE_SETTINGS.dtMax!, 'is not a positive time', ' s');
     else if (ps.dtMax < STEP_DT_MIN) replace('dtMax', STEP_DT_MIN, `is below the shortest step of ${STEP_DT_MIN} s`, ' s');
+  }
+  if (ps.pedestalModel === 'eped1') {
+    const positive = (v: unknown) => v === undefined || (isNumber(v) && v > 0);
+    if (!positive(ps.pedPbGradient)) replace('pedPbGradient', DEFAULT_PROFILE_SETTINGS.pedPbGradient!, 'is not a positive number');
+    if (!positive(ps.pedKbmCoefficient)) replace('pedKbmCoefficient', DEFAULT_PROFILE_SETTINGS.pedKbmCoefficient!, 'is not a positive number');
+    if (ps.pedDensityExponent !== undefined && !(isNumber(ps.pedDensityExponent) && ps.pedDensityExponent >= 0)) {
+      replace('pedDensityExponent', DEFAULT_PROFILE_SETTINGS.pedDensityExponent!, 'is not a non-negative number');
+    }
   }
   return { ps: out, notes };
 }

@@ -11,7 +11,11 @@ import type { ActuatorEntry } from '../../physics/types';
  *  - tampered      the file's inputs do not hash to its own fingerprint (edited after export)
  *  - unsigned      the file has no fingerprint (an older export, or a run whose live interventions were not recorded)
  */
-export type VerifyStatus = 'verified' | 'mismatch' | 'other-version' | 'tampered' | 'unsigned';
+export const VERIFY_STATUSES = ['verified', 'mismatch', 'other-version', 'tampered', 'unsigned'] as const;
+export type VerifyStatus = (typeof VERIFY_STATUSES)[number];
+
+/** Whether a value read from storage is a verification status (an archive record from a newer build may carry another). */
+export const isVerifyStatus = (x: unknown): x is VerifyStatus => (VERIFY_STATUSES as readonly unknown[]).includes(x);
 
 /**
  * What a run carries beyond its results so that it can be exported and reproduced: the live interventions it

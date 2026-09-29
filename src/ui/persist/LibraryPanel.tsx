@@ -10,6 +10,7 @@ import { autoSaveEnabled, setAutoSave } from './prefs';
 import { runToRecord, } from './shots';
 import { runToShot } from './shots';
 import { serializeRunRecord } from './runRecord';
+import { isVerifyStatus } from './types';
 import { usePersistT } from './usePersistT';
 import { VerifyBadge } from './VerifyBadge';
 
@@ -118,7 +119,7 @@ export default function LibraryPanel({ onClose }: { onClose(): void }) {
                     </span>
                     <span className="row" style={{ gap: 6 }}>
                       {r.origin === 'import' && <span className="badge">{p('persist.lib.imported')}</span>}
-                      {r.verification && <VerifyBadge status={r.verification} />}
+                      {isVerifyStatus(r.verification) && <VerifyBadge status={r.verification} />}
                     </span>
                   </div>
                   <div className="row persist-row-actions">

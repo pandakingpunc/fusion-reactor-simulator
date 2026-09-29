@@ -48,7 +48,7 @@ export function Report({ shot, onRerun, onEdit }: Props) {
             <div className="muted small">{t('rep.subtitle', { duration: fmtTime(r.duration, tUnit), frames: frames.length, events: events.length })}</div>
           </div>
           <div className="row">
-            <button className="btn sm" onClick={() => exportJSON(name, cfg, r, events)}>JSON ↓</button>
+            <button className="btn sm" onClick={() => void exportJSON(name, cfg, r, events, shot.prov)}>JSON ↓</button>
             <button className="btn sm" onClick={() => exportReportCSV(name, r)}>{t('rep.csvSummary')}</button>
             <button className="btn sm" onClick={() => exportCSV(name, frames, meta.diagSpecs, meta.timeUnit)}>{t('rep.csvSeries')}</button>
             <select value={figKinds.includes(figKind) ? figKind : 'traces'} onChange={(e) => setFigKind(e.target.value as FigKind)} title={t('rep.figTitle')}>

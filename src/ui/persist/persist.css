@@ -1,0 +1,24 @@
+/* Persistence UI: share and library dialogs, the notice bar, the shot banner and the embed frame. Loaded with the persistence chunk. */
+.persist-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55); display: flex; align-items: flex-start; justify-content: center; padding: 6vh 16px 16px; z-index: 50; overflow: auto; }
+.persist-modal { width: min(560px, 100%); max-height: 88vh; overflow: auto; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5); outline: none; }
+.persist-modal.wide { width: min(820px, 100%); }
+.persist-modal input[type='text'] { width: 100%; box-sizing: border-box; }
+.persist-code { width: 100%; box-sizing: border-box; font-family: var(--mono); font-size: 12px; resize: vertical; }
+.persist-rule { border: 0; border-top: 1px solid var(--border); margin: 14px 0; }
+.persist-drop { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px; border: 1px dashed var(--border); border-radius: 8px; }
+.persist-drop.over { border-color: var(--accent2); background: var(--bg); }
+.persist-result { margin-top: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.persist-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.persist-row { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; }
+.persist-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 260px; }
+.persist-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.persist-row-actions { gap: 6px; }
+.persist-notice { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.persist-notice.ok { border-color: var(--ok); }
+.persist-notice.warn { border-color: var(--warn); }
+.persist-notice.bad { border-color: var(--bad); }
+.persist-notice > span { flex: 1 1 320px; }
+.persist-shotbar { gap: 8px; margin-bottom: 8px; align-items: center; }
+.app.embed .main { padding: 8px; }
+.persist-embed-bar { align-items: center; margin-bottom: 6px; }
+.persist-embed-open { font-size: 12px; }

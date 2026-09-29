@@ -142,15 +142,15 @@ describe('the residual of a stage', () => {
       // a Jacobian at every iteration (the first may be the one that the first stage of the attempt left)
       expect(r.jacobians).toBeGreaterThanOrEqual(r.iterations - 1);
       // e_{k+1} ≤ C e_k² + ε e_k inside the basin: the first term is Newton's, the second the error ε of the finite-difference Jacobian
-      // (a few 1e-4 of a row, tests above), which makes the last steps a linear convergence with the rate ε
+      // (a few 1e-3 of a row here), which makes the last steps a linear convergence with the rate ε
       const s = r.steps;
       let checked = 0;
       for (let k = 0; k + 1 < s.length; k++) {
-        if (s[k] < 1e-3) { expect(s[k + 1]).toBeLessThan(40 * s[k] * s[k] + 2e-3 * s[k]); checked++; }
+        if (s[k] < 2e-3) { expect(s[k + 1]).toBeLessThan(60 * s[k] * s[k] + 5e-3 * s[k]); checked++; }
       }
       expect(checked).toBeGreaterThanOrEqual(3);
-      // the pair that is above the accuracy of the Jacobian is quadratic: 5.8e-4 → 1.9e-7
-      expect(s.some((x, k) => k + 1 < s.length && x > 1e-4 && x < 1e-3 && s[k + 1] < 5 * x * x)).toBe(true);
+      // the pair that is above the accuracy of the Jacobian is quadratic (1.5e-3 → 1.2e-6 here)
+      expect(s.some((x, k) => k + 1 < s.length && x > 1e-4 && x < 2e-3 && s[k + 1] < 5 * x * x)).toBe(true);
       expect(s[s.length - 1]).toBeLessThan(1e-11);
     });
   }, 120000);

@@ -106,7 +106,7 @@ export const eduTr: EduDict = {
   'mis.hmode.hint1': 'Plazma, kenarından geçen güç L-H eşiği P_LH\'yi aşınca H-moduna geçer. Bir koşunun canlı değerlerinde P_LH ile ısıtmayı karşılaştırın.',
   'mis.hmode.hint2': 'Demet gücünü artırın: bu yoğunlukta birkaç MW yeterlidir.',
   'mis.hmode.lesson': 'H-modu için kayıp gücün P_LH\'yi aşması gerekir. Aşınca pedestal oluşur, τ_E yaklaşık iki katına çıkar ve ELM\'ler başlar: hapsetme güçle satın alınır.',
-  'mis.hmode.answer': '6 MW demet gücü eşiğin çok üzerindedir; plazma rampanın başında H-moduna geçer ve orada kalır. Bu düşük yoğunlukta yoğunluğu artırmak P_LH\'yi bile düşürürdü: eşiğin bir minimumu vardır.',
+  'mis.hmode.answer': '6 MW demet gücü eşiğin çok üzerindedir; plazma rampanın başında H-moduna geçer ve orada kalır. Daha çok yakıtlamak işe yaramaz: eşik gücü yoğunlukla artar.',
 
   'mis.density.title': 'Yoğunluk sınırının altında kal',
   'mis.density.brief': 'Aynı DIII-D atışı, 1,6 MA akımı için Greenwald yoğunluğunun biraz üstünde, 1,0e20 m⁻³\'e kadar yakıtlanıyor. Atışı, yoğunluk sınırı disrupsiyonu olmadan sonuna kadar gidecek ve en az 0,5e20 m⁻³\'e ulaşacak biçimde değiştirin: boş bir plazma cevap değildir.',

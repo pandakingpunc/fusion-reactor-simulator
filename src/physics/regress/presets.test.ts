@@ -8,7 +8,7 @@ import { Simulation } from '../simulation';
 import { MagneticModel } from '../confinement/magnetic';
 import { greenwaldDensity, lineAverageFactor } from '../limits';
 import { boundaryShape, plasmaVolume, q95Sauter } from '../geometry';
-import { DEMO, DEMO_15D, ITER, ITER_15D, MASTU, PRESETS } from '../presets';
+import { DEMO, DEMO_15D, ITER, ITER_15D, JET, MASTU, PRESETS } from '../presets';
 import type { MagneticConfig } from '../types';
 
 /** n̄/n_G of a preset's density target if the target were reached exactly (0D: the target is the volume average) */
@@ -74,6 +74,27 @@ describe('the 0D volume, surface and area follow an edited κ or δ (no override
       // δ = 0 has the ellipse's larger volume (the Miller volume factor falls with δ)
       expect(geo(cfg, cfg.geometry.kappa, 0).V).toBeGreaterThan(g.V);
     }
+  });
+});
+
+describe('geometryInfo reports the nominal (95 %) shape and the boundary (LCFS) shape side by side', () => {
+  const info = (cfg: MagneticConfig) => new MagneticModel(cfg).geometryInfo();
+
+  it('ITER and DEMO: kappa, delta are the 95 % values of q95 and the scalings, kappaB, deltaB the LCFS values of V and S (Shimada 2007: 1.85 and 0.49)', () => {
+    const it = info(ITER), de = info(DEMO);
+    expect([it.kappa, it.delta, it.kappaB, it.deltaB]).toEqual([1.7, 0.33, 1.85, 0.49]);
+    expect([de.kappa, de.delta, de.kappaB, de.deltaB]).toEqual([1.65, 0.33, 1.85, 0.5]);
+    // the volume belongs to the boundary shape
+    expect(it.V).toBe(plasmaVolume(boundaryShape(ITER)));
+  });
+
+  it('a preset without an LCFS shape (JET) has equal nominal and boundary values, and an edited kappa moves the boundary in the ratio of the reference shape', () => {
+    const j = info(JET);
+    expect(j.kappaB).toBe(j.kappa);
+    expect(j.deltaB).toBe(j.delta);
+    const g = ITER.geometry, e = info({ ...ITER, geometry: { ...g, kappa: g.kappa * 1.1 } });
+    expect(e.kappa).toBeCloseTo(1.7 * 1.1, 12);
+    expect(e.kappaB).toBeCloseTo(1.85 * 1.1, 12);
   });
 });
 

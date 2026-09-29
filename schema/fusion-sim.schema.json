@@ -1026,6 +1026,118 @@
         },
         "profiles": {
           "$ref": "#/$defs/profileSettings"
+        },
+        "systems": {
+          "type": "object",
+          "properties": {
+            "pulseLength_s": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 10000000,
+              "description": "Design length of the plasma pulse of the plant (current ramp-up + flat top + ramp-down): the time over which the pulsed-field energy is spread in the cryoplant load. A property of the machine, not of the simulated shot (default 1055 s, the PROCESS default plasma pulse). Unit: s.",
+              "x-unit": "s"
+            },
+            "tf": {
+              "type": "object",
+              "properties": {
+                "nCoils": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 200,
+                  "description": "Number of TF coils (default 18; 24 for copper coils; 50 for a stellarator)."
+                },
+                "noseFraction": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 0.9,
+                  "description": "Share of the inboard-leg thickness that is solid steel case nose (default by technology)."
+                },
+                "structureFraction": {
+                  "type": "number",
+                  "minimum": 0.05,
+                  "maximum": 1,
+                  "description": "Load-bearing area fraction of the winding-pack region: steel jacket, plates, side walls (default by technology)."
+                },
+                "turnCurrent_A": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1000000,
+                  "description": "Operating current per turn (sets the current-lead heat load; default by technology). Unit: A.",
+                  "x-unit": "A"
+                },
+                "verticalInboardFraction": {
+                  "type": "number",
+                  "minimum": 0.1,
+                  "maximum": 1,
+                  "description": "Share of the vertical tension of the coil carried by the inboard leg (0.5 for a D-shaped coil)."
+                }
+              },
+              "additionalProperties": false,
+              "description": "TF coil (winding pack and case) inputs."
+            },
+            "cs": {
+              "type": "object",
+              "properties": {
+                "currentDensity_MAm2": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 1000,
+                  "description": "Smeared current density of the CS winding at the peak field; sets the CS thickness B / (mu0 J) (default by technology, 13.6 for Nb3Sn). Unit: MA m^-2.",
+                  "x-unit": "MA m^-2"
+                },
+                "B_max_T": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 100,
+                  "description": "Peak field of the CS conductor (default: the technology limit). Unit: T.",
+                  "x-unit": "T"
+                },
+                "swingFraction": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 1,
+                  "description": "Share of the +B to -B field swing of the solenoid that is used (default 1)."
+                },
+                "pfFlux_Vs": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 10000,
+                  "description": "Flux supplied by the poloidal-field coils (default 0). Unit: V s.",
+                  "x-unit": "V s"
+                },
+                "li": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 5,
+                  "description": "Internal inductance l_i(3) of the plasma for the inductive flux (default 0.85, or the 1.5D value)."
+                }
+              },
+              "additionalProperties": false,
+              "description": "Central-solenoid flux budget. Giving this block turns the flux check on: a warning if the solenoid cannot supply the pulse."
+            },
+            "blanket": {
+              "type": "object",
+              "properties": {
+                "inboardDepth_m": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 20,
+                  "description": "Inboard breeding-blanket depth (default: 56 % of the space behind the first wall). Unit: m.",
+                  "x-unit": "m"
+                },
+                "breederFraction": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1,
+                  "description": "HCPB breeder fraction Li4SiO4 / (Li4SiO4 + Be12Ti) (default: the tritium-optimal one)."
+                }
+              },
+              "additionalProperties": false,
+              "description": "Radial build and TBR options of the blanket."
+            }
+          },
+          "additionalProperties": false,
+          "description": "Systems-lite engineering models (TF coil stress, CS flux budget, cryoplant, radial build, TBR); only the shot report reads them, the plasma models never do. Every property is optional."
         }
       },
       "required": [

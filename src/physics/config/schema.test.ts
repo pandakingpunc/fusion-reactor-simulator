@@ -96,6 +96,44 @@ describe('the v4.0 edge model options', () => {
   });
 });
 
+describe('the v4.0 systems-lite options (MagneticConfig.systems, ws7b)', () => {
+  it('a configuration with every systems option validates', () => {
+    const c = preset('ITER');
+    c.systems = {
+      pulseLength_s: 500,
+      tf: { nCoils: 18, noseFraction: 0.35, structureFraction: 0.55, turnCurrent_A: 68000, verticalInboardFraction: 0.5 },
+      cs: { currentDensity_MAm2: 13.6, B_max_T: 13, swingFraction: 1, pfFlux_Vs: 30, li: 0.85 },
+      blanket: { inboardDepth_m: 0.45, breederFraction: 0.5 },
+    };
+    expect(validateConfig(c).issues.map(formatIssue)).toEqual([]);
+  });
+  it('an empty systems block and empty sub-blocks validate (every option is optional)', () => {
+    const c = preset('ITER');
+    c.systems = { tf: {}, cs: {}, blanket: {} };
+    expect(validateConfig(c).ok).toBe(true);
+    c.systems = {};
+    expect(validateConfig(c).ok).toBe(true);
+  });
+  it('a non-positive plant pulse, a fractional coil count and a wrong type are rejected with the path of the property', () => {
+    const c = preset('ITER');
+    c.systems = { pulseLength_s: 0, tf: { nCoils: 18.5 }, cs: { swingFraction: 1.5 } };
+    const paths = validateConfig(c).issues.map((i) => i.path).sort();
+    expect(paths).toEqual(['systems.cs.swingFraction', 'systems.pulseLength_s', 'systems.tf.nCoils']);
+    c.systems = { pulseLength_s: '1000', bogus: 1 };
+    expect(validateConfig(c).issues.map((i) => i.path).sort()).toEqual(['systems.bogus', 'systems.pulseLength_s']);
+  });
+  it('the bounds contain what the models accept (systems/: the models clamp inside them)', () => {
+    expect(fieldInfo('tokamak', 'systems.pulseLength_s')).toMatchObject({ kind: 'number', optional: true, exMin: 0, unit: 's' });
+    expect(fieldInfo('tokamak', 'systems.tf.nCoils')).toMatchObject({ kind: 'number', optional: true, integer: true, min: 2 });
+    expect(fieldInfo('tokamak', 'systems.tf.noseFraction')).toMatchObject({ min: 0, max: 0.9 });
+    expect(fieldInfo('tokamak', 'systems.tf.structureFraction')).toMatchObject({ min: 0.05, max: 1 });
+    expect(fieldInfo('tokamak', 'systems.tf.verticalInboardFraction')).toMatchObject({ min: 0.1, max: 1 });
+    expect(fieldInfo('tokamak', 'systems.cs.currentDensity_MAm2')).toMatchObject({ exMin: 0, unit: 'MA m^-2' });
+    expect(fieldInfo('tokamak', 'systems.blanket.breederFraction')).toMatchObject({ min: 0, max: 1 });
+    expect(leafPaths('tokamak')).toContain('systems.cs.pfFlux_Vs');
+  });
+});
+
 describe('the wizard only offers values the schema accepts', () => {
   for (const method of METHODS) {
     it(method, () => {

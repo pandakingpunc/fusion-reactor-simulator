@@ -145,6 +145,37 @@ type Magnet = MagneticConfig['magnet'];
 type Blanket = MagneticConfig['blanket'];
 type Divertor = MagneticConfig['divertor'];
 type Economics = MagneticConfig['economics'];
+type Systems = NonNullable<MagneticConfig['systems']>;
+type SystemsTf = NonNullable<Systems['tf']>;
+type SystemsCs = NonNullable<Systems['cs']>;
+type SystemsBlanket = NonNullable<Systems['blanket']>;
+
+/**
+ * Optional inputs of the systems-lite engineering models (src/physics/systems, ws7b): the TF coil stress, the CS flux budget, the
+ * radial build and TBR of the blanket, the plant pulse of the cryoplant. Every property is optional: a missing one takes the design-typical
+ * value of the magnet technology (documented in systems/). The bounds are the domain of the model (the models clamp inside them anyway).
+ */
+const systemsSettings = opt(object<Systems>({
+  pulseLength_s: opt(num({ exMin: 0, max: 1e7, unit: 's', doc: 'Design length of the plasma pulse of the plant (current ramp-up + flat top + ramp-down): the time over which the pulsed-field energy is spread in the cryoplant load. A property of the machine, not of the simulated shot (default 1055 s, the PROCESS default plasma pulse).' })),
+  tf: opt(object<SystemsTf>({
+    nCoils: opt(int({ min: 2, max: 200, doc: 'Number of TF coils (default 18; 24 for copper coils; 50 for a stellarator).' })),
+    noseFraction: opt(num({ min: 0, max: 0.9, doc: 'Share of the inboard-leg thickness that is solid steel case nose (default by technology).' })),
+    structureFraction: opt(num({ min: 0.05, max: 1, doc: 'Load-bearing area fraction of the winding-pack region: steel jacket, plates, side walls (default by technology).' })),
+    turnCurrent_A: opt(num({ min: 0, max: 1e6, unit: 'A', doc: 'Operating current per turn (sets the current-lead heat load; default by technology).' })),
+    verticalInboardFraction: opt(num({ min: 0.1, max: 1, doc: 'Share of the vertical tension of the coil carried by the inboard leg (0.5 for a D-shaped coil).' })),
+  }, { doc: 'TF coil (winding pack and case) inputs.' })),
+  cs: opt(object<SystemsCs>({
+    currentDensity_MAm2: opt(num({ exMin: 0, max: 1000, unit: 'MA m^-2', doc: 'Smeared current density of the CS winding at the peak field; sets the CS thickness B / (mu0 J) (default by technology, 13.6 for Nb3Sn).' })),
+    B_max_T: opt(num({ exMin: 0, max: 100, unit: 'T', doc: 'Peak field of the CS conductor (default: the technology limit).' })),
+    swingFraction: opt(num({ exMin: 0, max: 1, doc: 'Share of the +B to -B field swing of the solenoid that is used (default 1).' })),
+    pfFlux_Vs: opt(num({ min: 0, max: 1e4, unit: 'V s', doc: 'Flux supplied by the poloidal-field coils (default 0).' })),
+    li: opt(num({ exMin: 0, max: 5, doc: 'Internal inductance l_i(3) of the plasma for the inductive flux (default 0.85, or the 1.5D value).' })),
+  }, { doc: 'Central-solenoid flux budget. Giving this block turns the flux check on: a warning if the solenoid cannot supply the pulse.' })),
+  blanket: opt(object<SystemsBlanket>({
+    inboardDepth_m: opt(num({ min: 0, max: 20, unit: 'm', doc: 'Inboard breeding-blanket depth (default: 56 % of the space behind the first wall).' })),
+    breederFraction: opt(fraction('HCPB breeder fraction Li4SiO4 / (Li4SiO4 + Be12Ti) (default: the tritium-optimal one).')),
+  }, { doc: 'Radial build and TBR options of the blanket.' })),
+}, { doc: 'Systems-lite engineering models (TF coil stress, CS flux budget, cryoplant, radial build, TBR); only the shot report reads them, the plasma models never do. Every property is optional.' }));
 
 const magneticShape: Shape<MagneticConfig> = {
   method: oneOf(MAGNETIC_METHODS, 'Confinement method.'),
@@ -241,6 +272,7 @@ const magneticShape: Shape<MagneticConfig> = {
   seed: seed(),
   fidelity: opt(oneOf(FIDELITIES, "'0D': global power balance; '1.5D': radial profile transport with a Grad-Shafranov equilibrium (tokamak and spherical tokamak only, ignored for a stellarator).", '0D')),
   profiles: opt(profileSettings),
+  systems: systemsSettings,
 };
 
 // ── inertial confinement ────────────────────────────────────────────────────────────────────────────

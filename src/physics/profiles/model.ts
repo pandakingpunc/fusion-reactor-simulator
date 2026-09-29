@@ -277,7 +277,7 @@ export class ProfileModel implements SimModel {
     if (this.eqInitResidual !== null) warnings.push(`Initial Grad–Shafranov equilibrium did not converge (residual ${this.eqInitResidual.toExponential(1)}) — it was used until the first accepted update${this.eqUpdates ? '' : ' (there was none)'}; geometry coefficients may be inaccurate.`);
     else if (ctx.eq && !ctx.eq.converged) warnings.push('Grad–Shafranov equilibrium did not fully converge — geometry coefficients may be inaccurate.');
     const nEq = this.eqUpdates + this.eqRejected;
-    if (this.eqRejected > 0) warnings.push(`Grad–Shafranov: ${this.eqRejected} of ${nEq} equilibrium updates were rejected (no convergence in any retry stage) — the transport geometry was held at the last accepted equilibrium in between.`);
+    if (this.eqRejected > 0) warnings.push(`Grad–Shafranov: ${this.eqRejected} of ${nEq} equilibrium updates were rejected (no equilibrium of the transport profiles was found, or its tables did not converge to its flux surfaces) — the transport geometry was held at the last accepted equilibrium in between.`);
     if (this.forcedSteps > 0) warnings.push(`${this.forcedSteps} transport step(s) exhausted the Δt retries and were forced at the smallest Δt without Picard convergence — accuracy is reduced around those times.`);
     const nElm = events.filter((e) => e.kind === 'ELM').length;
     const nSaw = events.filter((e) => e.kind === 'sawtooth').length;

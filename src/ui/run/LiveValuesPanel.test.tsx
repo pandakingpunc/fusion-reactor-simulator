@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 /** The live values of the run screen: glossary popovers on the labels of the channels that have a term, and the power flow of the run so far. */
-import React from 'react';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { SPARC } from '../../physics/presets';

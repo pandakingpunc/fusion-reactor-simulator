@@ -4,7 +4,7 @@
  * shows the model's defaults without writing them, writes a value only when it is edited, and appears on the steps and for the configurations that
  * have something to show. The run summary lists the settings a configuration carries.
  */
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { ITER, ITER_15D, TAE, W7X } from '../../physics/presets';

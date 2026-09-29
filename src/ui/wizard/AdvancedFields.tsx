@@ -3,7 +3,6 @@
  * when the section is opened, or, for the run summary, when the configuration carries one of these settings. The fields and their defaults are in
  * advanced.ts.
  */
-import React from 'react';
 import type { ReactorConfig } from '../../physics/types';
 import { fmtNum } from '../format';
 import { useT } from '../state/store';

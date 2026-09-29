@@ -9,8 +9,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CONCEPT_DOI, gitInfo, packageVersion, runtimeInfo } from '../provenance';
 import { requirePreset } from '../../physics/config/registry';
-import { assertValidConfig, ConfigValidationError } from '../../physics/config/schema';
-import { ConfigPathError, applyAssignments, mergeConfig } from '../../physics/config/paths';
+import { ConfigValidationError, validateConfig } from '../../physics/config/schema';
+import { applyAssignments, mergeConfig } from '../../physics/config/paths';
 import { canonicalString } from '../../physics/kernel/canonical';
 import { runFingerprint } from '../../physics/kernel/fingerprint';
 import { sha256Hex } from '../../physics/kernel/sha256';
@@ -66,7 +66,8 @@ export interface CliDeps {
 
 export interface CliContext {
   io: CliIo;
-  deps: CliDeps;
+  /** the pieces of CliDeps, with the scan executor always present (the worker pool unless a caller replaced it) */
+  deps: CliDeps & { execute: import('./scanCmd').Executor };
   /** the package root (where package.json is), or undefined when it cannot be found */
   root: string | undefined;
 }
@@ -174,14 +175,11 @@ export function resolveConfig(args: ConfigArgs, sets: readonly string[], io: Cli
   try {
     cfg = applyAssignments(cfg as ReactorConfig, [...shorthand, ...sets]);
   } catch (e) {
-    if (e instanceof ConfigPathError) throw new CliInputError(e.message);
-    throw e;
+    throw new CliInputError((e as Error).message); // a malformed setting or a forbidden path (ConfigPathError)
   }
   if (!args['no-validate']) {
-    try { assertValidConfig(cfg); } catch (e) {
-      if (e instanceof ConfigValidationError) throw new CliInputError(e.message);
-      throw e;
-    }
+    const v = validateConfig(cfg);
+    if (!v.ok) throw new CliInputError(new ConfigValidationError(v.issues).message);
   }
   return { cfg: cfg as ReactorConfig, preset: args.preset };
 }

@@ -11,7 +11,7 @@
  * `burn.<key>`, `derived.H98y2|Ttot|alphaShare`.
  */
 import { parseSettingValue, setPath, splitPath } from '../../physics/config/paths';
-import { ConfigValidationError, assertValidConfig } from '../../physics/config/schema';
+import { formatIssue, validateConfig } from '../../physics/config/schema';
 import { runShot } from '../../physics/config/run';
 import { DERIVED_METRICS, METRIC_SCOPES, readMetric, type MetricPath } from '../../physics/validation/metrics';
 import { runFingerprint } from '../../physics/kernel/fingerprint';
@@ -36,19 +36,23 @@ export const DEFAULT_METRICS: readonly string[] = ['report.Q_sci_max', 'flatTop.
 export type Executor = (tasks: RunTask[], opts: { threads: number; timeoutMs?: number; onProgress?: (p: PoolProgress) => void }) => Promise<RunResult[]>;
 
 /** The worker of presetRunner.worker.ts: the .ts file when running from source (tsx), the compiled .js next to the bundle. */
-export function workerUrl(): URL {
-  const here = import.meta.url;
+export function workerUrl(here: string = import.meta.url): URL {
   return here.endsWith('.ts') ? new URL('../presetRunner.worker.ts', here) : new URL('./presetRunner.worker.js', here);
 }
 
-/** The default executor: a pool of worker threads. */
-export const poolExecutor: Executor = (tasks, opts) => runPool<RunTask, RunResult>(tasks, workerUrl(), {
-  threads: opts.threads,
-  timeoutMs: opts.timeoutMs,
-  onProgress: opts.onProgress,
-  // a crashed or hung worker fails its point only; the pool replaces it and carries on
-  onTaskError: (e, t) => ({ id: t.id, ok: false, error: e.message }),
-});
+/** An executor that runs the tasks on a pool of worker threads that load the given worker module. */
+export function makePoolExecutor(url: URL): Executor {
+  return (tasks, opts) => runPool<RunTask, RunResult>(tasks, url, {
+    threads: opts.threads,
+    timeoutMs: opts.timeoutMs,
+    onProgress: opts.onProgress,
+    // a crashed or hung worker fails its point only; the pool replaces it and carries on
+    onTaskError: (e, t) => ({ id: t.id, ok: false, error: e.message }),
+  });
+}
+
+/** The default executor: a pool of worker threads running presetRunner.worker (see {@link workerUrl}). */
+export const poolExecutor: Executor = (tasks, opts) => makePoolExecutor(workerUrl())(tasks, opts);
 
 export const SCAN_CLI = defineCli({
   name: 'fusion-sim scan',
@@ -156,12 +160,11 @@ export async function scanCommand(argv: readonly string[], ctx: CliContext): Pro
   grid.forEach((vals, index) => {
     let cfg: unknown = base.cfg;
     params.forEach((p, k) => { cfg = setPath(cfg, p.path, vals[k]); });
-    if (!args['no-validate']) {
-      try { assertValidConfig(cfg); } catch (e) {
-        if (!(e instanceof ConfigValidationError)) throw e;
-        if (problems.length < 20) problems.push(`point ${index} (${params.map((p, k) => `${p.path}=${fmtValue(vals[k])}`).join(', ')}):\n${e.issues.map((i) => `    ${i.path === '' ? '(root)' : i.path}: ${i.message}${i.hint ? ` (${i.hint})` : ''}`).join('\n')}`);
-        else if (problems.length === 20) problems.push('...');
-      }
+    const v = args['no-validate'] ? undefined : validateConfig(cfg);
+    if (v && !v.ok) {
+      const what = params.map((p, k) => `${p.path}=${fmtValue(vals[k])}`).join(', ');
+      if (problems.length < 20) problems.push(`point ${index} (${what}):\n${v.issues.map((i) => `    ${formatIssue(i)}`).join('\n')}`);
+      else if (problems.length === 20) problems.push('...');
     }
     points.push({ index, values: vals, cfg: cfg as ReactorConfig, fixedId: `p${index}` });
   });
@@ -175,7 +178,7 @@ export async function scanCommand(argv: readonly string[], ctx: CliContext): Pro
       if (p.done === p.total) ctx.io.stderr.write(`\r${' '.repeat(40)}\r`);
     }
     : undefined;
-  const execute = ctx.deps.execute ?? poolExecutor;
+  const execute = ctx.deps.execute;
   let results: RunResult[];
   try {
     results = await execute(tasks, { threads: args.threads ?? defaultThreads(), timeoutMs: args.timeout === undefined ? undefined : args.timeout * 1000, onProgress });
@@ -202,7 +205,7 @@ export async function scanCommand(argv: readonly string[], ctx: CliContext): Pro
   switch (format) {
     case 'csv': {
       const table: (number | string)[][] = [[...params.map((p) => p.path), 'status', 'end_reason', ...metricPaths]];
-      for (const row of rows) table.push([...params.map((p) => (typeof row.params[p.path] === 'number' ? (row.params[p.path] as number) : fmtValue(row.params[p.path]))), row.status, row.endReason || row.error || '', ...metricPaths.map((m) => row.metrics[m])]);
+      for (const row of rows) table.push([...params.map((p) => (typeof row.params[p.path] === 'number' ? (row.params[p.path] as number) : fmtValue(row.params[p.path]))), row.status, row.error ?? row.endReason, ...metricPaths.map((m) => row.metrics[m])]);
       emit(ctx.io, args.out, csvFromRows(table));
       break;
     }
@@ -234,7 +237,7 @@ export const inProcessExecutor: Executor = async (tasks) => tasks.map((t): RunRe
     const series = t.keepSeries?.length ? { t: r.sim.history.map((h) => h.t), ...Object.fromEntries(t.keepSeries.map((k) => [k, r.sim.history.map((h) => h.d[k] ?? NaN)])) } : undefined;
     return { id: t.id, ok: true, report: r.report, avg: r.flatTop, burn: r.burn, ...(series ? { series } : {}), steps: r.steps, events: r.events };
   } catch (e) {
-    return { id: t.id, ok: false, error: e instanceof Error ? e.message : String(e) };
+    return { id: t.id, ok: false, error: (e as Error).message };
   }
 });
 

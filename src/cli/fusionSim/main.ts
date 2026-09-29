@@ -17,7 +17,7 @@ import { CliHelpRequested, CliUsageError, formatHelp } from '../args';
 import { CliFailure, CliInputError, findPackageRoot, nodeIo, packageVersionOf, type CliContext, type CliDeps, type CliIo } from './common';
 import { EQDSK_CLI, PRESETS_CLI, SCHEMA_CLI, eqdskCommand, presetsCommand, schemaCommand } from './otherCmds';
 import { RUN_CLI, runCommand } from './runCmd';
-import { SCAN_CLI, scanCommand } from './scanCmd';
+import { SCAN_CLI, poolExecutor, scanCommand } from './scanCmd';
 
 const COMMANDS = ['run', 'scan', 'export-eqdsk', 'presets', 'schema'] as const;
 type Command = (typeof COMMANDS)[number];
@@ -56,7 +56,7 @@ export interface MainEnv {
 /** Runs the CLI with `argv` (without node and the script) and returns the exit code; never calls process.exit. */
 export async function main(argv: readonly string[], env: MainEnv = {}): Promise<number> {
   const io = env.io ?? nodeIo();
-  const ctx: CliContext = { io, deps: env.deps ?? {}, root: 'root' in env ? env.root : findPackageRoot(import.meta.url) };
+  const ctx: CliContext = { io, deps: { execute: poolExecutor, ...env.deps }, root: 'root' in env ? env.root : findPackageRoot(import.meta.url) };
   const [cmd, ...rest] = argv;
   if (cmd === undefined || cmd === '-h' || cmd === '--help' || cmd === 'help') {
     (cmd === undefined ? io.stderr : io.stdout).write(TOP_HELP);

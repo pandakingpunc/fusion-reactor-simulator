@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { PRESETS } from '../../physics/presets';
 import { applyAssignments } from '../../physics/config/paths';
 import { getPreset } from '../../physics/config/registry';
@@ -20,10 +20,14 @@ import { parseCsv } from '../../io/csv';
 import { parseNdjson } from '../../io/ndjson';
 import { readNetcdf3 } from '../../io/netcdf3';
 import type { CliDeps, CliIo } from './common';
-import { takeRepeated } from './common';
+import { parseJsonFile, takeRepeated } from './common';
 import { main } from './main';
-import { DEFAULT_METRICS, checkMetric, gridPoints, inProcessExecutor, parseParam, type Executor } from './scanCmd';
+import { DEFAULT_METRICS, checkMetric, gridPoints, inProcessExecutor, parseParam, workerUrl, type Executor } from './scanCmd';
 import { EQDSK_UNAVAILABLE } from './otherCmds';
+import { textSummary } from './runCmd';
+import { runShot } from '../../physics/config/run';
+import { NonFiniteStateError } from '../../physics/kernel/errors';
+import { PoolAbortError, PoolConfigError } from '../pool';
 import { CliUsageError } from '../args';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
@@ -31,13 +35,13 @@ const VERSION = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')).
 
 interface Result { code: number; out: string; err: string; bin: Uint8Array | undefined; files: Map<string, string | Uint8Array> }
 
-async function cli(argv: string[], opts: { files?: Record<string, string>; tty?: boolean; deps?: CliDeps; root?: string | undefined } = {}): Promise<Result> {
+async function cli(argv: string[], opts: { files?: Record<string, string>; tty?: boolean; stderrTty?: boolean; deps?: CliDeps; root?: string | undefined } = {}): Promise<Result> {
   let out = '', err = '';
   let bin: Uint8Array | undefined;
   const files = new Map<string, string | Uint8Array>();
   const io: CliIo = {
     stdout: { write: (d) => { if (typeof d === 'string') out += d; else bin = d; }, isTTY: opts.tty ?? false },
-    stderr: { write: (t) => { err += t; }, isTTY: false },
+    stderr: { write: (t) => { err += t; }, isTTY: opts.stderrTty ?? false },
     readText: (p) => {
       if (opts.files && p in opts.files) return opts.files[p];
       throw Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' });
@@ -480,5 +484,147 @@ describe('export-eqdsk', () => {
     const r = await cli(['export-eqdsk', '--preset', 'ITER15']);
     expect(r.code).toBe(2);
     expect(r.err).toMatch(/--out is required/);
+  });
+});
+
+describe('failures that are not the input of the user', () => {
+  it('a run that dies with a kernel error is a failure (exit 1), not a crash of the CLI', async () => {
+    const r = await cli(['run', '--preset', 'JET', '--set', 'method=nope', '--no-validate']);
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/the run failed: unknown confinement method/);
+  });
+  it('an unexpected error is reported as an internal error with its stack, exit 1', async () => {
+    const r = await cli(['run', '--preset', 'JET', '--set', 'geometry=null', '--no-validate']);
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/^fusion-sim run: internal error: TypeError/);
+    const s = await cli(['scan', '--preset', 'JET', '--param', 'seed=1'], { deps: { execute: async () => { throw new Error('boom'); } } });
+    expect(s.code).toBe(1);
+    expect(s.err).toMatch(/fusion-sim scan: internal error: Error: boom/);
+  });
+  it('export-eqdsk: a kernel error in the run or the writer is a failure, anything else an internal error', async () => {
+    const args = ['export-eqdsk', '--preset', 'SPARC15', '--t-end', '0.2', '--set', 'profiles.nRho=20', '--out', 'x'];
+    const sim = await cli(args, { deps: { writeEqdsk: () => { throw new NonFiniteStateError(1, 2, 3, NaN); } } });
+    expect(sim.code).toBe(1);
+    expect(sim.err).toMatch(/the run failed: integrator produced a non-finite state/);
+    const other = await cli(args, { deps: { writeEqdsk: () => { throw new RangeError('bad frame'); } } });
+    expect(other.code).toBe(1);
+    expect(other.err).toMatch(/internal error: RangeError: bad frame/);
+  });
+  it('scan: an interrupted pool exits 130, an invalid pool configuration is a usage error', async () => {
+    const abort = await cli(['scan', '--preset', 'JET', '--param', 'seed=1'], { deps: { execute: async () => { throw new PoolAbortError('worker pool: interrupted by SIGINT after 0 of 1 tasks; workers terminated', 'SIGINT', 0); } } });
+    expect(abort.code).toBe(130);
+    expect(abort.err).toMatch(/interrupted by SIGINT/);
+    const cfg = await cli(['scan', '--preset', 'JET', '--param', 'seed=1'], { deps: { execute: async () => { throw new PoolConfigError('threads must be a finite integer >= 1, got 0'); } } });
+    expect(cfg.code).toBe(2);
+    expect(cfg.err).toMatch(/threads must be a finite integer/);
+  });
+  it('scan: progress goes to stderr on a terminal only; --threads and --timeout reach the executor', async () => {
+    let seen: { threads: number; timeoutMs: number | undefined } | undefined;
+    const exec: Executor = async (tasks, o) => {
+      seen = { threads: o.threads, timeoutMs: o.timeoutMs };
+      o.onProgress?.({ done: 1, total: 2, failed: 0, index: 0, id: 'p0', ok: true, ms: 1, respawns: 0 });
+      o.onProgress?.({ done: 2, total: 2, failed: 0, index: 1, id: 'p1', ok: true, ms: 1, respawns: 0 });
+      return inProcessExecutor(tasks, o);
+    };
+    const tty = await cli(['scan', '--preset', 'JET', '--t-end', '0.2', '--param', 'seed=1,2', '--threads', '3', '--timeout', '9'], { stderrTty: true, deps: { execute: exec } });
+    expect(tty.code).toBe(0);
+    expect(tty.err).toMatch(/scan: 1\/2 points/);
+    expect(tty.err).toMatch(/scan: 2\/2 points/);
+    expect(seen).toEqual({ threads: 3, timeoutMs: 9000 });
+    const quiet = await cli(['scan', '--preset', 'JET', '--t-end', '0.2', '--param', 'seed=1'], { deps: { execute: exec } });
+    expect(quiet.err).toBe('');
+  });
+  it('scan: a point whose run throws is an error row, the others are unaffected', async () => {
+    const r = await cli(['scan', '--preset', 'JET', '--t-end', '0.2', '--no-validate', '--param', 'method=tokamak,nope', '--metric', 'report.Q_sci_max']);
+    expect(r.code).toBe(1);
+    const t = parseCsv(r.out);
+    expect(t.text.status).toEqual(['ok', 'error']);
+    expect(t.text.end_reason[1]).toMatch(/unknown confinement method 'nope'/);
+    expect(r.err).toMatch(/1 of 2 points failed/);
+  });
+  it('the in-process executor keeps the series a task asks for', async () => {
+    const cfg = applyAssignments(getPreset('JET')!.cfg, ['t_end=0.2']);
+    const res = await inProcessExecutor([{ id: 'a', cfg, keepSeries: ['Q'] }], { threads: 1 });
+    expect(res[0].series!.Q.length).toBe(res[0].series!.t.length);
+    expect(res[0].series!.t.length).toBeGreaterThan(50);
+  });
+});
+
+describe('remaining paths', () => {
+  it('main() without an environment uses the process streams and finds its own package', async () => {
+    const out = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      expect(await main(['--version'])).toBe(0);
+      expect(out).toHaveBeenCalledWith(`${VERSION}\n`);
+    } finally {
+      out.mockRestore();
+    }
+  });
+  it('a thrown value that is not an Error is still reported', async () => {
+    const r = await cli(['scan', '--preset', 'JET', '--param', 'seed=1'], { deps: { execute: async () => { throw 'plain string'; } } });
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/internal error: plain string/);
+  });
+  it('the text summary writes n/a, plain zero, exponent form for tiny and huge values, and abbreviates a long list of warnings', () => {
+    const r = runShot(applyAssignments(getPreset('JET')!.cfg, ['t_end=0.3']));
+    const doc = textSummary('X', { ...r, report: { ...r.report, Tmax_keV: NaN, E_input_MJ: 0, Q_eng: 1e-5, neutronYield: 1e9, warnings: ['a', 'b', 'c', 'd', 'e'] }, flatTop: { ...r.flatTop, Q: NaN } });
+    expect(doc).toMatch(/T_max {8}n\/a keV/);
+    expect(doc).toMatch(/\(in: 0 MJ\)/);
+    expect(doc).toMatch(/Q_eng {8}1\.000e-5/);
+    expect(doc).toMatch(/neutrons {5}1\.000e\+9/);
+    expect(doc).toMatch(/warnings {5}5: a; b; c; \.\.\./);
+    expect(doc).not.toMatch(/flat-top/);
+    const none = textSummary('X', { ...r, report: { ...r.report, warnings: [] } });
+    expect(none).not.toMatch(/warnings/);
+    expect(textSummary('X', { ...r, report: { ...r.report, warnings: ['a', 'b', 'c'] } })).toMatch(/warnings {5}3: a; b; c\n/);
+  });
+  it('a configuration file alone names the text summary after the method, and the json has no preset', async () => {
+    const file = JSON.stringify({ ...getPreset('MIRROR')!.cfg, t_end: 0.05 });
+    const t = await cli(['run', '--config', 'm.json', '--format', 'text'], { files: { 'm.json': file } });
+    expect(t.out).toMatch(/^mirror \(mirror, 0D\)/);
+    const s = json((await cli(['scan', '--config', 'm.json', '--param', 'seed=1', '--format', 'json'], { files: { 'm.json': file } })).out);
+    expect(s.base.preset).toBeNull();
+  });
+  it('json --profiles adds the radial profiles of a 1.5D run; ndjson and imas take --every', async () => {
+    const a = ['run', '--preset', 'SPARC15', '--t-end', '0.4', '--set', 'profiles.nRho=20', '--set', 'profiles.eqNR=25'];
+    const j = json((await cli([...a, '--series', 'Q', '--every', '40', '--profiles'])).out);
+    expect(j.profiles.length).toBe(j.series.t.length);
+    expect(j.profiles[0].Te).toHaveLength(20);
+    const nd = (parseNdjson((await cli([...a, '--format', 'ndjson', '--every', '40'])).out) as any[]).filter((x) => x.type === 'frame');
+    expect(nd.length).toBeLessThan(30);
+    const im = json((await cli([...a, '--format', 'imas', '--every', '40', '--indent', '0'])).out);
+    expect(im.core_profiles.profiles_1d.length).toBeLessThan(30);
+  });
+  it('schema --check counts one problem in the singular', async () => {
+    const r = await cli(['schema', '--check', 'a.json'], { files: { 'a.json': JSON.stringify({ ...getPreset('ITER')!.cfg, B0: -1 }) } });
+    expect(r.err).toMatch(/invalid configuration \(1 problem\):/);
+  });
+  it('a configuration without a seed still gets a provenance block (the seed reads as 0)', async () => {
+    const r = await cli(['run', ...SHORT, '--set', 'seed=null', '--no-validate']);
+    expect(r.code).toBe(0);
+    expect(json(r.out).provenance.seed).toBe(0);
+  });
+  it('a read error without an error code is reported with its message', async () => {
+    const io: CliIo = { stdout: { write() {}, isTTY: false }, stderr: { write() {}, isTTY: false }, readText: () => { throw new Error('disk on fire'); }, writeFile() {} };
+    expect(() => parseJsonFile(io, 'x.json')).toThrow(/cannot read x\.json: disk on fire/);
+  });
+  it('the worker module is the .ts file beside the CLI from source, the compiled .js next to a bundle', () => {
+    expect(workerUrl('file:///repo/src/cli/fusionSim/scanCmd.ts').href).toBe('file:///repo/src/cli/presetRunner.worker.ts');
+    expect(workerUrl('file:///pkg/dist/lib/fusion-sim.js').href).toBe('file:///pkg/dist/lib/presetRunner.worker.js');
+  });
+  it('scan tolerates an executor that returns fewer or thinner results than tasks', async () => {
+    const thin: Executor = async (tasks) => [{ id: tasks[0].id, ok: true, report: (await inProcessExecutor([tasks[0]], { threads: 1 }))[0].report }, { id: tasks[1].id, ok: false }];
+    const r = await cli(['scan', '--preset', 'JET', '--t-end', '0.2', '--param', 'seed=1,2,3', '--metric', 'flatTop.Q,report.Q_sci_max'], { deps: { execute: thin } });
+    expect(r.code).toBe(1);
+    const t = parseCsv(r.out);
+    expect(t.text.status).toEqual(['ok', 'error', 'error']);
+    expect(t.text.end_reason.slice(1)).toEqual(['no result', 'no result']);
+    expect(t.columns['flatTop.Q'][0]).toBeNaN();
+    expect(t.columns['report.Q_sci_max'][0]).toBeGreaterThan(0);
+  });
+  it('the in-process executor fills a series key the run does not have with NaN', async () => {
+    const cfg = applyAssignments(getPreset('JET')!.cfg, ['t_end=0.2']);
+    const res = await inProcessExecutor([{ id: 'a', cfg, keepSeries: ['nonexistent'] }], { threads: 1 });
+    expect(res[0].series!.nonexistent.every(Number.isNaN)).toBe(true);
   });
 });

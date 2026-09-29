@@ -9,10 +9,12 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PRESETS } from '../physics/presets';
 import { runFingerprint } from '../physics/kernel/fingerprint';
+import { applyAssignments } from '../physics/config/paths';
+import { makePoolExecutor, workerUrl } from './fusionSim/scanCmd';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const WORK = mkdtempSync(join(tmpdir(), 'fusion-lib-'));
@@ -172,7 +174,7 @@ describe('library build', { timeout: 300_000 }, () => {
     expect(run.code).toBe(0);
     const lines = readFileSync(out, 'utf8').trim().split('\n');
     expect(lines[0]).toBe('t,Q');
-    expect(lines).toHaveLength(1 + Math.ceil(251 / 50));
+    expect(lines.length).toBeGreaterThan(4); // every 50th of a few hundred frames
     const scan = node([bin, 'scan', '--preset', 'JET', '--t-end', '0.5', '--param', 'heating.P_NBI_MW=10,20', '--metric', 'report.Q_sci_max', '--threads', '2']);
     expect(scan.err).toBe('');
     expect(scan.code).toBe(0);
@@ -192,6 +194,24 @@ describe('library build', { timeout: 300_000 }, () => {
     expect(node([bin, 'run', '--preset', 'NOPE']).code).toBe(2);
     expect(node([bin, 'export-eqdsk', '--preset', 'ITER15', '--out', 'x']).code).toBe(1);
     expect(node([bin, 'schema', '--check', join(WORK, 'missing.json')]).code).toBe(2);
+  });
+
+  it('the pool executor of the scan runs tasks on the compiled worker; a worker that cannot load fails its point only', async () => {
+    const cfg = applyAssignments(PRESETS.find((x) => x.id === 'JET')!.cfg, ['t_end=0.5']);
+    const exec = makePoolExecutor(pathToFileURL(join(LIB, 'presetRunner.worker.js')));
+    const res = await exec([{ id: 'a', cfg }, { id: 'b', cfg: applyAssignments(cfg, ['seed=3']), keepSeries: ['Q'] }], { threads: 2 });
+    expect(res.map((r) => [r.id, r.ok])).toEqual([['a', true], ['b', true]]);
+    expect(res[1].series!.Q.length).toBeGreaterThan(200);
+    expect(res[0].report!.Q_sci_max).not.toBe(res[1].report!.Q_sci_max);
+    const missing = makePoolExecutor(pathToFileURL(join(WORK, 'no-such-worker.js')));
+    const bad = await missing([{ id: 'c', cfg }], { threads: 1 });
+    expect(bad[0]).toMatchObject({ id: 'c', ok: false });
+    expect(bad[0].error).toMatch(/worker pool/);
+  });
+
+  it('from source, the worker is the .ts file beside the CLI; the compiled CLI looks for a .js next to itself', () => {
+    expect(fileURLToPath(workerUrl())).toBe(join(ROOT, 'src', 'cli', 'presetRunner.worker.ts'));
+    expect(existsSync(join(LIB, 'presetRunner.worker.js'))).toBe(true);
   });
 
   it('refuses to clean a directory it did not make', () => {

@@ -8,6 +8,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { PRESETS } from '../presets';
+import { closest } from './dsl';
 import { GOLDEN_CASES, caseConfig } from '../../regression/golden';
 import { stepsFor } from '../../ui/wizard/schema';
 import type { Method, ReactorConfig } from '../types';
@@ -318,6 +319,20 @@ describe('the issues', () => {
     const c = preset('NIF');
     c.other = undefined;
     expect(validateConfig(c).ok).toBe(true);
+  });
+});
+
+describe('suggestions for a misspelt name', () => {
+  const fuels = ['DT', 'DD', 'DHe3', 'pB11'];
+  it('a short name needs to be one edit away, a longer one two or three', () => {
+    expect(closest('DT2', fuels)).toBe('DT');
+    expect(closest('XX', fuels)).toBeUndefined();
+    expect(closest('dt', fuels)).toBe('DT');
+    expect(closest('DHe', fuels)).toBe('DHe3');
+    expect(closest('P_NBI_mw', ['P_NBI_MW'])).toBe('P_NBI_MW');
+    expect(closest('P_NBI_MWX', ['P_NBI_MW'])).toBe('P_NBI_MW');
+    expect(closest('completely different', fuels)).toBeUndefined();
+    expect(closest('chiShap', ['chiShape', 'chiRatio'])).toBe('chiShape');
   });
 });
 

@@ -175,12 +175,16 @@ function editDistance(a: string, b: string): number {
   return dp[b.length];
 }
 
-/** The candidate closest to `name` (case-insensitively equal, or an edit distance of at most 2), if any. */
+/**
+ * The candidate closest to `name`: equal ignoring case, or within an edit distance of 1 (names up to 3
+ * characters), 2 (up to 6) or 3 (longer); undefined if none is that close.
+ */
 export function closest(name: string, candidates: readonly string[]): string | undefined {
   const lower = name.toLowerCase();
   const ci = candidates.find((c) => c.toLowerCase() === lower);
   if (ci !== undefined) return ci;
-  let best: string | undefined, bestD = Math.min(3, Math.max(2, Math.floor(name.length / 3)) + 1);
+  const limit = name.length <= 3 ? 1 : name.length <= 6 ? 2 : 3;
+  let best: string | undefined, bestD = limit + 1;
   for (const c of candidates) {
     const d = editDistance(lower, c.toLowerCase());
     if (d < bestD) { bestD = d; best = c; }

@@ -23,8 +23,11 @@
  * retried on half the way, and each converged part is the start of the next; three failures are allowed. If the whole
  * way cannot be solved and at least MIN_FRACTION of it can, that equilibrium is used and the shortfall is reported
  * (the fixed-boundary problem has a fold near the transport's tables, where the pressure and the current table are at what
- * the boundary can hold: JET15 in the ramp-up, MASTU15); with less the update fails. Anderson mixing that does not
- * restart on every uptick of the residual (EquilibriumOptions.restartGrowth) is what makes the solves near a fold converge.
+ * the boundary can hold: JET15 in the ramp-up, MASTU15); with less the update fails. The parts before the last are solved
+ * on a coarse surface table (only their ψ is used), so an equilibrium that is used short of the whole way is solved again
+ * from its own ψ on the default table: the mapping mismatch and the transport geometry read the surfaces. Anderson
+ * mixing that does not restart on every uptick of the residual (EquilibriumOptions.restartGrowth) is what makes the
+ * solves near a fold converge.
  */
 import { GSFailure } from '../../equilibrium/gs';
 import type { Equilibrium, EquilibriumOptions, GSSolver } from '../../equilibrium/gs';
@@ -109,46 +112,64 @@ const acceptable = (eq: Equilibrium): boolean => (eq.converged || eq.residual < 
 export const MIN_FRACTION = 0.75;
 
 /**
+ * One solve of a continuation for `o`, logged in `attempts`. Returns the equilibrium if it is acceptable and null otherwise;
+ * `stop` is set for a failure that no smaller step changes (invalid input). Only the typed numerical failures are handled,
+ * anything else is a bug and propagates.
+ */
+function attempt(solver: GSSolver, o: EquilibriumOptions, stage: string, outer: number, fraction: number, attempts: OuterAttempt[]): { eq: Equilibrium | null; stop: boolean } {
+  try {
+    const eq = solver.solve(o);
+    attempts.push({ stage, iterations: eq.iterations, residual: eq.residual, converged: eq.converged, outer, fraction });
+    return { eq: acceptable(eq) ? eq : null, stop: false };
+  } catch (e) {
+    if (!isSolveFailure(e)) throw e;
+    const f = e instanceof GSFailure ? e : null;
+    attempts.push({
+      stage, iterations: f?.iterations ?? 0, residual: f && Number.isFinite(f.residual) ? f.residual : Infinity,
+      converged: false, error: solverErrorMessage(e), outer, fraction,
+    });
+    return { eq: null, stop: f?.reason === 'bad-input' };
+  }
+}
+
+/**
  * Solve for the tables `to` on the nodes x starting from `startEq`, whose own tables `from` on x it solves:
  * the whole way, halving on failure. Returns the equilibrium at the tables `to` (fraction 1), or if the whole way
  * cannot be solved the one at the largest fraction reached if it is at least MIN_FRACTION, or null.
+ *
+ * The parts of the way that are not the last are solved on the coarse CHEAP_LEVELS table, of which only ψ is used (the
+ * start of the next part). An equilibrium that is returned has the flux-surface table of every other equilibrium: a part
+ * that has to be returned, because the rest of the way could not be solved, is solved again at the default table
+ * from its own ψ (converged already, so this is a residual evaluation and a post-processing, not a search).
  */
 function continuation(solver: GSSolver, startEq: Equilibrium, x: Float64Array, from: { p: Float64Array; jR: Float64Array },
   to: { p: Float64Array; jR: Float64Array }, spec: ConsistentSpec, opts: ConsistentOptions, outer: number, attempts: OuterAttempt[]): { eq: Equilibrium; fraction: number } | null {
   let s = 0, w = 1, psi = startEq.psi, halvings = 0;
-  let last: Equilibrium | null = null;
+  let last: { eq: Equilibrium; o: EquilibriumOptions } | null = null;
+  const optionsAt = (s1: number): EquilibriumOptions => ({
+    ...opts.solve, Ip: spec.Ip, B0: spec.B0,
+    profile: { kind: 'table', psiN: x, p: blend(from.p, to.p, s1), jR: blend(from.jR, to.jR, s1) },
+    psiInit: psi, currentScaleWarn: spec.currentScaleLimit,
+  });
   while (s < 1) {
     const s1 = w >= 1 ? 1 : s + w * (1 - s);
     const final = s1 === 1;
-    const o: EquilibriumOptions = {
-      ...opts.solve, Ip: spec.Ip, B0: spec.B0,
-      profile: { kind: 'table', psiN: x, p: blend(from.p, to.p, s1), jR: blend(from.jR, to.jR, s1) },
-      psiInit: psi, currentScaleWarn: spec.currentScaleLimit,
-      ...(final ? {} : { psiLevels: CHEAP_LEVELS }),
-    };
+    const o = optionsAt(s1);
     const label = final ? `outer ${outer}` : `outer ${outer} · ${(100 * s1).toFixed(0)} %`;
-    let eq: Equilibrium | null = null;
-    try {
-      eq = solver.solve(o);
-      attempts.push({ stage: label, iterations: eq.iterations, residual: eq.residual, converged: eq.converged, outer, fraction: s1 });
-    } catch (e) {
-      if (!isSolveFailure(e)) throw e;
-      const f = e instanceof GSFailure ? e : null;
-      attempts.push({
-        stage: label, iterations: f?.iterations ?? 0, residual: f && Number.isFinite(f.residual) ? f.residual : Infinity,
-        converged: false, error: solverErrorMessage(e), outer, fraction: s1,
-      });
-      if (f?.reason === 'bad-input') return null; // no step changes invalid input
-    }
-    if (eq && acceptable(eq)) {
-      s = s1; psi = eq.psi; last = eq;
+    const { eq, stop } = attempt(solver, final ? o : { ...o, psiLevels: CHEAP_LEVELS }, label, outer, s1, attempts);
+    if (stop) return null; // no step changes invalid input
+    if (eq) {
+      s = s1; psi = eq.psi; last = { eq, o };
       w = Math.min(1, 2 * w);
     } else {
-      if (++halvings > 3) return last && s >= MIN_FRACTION ? { eq: last, fraction: s } : null;
+      if (++halvings > 3) break;
       w *= 0.5;
     }
   }
-  return last ? { eq: last, fraction: 1 } : null;
+  if (s >= 1) return last ? { eq: last.eq, fraction: 1 } : null; // the last part is the whole way: solved at the default table
+  if (!last || s < MIN_FRACTION) return null;
+  const full = attempt(solver, { ...last.o, psiInit: last.eq.psi }, `outer ${outer} · ${(100 * s).toFixed(0)} % (full table)`, outer, s, attempts);
+  return full.eq ? { eq: full.eq, fraction: s } : null;
 }
 
 /**

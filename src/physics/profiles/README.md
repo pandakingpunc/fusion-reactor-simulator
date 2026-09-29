@@ -201,8 +201,12 @@ model take part as soon as they implement the hooks; other parts are listed in
   fast change, has no converged solution (JET15 lost one update in 15, MASTU15 three in seven). Each solve is a continuation
   from the previous equilibrium's own tables, halved on failure. Where the whole way cannot be solved (a fold of the
   fixed-boundary problem near the transport's pressure and current), at least 75 % of it is used and the update is reported
-  once as limited (`fraction`); with less, or if the current table still needs rescaling by more than `CURRENT_SCALE_LIMIT`
-  (0.5) at consistent surfaces, or the outer iteration stops above `OUTER_ACCEPT` (5e-3), it is rejected, counted, warned
+  once as limited (`fraction`). The parts of a continuation that are not the last are solved on a coarse three-surface table
+  (only their ψ is used, as the start of the next part), so a part that is used is solved again from its own ψ on the default
+  surface table before anything reads it (one iteration): the mapping mismatch and the transport geometry need the full table.
+  With less than 75 %, or if the current table still needs rescaling by more than `CURRENT_SCALE_LIMIT`
+  (0.5) at consistent surfaces, or the outer iteration stops above `OUTER_ACCEPT` (5e-3; twice that for a limited update,
+  whose tables lag the surfaces by the rest of the change), it is rejected, counted, warned
   about and retried with a back-off. The core inside two grid spacings carries a flat current table: ⟨j_φ/R⟩ = 2π dI/dV of the
   innermost cells dips there and the surfaces are below what the grid resolves. The 1.5D golden cases accept all of their updates.
 - The transport-geometry cell volumes are ∫V' dρ̂ over each cell, scaled once to the volume of the equilibrium. The

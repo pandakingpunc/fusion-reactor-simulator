@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Simulation } from '../simulation';
 import { DEMO_15D, ITER_15D, JET_15D, MASTU } from '../presets';
 import { MagneticConfig } from '../types';
-import { EquilibriumOptions, GSFailure, GSSolver } from '../equilibrium/gs';
+import { DEFAULT_N_SURF, EquilibriumOptions, GSFailure, GSSolver } from '../equilibrium/gs';
 import { SingularMatrixError } from '../numerics/linalg';
 import { CURRENT_SCALE_LIMIT } from './coupling/equilibrium';
 import { ProfileModel } from './model';
@@ -216,6 +216,50 @@ describe('Grad–Shafranov updates during a shot', () => {
     expect(m.eqRejected).toBe(0);
     expect(r.engineering['GS updates rejected']).toBe(0);
     expect(Math.abs((m.ctx.eq.currentScale ?? 1) - 1)).toBeLessThan(0.1); // not the 0.7-1.07 of the stale tables
+  }, 120000);
+
+  // The fixed-boundary problem has a fold near what the boundary can hold: here no equilibrium of tables whose axis pressure is
+  // more than 90 % of the way from the last accepted equilibrium's to the transport's, in the four updates of the ramp-up. Each of
+  // them then follows the largest part of the change that has an equilibrium (88 %, coupling/outer.ts MIN_FRACTION), adopts it
+  // and the shot reports it once. The intermediate solves of the continuation are on a coarse surface table (4 nodes): the
+  // equilibrium that is adopted has to be solved again on the default one, or the mapping mismatch (0.2) and the geometry built
+  // from it (g1, g2 up to 20 times off at the edge) make every such update fail.
+  it('JET15: updates that can follow only 88 % of the change of the profiles are accepted on the default surface table and reported once', () => {
+    const solve = GSSolver.prototype.solve, update = ProfileModel.prototype.updateEquilibrium;
+    let call = 0, p0 = NaN, pT = NaN, refused = 0;
+    const adopted: { call: number; ok: boolean; nodes: number }[] = [];
+    vi.spyOn(ProfileModel.prototype, 'updateEquilibrium').mockImplementation(function (this: ProfileModel, t: number, y: Float64Array) {
+      call++;
+      p0 = this.ctx.eq.prof.p[0]; pT = NaN; // the pressure the update starts from; the target is that of its first table solve
+      const ok = update.call(this, t, y);
+      adopted.push({ call, ok, nodes: this.ctx.eq.prof.psiN.length });
+      return ok;
+    });
+    vi.spyOn(GSSolver.prototype, 'solve').mockImplementation(function (this: GSSolver, o: EquilibriumOptions) {
+      if (o.profile.kind !== 'table') return solve.call(this, o);
+      if (Number.isNaN(pT)) pT = o.profile.p[0]; // the first solve of an update goes the whole way (outer.ts)
+      if (call <= 4 && (o.profile.p[0] - p0) / (pT - p0) > 0.9) { refused++; throw new GSFailure('diverged', 'no equilibrium beyond 90 % of the change (stub)', 9, 0.3); }
+      return solve.call(this, o);
+    });
+    const sim = new Simulation({ ...JET_15D, t_end: 1.5 });
+    const r = sim.runAll();
+    const m = sim.model as ProfileModel;
+    expect(r.termination.natural).toBe(true);
+    expect(refused).toBeGreaterThanOrEqual(4); // the fold was hit by every one of the four updates
+    // the partial updates are accepted (they were rejected for the coarse table's mismatch), and so is everything after them
+    expect(adopted.length).toBeGreaterThan(4);
+    expect(adopted.every((a) => a.ok)).toBe(true);
+    expect(m.eqRejected).toBe(0);
+    expect(m.eqUpdates).toBe(adopted.length);
+    expect(sim.history.filter((h) => h.eq).length).toBe(m.eqUpdates + 1);
+    expect(m.eqRetried).toBeGreaterThanOrEqual(4); // a shorter continuation step is counted
+    // every adopted equilibrium carries the default surface table, the partial ones included
+    for (const a of adopted) expect(a.nodes, `update ${a.call}`).toBe(DEFAULT_N_SURF);
+    // reported once, not per update
+    const limited = sim.events.filter((e) => e.kind === 'warning' && e.msg.includes('followed only'));
+    expect(limited.length).toBe(1);
+    expect(limited[0].msg).toContain('followed only 88 % of the change');
+    expect(m.ctx.tg.g1F.every(Number.isFinite)).toBe(true);
   }, 120000);
 
   // a programming error is not a rejected update: it propagates (only typed numerical failures are handled)

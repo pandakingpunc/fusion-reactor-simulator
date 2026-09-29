@@ -4,9 +4,11 @@
  * the one whose own ρ_tor(ψ_N) maps them to the tables it was solved with.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { Equilibrium, GSFailure, GSSolver } from '../../equilibrium/gs';
+import { DEFAULT_N_SURF, Equilibrium, GSFailure, GSSolver } from '../../equilibrium/gs';
 import { SingularMatrixError } from '../../numerics/linalg';
 import { Pchip } from '../../numerics/interp';
+import { isUsableGeometry } from '../eqguard';
+import { geometryFromEquilibrium } from '../geometry1d';
 import { ConsistentOptions, ConsistentSpec, MIN_FRACTION, solveConsistent } from './outer';
 import { blend, coreFlat, currentTable, equilibriumTables, mappingMismatch, psiNOfRho, rhoOfPsiN } from './tables';
 
@@ -153,6 +155,66 @@ describe('solveConsistent', () => {
         // the equilibrium is a real one between the two: β_p between theirs
         expect(r.eq!.betaP).toBeGreaterThan(near.betaP);
         expect(r.eq!.betaP).toBeLessThan(hot.betaP * 1.02);
+        // ... at the resolution of any other equilibrium (the intermediate solves of the continuation use a coarse table
+        // that the geometry of the transport and the mapping mismatch cannot read), not the 4 nodes of those solves
+        expect(r.eq!.prof.psiN.length).toBe(DEFAULT_N_SURF);
+        // the tables of a partial step lag the surfaces by the rest of the change (the coupling accepts twice OPTS.accept for it);
+        // on the coarse table this mismatch read 0.23
+        expect(r.delta).toBeLessThan(2 * OPTS.accept);
+        // the attempt whose mismatch is that of the result is the solve of the part on the default table, logged as such and converged at once
+        const mine = r.attempts.find((a) => a.delta === r.delta)!;
+        expect(mine.stage).toContain('full table');
+        expect(mine.converged).toBe(true);
+        expect(mine.iterations).toBeLessThanOrEqual(3);      } finally { spy.mockRestore(); }
+    });
+
+    it('the geometry of that equilibrium is the geometry of the equilibrium at the same tables, not a coarse-table artefact', () => {
+      const p1 = pAxis(hot), p0 = pAxis(near);
+      const spy = foldAt(p0 + 0.9 * (p1 - p0));
+      let r: ReturnType<typeof solveConsistent>;
+      try { r = solveConsistent(solver, near, spec, { ...OPTS, maxOuter: 4 }); } finally { spy.mockRestore(); }
+      expect(r.fraction).toBeGreaterThanOrEqual(MIN_FRACTION);
+      expect(r.fraction).toBeLessThan(1);
+      const geomB = { a: 0.65, kappa: 2.5, delta: 0.5 };
+      const N = 50, tg = geometryFromEquilibrium(r.eq!, N, geomB);
+      expect(isUsableGeometry(tg)).toBe(true);
+      // the same tables solved directly at full resolution (no fold): what the partial result has to be
+      const x = psiNOfRho(near, spec.rho), from = equilibriumTables(near, x);
+      const direct = solver.solve({
+        Ip, B0, profile: { kind: 'table', psiN: x, p: blend(from.p, spec.p, r.fraction), jR: blend(from.jR, spec.jR, r.fraction) },
+        psiInit: near.psi, tol: 1e-7, maxIter: 200,
+      });
+      const ref = geometryFromEquilibrium(direct, N, geomB);
+      // the outer iteration moved the nodes to the surfaces of the result, so the tables differ a little from the direct ones:
+      // the geometries agree to a few per cent everywhere (the coarse table was 20 times off in g1, g2 at the edge, 2 times in V')
+      for (const k of ['g1F', 'g2F', 'VpF', 'qEqC'] as const) {
+        let worst = 0;
+        for (let i = 1; i < tg[k].length; i++) worst = Math.max(worst, Math.abs(tg[k][i] / ref[k][i] - 1));
+        expect(worst, k).toBeLessThan(0.1);
+      }
+    });
+
+    it('takes nothing if the part that was reached cannot be solved again on the default surface table', () => {
+      const p1 = pAxis(hot), p0 = pAxis(near), real = GSSolver.prototype.solve;
+      const spy = vi.spyOn(GSSolver.prototype, 'solve').mockImplementation(function (this: GSSolver, o) {
+        if (o.profile.kind === 'table') {
+          const d = (o.profile.p[0] - p0) / (p1 - p0);
+          if (d > 0.9) throw new GSFailure('diverged', 'no equilibrium for this pressure (stub)', 9, 0.3);
+          // the solves of the continuation are on the coarse table; the one on the default table of the largest part is refused
+          if (o.psiLevels === undefined && d > 0.1) throw new GSFailure('diverged', 'no equilibrium on the default table (stub)', 4, 0.1);
+        }
+        return real.call(this, o);
+      });
+      try {
+        const r = solveConsistent(solver, near, spec, OPTS);
+        expect(r.eq).toBeNull();
+        expect(r.converged).toBe(false);
+        expect(r.reason).toContain('no equilibrium on the default table (stub)');
+        const own = r.attempts[r.attempts.length - 1];
+        expect(own.stage).toContain('full table');
+        expect(own.converged).toBe(false);
+        expect(own.fraction).toBeGreaterThanOrEqual(MIN_FRACTION);
+        expect(r.hard).toBe(true);
       } finally { spy.mockRestore(); }
     });
 

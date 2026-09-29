@@ -13,6 +13,7 @@
  */
 import { ActuatorEntry, EdgeOptions, Method, METHOD_LABELS, ProfileSettings, ReactorConfig, SystemsConfig } from '../../physics/types';
 import { DEFAULT_PROFILE_SETTINGS } from '../../physics/profiles/defaults';
+import { IMPURITIES } from '../../physics/constants';
 import { fieldVisible, getPath, METHOD_DEFAULT, missingRequired, PRESETS, stepsFor } from '../wizard/schema';
 
 /** Limits that keep a hostile or corrupt input from becoming a large object graph. */
@@ -91,6 +92,9 @@ const SYSTEMS_OPTION_TYPES: { [K in keyof SystemsConfig]-?: NonNullable<SystemsC
  */
 const NONLINEAR_SOLVER_CHOICES: Record<NonNullable<ProfileSettings['nonlinearSolver']>, true> = { auto: true, picard: true, newton: true, pc: true };
 const PROFILE_SERIES = ['profiles.IpWaveform'];
+/** The profile-resolved impurity settings (no default value either: absent is the scalar model), exhaustive over their choices like the solver above */
+const IMPURITY_TRANSPORT_CHOICES: Record<NonNullable<ProfileSettings['impurityTransport']>, true> = { legacy: true, anomalous: true, facit: true };
+const IMPURITY_SETPOINT_CHOICES: Record<NonNullable<ProfileSettings['impuritySetpoint']>, true> = { average: true, separatrix: true };
 
 function walk(v: unknown, path: string, leaves: Map<string, LeafType>, sections?: string[]): void {
   if (v === undefined || v === null) return;
@@ -125,6 +129,11 @@ function templateFor(method: Method): Template {
     leaves.set('profiles.nonlinearSolver', 'string');
     enums.set('profiles.nonlinearSolver', new Set(Object.keys(NONLINEAR_SOLVER_CHOICES)));
     for (const s of PROFILE_SERIES) series.add(s);
+    for (const k of ['impurityDoverDe', 'impurityPinchOverPe', 'impurityExtraConcentration']) leaves.set(`profiles.${k}`, 'number');
+    for (const [k, choices] of [['impurityTransport', IMPURITY_TRANSPORT_CHOICES], ['impuritySetpoint', IMPURITY_SETPOINT_CHOICES], ['impurityExtraSpecies', IMPURITIES]] as const) {
+      leaves.set(`profiles.${k}`, 'string');
+      enums.set(`profiles.${k}`, new Set(Object.keys(choices)));
+    }
   }
   const ranges = new Map<string, [number, number]>();
   for (const step of stepsFor(method)) {

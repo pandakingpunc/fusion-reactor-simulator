@@ -180,7 +180,10 @@ export function nLHmin(Ip_MA: number, B: number, a: number, R: number): number {
  * Exponent of the low-density branch of the L-H threshold: for n̄ < n̄_min, P_LH = P_Martin(n̄_min) · (n̄_min/n̄)^LH_LOW_DENSITY_EXPONENT.
  * Neither source of the two ends of the branch gives it: Martin et al. (2008) is a fit of the HIGH-density branch only, and Ryter et
  * al. (2014) supply n̄_min (their eq. 3) and show that the threshold rises below it (the low-density branch, from the ion heat channel:
- * less electron-ion coupling), but no multi-machine law for the rise. The exponent is that of the SPARC design studies: J.W. Hughes et
+ * less electron-ion coupling), but no multi-machine law for the rise. The heuristic model built on that finding (R. Bilato, C. Angioni,
+ * G. Birkenmeier, F. Ryter, "Heuristic model for the power threshold of the L-H transition", Nucl. Fusion 2020, doi:10.1088/1741-4326/abb540,
+ * eq. 12: electron-ion equipartition and the L-mode τ_E scaling) does not give a power law either: its rise is an implicit relation in n̄.
+ * The exponent is that of the SPARC design studies: J.W. Hughes et
  * al., "Projections of H-mode access and edge pedestal in the SPARC tokamak", J. Plasma Phys. 86 (2020) 865860504, add a penalty to the
  * ITPA (Martin) threshold below n_min, implemented in the open-source POPCON tool cfspopcon (CFS, formulas/separatrix_conditions/
  * threshold_power.py, "Added in low density branch from Ryter 2014") as (n_min/n)². APPROXIMATION: that penalty (the paper's text was

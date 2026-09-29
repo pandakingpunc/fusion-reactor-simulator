@@ -197,7 +197,9 @@ export class RunArchive {
 
   private async putOnce(run: NewRun): Promise<PutResult> {
     if (run.fingerprint) {
-      const same = await this.byFingerprint(run.fingerprint);
+      // only a run this page made, or an import that reproduced, stands for the run of these inputs: an unverified
+      // import (its report may not be what the inputs give) never hides the genuine run saved later
+      const same = (await this.byFingerprint(run.fingerprint)).filter((s) => s.origin === 'run' || s.verification === 'verified');
       if (same.length) return { id: same[0].id, added: false, evicted: [] };
     }
     const id = this.newId();

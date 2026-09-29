@@ -170,6 +170,20 @@ describe('the run archive (IndexedDB)', () => {
     a.close();
   });
 
+  it('an unverified import does not hide the genuine run of the same inputs saved later', async () => {
+    const a = await open({ now: ticking() });
+    const forged = { ...shot().report, Q_sci_max: 99 };
+    await a.put(newRun('imported, edited', { fingerprint: fp('d'), origin: 'import', verification: 'mismatch', report: forged }));
+    const genuine = await a.put(newRun('genuine', { fingerprint: fp('d') }));
+    expect(genuine.added).toBe(true);
+    expect((await a.get(genuine.id))!.report.Q_sci_max).toBe(shot().report.Q_sci_max);
+    // a verified import, and a run of this page, do stand for their inputs
+    expect((await a.put(newRun('again', { fingerprint: fp('d') }))).added).toBe(false);
+    await a.put(newRun('verified import', { fingerprint: fp('e'), origin: 'import', verification: 'verified' }));
+    expect((await a.put(newRun('same run', { fingerprint: fp('e') }))).added).toBe(false);
+    a.close();
+  });
+
   it('stores a run with a fingerprint once: the same run again is not added', async () => {
     const a = await open({ now: ticking() });
     expect(await a.put(newRun('first', { fingerprint: fp('b') }))).toMatchObject({ id: 'id1', added: true });

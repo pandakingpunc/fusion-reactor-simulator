@@ -118,8 +118,10 @@ describe('the packed grid', () => {
     for (const w of [0.08, 0.1]) expect(across(buildGrid(N, gridSpec({ gridPacking: 4, pedestalWidth: w })), w)).toBeGreaterThanOrEqual(8);
     // the default settings of the model
     const ps = DEFAULT_PROFILE_SETTINGS;
-    const spec = gridSpec(ps);
-    if (spec) expect(across(buildGrid(ps.nRho, spec), ps.pedestalWidth)).toBeGreaterThanOrEqual(8);
+    expect(ps.gridPacking).toBe(4);
+    const spec = gridSpec(ps)!;
+    expect(spec).toBeDefined();
+    expect(across(buildGrid(ps.nRho, spec), ps.pedestalWidth)).toBeGreaterThanOrEqual(8);
   });
 
   it('lookups: the cell that contains ρ, the nearest face, the interval between centres', () => {
@@ -333,6 +335,18 @@ describe('spacing-dependent MHD helpers on a packed grid', () => {
 });
 
 describe('the model on a packed grid', () => {
+  it('the presets get the packed grid by default (ITER15: 10 cells across the pedestal at N = 50)', () => {
+    const m = new ProfileModel(ITER_15D);
+    const g = m.ctx.tg;
+    expect(g.uniform).toBe(false);
+    expect(g.N).toBe(50);
+    let across = 0; for (let i = 0; i < g.N; i++) if (g.rhoC[i] >= 1 - m.ctx.ps.pedestalWidth) across++;
+    expect(across).toBe(10);
+    // a blank setting keeps the default, gridPacking 0 asks for the uniform grid
+    expect(new ProfileModel({ ...ITER_15D, profiles: { ...ITER_15D.profiles, gridPacking: undefined } }).ctx.tg.uniform).toBe(false);
+    expect(new ProfileModel({ ...ITER_15D, profiles: { ...ITER_15D.profiles, gridPacking: 0 } }).ctx.tg.uniform).toBe(true);
+  });
+
   const cfg = (packing: number) => ({ ...SPARC_15D, t_end: 3, profiles: { ...SPARC_15D.profiles, gridPacking: packing } });
 
   it('ProfileContext builds the geometry on the packed grid, also after a Grad–Shafranov update', () => {

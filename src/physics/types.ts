@@ -42,7 +42,8 @@ export interface ProfileSettings {
   nRho: number;
   /**
    * edge packing of the radial cells (tanh step, 1.5D): the cells at the pedestal and the separatrix are
-   * (1 + gridPacking) times narrower than the core cells, for the same nRho. 0: the uniform grid of v3.
+   * (1 + gridPacking) times narrower than the core cells, for the same nRho (default 4: 10 cells across the
+   * pedestal at nRho 50). 0: the uniform grid of v3.
    */
   gridPacking?: number;
   /** GS ızgarası R yönü düğüm sayısı */

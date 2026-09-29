@@ -534,7 +534,7 @@ describe('short shots', () => {
     expectSameRun(normalizeRng(sim), normalizeRng(ref), 'rewound at 50 %');
   }, 240000);
 
-  it('ITER 1.5D (80 s, tau_He*/tau_E = 5): helium fraction 2 to 4 %, Z_eff of the design (1.65, Shimada 2007) and the configured Be and Ar concentrations', async () => {
+  it('ITER 1.5D (80 s, tau_He*/tau_E = 5): helium fraction 2 to 4 %, Z_eff near the design value (about 1.65) and the configured Be and Ar concentrations', async () => {
     const sim = new Simulation(withImpurities(ITER_15D, { impurityTransport: 'facit' }, 80));
     await runAllYielding(sim);
     expect(sim.model.terminated?.reason).toBe('Scheduled end');

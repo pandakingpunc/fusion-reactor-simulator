@@ -13,12 +13,13 @@ current equilibrium and transport geometry, work arrays, plasma and controller s
 
 | Path | Contents |
 | --- | --- |
-| `state.ts` | layout of the state vector `y = [T_e \| T_i \| n_e \| ψ \| scalars]`; `ctx.view(y)` gives named views (`st.Te`, `st.s.Ip`, …) |
+| `state.ts` | layout of the state vector `y = [T_e \| T_i \| n_e \| ψ \| scalars \| impurity densities]` (the last block only with `impurityTransport` other than 'legacy': N cells per species, `st.s.imp`); `ctx.view(y)` gives named views (`st.Te`, `st.s.Ip`, …) |
 | `work.ts` | work arrays `ctx.w` (cell arrays of N, face arrays of N + 1), allocated once |
 | `context.ts` | `ProfileContext`, `StepConstants` (held fixed over a step), `onGeometry` cache hooks |
 | `geometry1d.ts` | the radial grid (uniform, or packed towards the edge: `GridSpec`, `buildGrid`, `cellIndex`, `faceValue`, …) and the transport geometry on it, ρ̂ = √(Φ/Φ_b), from equilibrium tables (`EquilibriumTables`) |
 | `fvsolver.ts` | implicit finite-volume solvers (heat, density, current) with the reference state and explicit rate of a TR-BDF2 stage, their right-hand sides (`residual`, `rate`) and error-estimate filter, `boundaryLoss` (P_bound), the Pereverzev–Corrigan term of the heat solve; the current diffusion in the Hinton–Hazeltine form with the moving-coordinate term |
-| `composition.ts` | quasi-neutral composition; He ash, impurity and fuel-mix inventories |
+| `composition.ts` | quasi-neutral composition; He ash, impurity and fuel-mix inventories (the scalar model; with `impurityTransport` other than 'legacy' the composition is that of the profiles, see `impurity/`) |
+| `impurity/` | opt-in profile-resolved He ash and impurities: `model.ts` (`ImpurityModel`, a source model: densities on the particle solver, sources, crashes, composition, checkpoint), `transport.ts` (D, v of a species on the faces), `facit.ts` (FACIT neoclassical coefficients), `config.ts` (species and state layout); see "Impurities and helium ash" |
 | `qprofile.ts` | ψ → ψ′, q, enclosed current, ⟨j·B⟩; q95; the scale that makes the initial ψ carry I_p (`equilibriumCurrentScale`) and the edge of its current follow the equilibrium's table (`matchEdgeCurrent`) |
 | `settings.ts` | the check of the step-control settings: `rtol`, `atol` and `dtMax` outside their domain are replaced by the default and reported |
 | `boundary/sol.ts` | separatrix values (two-point T_sep, n_sep), lagged P_SOL |
@@ -321,6 +322,37 @@ whose contents n V′ change with V′), so the current equation has no V̇′ t
 geometry is piecewise constant between adoptions, a jump at an adoption (V′ of a face by up to 1.7 %, the total volume fixed) would be a conservative
 remap of the contents, which the coupling lane's interpolation of the geometry in time would replace.
 
+## Impurities and helium ash
+
+`ProfileSettings.impurityTransport` (`impurity/`): `'legacy'` (default) keeps the scalar inventories of `composition.ts` (one He content with τ_He* = (τ_He*/τ_E) τ_E, one uniform impurity concentration; the ELM and sawtooth crashes scale them). `'anomalous'` and `'facit'` put n_He(ρ), the intrinsic
+impurity (`impurity.species`), the seeded one (`impurity.seedSpecies`, when it has a concentration) and an optional third species (`impurityExtraSpecies`) into the state, one block of N cell densities per species behind the scalars
+(`ScalarView.imp`; a legacy shot has none of it, so its layout, its checkpoints and every golden number are those of before). `ImpurityModel` is the last of the sources: it owns the composition (`composition()` delegates to it), adds the line radiation of the
+third species, advances the densities in `accepted` and has its own checkpoint (keys `imp_*`, the FACIT table in `aux`).
+
+- **Equation.** ∂n_z/∂t = −(1/V′) ∂ρ̂ V′Γ_z + S_z, Γ_z = −g1 D_z ∂ρ̂n_z + ⟨|∇ρ̂|⟩ v_z n_z, on the exponentially fitted (Scharfetter–Gummel) finite-volume solver of the electrons (`DensitySolver`): positive, conservative to
+  round-off, and its source-free steady state is exp(∫⟨|∇ρ̂|⟩ v/(g1 D) dρ̂) to 1e-4 on the uniform and on the packed grid (tests). One backward-Euler solve per species after each accepted step with the coefficients and the fusion source of that step:
+  a first-order splitting, outside the error estimate (the profiles relax in seconds, a step lasts up to `dtMax`; the steady state of the implicit scheme does not depend on Δt).
+- **Coefficients.** Anomalous: D_z = `impurityDoverDe` D_e and v_z = `impurityPinchOverPe` v_e (the electron D and pinch of `coefficients.ts`, including the edge barrier; the curvature pinch is independent of charge and mass, no thermodiffusion or
+  roto-diffusion). `'facit'` adds the neoclassical D, K, H of FACIT (Fajardo et al., PPCF 64 (2022) 055017; k_i of Fajardo and Angioni, PPCF 65 (2023) 035021; rotation-free, one mean charge per species from the coronal equilibrium of `radiation.ts`):
+  v_neo = K ∂ln n_i/∂r + H ∂ln T_i/∂r with ∂r = (g1/⟨|∇ρ̂|⟩) ∂ρ̂, refreshed every `NEO_REFRESH` = 0.25 s. The temperature screening (H < 0) makes the light impurities of ITER15 hollow (Be 1.7 % on axis, 3.7 % at the edge).
+- **Sources and boundaries.** He: the ash of every fusion channel of the local rate (`w.ash`), an absorbing separatrix; what leaves (the outflux and the He an ELM expels) is exhausted with τ_He* = (`transport.tau_He_over_tau_E`) τ_E:
+  all of it returns as an edge source but N_He dt/τ_He* (the pumps), so N_He = τ_He* Γ_ash at any step length and the radial transport sets the profile. Impurities: n_z,sep = c_sep n_sep (Dirichlet; the edge concentration holds the
+  seeding rate, diagnostics `GammaZ`, `GammaSeed`, `GammaExtra` [1e20/s inward]); the configured concentration is by default (`impuritySetpoint: 'average'`) the set-point of the volume-average N_z/N_e, which a slow controller
+  (time τ_p) reaches through a multiplier of c_sep (0.02 to 50; `mZ`), so that screening or accumulation does not move the design point of a preset; `'separatrix'` fixes c_sep and lets the transport decide. Tungsten has the wall source of the scalar model,
+  S_W = `W_source_frac` P_SOL/(5 MeV) [1/s], deposited in the outer layer (e-folding 0.04), and its inventory is S_W times the confinement time of the species' own D and v (a steady solve), added to the set-point: the scalar model's S_W τ_Z, with τ_Z × 4 without ELMs and
+  sawteeth, is replaced (the crashes act on the profiles). The source is a particle count per second divided by N_e = ∫n_e dV, the same volume-average basis as the 0D model (S_W/(n̄ V)); it does not depend on the line-average density that the 1.5D fuelling regulates,
+  so the re-based ITER and DEMO `n_target` do not enter. ELM crashes flush every species by the fraction of its excess over the separatrix value that they take from n_e (`elmCrash`), sawtooth crashes flatten every species conserving it (`flattenConserving`), a disruption quench
+  removes them with the electrons.
+- **What it feeds.** Quasi-neutral composition per cell: n_a, n_b from n_e minus 2 n_He minus Z̄ n_z at the local T_e, so the dilution sits where the impurity sits; Z_eff(ρ) and the ion sum are the species sums, and Z_eff(ρ) is what the neoclassical conductivity and the bootstrap
+  current read; line radiation n_e n_z L_z(T_e) per species with the Mavrin (2018) curves, local. The scalars `NHe` and `cZ` of the state mirror the profiles (inventory, volume-average concentration) for the disruption limit and the report. New diagnostics: `fHe`, `fHe0`, `tauHeStar`,
+  `GammaHe`, `cZ`, `cZ0`, `cZpeak`, `cSeed`, `cExtra`, `GammaZ`, `S_W`, `mZ`; profiles `nHe`, `nZ`, `nSeed`, `nExtra` [1e20 m⁻³].
+- **Bookkeeping.** For every species N_z = N_z(0) + injected − lost + remap holds to round-off after every step and every crash, and for helium N_He + pumped + in transit = ∫ash + remap (tests; `remap` is the change of the content by the adoption of a new equilibrium, whose cell
+  volumes differ by up to 1.7 % while the densities stay, as for n_e: booked before anything touches the densities, and part of the conservative remap of the contents that the coupling lane still owes).
+- **Numbers** (ITER15, 80 s, flat-top means of the last 30 %, τ_He*/τ_E = 5, Be 2 %, Ar 0.12 %): He fraction n_He/n_e 3.8 % (the band asked for is 2 to 4 %; the steady value N_He = τ_He* Γ_ash of the ITER numbers is 4 %), on axis 4.9 %; Z_eff 1.69 (the design value is about 1.65); Be and Ar at their set-points by the controller
+  (mZ about 2); Q 11.1 against 13.6 for the scalar model (whose ELM flush keeps n_He/n_e at 1.7 % and lowers c_Be to 1.1 %).
+- **Not done.** No charge-state resolution (one mean charge per species, no ionisation/recombination or neutral dynamics: the edge concentration is a boundary condition); no poloidal asymmetry (FACIT's rotating models and ICRH asymmetry are not ported, so a rotating plasma with W has more transport than the model gives); no fast-ion or beam
+  He source, no He line radiation; trace-impurity fits (α up to about 1 in FACIT); the FACIT coefficients are a transcription of the reference implementation (Aurora `facit.py`) and were not re-verified against NEO here.
+
 ## Definitions shared with the 0D model
 
 The 1.5D model uses the same definitions as `confinement/magnetic.ts` (ws2b), so that the two agree
@@ -524,6 +556,8 @@ model take part as soon as they implement the hooks; other parts are listed in
 | `integrity.test.ts` | equilibrium swaps (fresh work arrays), GS failures, the current-scale gate and retry timing, step failures (numerical failures retried, programming errors propagate with the state put back, also from the update after the accepted step), reported τ_E, initial equilibrium, replays from quench frames |
 | `grid.test.ts` | the radial grid: the uniform path double for double, the packed grid (cells across the pedestal, smoothness, one map for every N), lookups; diffusion operator with a manufactured solution (observed order 2.0 on the packed grid), conservation of energy, particles and enclosed current, `alphaMHD` with the separatrix face; pins of two uniform-grid shots |
 | `profiles.test.ts` | solver verification (analytic), neoclassical, MHD helpers, integration runs |
+| `impurity/facit.test.ts` | FACIT: the Z scaling of K, the −1/2 temperature screening of a heavy impurity, PS = 2 q² classical, regimes, finiteness over a scan of the inputs, pins of the port |
+| `impurity/impurity.test.ts` | species and layout, the steady profile exp(∫v/D) to 1e-4 (uniform and packed grid), the helium closure N = τ_He* Γ_ash (ITER numbers), particle balance of every species (wall source, ELM, sawtooth, quench, equilibrium adoption, JET shot with ELMs and L–H), the set-point controller, composition and Z_eff, the FACIT refresh and checkpoint, chunk invariance and rewind, ITER15 80 s He fraction |
 
 Tests that run for more than a few seconds of wall time use `runAllYielding` (`src/testing/yielding.ts`): it advances in
 the chunks of `runAll`, bit-identically, and returns to the event loop after each, so that the Vitest worker can answer the runner

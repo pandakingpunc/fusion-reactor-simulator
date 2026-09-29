@@ -858,9 +858,14 @@ export class MagneticModel implements SimModel {
     if (s.warnNG) this.warned.add('nG');
     if (s.warnBN) this.warned.add('bN');
   }
+  /**
+   * kappa and delta are the nominal (95 % surface) values of the configuration, which q95 and the scalings use; kappaB and deltaB are those of the
+   * boundary (LCFS) that V and S belong to (boundaryShape: equal to the nominal values where the preset gives no LCFS shape, 1.85 and 0.49 for ITER),
+   * the shape a cross-section drawing of the plasma needs.
+   */
   geometryInfo(): Record<string, number> {
     const c = this.cfg;
-    return { R: this.g.R, a: this.g.a, kappa: this.g.kappa, delta: this.g.delta, B0: c.B0, Ip_MA: c.Ip_MA, V: this.V, S: this.S, stellarator: +this.isStell, gap: c.magnet.gap_m, coilThickness: c.magnet.coilThickness_m, B_coil: this.magnetInfo.B_coil };
+    return { R: this.g.R, a: this.g.a, kappa: this.g.kappa, delta: this.g.delta, kappaB: this.gB.kappa, deltaB: this.gB.delta, B0: c.B0, Ip_MA: c.Ip_MA, V: this.V, S: this.S, stellarator: +this.isStell, gap: c.magnet.gap_m, coilThickness: c.magnet.coilThickness_m, B_coil: this.magnetInfo.B_coil };
   }
 
   report(hist: HistoryFrame[], events: SimEvent[]): ShotReport {

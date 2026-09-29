@@ -1,7 +1,8 @@
 /**
- * The page's side of scenarios: the controller loads with a scenario, an invalid one reaches the state as an error, the run
- * keeps the control values of its frames (programmed against actual lanes) and, at completion, the provenance the worker sends,
- * which makes a live run with interventions signable; probing and capturing the log go through the worker as well.
+ * The page's side of scenarios: the controller loads with a scenario, an invalid one reaches the state as an error, the run keeps the
+ * control values of its frames (programmed against actual lanes) and, at completion, the provenance the worker sends, which makes a live
+ * run with interventions signable; the worker's answer to a log request lands in the state; probing and background runs go through a
+ * worker of their own (oneShot.ts).
  */
 import { describe, expect, it } from 'vitest';
 import { Simulation } from '../../physics/simulation';
@@ -11,7 +12,8 @@ import { fakeWorkerFactory, manualScheduler } from '../../worker/fakeWorker';
 import { FromWorker, PROTOCOL_VERSION } from '../../worker/protocol';
 import { APP_VERSION } from '../persist/version';
 import { fingerprintOf } from '../persist/runRecord';
-import { SimController, initialSimState, reduceSim, runProvenance } from './sim';
+import { probeInWorker } from './oneShot';
+import { SimController, initialSimState, reduceSim } from './sim';
 import type { SimState } from './types';
 
 function setup() {
@@ -22,7 +24,7 @@ function setup() {
   const w = factory.workers[0];
   const roundTrip = () => { w.process(); w.deliver(); sched.run(); };
   const advance = (dt: number) => { w.advance(dt); w.deliver(); sched.run(); };
-  return { ctrl, w, factory, roundTrip, advance, s: () => ctrl.store.getState() };
+  return { ctrl, w, factory, sched, roundTrip, advance, s: () => ctrl.store.getState() };
 }
 
 const DROP: ScenarioSpec = dropTemplate('P_NBI_MW', TAE.t_end * 0.4, 0);
@@ -58,17 +60,17 @@ describe('SimController with a scenario', () => {
     const h = setup();
     h.ctrl.load(TAE, false, DROP);
     h.roundTrip();
-    expect(h.s().trace).toEqual({ keys: ['P_NBI_MW', 'kappa_conf'], rows: [[13, 10]] });
+    expect(h.s().trace).toEqual([[13, 10]]);
     h.advance(TAE.t_end * 0.7);
     const s = h.s();
-    expect(s.trace!.rows).toHaveLength(s.frames.length);
-    const nbi = s.trace!.rows.map((r) => r[0]);
+    expect(s.trace).toHaveLength(s.frames.length);
+    const nbi = s.trace!.map((r) => r[0]);
     expect(nbi[0]).toBe(13);
     expect(nbi[nbi.length - 1]).toBe(0);
     const at = Math.floor(s.frames.length / 3);
     h.ctrl.rewind(at);
     h.roundTrip();
-    expect(h.s().trace!.rows).toHaveLength(at + 1);
+    expect(h.s().trace).toHaveLength(at + 1);
     expect(h.s().frames).toHaveLength(at + 1);
     expect(h.s().provenance).toBeNull();
   });
@@ -83,9 +85,9 @@ describe('SimController with a scenario', () => {
     h.ctrl.control({ P_NBI_MW: 3 });
     h.advance(TAE.t_end * 0.3);
     const s = h.s();
-    expect(s.trace!.rows).toHaveLength(s.frames.length);
-    expect(s.trace!.rows.slice(0, before).every((r) => r[0] === 13)).toBe(true);
-    expect(s.trace!.rows[s.trace!.rows.length - 1][0]).toBe(3);
+    expect(s.trace).toHaveLength(s.frames.length);
+    expect(s.trace!.slice(0, before).every((r) => r[0] === 13)).toBe(true);
+    expect(s.trace![s.trace!.length - 1][0]).toBe(3);
   });
 
   it('completes with the provenance: a live run with interventions gets its fingerprint and actuator log', () => {
@@ -98,10 +100,10 @@ describe('SimController with a scenario', () => {
     h.advance(TAE.t_end);
     const s = h.s();
     expect(s.status).toBe('done');
-    const prov = runProvenance(s);
+    const prov = s.provenance!;
     expect(prov.interventions).toBe(1);
     expect(prov.actuatorLog).toEqual([expect.objectContaining({ patch: { P_NBI_MW: 5 } })]);
-    expect(prov.fingerprint).toBe(Simulation.replay(TAE, prov.actuatorLog!).fingerprint(APP_VERSION));
+    expect(prov.fingerprint).toBe(Simulation.replay(TAE, prov.actuatorLog).fingerprint(APP_VERSION));
     // the run file writer takes the fingerprint as the worker computed it (it could not compute it itself)
     expect(fingerprintOf({ cfg: TAE, prov })).toBe(prov.fingerprint);
     // without the worker's word (an older worker) the same run cannot be signed
@@ -113,7 +115,7 @@ describe('SimController with a scenario', () => {
     h.ctrl.load(TAE, false, DROP);
     h.roundTrip();
     h.advance(TAE.t_end);
-    const prov = runProvenance(h.s());
+    const prov = h.s().provenance!;
     expect(prov.scenario).toEqual(DROP);
     expect(prov.interventions).toBe(0);
     const ref = new Simulation(TAE, { scenario: DROP });
@@ -121,51 +123,79 @@ describe('SimController with a scenario', () => {
     expect(prov.fingerprint).toBe(ref.fingerprint(APP_VERSION));
   });
 
-  it('a completed run whose worker sent no provenance (an older worker) keeps the interventions count only', () => {
-    const s = { ...initialSimState, interventions: 2 };
-    expect(runProvenance(s)).toEqual({ interventions: 2 });
+  it('a rewind takes the provenance of the abandoned branch away; completing the new branch brings the new one', () => {
+    const h = setup();
+    h.ctrl.load(TAE, false, DROP);
+    h.roundTrip();
+    h.advance(TAE.t_end);
+    expect(h.s().provenance).not.toBeNull();
+    h.ctrl.rewind(2);
+    h.roundTrip();
+    expect(h.s().provenance).toBeNull();
+    h.ctrl.control({ kappa_conf: 4 });
+    h.w.process();
+    h.advance(TAE.t_end);
+    expect(h.s().provenance!.actuatorLog).toHaveLength(1);
   });
 
-  it('captureLog asks the worker for the provenance as it stands', async () => {
+  it('the worker\'s answer to a log request lands in the state, for the current run only', () => {
     const h = setup();
     h.ctrl.load(TAE, false, DROP);
     h.roundTrip();
     h.advance(TAE.t_end * 0.2);
     h.ctrl.control({ kappa_conf: 4 });
-    const p = h.ctrl.captureLog();
-    h.w.process();
-    h.w.deliver();
-    const log = await p;
-    expect(log.actuatorLog).toHaveLength(1);
-    expect(log.actuatorLog[0].patch).toEqual({ kappa_conf: 4 });
-    expect(log.scenario).toEqual(DROP);
-    // no run: a rejected promise, not a hang
-    const fresh = setup();
-    await expect(fresh.ctrl.captureLog()).rejects.toThrow(/no run/i);
+    h.ctrl.post({ type: 'getLog', token: 9 });
+    h.roundTrip();
+    const a = h.s().logAnswer!;
+    expect(a.token).toBe(9);
+    expect(a.provenance.actuatorLog).toEqual([expect.objectContaining({ patch: { kappa_conf: 4 } })]);
+    expect(a.provenance.scenario).toEqual(DROP);
+    // an answer of an earlier run is dropped
+    h.w.emit({ type: 'log', id: 77, branchId: 0, token: 10, provenance: a.provenance });
+    h.sched.run();
+    expect(h.s().logAnswer!.token).toBe(9);
   });
+});
 
-  it('probe builds the model in a worker of its own and resolves with its meta', async () => {
-    const h = setup();
-    const p = h.ctrl.probe(TAE);
-    const probeWorker = h.factory.workers[1];
-    expect(probeWorker.last('probe')).toMatchObject({ protocolVersion: PROTOCOL_VERSION, cfg: TAE });
-    probeWorker.process();
-    probeWorker.deliver();
+describe('probes and background runs in a worker of their own', () => {
+  it('probeInWorker builds the model in a fresh worker and resolves with its meta', async () => {
+    const f = fakeWorkerFactory();
+    const p = probeInWorker(f.create, TAE);
+    const w = f.workers[0];
+    expect(w.last('probe')).toMatchObject({ protocolVersion: PROTOCOL_VERSION, cfg: TAE });
+    expect(w.last('probe')).not.toHaveProperty('scenario');
+    w.process();
+    w.deliver();
     const meta = await p;
     expect(meta.controls).toEqual({ P_NBI_MW: 13, kappa_conf: 10 });
-    expect(probeWorker.terminated).toBe(true);
-    expect(h.w.terminated).toBe(false);
-    // the error of a configuration that cannot be built rejects
-    const bad = h.ctrl.probe({ ...TAE, method: 'bogus' } as never);
-    const w2 = h.factory.workers[2];
-    w2.process();
-    w2.deliver();
-    await expect(bad).rejects.toThrow();
+    expect(w.terminated).toBe(true);
   });
 
-  it('runAll passes the scenario on', async () => {
+  it('a probe can carry a scenario, and a configuration that cannot be built rejects with the worker\'s message', async () => {
+    const f = fakeWorkerFactory();
+    const p = probeInWorker(f.create, TAE, DROP);
+    expect(f.workers[0].last('probe')).toMatchObject({ scenario: DROP });
+    f.workers[0].process();
+    f.workers[0].deliver();
+    await p;
+    const bad = probeInWorker(f.create, { ...TAE, method: 'bogus' } as never);
+    f.workers[1].process();
+    f.workers[1].deliver();
+    await expect(bad).rejects.toThrow(/bogus|method/i);
+    expect(f.workers[1].terminated).toBe(true);
+  });
+
+  it('a crash of the probe worker rejects', async () => {
+    const f = fakeWorkerFactory();
+    const p = probeInWorker(f.create, TAE);
+    f.workers[0].crash('boom');
+    await expect(p).rejects.toThrow('boom');
+  });
+
+  it('the controller\'s runAll passes the scenario on', async () => {
     const h = setup();
     const p = h.ctrl.runAll(TAE, false, undefined, DROP);
+    await expect.poll(() => h.factory.workers.length).toBe(2);
     const w = h.factory.workers[1];
     expect(w.last('runAll')).toMatchObject({ scenario: DROP });
     w.process();
@@ -176,25 +206,20 @@ describe('SimController with a scenario', () => {
 });
 
 describe('reduceSim and protocol versions', () => {
-  const ready = (protocolVersion: number, scenario: ScenarioSpec | null): [SimState, FromWorker] => {
+  it('the page needs the worker of its own build', () => {
     const h = setup();
-    h.ctrl.load(TAE, false, scenario);
+    h.ctrl.load(TAE, false);
     h.w.process();
     const m = h.w.outbox[0];
-    return [h.s(), { ...m, protocolVersion } as FromWorker];
-  };
-
-  it('accepts a v2 worker for a run without scenario and refuses a v2 worker for one with a scenario', () => {
-    const [s0, m2] = ready(2, null);
-    expect(reduceSim(s0, m2).status).toBe('ready');
-    const [s1, m3] = ready(2, DROP);
-    const r = reduceSim(s1, m3);
-    expect(r.status).toBe('error');
-    expect(r.error).toMatch(/cannot run a scenario/);
+    for (const v of [2, PROTOCOL_VERSION + 1]) {
+      const r = reduceSim(h.s(), { ...m, protocolVersion: v } as FromWorker);
+      expect(r).toMatchObject({ status: 'error' });
+      expect(r.error).toMatch(/protocol mismatch/i);
+    }
   });
 
-  it('refuses a worker from the future', () => {
-    const [s0, m] = ready(PROTOCOL_VERSION + 1, null);
-    expect(reduceSim(s0, m)).toMatchObject({ status: 'error' });
+  it('the initial state has no scenario, provenance, trace or log answer', () => {
+    const s: SimState = initialSimState;
+    expect([s.scenario, s.provenance, s.trace, s.logAnswer]).toEqual([null, null, null, null]);
   });
 });

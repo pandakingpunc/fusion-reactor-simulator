@@ -34,11 +34,11 @@ describe('scenario through the worker host', () => {
     h.host.handle({ type: 'step', simDt: TAE.t_end });
     const msgs = h.take();
     const frames = ofType(msgs, 'frames');
-    const rows = frames.flatMap((m) => m.ctl!.rows);
-    const keys = frames[0].ctl!.keys;
+    const rows = frames.flatMap((m) => m.ctl!);
+    const keys = Object.keys(ready.meta.controls);
     expect(keys).toEqual(['P_NBI_MW', 'kappa_conf']);
-    // one row per frame, of the message it came in
-    for (const m of frames) expect(m.ctl!.rows).toHaveLength(m.frames.length);
+    // one row per frame, of the message it came in, over the keys of meta.controls
+    for (const m of frames) expect(m.ctl).toHaveLength(m.frames.length);
     const times = frames.flatMap((m) => m.frames.map((f) => f.t));
     const nbi = rows.map((r) => r[keys.indexOf('P_NBI_MW')]);
     expect(nbi[0]).toBe(TAE.P_NBI_MW); // before the drop the configured value
@@ -91,7 +91,8 @@ describe('scenario through the worker host', () => {
     expect(done.provenance).toBeDefined();
     const p = done.provenance!;
     expect(p.actuatorLog).toEqual([]);
-    expect(p.breakpoints).toEqual([]);
+    expect(p.interventions).toBe(0);
+    expect(p).not.toHaveProperty('breakpoints');
     expect(p.scenario).toEqual(DROP);
     expect(p.appVersion).toBe(APP_VERSION);
     const ref = new Simulation(TAE, { scenario: DROP });
@@ -113,7 +114,8 @@ describe('scenario through the worker host', () => {
     const [done] = ofType(msgs, 'done');
     const p = done.provenance!;
     expect(p.actuatorLog.map((e) => e.patch)).toEqual([{ P_NBI_MW: 4 }, { kappa_conf: 6 }]);
-    expect(p.scenario).toBeNull();
+    expect(p.interventions).toBe(2);
+    expect(p).not.toHaveProperty('scenario');
     // the frames carry the controls once there was an intervention
     const frames = ofType(msgs, 'frames').filter((m) => m.ctl);
     expect(frames.length).toBeGreaterThan(0);
@@ -152,7 +154,7 @@ describe('scenario through the worker host', () => {
     const after = ofType(h.take(), 'frames');
     expect(after.length).toBeGreaterThan(0);
     expect(after.every((m) => m.ctl !== undefined)).toBe(true);
-    expect(after[after.length - 1].ctl!.rows.at(-1)![0]).toBe(2);
+    expect(after[after.length - 1].ctl!.at(-1)![0]).toBe(2);
   });
 
   it('probes the model of a configuration without a run and without touching the live one', () => {

@@ -28,6 +28,10 @@ export const persistEn = {
   'persist.share.embedReport': 'Report (computed when the page loads)',
   'persist.share.embedCode': 'HTML',
   'persist.share.embedCopy': 'Copy HTML',
+  'persist.share.scenario': 'The link also carries the scenario of this configuration ({waveforms} waveforms, {triggers} triggers).',
+  'persist.share.scenarioInvalid': 'The scenario is not valid for this configuration, so no link was made: {reason}',
+  'persist.share.exact': 'Share the exact run that just finished',
+  'persist.share.exactHint': 'Adds its scenario, its live interventions and its fingerprint, so whoever opens the link can reproduce this run and check that it comes out the same.',
 
   'persist.notice.opened': 'Opened "{name}" from a shared link.',
   'persist.notice.odd': 'The link has {n} unusual values (unknown fields, or values outside the wizard\'s range).',

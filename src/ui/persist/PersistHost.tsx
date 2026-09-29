@@ -18,6 +18,10 @@ import { shotToNewRun } from './shots';
 import { usePersistT } from './usePersistT';
 import { APP_VERSION } from './version';
 import { useApp, useAppStore } from '../state/store';
+import type { ReactorConfig } from '../../physics/types';
+import type { ScenarioSpec } from '../../physics/scenario';
+import type { RunProvenanceMsg } from '../../worker/protocol';
+import type { WorkerFactory } from '../state/sim';
 
 const SharePanel = lazy(() => import('./SharePanel'));
 const LibraryPanel = lazy(() => import('./LibraryPanel'));
@@ -35,14 +39,19 @@ interface Props {
   slot: HTMLElement | null;
   router: Router;
   route: Route;
+  /** the simulation worker's factory: the share dialog builds the model of the configuration with it and checks the scenario against it before it makes a link */
+  createWorker?: WorkerFactory;
+  /** the run that just finished (its configuration and what defines it besides that), for an exact-run link; null: none */
+  exactRun?: { cfg: ReactorConfig; provenance: RunProvenanceMsg } | null;
 }
 
-export default function PersistHost({ slot, router, route }: Props) {
+export default function PersistHost({ slot, router, route, createWorker, exactRun = null }: Props) {
   const p = usePersistT();
   const deps = usePersistDeps();
   const { actions } = useAppStore();
   const cfg = useApp((s) => s.cfg);
   const cfgName = useApp((s) => s.cfgName);
+  const scenario = useApp((s) => s.scenario);
   const shots = useApp((s) => s.shots);
   const [panel, setPanel] = useState<'share' | 'library' | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -78,6 +87,8 @@ export default function PersistHost({ slot, router, route }: Props) {
         const name = payload.name ?? 'Shared';
         actions.setCfg(payload.cfg);
         actions.setCfgName(name);
+        // the scenario of the link (checked with the rest of the payload: an invalid one is refused before this point); a link without one clears the old
+        actions.setScenario(payload.scenario === undefined || payload.scenario === null ? null : (payload.scenario as ScenarioSpec));
         actions.setTab('setup');
         const exact = !!(payload.actuatorLog?.length || payload.breakpoints?.length || payload.scenario !== undefined);
         setNotice({ kind: 'opened', name, odd: warnings.length, share: exact ? r.value : null });
@@ -126,7 +137,7 @@ export default function PersistHost({ slot, router, route }: Props) {
       {notice && <NoticeBar notice={notice} onDismiss={() => setNotice(null)} onReproduce={(s) => void reproduce(s)} />}
       {panel && (
         <Suspense fallback={null}>
-          {panel === 'share' && <SharePanel cfg={cfg} name={cfgName} onClose={() => setPanel(null)} />}
+          {panel === 'share' && <SharePanel cfg={cfg} name={cfgName} scenario={scenario} createWorker={createWorker} exactRun={exactRun} onClose={() => setPanel(null)} />}
           {panel === 'library' && <LibraryPanel onClose={() => setPanel(null)} />}
         </Suspense>
       )}

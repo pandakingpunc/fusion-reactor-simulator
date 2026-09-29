@@ -23,6 +23,10 @@ export const persistTr: Record<PersistKey, string> = {
   'persist.share.embedReport': 'Rapor (sayfa yüklenirken hesaplanır)',
   'persist.share.embedCode': 'HTML',
   'persist.share.embedCopy': 'HTML\'i kopyala',
+  'persist.share.scenario': 'Bağlantı bu yapılandırmanın senaryosunu da taşıyor ({waveforms} dalga biçimi, {triggers} tetikleyici).',
+  'persist.share.scenarioInvalid': 'Senaryo bu yapılandırma için geçerli değil, bu yüzden bağlantı oluşturulmadı: {reason}',
+  'persist.share.exact': 'Az önce biten atışın tam kendisini paylaş',
+  'persist.share.exactHint': 'Senaryosunu, canlı müdahalelerini ve parmak izini ekler; bağlantıyı açan kişi bu atışı yeniden üretebilir ve aynı çıktığını doğrulayabilir.',
 
   'persist.notice.opened': '"{name}" paylaşılan bağlantıdan açıldı.',
   'persist.notice.odd': 'Bağlantıda {n} alışılmadık değer var (bilinmeyen alanlar ya da sihirbazın aralığı dışındaki değerler).',

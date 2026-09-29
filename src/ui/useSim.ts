@@ -18,7 +18,7 @@ export function useSim(createWorker: WorkerFactory = createSimWorker, schedule?:
   const state = useStore(ctrl.store, whole);
   return useMemo(() => ({
     state, load: ctrl.load, play: ctrl.play, pause: ctrl.pause, setSpeed: ctrl.setSpeed, step: ctrl.step,
-    rewind: ctrl.rewind, control: ctrl.control, restart: ctrl.restart, runAll: ctrl.runAll,
+    rewind: ctrl.rewind, control: ctrl.control, restart: ctrl.restart, runAll: ctrl.runAll, post: ctrl.post, createWorker: ctrl.createWorker,
   }), [state, ctrl]);
 }
 

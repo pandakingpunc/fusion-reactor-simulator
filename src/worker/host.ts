@@ -16,7 +16,7 @@ import { NonFiniteStateError, ScenarioError, SimulationError } from '../physics/
 import type { ScenarioSpec } from '../physics/scenario';
 import { EquilibriumInitFailure } from '../physics/profiles/failures';
 import { HistoryFrame, ReactorConfig, ShotReport, SimEvent, SimModel } from '../physics/types';
-import { ControlRows, FromWorker, PROTOCOL_VERSION, RunProvenanceMsg, SimMeta, ToWorker, isSupportedProtocol, simSecondsPerWallSecond, toUiFrame } from './protocol';
+import { FromWorker, PROTOCOL_VERSION, RunProvenanceMsg, SimMeta, ToWorker, isSupportedProtocol, simSecondsPerWallSecond, toUiFrame } from './protocol';
 import { defaultSchedule } from './schedule';
 import { APP_VERSION } from '../ui/persist/version';
 
@@ -72,7 +72,11 @@ export function scenarioErrorText(err: ScenarioError): string {
 
 /** The provenance of a run as it stands: its live interventions, breakpoints, scenario and fingerprint. */
 export function provenanceOf(sim: Simulation): RunProvenanceMsg {
-  return { actuatorLog: sim.actuatorLog, breakpoints: sim.breakpoints, scenario: sim.scenario, fingerprint: sim.fingerprint(APP_VERSION), appVersion: APP_VERSION };
+  const actuatorLog = sim.actuatorLog, breakpoints = sim.breakpoints, scenario = sim.scenario;
+  return {
+    interventions: actuatorLog.length, actuatorLog, ...(breakpoints.length ? { breakpoints } : {}), ...(scenario ? { scenario } : {}),
+    fingerprint: sim.fingerprint(APP_VERSION), appVersion: APP_VERSION,
+  };
 }
 
 /** A Simulation of the configuration, with the scenario when there is one (ScenarioError when it does not fit). */
@@ -133,11 +137,10 @@ export function createSimHost(post: (m: FromWorker) => void, opts: SimHostOption
     post({ type: 'error', msg, id, branchId: branch });
   }
 
-  /** the control values in force at each frame (the checkpoint of the frame holds them), as rows over the model's control keys */
-  function controlRows(frames: readonly HistoryFrame[]): ControlRows {
-    const now_ = sim!.model.getControls();
-    const keys = Object.keys(now_);
-    return { keys, rows: frames.map((f) => keys.map((k) => f.sim?.controls[k] ?? now_[k])) };
+  /** the control values in force at each frame (the checkpoint of the frame holds them), as rows over the model's control keys (those of meta.controls) */
+  function controlRows(frames: readonly HistoryFrame[]): number[][] {
+    const keys = Object.keys(meta!.controls);
+    return frames.map((f) => keys.map((k) => f.sim!.controls[k]));
   }
 
   /** post a `frames` message and start the tick clock over */

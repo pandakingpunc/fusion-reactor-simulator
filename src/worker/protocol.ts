@@ -20,8 +20,8 @@
  *  - `done` carries `provenance`: the actuator log, breakpoints, scenario and runFingerprint of the finished run, so that a
  *    live run with interventions can be signed, exported and shared as an exact run (`getLog` asks for the same record at any
  *    time, e.g. to turn the interventions of a running shot into a scenario);
- *  - `frames` carries `ctl`, the control values of its frames, once the run has a scenario or a live intervention (the
- *    programmed and the actual lanes of the run view);
+ *  - `frames` carries `ctl`, the control values of its frames (one row per frame, over Object.keys(meta.controls)), once the run has
+ *    a scenario or a live intervention (the programmed and the actual lanes of the run view);
  *  - `probe` builds the model of a configuration (and the scenario, when given) without running it and answers with its
  *    SimMeta: the controls, diagnostics and end time the scenario editor needs before a run exists.
  */
@@ -58,23 +58,20 @@ export function toUiFrame(f: HistoryFrame): UiFrame {
 }
 
 /**
- * Everything that defines a run besides its configuration, as the simulation worker knows it: the live interventions
- * (actuator log), the user breakpoints, the scenario in force and the run fingerprint (runFingerprint of all of them,
- * computed with `appVersion`).
+ * Everything that defines a run besides its configuration, as the simulation worker knows it: the live interventions (actuator log),
+ * the user breakpoints, the scenario in force (validated, normalised) and the run fingerprint (runFingerprint of all of them, computed
+ * with `appVersion`). It has the shape of the page's RunProvenance (ui/persist/types.ts), so the page can attach it to a run as it is.
  */
 export interface RunProvenanceMsg {
+  /** the number of live interventions: the length of the actuator log */
+  interventions: number;
   actuatorLog: ActuatorEntry[];
-  breakpoints: number[];
-  /** the validated scenario of the run, null for none */
-  scenario: ScenarioSpec | null;
+  /** absent when there are none */
+  breakpoints?: number[];
+  /** absent for a run without a scenario */
+  scenario?: ScenarioSpec;
   fingerprint: string;
   appVersion: string;
-}
-
-/** Control values of the frames of a `frames` message: `rows[i][j]` is control `keys[j]` at frame i of the message. */
-export interface ControlRows {
-  keys: string[];
-  rows: number[][];
 }
 
 export type ToWorker =
@@ -96,7 +93,7 @@ export type ToWorker =
 
 export type FromWorker =
   | { type: 'ready'; protocolVersion: number; id: number; meta: SimMeta; frame: UiFrame }
-  | { type: 'frames'; id: number; branchId: number; frames: UiFrame[]; events: SimEvent[]; t: number; done: boolean; dt: number; nSteps: number; controls: Record<string, number>; wallMs: number; ctl?: ControlRows }
+  | { type: 'frames'; id: number; branchId: number; frames: UiFrame[]; events: SimEvent[]; t: number; done: boolean; dt: number; nSteps: number; controls: Record<string, number>; wallMs: number; ctl?: number[][] }
   | { type: 'rewound'; id: number; branchId: number; index: number; t: number; nEvents: number; controls: Record<string, number> }
   | { type: 'done'; id: number; branchId: number; report: ShotReport; provenance?: RunProvenanceMsg }
   /** answer to `getLog` */

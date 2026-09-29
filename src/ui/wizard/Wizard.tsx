@@ -12,6 +12,9 @@ interface Props {
   name: string;
   setName: (n: string) => void;
   onRun: (cfg: ReactorConfig) => void;
+  /** the body of the Scenario step (a lazily loaded editor, see App) and its one-line summary for the last step */
+  scenarioStep?: React.ReactNode;
+  scenarioSummary?: React.ReactNode;
 }
 
 const METHODS = Object.keys(METHOD_INFO) as Method[];
@@ -19,7 +22,7 @@ const METHODS = Object.keys(METHOD_INFO) as Method[];
 /** the "modified" suffix of either language, stripped before the current one is appended */
 const MODIFIED_SUFFIX = / \((modified|değiştirildi)\)$/;
 
-export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
+export function Wizard({ cfg, setCfg, name, setName, onRun, scenarioStep, scenarioSummary }: Props) {
   const t = useT();
   const [stepIdx, setStepIdx] = useState(0);
   const stepId = STEP_IDS[stepIdx];
@@ -80,7 +83,8 @@ export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
         </>
       );
     }
-    if (id === 'run') return <RunSummary cfg={cfg} name={name} onRun={onRun} missing={missing} issues={issues} blocked={blocked} goToStep={goToStep} />;
+    if (id === 'scenario') return <><h2>{stepIdx + 1} · {STEP_TITLES.scenario}</h2>{scenarioStep}</>;
+    if (id === 'run') return <RunSummary cfg={cfg} name={name} onRun={onRun} missing={missing} issues={issues} blocked={blocked} goToStep={goToStep} scenarioSummary={scenarioSummary} />;
     const def = steps.find((s) => s.id === id);
     if (!def) return <p className="muted">{t('wiz.noSettingsMethod')}</p>;
     const fields = def.fields.filter((f) => fieldVisible(cfg.method, f.path, cfg));
@@ -180,15 +184,16 @@ interface RunSummaryProps {
   /** why RUN is disabled (undefined when it is not) */
   blocked: string | undefined;
   goToStep: (id: string) => void;
+  scenarioSummary?: React.ReactNode;
 }
 
 /** Son adım: özet + ÇALIŞTIR */
-function RunSummary({ cfg, name, onRun, missing, issues, blocked, goToStep }: RunSummaryProps) {
+function RunSummary({ cfg, name, onRun, missing, issues, blocked, goToStep, scenarioSummary }: RunSummaryProps) {
   const t = useT();
   const steps = stepsFor(cfg.method);
   return (
     <>
-      <h2>6 · {t('wiz.runTitle')}</h2>
+      <h2>{STEP_IDS.length} · {t('wiz.runTitle')}</h2>
       <p className="muted small">
         <b>{name}</b> — {METHOD_INFO[cfg.method].name}. {t('wiz.runIntro')}
       </p>
@@ -206,6 +211,7 @@ function RunSummary({ cfg, name, onRun, missing, issues, blocked, goToStep }: Ru
         </div>
       )}
       <CrossIssues issues={issues} goToStep={goToStep} />
+      {scenarioSummary}
       <button className="btn primary" style={{ fontSize: 15, padding: '10px 26px', margin: '8px 0 16px' }} disabled={!!blocked} title={blocked}
         onClick={() => onRun(cfg)}>{t('wiz.start')}</button>
       <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>

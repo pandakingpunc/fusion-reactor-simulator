@@ -167,8 +167,8 @@ describe('SimController', () => {
     const h = setup();
     const progress: number[] = [];
     const p = h.ctrl.runAll(MIRROR, false, (x) => progress.push(x.t / x.tEnd));
+    await vi.waitFor(() => expect(h.factory.workers[1]).toBeDefined()); // the code of background runs is loaded on first use
     const bg = h.factory.workers[1] as FakeWorker;
-    expect(bg).toBeDefined();
     expect(h.w.sent).toHaveLength(0); // the live worker is untouched
     bg.process();
     bg.deliver();

@@ -779,7 +779,7 @@ export class MagneticModel implements SimModel {
       const done = this.isStell ? W < 0.02 * this.Wd || t - this.tDisrupt > 0.2 : y[IDX.Ip] < 0.03 * this.Ip0;
       if (done) {
         this.phase = 'ended';
-        const rep = disruptionReport({ cause: this.disruptCause, t: this.tDisrupt, g: this.g, Ip_MA: this.Ip0 / 1e6, W_th_J: this.Wd, B0: c.B0 });
+        const rep = disruptionReport({ cause: this.disruptCause, t: this.tDisrupt, g: this.gB, Ip_MA: this.Ip0 / 1e6, W_th_J: this.Wd, B0: c.B0 });
         this.terminated = {
           t, natural: false, reason: DISRUPTION_LABELS[this.disruptCause],
           diagnosis: `${DISRUPTION_LABELS[this.disruptCause]} — ${this.diagText}, t = ${this.tDisrupt.toFixed(2)} s. ${this.isStell ? '' : `Thermal quench ${rep.tau_TQ_ms.toFixed(1)} ms, current quench ${rep.tau_CQ_ms.toFixed(0)} ms; halo current I_h/I_p·TPF = ${rep.halo_TPF_product.toFixed(2)}; runaway electron avalanche e^${rep.runaway_avalanche_efolds.toFixed(0)} → ~${rep.runaway_current_MA.toFixed(1)} MA; wall deposition ${rep.wall_energy_density_MJm2.toFixed(1)} MJ/m².`}`,
@@ -832,7 +832,7 @@ export class MagneticModel implements SimModel {
 
   report(hist: HistoryFrame[], events: SimEvent[]): ShotReport {
     return buildMagneticReport({
-      cfg: this.cfg, method: this.method, g: this.g, V: this.V, magnetInfo: this.magnetInfo,
+      cfg: this.cfg, method: this.method, g: this.gB, V: this.V, magnetInfo: this.magnetInfo,
       terminated: this.terminated, tDisrupt: this.tDisrupt, isStell: this.isStell,
     }, hist, events);
   }

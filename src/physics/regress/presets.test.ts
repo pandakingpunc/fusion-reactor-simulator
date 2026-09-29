@@ -42,6 +42,19 @@ describe('density targets of the ITER and DEMO presets', () => {
   }, 90_000);
 });
 
+describe('the boundary shape reaches the report', () => {
+  it('the 0D shot report takes its neutron wall load from the same (LCFS) surface as the diagnostic and the 1.5D report: ITER 0.53 MW/m2 (design 0.5 at 500 MW)', () => {
+    const sim = new Simulation({ ...ITER, t_end: 120 });
+    const rep = sim.runAll();
+    const wl = rep.engineering['Neutron wall load (MW/m²)'] as number;
+    const tail = sim.history.slice(Math.floor(0.7 * sim.history.length));
+    const diag = tail.reduce((s, f) => s + f.d.n_wall, 0) / tail.length;
+    expect(Math.abs(wl - diag)).toBeLessThan(0.02); // the report is rounded to 0.01 and averages by time
+    expect(wl).toBeGreaterThan(0.45);
+    expect(wl).toBeLessThan(0.6);
+  }, 60_000);
+});
+
 describe('MAST-U preset: a scenario of the first campaign (Harrison et al. 2024; Imada et al. 2024; Berkery et al. 2023)', () => {
   it('R 0.8 m, a 0.5 m (R/a 1.6), κ 2.1, δ 0.47, I_p 0.75 MA, B_T 0.55 T, inside the campaign ranges (450–1000 kA, 0.42–0.64 T, κ 2.0–2.2)', () => {
     const g = MASTU.geometry;

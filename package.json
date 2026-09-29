@@ -49,6 +49,7 @@
     "golden:update": "tsx src/cli/golden.cli.ts --update",
     "schema": "tsx scripts/gen-schema.ts",
     "schema:check": "tsx scripts/gen-schema.ts --check",
+    "missions": "tsx src/cli/missions.cli.ts",
     "uq": "tsx src/cli/uq.cli.ts",
     "scan": "tsx src/cli/scan.cli.ts",
     "optimize": "tsx src/cli/optimize.cli.ts",

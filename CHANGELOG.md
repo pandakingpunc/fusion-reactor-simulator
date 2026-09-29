@@ -291,6 +291,23 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 - Anderson mixing option `restartGrowth` (restart when the residual exceeds a multiple of the smallest so far).
 - `geometryFromEquilibrium(eq, N, geom, grid)` builds the transport geometry on a given radial grid (the faces, centres and
   mean cell width of the model; uniform without one).
+- **Learn tab**: ten missions (reach H-mode, stay below the density limit, beat the beta limit, carry more current, Q above 3
+  on SPARC, find ignition in POPCON, survive an ELM storm, fuel JET for the record, ignite the capsule, keep the core clean)
+  with hints, a solution, goals judged on real runs and progress kept in the browser. `npm run missions` plays every
+  mission headless (untouched and with a negative control it must fail, with its solution it must pass); each mission is also
+  tested that way in the suite. The tab is in the address: `#/learn`, `#/learn/missions/<id>`, `#/learn/glossary/<term>` (deep
+  links, back and forward, an unknown id shows the list).
+- Glossary of 45 fusion terms and Explain popovers (English and Turkish), loaded lazily with their own dictionaries; the popover
+  is a fixed-position portal so scrolling panels and tables cannot clip it.
+- Power-flow (Sankey) diagram of the power balance: auxiliary, ohmic and alpha heating against radiation (bremsstrahlung,
+  synchrotron, line), conduction, ELM losses and stored energy, with the not-yet-deposited remainder shown as its own bar; in the
+  mission result and in Compare.
+- Compare 2.0: radar chart of headline metrics, overlay of any diagnostic channel of the archived shots, configuration difference
+  between two shots, power flow of a shot (moved to `src/ui/compare`).
+- Browser worker pool (`src/ui/pool`: queue, cancellation, crash and timeout recovery, reusable for scans). The Validation view
+  runs on it: the tests and the preset scan run in parallel, show progress per run and can be cancelled.
+- The POPCON chart takes an operating point of its own (`point`), which the Learn ignition mission sets with sliders; by default it
+  is still the last frame of the run.
 
 ### Changed
 - The Report's JSON button writes `<name>_run.json` (the run file above) instead of

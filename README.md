@@ -62,6 +62,8 @@ takes `--threads N` (default: cores − 1).
   stdout before the JSON, so capture it silently:
   `npm run -s validate -- --json > results.json` (or `npx tsx src/cli/validate.cli.ts --json`).
 - `figures`: `--only popcon,mhd`, `--scan 7` (scan grid), `--formats pdf`, `--out DIR`.
+- `missions`: plays the ten missions of the Learn screen headless (untouched, with a negative control, with the
+  solution script); exit code 0 if every mission is solvable and not trivial, `--only hmode,fuel`, `--json`.
 - `golden`: `--only NIF,ITER15`; `--update` with `--reason TEXT` or `--reason-file FILE`. See
   [Regression testing](#regression-testing).
 - `uq`: uncertainty quantification of a preset by an ensemble of full simulations (seeded Sobol' /
@@ -179,7 +181,7 @@ src/physics/
   simulation.ts       Common driver (0D/1.5D selection, recording, rewind)
 src/cli/              Node command-line tools: args (strict flag parser), pool (worker_threads),
                       presetRunner.worker, validate.cli (npm run validate), figures.cli (npm run figures),
-                      golden.cli (npm run golden / golden:update), uq.cli / scan.cli / optimize.cli
+                      golden.cli (npm run golden / golden:update), missions.cli (npm run missions), uq.cli / scan.cli / optimize.cli
                       (npm run uq / scan / optimize), fusion-sim (run | scan | presets | schema | export-eqdsk)
 src/physics/index.ts  The public library API (barrel); src/physics/config: runtime validation, JSON Schema, dotted paths, runShot
 src/io/               Browser-safe CSV, NDJSON, NetCDF-3 and IMAS-like writers and readers

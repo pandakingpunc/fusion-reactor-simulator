@@ -55,12 +55,13 @@ export interface GridSpec { packing: number; rhoT: number; width: number }
 /**
  * Centre and width of the packing step in units of the pedestal width w_ped: the edge transport
  * barrier (transport/pedestal.ts) steps at ρ_ped = 1 − w_ped over 0.01 and the pedestal spans
- * [ρ_ped, 1], so the fine cells must start a fraction of w_ped inside the pedestal top. With
- * ρ_T = 1 − 1.25 w_ped and w = 0.4 w_ped the density is 77 % of its edge value at ρ_ped and 11 %
- * at ρ_ped − 0.03.
+ * [ρ_ped, 1], so the fine cells must start inside the pedestal top. With ρ_T = 1 − 1.25 w_ped and
+ * w = 0.75 w_ped the step S is 0.66 at ρ_ped, 0.34 at ρ_ped − 0.03 and 0.04 at ρ_ped − 0.1, and
+ * neighbouring cells differ in width by at most 25 % (a narrower step, 0.4 w_ped, gives 48 %:
+ * the error of a second-order scheme grows with the stretching of the grid).
  */
 export const PACKING_CENTER = 1.25;
-export const PACKING_WIDTH = 0.4;
+export const PACKING_WIDTH = 0.75;
 
 /** The packing of a shot from its settings (undefined: uniform grid) */
 export function gridSpec(ps: Pick<ProfileSettings, 'gridPacking' | 'pedestalWidth'>): GridSpec | undefined {

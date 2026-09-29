@@ -142,7 +142,7 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   `ci:local`, fails when the file is out of date); all 21 presets validate and 50+ mutated invalid
   configurations are rejected.
 - `fusion-sim` command line: `run`, `scan` (on the worker pool), `presets`, `schema` (print, or `--check`
-  a configuration file) and `export-eqdsk` (needs the GEQDSK writer of the equilibrium work), with a
+  a configuration file) and `export-eqdsk` (the G-EQDSK of a 1.5D run), with a
   provenance block in every output; a model failure (for example an initial equilibrium that cannot be
   computed) is a one-line failure with exit 1, and git provenance is reported only for the package's own
   checkout.
@@ -272,6 +272,25 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 - PROCESS 1990 cost accounts (21-26, 9) and the cost of electricity as library functions (`costAccounts`,
   `costOfElectricity`), verified against the PROCESS unit-test values; a first-of-a-kind educational estimate that is not
   part of the shot report (its Capital cost stays the Sheffield-Milora scaling).
+- G-EQDSK support (`src/io/geqdsk.ts`, browser-safe): a writer in the standard 5e16.9 format (COCOS 11 by default, any of
+  COCOS 1-8 and 11-18), a tolerant reader (fields that touch, D exponents, Windows line ends), COCOS detection and
+  conversion (Sauter and Medvedev, Comput. Phys. Commun. 184 (2013) 293), and `importGeqdsk`, which builds an `Equilibrium`
+  from a file (q re-traced from psi and F; `boundaryPsi` puts the boundary on a flux surface inside an X-point
+  separatrix, which is how a real EFIT file has to be read, at 0.99 or less). The text round trip reproduces psi to 5e-10 of
+  its range at the standard 10 significant digits and 1e-14 at `digits: 15`; through `importGeqdsk` the state is resampled
+  onto a Shortley-Weller grid of the boundary polygon and agrees to 6e-6 in psi (volume 1e-4). No file of a real code was
+  available: the reader is tested on the solver's own files, hand-made text and an analytic single-null Solov'ev file.
+- `fusion-sim export-eqdsk --preset ITER15 --out FILE [--time S]` writes the equilibrium of a 1.5D run (the one in force
+  at `--time`, the last one by default) as a G-EQDSK; `-` is stdout. It was a stub that said it was not available.
+- Boundary shapes for the fixed-boundary solver: polygon, Fourier-series and flux-contour `ShapeBoundary`, and
+  `millerShape` (separate upper and lower triangularity, elongation and squareness, vertical shift); the grid follows an
+  up-down asymmetric boundary, and `GSSolver.assemble` builds an `Equilibrium` from a state that was not solved here.
+- Carlson elliptic integrals (R_F, R_D, K, E) and the toroidal Green's functions of a circular current filament, matching
+  Biot-Savart to 2e-11 (groundwork for free-boundary equilibria; the coil sets, the X-point Newton solve and the vertical
+  stability are not done).
+- Anderson mixing option `restartGrowth` (restart when the residual exceeds a multiple of the smallest so far).
+- `geometryFromEquilibrium(eq, N, geom, grid)` builds the transport geometry on a given radial grid (the faces, centres and
+  mean cell width of the model; uniform without one).
 
 ### Changed
 - The Report's JSON button writes `<name>_run.json` (the run file above) instead of
@@ -477,6 +496,20 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   of the new radial build (ITER 1.199 -> 1.125, DEMO 1.199 -> 1.143).
 - Golden re-recorded for the engineering block of the 19 magnetic cases (`scalars.engineering.*`, `Q_eng`, and the warning
   count of SPARC and DEMO); no plasma quantity moved. `test/golden/CHANGES.md` lists every headline move.
+- Grad-Shafranov: the default flux-surface table has 101 nodes clustered at the edge (psi_N = s + s^2 - s^3, s = (k/100)^2),
+  so the outer-face metrics of the transport geometry are within 0.5 % of a 401-surface table (they were up to 14.7 % off)
+  and the table's q95 is right (+0.6 % ITER, +1.1 % SPARC, +8.8 % MASTU at a fixed shape); `psiLevels` sets the surfaces.
+- 1.5D/GS coupling: the equilibrium update is a self-consistent outer iteration of the pressure and current tables on the
+  new equilibrium's own flux surfaces instead of accept/reject with a retry ladder. The equilibrium's q95 agrees with the
+  transport's own to 1.6 % (was up to 15 %) and l_i to 3 % (was up to 8 %). JET15 accepts every update of its shot (was 14
+  of 17 with one silent skip), MASTU15 all of them (was 4 of 7), and DIII-D 15 accepts its update at t = 0.38 s. Where the
+  fixed-boundary problem has a fold, an update follows at least 75 % of the change of the profiles on the default
+  surface table and is reported once. The best equilibrium of an iteration that did not reach its tolerance is adopted up to
+  a mapping mismatch of half a transport cell (1e-2; JET15 lost an update of the ramp-up at 5.2e-3 against a limit of 5e-3),
+  counted as one that needed help above 5e-3, and the new geometry is built on the radial grid of the one it replaces.
+- Golden re-recorded for the nine 1.5D cases on the merged base (ITER15 Q_sci_avg -1.0 %, the others within 0.4 %; q95 of
+  the last equilibrium +2 to +4 % and its l_i -4 to -7 % for the large machines; all 21 other cases bit-identical);
+  `test/golden/CHANGES.md` has the headline moves and their causes.
 
 ### Fixed
 - `npm run bench:convergence`: the time-step series (dtMax) failed with "this model has no internal time step
@@ -560,6 +593,7 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   n and the density fell to zero in finite time: W7-X reached T_e = 1.7 MeV at 0.66 s, stalled the integrator at
   dtMin and overflowed to NaN after 30 s of wall time (now it ends at 0.50 s at 8.5 keV in 32 steps). The 1.5D
   model is not changed.
+- A two-knot clamped `CubicSpline` honours its end slopes (it was the straight line between the knots).
 
 Physics results are unchanged by the 1.5D changes above: a full-precision dump of all 21 presets
 was byte-identical before and after them. The frame fix of the ELM presets is the exception (see

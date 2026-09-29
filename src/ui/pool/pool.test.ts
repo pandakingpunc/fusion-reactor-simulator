@@ -134,6 +134,20 @@ describe('RunPool', () => {
     pool.dispose();
   });
 
+  it('one signal that cancels a whole batch does not start the queued jobs on the way', async () => {
+    const f = fakeWorkerFactory();
+    const pool = new RunPool(f.create, 1);
+    const ctl = new AbortController();
+    const jobs = [1, 2, 3, 4, 5].map((s) => pool.run(fast(s), { signal: ctl.signal }));
+    const outcomes = jobs.map((j) => j.then(() => 'ok', (e: Error) => e.name));
+    ctl.abort();
+    expect(await Promise.all(outcomes)).toEqual(['AbortError', 'AbortError', 'AbortError', 'AbortError', 'AbortError']);
+    expect(f.workers).toHaveLength(1); // only the first job ever had a worker
+    expect(f.workers[0].terminated).toBe(true);
+    expect(pool.stats).toMatchObject({ running: 0, queued: 0, cancelled: 5, replaced: 1 });
+    pool.dispose();
+  });
+
   it('cancelAll clears the queue and the workers, and the pool can be used again', async () => {
     const f = fakeWorkerFactory();
     const pool = new RunPool(f.create, 2);

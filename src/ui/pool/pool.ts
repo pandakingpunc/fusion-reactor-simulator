@@ -114,8 +114,13 @@ export class RunPool {
 
   private pump(): void {
     for (const slot of this.slots) {
-      if (!this.queue.length) return;
-      if (!slot.job) this.start(slot, this.queue.shift()!);
+      if (slot.job) continue;
+      let job = this.queue.shift();
+      // one signal often covers a whole batch: its abort listeners run one after the other, and a job whose
+      // signal has already fired must not get a worker (a cancellation would otherwise start and stop them all)
+      while (job && job.opts.signal?.aborted) { this.finish(job, new AbortError()); job = this.queue.shift(); }
+      if (!job) return;
+      this.start(slot, job);
     }
   }
 

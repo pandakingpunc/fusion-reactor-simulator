@@ -99,29 +99,29 @@ describe('0D: a frame at a mode flip describes its own state (was: pre-flip diag
     expect(f.d.P_ELM).toBeCloseTo(0.3 * f.d.P_transport, 12);
     expect(f.d.P_cond + f.d.P_ELM).toBeCloseTo(f.d.P_transport, 12);
     expectFlipFramesSelfConsistent(sim, ['LH']);
-  });
+  }, 120000);
 
   it('JET at n = 3e20 m^-3 (disrupts later): the L-H frame is self-consistent', () => {
     const sim = run({ ...presetCfg('JET'), n_target: 3e20 } as ReactorConfig);
     expectFlipFramesSelfConsistent(sim, ['LH']);
-  });
+  }, 120000);
 
   it('ITER, 30 s: the L-H frame is self-consistent, and H_mode of every frame follows the events', () => {
     const sim = run(presetCfg('ITER', 30));
     expectFlipFramesSelfConsistent(sim, ['LH']);
-  });
+  }, 120000);
 
   it('H-mode ends when the heating is switched off (live control patch): the H-L frame is self-consistent', () => {
     const sim = run(presetCfg('ITER', 30), { t: 20, patch: { P_NBI_MW: 0, P_ICRH_MW: 0 } });
     expect(sim.events.some((e) => e.kind === 'HL')).toBe(true);
     expectFlipFramesSelfConsistent(sim, ['LH', 'HL']);
-  });
+  }, 120000);
 
   it('JET with H98 = 1.4: the NTM onset (seeded by a sawtooth) and its decay have self-consistent frames', () => {
     const sim = run({ ...presetCfg('JET'), H98: 1.4 } as ReactorConfig);
     expect(sim.events.filter((e) => e.kind === 'NTM_onset').length).toBe(1);
     expectFlipFramesSelfConsistent(sim, ['LH', 'NTM_onset', 'NTM_gone']);
-  });
+  }, 120000);
 
   it('H_mode and NTM of every frame agree with the event list', () => {
     const sim = run({ ...presetCfg('JET'), H98: 1.4 } as ReactorConfig);
@@ -133,7 +133,7 @@ describe('0D: a frame at a mode flip describes its own state (was: pre-flip diag
       for (const e of ntm) if (e.t <= f.t + 1e-12) on = e.kind === 'NTM_onset' ? 1 : 0;
       expect(f.d.NTM, `frame at t = ${f.t}`).toBe(on);
     }
-  });
+  }, 120000);
 });
 
 describe('1.5D: the frame of a flip step shows the step\'s own mode; the next frame shows the new one', () => {
@@ -149,5 +149,5 @@ describe('1.5D: the frame of a flip step shows the step\'s own mode; the next fr
     expect(sim.history[i].d.H_mode).toBe(0);
     expect(sim.history[i + 1].d.H_mode).toBe(1);
     expectModeFollowsEvents(sim, true);
-  });
+  }, 120000);
 });

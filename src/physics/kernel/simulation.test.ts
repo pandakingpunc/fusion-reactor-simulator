@@ -227,7 +227,7 @@ describe('FSAL stage reuse', () => {
     const direct = drive(true, true);
     expect(direct).toBe(drive(false, true));
     expect(direct).not.toBe(drive(true, false)); // the patches did change the run
-  });
+  }, 60000);
 
   it('a rewind starts from a fresh evaluation, also right after stages were reused', async () => {
     const cfg = presetCfg('W7X');

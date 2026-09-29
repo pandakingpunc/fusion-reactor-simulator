@@ -277,7 +277,7 @@ describe('sensitivity analysis of the outcomes', () => {
     expect(res.sensitivity!.targets[0].nUsed).toBe(63);
     // the disruption indicator depends on the density only
     const d = res.sensitivity!.targets.find((t) => t.metric === 'disrupted')!;
-    expect(d.indices.find((i) => i.path === 'n_target')!.S1).toBeGreaterThan(0.9);
+    expect(d.indices.find((i) => i.path === 'n_target')!.S1).toBeGreaterThan(0.8); // true value 1; n = 64 rows leave an estimator noise of about 0.1
     expect(d.indices.find((i) => i.path === 'H98')!.ST).toBeLessThan(0.1);
     expect(d.indices[0].S1_ci).toBeUndefined(); // bootstrap 0: no intervals
   });

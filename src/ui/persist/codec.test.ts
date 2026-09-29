@@ -229,6 +229,39 @@ describe('share codec: decoding refuses what is not a configuration', () => {
     expect(checkConfig(c).errors.join('; ')).toMatch(/profiles\.edgeModel: 'threePoint' is not one of/);
   });
 
+  it('the 1.5D solver settings (grid packing, tolerances, step limit, nonlinear solver, plasma-current programme) are known settings (no warning), typed and, for the programme, shaped', () => {
+    const c = structuredClone(PRESETS.find((p) => p.id === 'ITER15')!.cfg) as unknown as { profiles: Record<string, unknown> };
+    Object.assign(c.profiles, { gridPacking: 6, rtol: 1e-3, atol: 1e-5, dtMax: 0.1, nonlinearSolver: 'newton', IpWaveform: [[0, 12], [30, 15], [400, 15], [430, 2]] });
+    const ok = checkConfig(c);
+    expect(ok.errors).toEqual([]);
+    expect(ok.warnings).toEqual([]);
+    // and the share codec carries them
+    expect(same(JSON.parse(JSON.stringify(c)), c)).toBe(true);
+    c.profiles.nonlinearSolver = 'quasi';
+    expect(checkConfig(c).errors.join('; ')).toMatch(/profiles\.nonlinearSolver: 'quasi' is not one of 'auto', 'picard', 'newton', 'pc'/);
+    c.profiles.nonlinearSolver = 'pc';
+    c.profiles.rtol = '1e-3';
+    expect(checkConfig(c).errors.join('; ')).toMatch(/profiles\.rtol: expected a number/);
+    c.profiles.rtol = 1e-3;
+    // the programme: a list of [time, current] pairs of numbers; a wrong shape is unusable, an odd value only a warning
+    for (const bad of [15, 'ramp', { t: 0 }, [[0, 12], [30]], [[0, 12, 1]], [[0, '12']], [12, 15], [null]]) {
+      c.profiles.IpWaveform = bad;
+      expect(checkConfig(c).errors.join('; '), JSON.stringify(bad)).toMatch(/profiles\.IpWaveform/);
+    }
+    c.profiles.IpWaveform = [[0, 12], [30, 15], [30, 16]];
+    expect(checkConfig(c).errors).toEqual([]);
+    expect(checkConfig(c).warnings.join('; ')).toMatch(/profiles\.IpWaveform\[2\]: the times of the points should increase/);
+    c.profiles.IpWaveform = [[0, 12], [NaN, 15]];
+    expect(checkConfig(c).errors).toEqual([]);
+    expect(checkConfig(c).warnings.join('; ')).toMatch(/profiles\.IpWaveform\[1\] is not finite/);
+    c.profiles.IpWaveform = Array.from({ length: 10001 }, (_, k) => [k, 15]);
+    expect(checkConfig(c).errors.join('; ')).toMatch(/profiles\.IpWaveform: more than 10000 points/);
+    // a method without profiles keeps the setting unknown
+    const nif = structuredClone(PRESETS.find((p) => p.id === 'NIF')!.cfg) as unknown as { profiles?: unknown };
+    nif.profiles = { IpWaveform: [[0, 1]] };
+    expect(checkConfig(nif).errors.join('; ')).toMatch(/profiles\.IpWaveform: an array is not a value a configuration can hold/);
+  });
+
   it('the systems-lite options (systems.*) are known settings of every magnetic method (no warning) and typed', () => {
     for (const id of ['ITER', 'SPARC15', 'W7X']) {
       const c = structuredClone(PRESETS.find((p) => p.id === id)!.cfg) as unknown as { systems?: Record<string, unknown> };

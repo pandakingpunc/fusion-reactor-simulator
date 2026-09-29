@@ -11,7 +11,7 @@
  * (written by a newer one), a value outside the wizard's range, a required number left blank. NaN, ±Infinity
  * and a blank field are numbers of the right type: a half-edited draft configuration shares like any other.
  */
-import { ActuatorEntry, EdgeOptions, Method, METHOD_LABELS, ReactorConfig, SystemsConfig } from '../../physics/types';
+import { ActuatorEntry, EdgeOptions, Method, METHOD_LABELS, ProfileSettings, ReactorConfig, SystemsConfig } from '../../physics/types';
 import { DEFAULT_PROFILE_SETTINGS } from '../../physics/profiles/defaults';
 import { fieldVisible, getPath, METHOD_DEFAULT, missingRequired, PRESETS, stepsFor } from '../wizard/schema';
 
@@ -27,6 +27,8 @@ export const LIMITS = {
   patchKeys: 64,
   keyChars: 64,
   breakpoints: 20000,
+  /** points of a programme in a configuration (the plasma-current waveform of the 1.5D model) */
+  seriesPoints: 10000,
   /** scenario: nesting depth and number of values (it is opaque here; the scenario engine validates its meaning) */
   scenarioDepth: 12,
   scenarioNodes: 20000,
@@ -44,6 +46,8 @@ type LeafType = 'number' | 'string' | 'boolean';
 
 interface Template {
   leaves: Map<string, LeafType>;
+  /** paths that hold a programme, a list of [x, y] number pairs */
+  series: Set<string>;
   /** sections every configuration of the method has (those of the method's default preset) */
   required: string[];
   enums: Map<string, Set<string>>;
@@ -80,6 +84,14 @@ const SYSTEMS_OPTION_TYPES: { [K in keyof SystemsConfig]-?: NonNullable<SystemsC
   blanket: { inboardDepth_m: 'number', breederFraction: 'number' },
 };
 
+/**
+ * The settings of the 1.5D model that DEFAULT_PROFILE_SETTINGS does not carry because they have no default value: the choice of the nonlinear
+ * solver (absent: 'auto') and the plasma-current programme (absent: constant I_p). Exhaustive over what the settings offer, so a new choice
+ * of the solver is a compile error here.
+ */
+const NONLINEAR_SOLVER_CHOICES: Record<NonNullable<ProfileSettings['nonlinearSolver']>, true> = { auto: true, picard: true, newton: true, pc: true };
+const PROFILE_SERIES = ['profiles.IpWaveform'];
+
 function walk(v: unknown, path: string, leaves: Map<string, LeafType>, sections?: string[]): void {
   if (v === undefined || v === null) return;
   if (typeof v === 'object' && !Array.isArray(v)) {
@@ -108,6 +120,12 @@ function templateFor(method: Method): Template {
     }
   }
   const enums = new Map<string, Set<string>>();
+  const series = new Set<string>();
+  if (method === 'tokamak' || method === 'spherical_tokamak') {
+    leaves.set('profiles.nonlinearSolver', 'string');
+    enums.set('profiles.nonlinearSolver', new Set(Object.keys(NONLINEAR_SOLVER_CHOICES)));
+    for (const s of PROFILE_SERIES) series.add(s);
+  }
   const ranges = new Map<string, [number, number]>();
   for (const step of stepsFor(method)) {
     for (const f of step.fields) {
@@ -117,7 +135,7 @@ function templateFor(method: Method): Template {
       if (type === 'number' && f.min !== undefined && f.max !== undefined) ranges.set(f.path, [f.min * (f.scale ?? 1), f.max * (f.scale ?? 1)]);
     }
   }
-  t = { leaves, required: required.filter((s) => !OPTIONAL_SECTIONS.some((o) => s === o || s.startsWith(`${o}.`))), enums, ranges };
+  t = { leaves, series, required: required.filter((s) => !OPTIONAL_SECTIONS.some((o) => s === o || s.startsWith(`${o}.`))), enums, ranges };
   templates.set(method, t);
   return t;
 }
@@ -143,6 +161,11 @@ export function checkConfig(cfg: unknown): Check {
   const visit = (v: unknown, path: string, depth: number): void => {
     if (v === undefined || errors.length >= MAX_MESSAGES) return; // undefined is a blank field: it is not written anywhere
     if (++nodes > LIMITS.cfgNodes) { push(errors, 'the configuration has too many values'); return; }
+    if (tpl.series.has(path)) {
+      if (Array.isArray(v)) visitSeries(v, path);
+      else push(errors, `${path}: expected a list of [time, value] pairs, found ${kindOf(v)}`);
+      return;
+    }
     const known = tpl.leaves.get(path);
     if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
       if (known) { push(errors, `${path}: expected a ${known}, found an object`); return; }
@@ -163,6 +186,22 @@ export function checkConfig(cfg: unknown): Check {
       if (v.length > LIMITS.stringChars) { push(errors, `${path}: text too long`); return; }
       const opts = tpl.enums.get(path);
       if (opts && !opts.has(v)) push(errors, `${path}: '${v}' is not one of ${[...opts].map((o) => `'${o}'`).join(', ')}`);
+    }
+  };
+  /** A programme: at most LIMITS.seriesPoints points, each a pair of numbers (a number that is not finite, or times that do not increase, is odd, not unusable) */
+  const visitSeries = (v: unknown[], path: string): void => {
+    if (v.length > LIMITS.seriesPoints) { push(errors, `${path}: more than ${LIMITS.seriesPoints} points`); return; }
+    nodes += v.length;
+    let prev = -Infinity;
+    for (let k = 0; k < v.length; k++) {
+      const pt = v[k];
+      if (!Array.isArray(pt) || pt.length !== 2 || typeof pt[0] !== 'number' || typeof pt[1] !== 'number') {
+        push(errors, `${path}[${k}]: expected a [time, value] pair of numbers, found ${kindOf(pt)}`);
+        return;
+      }
+      if (!Number.isFinite(pt[0]) || !Number.isFinite(pt[1])) push(warnings, `${path}[${k}] is not finite (the run will be refused until it is set)`);
+      else if (!(pt[0] > prev)) push(warnings, `${path}[${k}]: the times of the points should increase`);
+      if (Number.isFinite(pt[0])) prev = pt[0];
     }
   };
   visit(cfg, '', 0);

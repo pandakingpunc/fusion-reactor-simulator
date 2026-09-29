@@ -234,6 +234,15 @@ describe('shape mode', () => {
     for (const k of solver.grid.interior) expect(lap[k]).toBeLessThanOrEqual(1e-12 * eq.psiAxis);
   });
 
+  it('restartGrowth changes when the mixing restarts, not what it converges to; values ≤ 1 are refused', () => {
+    const o: EquilibriumOptions = { Ip, B0, profile: { kind: 'shape', alphaM: 2, alphaN: 1.3, betaP: 0.65 }, tol: 1e-10 };
+    const base = solver.solve(o), grown = solver.solve({ ...o, restartGrowth: 3 });
+    expect(base.converged && grown.converged).toBe(true);
+    for (const k of ['q95', 'li3', 'betaP', 'q0', 'Raxis'] as const) expect(grown[k]).toBeCloseTo(base[k], 7);
+    expect(grown.iterations).toBeLessThan(2 * base.iterations + 5);
+    for (const bad of [1, 0.5, NaN]) expect(() => solver.solve({ ...o, restartGrowth: bad })).toThrow(/restartGrowth/);
+  });
+
   it('Anderson mixing reaches the same equilibrium in far fewer iterations than damped Picard', () => {
     const o: EquilibriumOptions = { Ip, B0, profile: { kind: 'shape', alphaM: 2, alphaN: 1.3, betaP: 0.65 }, tol: 1e-9 };
     const aa = solver.solve(o);

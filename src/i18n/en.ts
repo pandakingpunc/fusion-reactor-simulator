@@ -159,6 +159,13 @@ export const en = {
   'wf.thermalEff.hint': 'Fusion heat → electricity, for Q_eng (the model uses 0.4 when unset)',
   'wf.plugPotential': 'Plug potential eφ_c/T_i',
   'wf.plugPotential.hint': 'Pastukhov: τ_E × (1 + F(x)), F = x·eˣ/(1 + 1/2x); 0 = simple mirror',
+  'wf.lcfsKappa': 'LCFS elongation κ_LCFS',
+  'wf.lcfsKappa.hint': 'Blank = κ above. The last closed flux surface sets the plasma volume, surface and cross-section of the 0D model and the boundary of the 1.5D model; q₉₅ and the scalings keep κ above (κ₉₅ ≈ κ_LCFS/1.1). In ITER and DEMO the value follows an edited κ in proportion.',
+  'wf.lcfsDelta': 'LCFS triangularity δ_LCFS',
+  'wf.lcfsDelta.hint': 'Blank = δ above. Used like the LCFS elongation (0D volume and surface, 1.5D boundary) and as the average LCFS triangularity of the ITPA20 scalings.',
+  'wf.h98.hint': 'Multiplier of the H-mode scaling chosen below (IPB98(y,2) unless changed); 1 = the scaling as published.',
+  'wf.scaling': 'Confinement scaling',
+  'wf.scaling.hint': 'IPB98(y,2) is the ITER standard; ITPA20 and ITPA20-IL (Verdoolaege et al. 2021) take the areal elongation and the average LCFS triangularity; ST (Valovič) is for spherical tokamaks. H₉₈ multiplies the chosen scaling.',
 
   'end.numerical': 'Numerical failure',
   'end.equilibrium': 'Equilibrium failure',

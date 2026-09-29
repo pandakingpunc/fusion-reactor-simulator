@@ -88,12 +88,36 @@ describe('fields of the v4 configuration options', () => {
     const news = [
       field('stellarator', 'stellarator.H_ISS04'), field('icf_indirect', 'driverEff'), field('icf_direct', 'thermalEff'),
       field('mirror', 'plugPotential'), field('tokamak', 'heating.autoOff'),
+      field('tokamak', 'profiles.lcfsKappa'), field('tokamak', 'profiles.lcfsDelta'), field('tokamak', 'scaling'),
     ];
     for (const f of news) {
       expect(f.labelKey, f.path).toBeDefined();
       expect(fieldLabel(f, en), f.path).toBe(f.label);
       expect(fieldLabel(f, tr), f.path).not.toBe(f.label);
       expect(fieldHint(f, tr), f.path).not.toBe(fieldHint(f, en));
+    }
+    // the H98 hint now names the scaling it multiplies; its label is unchanged
+    const h98 = field('tokamak', 'H98');
+    expect(fieldHint(h98, en)).toMatch(/H-mode scaling chosen below/);
+    expect(fieldHint(h98, tr)).not.toBe(fieldHint(h98, en));
+  });
+
+  it('the LCFS shape is a setting of the 0D model too (volume, surface, cross-section) and of no other device; the ITPA20 scalings are offered', () => {
+    for (const cfg of [ITER, MASTU, ITER_15D]) {
+      expect(fieldVisible(cfg.method, 'profiles.lcfsKappa', cfg), cfg.method).toBe(true);
+      expect(fieldVisible(cfg.method, 'profiles.lcfsDelta', cfg), cfg.method).toBe(true);
+    }
+    expect(fieldVisible('stellarator', 'profiles.lcfsKappa', W7X)).toBe(false);
+    expect(fieldVisible('tokamak', 'profiles.nRho', ITER)).toBe(false); // the other 1.5D settings stay 1.5D only
+    expect(fieldVisible('tokamak', 'profiles.nRho', ITER_15D)).toBe(true);
+    expect(field('tokamak', 'profiles.lcfsKappa').hint).toMatch(/^Blank = κ above\..*volume, surface and cross-section of the 0D model/);
+    expect(field('tokamak', 'scaling').options!.map((o) => o.value)).toEqual(['IPB98y2', 'ITPA20', 'ITPA20-IL', 'ST_Valovic']);
+    expect(fieldVisible('stellarator', 'scaling', W7X)).toBe(false);
+    // a scaling chosen in the wizard runs (the smoke test covers every option; this one names the two new ones)
+    for (const scaling of ['ITPA20', 'ITPA20-IL'] as const) {
+      const sim = new Simulation({ ...setPath(ITER, 'scaling', scaling), t_end: 2 } as ReactorConfig);
+      sim.runAll();
+      expect(sim.history.every((f) => Number.isFinite(f.d.tauE)), scaling).toBe(true);
     }
   });
 

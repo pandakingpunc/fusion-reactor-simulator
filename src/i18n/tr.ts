@@ -156,6 +156,13 @@ export const tr: Dict = {
   'wf.thermalEff.hint': 'Füzyon ısısı → elektrik, Q_eng için (boşsa model 0,4 kullanır)',
   'wf.plugPotential': 'Tapa potansiyeli eφ_c/T_i',
   'wf.plugPotential.hint': 'Pastukhov: τ_E × (1 + F(x)), F = x·eˣ/(1 + 1/2x); 0 = basit ayna',
+  'wf.lcfsKappa': 'LCFS uzama oranı κ_LCFS',
+  'wf.lcfsKappa.hint': 'Boş = yukarıdaki κ. Son kapalı akı yüzeyi, 0D modelin plazma hacmini, yüzey alanını ve kesit alanını ile 1.5D modelin sınırını belirler; q₉₅ ve ölçeklemeler yukarıdaki κ’yı kullanır (κ₉₅ ≈ κ_LCFS/1,1). ITER ve DEMO’da değer, κ değiştikçe orantılı değişir.',
+  'wf.lcfsDelta': 'LCFS üçgensellik δ_LCFS',
+  'wf.lcfsDelta.hint': 'Boş = yukarıdaki δ. LCFS uzama oranı gibi kullanılır (0D hacim ve yüzey, 1.5D sınır) ve ITPA20 ölçeklemelerinin ortalama LCFS üçgenselliğidir.',
+  'wf.h98.hint': 'Aşağıda seçilen H-kipi ölçeklemesinin çarpanı (değiştirilmedikçe IPB98(y,2)); 1 = ölçekleme yayımlandığı gibi.',
+  'wf.scaling': 'Hapsolma ölçeklemesi',
+  'wf.scaling.hint': 'IPB98(y,2) ITER standardıdır; ITPA20 ve ITPA20-IL (Verdoolaege vd. 2021) alan uzamasını ve ortalama LCFS üçgenselliğini kullanır; ST (Valovič) küresel tokamaklar içindir. H₉₈ seçilen ölçeklemeyi çarpar.',
 
   'end.numerical': 'Sayısal hata',
   'end.equilibrium': 'Denge hatası',

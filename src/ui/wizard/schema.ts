@@ -85,6 +85,9 @@ const MAGNETIC_STEPS: StepDef[] = [
     { path: 'geometry.a', label: 'Minor radius a', unit: 'm', min: 0.1, max: 4, step: 0.01 },
     { path: 'geometry.kappa', label: 'Elongation κ', min: 1, max: 3, step: 0.01 },
     { path: 'geometry.delta', label: 'Triangularity δ', min: -0.3, max: 0.8, step: 0.01 },
+    // the shape of the last closed flux surface: the 0D volume, surface and cross-section and the 1.5D boundary (torus with a plasma current only)
+    { path: 'profiles.lcfsKappa', min: 1, max: 3, step: 0.01, optional: true, ...txt('wf.lcfsKappa', 'wf.lcfsKappa.hint') },
+    { path: 'profiles.lcfsDelta', min: -0.3, max: 0.8, step: 0.01, optional: true, ...txt('wf.lcfsDelta', 'wf.lcfsDelta.hint') },
     { path: 'B0', label: 'Toroidal field B₀', unit: 'T', min: 0.2, max: 20, step: 0.1 },
     { path: 'Ip_MA', label: 'Plasma current I_p', unit: 'MA', min: 0, max: 30, step: 0.1, hint: 'Stellarator: 0' },
     { path: 't_end', label: 'Shot duration', unit: 's', min: 0.2, max: 5000, step: 0.5 },
@@ -131,9 +134,9 @@ const MAGNETIC_STEPS: StepDef[] = [
     { path: 'fueling.maxRate_1e20s', label: 'Max. fueling rate', unit: '10²⁰ /s', min: 0, max: 5000, step: 1 },
     { path: 'fueling.pelletDepth', label: 'Pellet penetration depth', min: 0.05, max: 1, step: 0.05 },
     { path: 'stellarator.H_ISS04', min: 0.3, max: 2, step: 0.01, optional: true, ...txt('wf.hiss04', 'wf.hiss04.hint') },
-    { path: 'H98', label: 'H₉₈ factor', min: 0.3, max: 2, step: 0.01, hint: 'IPB98(y,2) multiplier; 1 = standard H-mode' },
+    { path: 'H98', label: 'H₉₈ factor', min: 0.3, max: 2, step: 0.01, hint: en['wf.h98.hint'], hintKey: 'wf.h98.hint' },
     { path: 'H89', label: 'H₈₉ (L-mode) factor', min: 0.3, max: 3, step: 0.01 },
-    { path: 'scaling', label: 'Confinement scaling', type: 'select', options: [{ value: 'IPB98y2', label: 'IPB98(y,2)' }, { value: 'ST_Valovic', label: 'ST (Valovic)' }] },
+    { path: 'scaling', type: 'select', ...txt('wf.scaling', 'wf.scaling.hint'), options: [{ value: 'IPB98y2', label: 'IPB98(y,2)' }, { value: 'ITPA20', label: 'ITPA20 (Verdoolaege 2021)' }, { value: 'ITPA20-IL', label: 'ITPA20-IL (ITER-like, Verdoolaege 2021)' }, { value: 'ST_Valovic', label: 'ST (Valovic)' }] },
     { path: 'transport.tau_p_over_tau_E', label: 'τ_p / τ_E', min: 0.5, max: 10, step: 0.1 },
     { path: 'transport.tau_He_over_tau_E', label: 'τ_He* / τ_E', min: 1, max: 20, step: 0.5, hint: 'He ash removal; ≈5 typical' },
     { path: 'transport.alpha_n', label: 'Density profile peaking α_n', min: 0, max: 2, step: 0.05 },
@@ -149,8 +152,6 @@ const MAGNETIC_STEPS: StepDef[] = [
     { path: 'profiles.transportModel', label: '1.5D · transport model', type: 'select', def: PS.transportModel, options: [{ value: 'scaling', label: 'τ_E-scaling constrained (validated)' }, { value: 'cgm', label: 'Critical-gradient model (predictive, experimental)' }] },
     { path: 'profiles.nRho', label: '1.5D · radial cells N_ρ', min: 16, max: 200, step: 1, def: PS.nRho },
     { path: 'profiles.eqNR', label: '1.5D · Grad–Shafranov grid N_R', min: 25, max: 129, step: 2, def: PS.eqNR },
-    { path: 'profiles.lcfsKappa', label: '1.5D · LCFS elongation', min: 1, max: 3, step: 0.01, optional: true, hint: 'Blank = geometry κ (κ_95 ≈ κ_LCFS/1.1)' },
-    { path: 'profiles.lcfsDelta', label: '1.5D · LCFS triangularity', min: -0.3, max: 0.8, step: 0.01, optional: true, hint: 'Blank = geometry δ' },
     { path: 'profiles.chiShape', label: '1.5D · χ shape c in (1 + cρ²)', min: 0, max: 10, step: 0.1, def: PS.chiShape },
     { path: 'profiles.chiRatio', label: '1.5D · χ_i / χ_e', min: 0.2, max: 5, step: 0.05, def: PS.chiRatio },
     { path: 'profiles.DoverChi', label: '1.5D · D / χ_e', min: 0.05, max: 2, step: 0.05, def: PS.DoverChi },
@@ -289,6 +290,8 @@ export function stepsFor(method: Method): StepDef[] {
 /** Belirli bir alan bu yöntem (ve model seçimi) için anlamlı mı (stellarator/ICF/1.5D dallanmaları) */
 export function fieldVisible(method: Method, path: string, cfg?: ReactorConfig): boolean {
   if (path === 'fidelity') return method === 'tokamak' || method === 'spherical_tokamak';
+  // the LCFS shape sets the volume, surface and cross-section of the 0D model as well as the boundary of the 1.5D one
+  if (path === 'profiles.lcfsKappa' || path === 'profiles.lcfsDelta') return method === 'tokamak' || method === 'spherical_tokamak';
   if (path.startsWith('profiles.')) return (method === 'tokamak' || method === 'spherical_tokamak') && (cfg as { fidelity?: string } | undefined)?.fidelity === '1.5D';
   if (path.startsWith('stellarator.')) {
     // an explicit H_ISS04 replaces the old f_ren · H98 product: those two are then not used

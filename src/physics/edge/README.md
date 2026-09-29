@@ -45,7 +45,7 @@ attainable seeding, and a channel value at the cap reads "more than 100 %".
 
 * `c_z for detachment, Lengyel upper bound (%)`: the flat-top mean in percent; `0` where no seed is needed; `n/a (> 100 %)` where the model
   finds no attainable seeding in the whole flat top (the JET, SPARC, DIII-D and JT-60SA presets: the coronal cooling function is deficient
-  below 100 eV, where the seed radiates most; this is not the same as 100 %); `≥ X (> 100 % in N % of the flat top)` where only part of it
+  below 100 eV, where the seed radiates most; this is not the same as 100 %); `≥ X (> 100 % in N % of the flat top)` where only part of it (N is a share of time, weighted like the mean: the flat top is time-weighted since v4.0)
   is capped: the mean of the channel, which counts a capped frame as one, is then a lower bound of the mean requirement (the ITER p-B11 case,
   whose flat top swings between detached and attached frames, is of this kind). The species of the row is the seed of the configuration (neon
   without one). The Kallenbach qualifier is not turned into a second row: `EdgeResult.cz_qdet` has the concentration at which `q_det = 1`

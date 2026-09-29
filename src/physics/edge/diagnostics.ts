@@ -3,7 +3,7 @@
  * entries of the shot report.
  */
 import type { DiagSpec, HistoryFrame, MagneticConfig } from '../types';
-import { flatTopMean, flatTopStartIndex } from '../analysis/flatTop';
+import { flatTopMean } from '../analysis/flatTop';
 import { Geometry } from '../geometry';
 import { edgePlasma0D, edgeSetup } from './config';
 import { DETACHMENT_LABELS, detachmentState } from './detachment';
@@ -46,21 +46,21 @@ export function edgeDiagnostics(cfg: MagneticConfig, g: Geometry, P_sep: number,
 }
 
 /**
- * The c_z row of the report. `capShare` is the share of the flat-top frames whose channel value is at the cap: none, the
+ * The c_z row of the report. `capShare` is the share of the flat top (in time) at which the channel is at the cap: none, the
  * mean in percent (0: no seed needed); all, "n/a (> 100 %)": the model finds no attainable seeding, which is not the same as
  * 100 %; some, the mean of the channel is a LOWER bound of the mean of the requirement (a capped frame stands for one or
- * more), given as such together with the share of capped frames.
+ * more), given as such together with the capped share.
  */
 function czEntry(mean: number, capShare: number): number | string {
   if (!Number.isFinite(mean)) return 'n/a';
-  if (capShare >= 1) return 'n/a (> 100 %)';
+  if (capShare >= 1 - 1e-9) return 'n/a (> 100 %)';
   if (capShare > 0) return `≥ ${(100 * mean).toFixed(2)} (> 100 % in ${Math.max(1, Math.round(100 * capShare))} % of the flat top)`;
   return +(100 * mean).toFixed(2);
 }
 
 /**
- * Entries of the report's engineering table from the flat-top means of the channels (`mean`) and the share of the flat-top
- * frames with c_z at its cap (`capShare`); empty if the history has none of the channels (`has`). The two-point rows are
+ * Entries of the report's engineering table from the flat-top means of the channels (`mean`) and the share of the flat top
+ * with c_z at its cap (`capShare`, 0 to 1); empty if the history has none of the channels (`has`). The two-point rows are
  * not the legacy 'Divertor q_max' (README, "Two divertor-load rows").
  */
 export function edgeReportEntries(mean: (key: string) => number, has: boolean, capShare = 0): Record<string, number | string> {
@@ -75,11 +75,13 @@ export function edgeReportEntries(mean: (key: string) => number, has: boolean, c
   };
 }
 
-/** The same entries from a history: flat-top means with the ShotReport convention, and the share of capped c_z frames */
+/**
+ * The same entries from a history: flat-top means with the ShotReport convention (time-weighted since v4.0, analysis/flatTop.ts),
+ * and the share of the flat top with c_z at its cap, weighted in the same way (the time average of the indicator "at the cap"): the
+ * frames an ELM cycle adds must not weigh a capped state more than the time it lasts.
+ */
 export function edgeReportEntriesOf(hist: readonly Pick<HistoryFrame, 't' | 'd'>[]): Record<string, number | string> {
   if (!hist.some((h) => h.d.T_t !== undefined)) return {};
-  const i0 = flatTopStartIndex(hist.length);
-  let n = 0, capped = 0;
-  for (let i = i0; i < hist.length; i++) { n++; if ((hist[i].d.cz_det ?? 0) >= CZ_CAP) capped++; }
-  return edgeReportEntries((k) => flatTopMean(hist, k, { samples: 'all' }), true, n ? capped / n : 0);
+  const atCap = hist.map((h) => ({ t: h.t, d: { atCap: (h.d.cz_det ?? 0) >= CZ_CAP ? 1 : 0 } }));
+  return edgeReportEntries((k) => flatTopMean(hist, k, { samples: 'all' }), true, flatTopMean(atCap, 'atCap', { samples: 'all' }));
 }

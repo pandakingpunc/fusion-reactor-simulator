@@ -81,19 +81,24 @@ describe('edge diagnostics of the 0D model', { timeout: 120_000 }, () => {
     expect(edgeReportEntries((k) => (k === 'T_t' ? 0.6 : 1), true)['Detachment state']).toBe('detached');
   });
 
-  it('c_z row of the report: "n/a (> 100 %)" when the flat top is at the cap (no attainable seeding), never a clipped 100 %; 0 when no seed is needed; a lower bound with the share of capped frames when mixed', () => {
+  it('c_z row of the report: "n/a (> 100 %)" when the flat top is at the cap (no attainable seeding), never a clipped 100 %; 0 when no seed is needed; a lower bound with the share of capped time when mixed', () => {
     const CZ = 'c_z for detachment, Lengyel upper bound (%)';
-    /** ten frames; the flat top is the last three (index 7 to 9); cz per frame */
+    /**
+     * ten frames at t = 0..9; the flat top is the time window [6.3, 9] (time-weighted since v4.0), which starts between frames 6
+     * and 7: frames 6..9 carry the flat top, and the tests keep frames 6 and 7 equal so that the interpolated start adds nothing
+     */
     const hist = (cz: number[], Tt = 100) => cz.map((c, i) => ({ t: i, d: { T_t: Tt, P_sep_R: 10, q_peak: 5, cz_det: c } }));
     const row = (cz: number[]) => edgeReportEntriesOf(hist(cz))[CZ];
+    const head = [0.4, 0.4, 0.4, 0.4, 0.4, 0.4]; // frames 0..5, outside the flat top
     expect(edgeReportEntriesOf([])).toEqual({});
     expect(edgeReportEntriesOf([{ t: 0, d: { P_heat: 1 } }])).toEqual({});
-    expect(row([0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 1, 1, 1])).toBe('n/a (> 100 %)');
-    expect(row([1, 1, 1, 1, 1, 1, 1, 0.25, 0.25, 0.25])).toBe(25);
+    expect(row([...head, 1, 1, 1, 1])).toBe('n/a (> 100 %)');
+    expect(row([1, 1, 1, 1, 1, 1, 0.25, 0.25, 0.25, 0.25])).toBe(25);
     expect(row(Array(10).fill(0))).toBe(0);
-    expect(row([0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.2, 0.2, 1])).toBe('≥ 46.67 (> 100 % in 33 % of the flat top)');
-    expect(row([0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 1, 1, 0.1])).toBe('≥ 70.00 (> 100 % in 67 % of the flat top)');
-    expect(row([0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.2, 0.2, NaN])).toBe('n/a');
+    // a capped frame at the end of the window: the trapezoids (0.7 + 1 + 0.5)/2.7 of the window are at the cap, time-weighted like the mean
+    expect(row([...head, 0.2, 0.2, 0.2, 1])).toBe('≥ 34.81 (> 100 % in 19 % of the flat top)');
+    expect(row([...head, 1, 1, 1, 0.1])).toBe('≥ 83.33 (> 100 % in 81 % of the flat top)');
+    expect(row([...head, 0.2, 0.2, 0.2, NaN])).toBe('n/a');
     // the other rows are those of the flat-top means with the same convention as the report
     const e = edgeReportEntriesOf(hist([0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5], 5));
     expect(e['Detachment state']).toBe('partially detached');
@@ -102,6 +107,16 @@ describe('edge diagnostics of the 0D model', { timeout: 120_000 }, () => {
     // with a capped frame in the flat top, the mean-based function keeps its own contract: capShare is an input
     expect(edgeReportEntries(() => 1, true, 1)[CZ]).toBe('n/a (> 100 %)');
     expect(edgeReportEntries(() => 0.3, true)[CZ]).toBe(30);
+  });
+
+  it('the capped share of the c_z row is a share of TIME: the frames recorded at an ELM cluster do not outweigh the time they last (ws7a x ws2c)', () => {
+    const CZ = 'c_z for detachment, Lengyel upper bound (%)';
+    // t = 0..7 and 8, 9 uncapped (0.2); between 7.5 and 7.539 forty frames, all capped: 40 of the 15 frames from index 35 on
+    const ts = [0, 1, 2, 3, 4, 5, 6, 7, ...Array.from({ length: 40 }, (_, i) => 7.5 + 0.001 * i), 8, 9];
+    const hist = ts.map((t) => ({ t, d: { T_t: 100, P_sep_R: 10, q_peak: 5, cz_det: t >= 7.5 && t < 7.6 ? 1 : 0.2 } }));
+    // frame-weighted this window would be 13 capped frames of 15 (87 %); in time the capped state lasts 0.04 s plus the two ramps to its neighbours
+    // (0.25 + 0.039 + 0.2305 = 0.5195 s of the 2.7 s window: 19 %), and the mean follows: 0.2 + 0.8 · 0.19241 = 0.3539
+    expect(edgeReportEntriesOf(hist)[CZ]).toBe('≥ 35.39 (> 100 % in 19 % of the flat top)');
   });
 
   it('the report of runs the model detaches by its prescribed divertor radiation (MAST-U) needs no seed (0 %), and where no seeding is attainable (JET) it says so', async () => {

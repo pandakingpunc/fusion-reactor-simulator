@@ -274,6 +274,17 @@ describe('golden cases', () => {
     expect(iter.fuel).toBe('DT');
     expect(() => caseConfig({ id: 'x', preset: 'NIF', overrides: { n_target: 1e20 } })).toThrow(/has no n_target setting/);
   });
+
+  it('the stored suite keeps a shot that ends in a disruption, so that the quench frames, the disruption report and its termination label are under golden', () => {
+    const disrupting = GOLDEN_CASES.filter((c) => {
+      const s = parseSnapshot(readFileSync(goldenFile(c.id), 'utf8'));
+      return (s.events.disruption ?? 0) > 0 && (s.events.quench ?? 0) > 0 && s.scalars['termination.natural'] === 0
+        && Object.keys(s.scalars).some((k) => k.startsWith('termination.disruption.')) && !/Scheduled end/.test(s.labels['termination.reason']);
+    });
+    expect(disrupting.map((c) => c.id)).toContain('ITER-pB11');
+    // the density that makes it disrupt is part of the case, not of the preset (the preset's own p-11B shot survives)
+    expect(goldenCase('ITER-pB11').overrides).toMatchObject({ fuel: 'pB11', n_target: 1.0e20 });
+  });
 });
 
 describe('golden regression (fast subset; full suite: npm run golden)', { timeout: 30_000 }, () => {

@@ -46,7 +46,7 @@ const CLI = defineCli({
 const CHANGES_HEADER = `# Golden regression log
 
 Append-only record of every change to the golden files in this folder. Entries are written by
-\`npm run golden:update -- --reason "…"\`; do not edit or reorder past entries.
+\`npm run golden:update -- --reason "…"\` (or \`--reason-file <file>\` for a long, multi-line reason); do not edit or reorder past entries.
 `;
 
 /** rough cost for longest-first scheduling */

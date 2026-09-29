@@ -16,8 +16,8 @@
 import { PRESETS } from '../physics/presets';
 import type { MagneticConfig } from '../physics/types';
 import { defineCli, exitUsage, parseArgsOrExit } from './args';
-import { DESIGN_OBJECTIVES, DESIGN_VARS, DesignConstraints, DesignObjective, DesignSpec, DesignVarName, designReport } from '../analysis/design';
-import { formatDesign, parseBound, presetConfig } from '../analysis/cliSupport';
+import { DESIGN_OBJECTIVES, DESIGN_VARS, DesignConstraints, DesignMethod, DesignObjective, DesignSpec, DesignVarName, designReport, paretoReport } from '../analysis/design';
+import { formatDesign, formatPareto, parseBound, presetConfig } from '../analysis/cliSupport';
 import { toJson } from '../analysis/ensemble';
 import { writeOutput } from '../analysis/node/output';
 
@@ -31,6 +31,11 @@ const CLI = defineCli({
   flags: {
     preset: { type: 'string', required: true, choices: TOKAMAKS, metavar: 'ID', help: 'tokamak or spherical tokamak preset (0D) that supplies the fuel, impurities, profiles, limits and magnet technology' },
     objective: { type: 'string', default: 'major-radius', choices: DESIGN_OBJECTIVES, help: 'figure of merit' },
+    pareto: { type: 'list', choices: DESIGN_OBJECTIVES, metavar: 'A,B', help: 'instead of one objective: the Pareto front of two objectives (NSGA-II), e.g. major-radius,aux-power' },
+    solver: { type: 'string', default: 'nelder-mead', choices: ['nelder-mead', 'cma-es'], help: 'inner solver of the augmented Lagrangian (single objective)' },
+    'pop-size': { type: 'int', default: 100, min: 8, help: 'Pareto: NSGA-II population size (a multiple of 4)' },
+    generations: { type: 'int', default: 100, min: 1, help: 'Pareto: NSGA-II generations' },
+    seed: { type: 'int', default: 1, min: 0, max: 4294967295, help: 'Pareto: seed of NSGA-II' },
     vars: { type: 'list', default: ['R', 'a', 'B0', 'Ip', 'fG', 'T'], choices: DESIGN_VARS, metavar: 'NAME,…', help: 'design variables: major/minor radius R, a [m], field B0 [T], current Ip [MA], line-averaged density over the Greenwald density fG, temperature T [keV], H98, elongation kappa' },
     bound: { type: 'list', metavar: 'NAME=LO:HI,…', help: 'bounds of a variable (default: 0.6 to 1.5 times the preset for R, a, B0, Ip; fG 0.1 to the Greenwald limit; T 2 to 40 keV; H98 0.8 to 1.5; kappa +-20 %)' },
     'q-min': { type: 'number', min: 0, help: 'steady-state Q at least this (default 10, or none for --objective gain; 0 = no constraint)' },
@@ -77,10 +82,31 @@ async function main(): Promise<void> {
     };
     const temps = args['start-temps'].map(Number);
     if (temps.some((t) => !(t > 0.5 && t < 100))) throw new RangeError('--start-temps: each temperature must be between 0.5 and 100 keV');
-    spec = { base, objective, variables: args.vars as DesignVarName[], bounds, constraints, startTemperatures: temps, solver: { maxEvals: args['max-evals'] } };
+    if (args.pareto && args.pareto.length !== 2) throw new RangeError('--pareto takes exactly two objectives, e.g. --pareto major-radius,aux-power');
+    if (args.pareto && args['pop-size'] % 4 !== 0) throw new RangeError('--pop-size must be a multiple of 4');
+    spec = { base, objective, method: args.solver as DesignMethod, variables: args.vars as DesignVarName[], bounds, constraints, startTemperatures: temps, solver: { maxEvals: args['max-evals'] } };
   } catch (e) {
     if (e instanceof RangeError) exitUsage(CLI.name, e.message);
     throw e;
+  }
+  if (args.pareto) {
+    let rep;
+    try {
+      rep = paretoReport({ ...spec, objectives: [args.pareto[0] as DesignObjective, args.pareto[1] as DesignObjective], popSize: args['pop-size'], generations: args.generations, seed: args.seed }, args.preset);
+    } catch (e) {
+      if (e instanceof RangeError) exitUsage(CLI.name, e.message);
+      throw e;
+    }
+    if (args.json !== undefined) writeOutput(args.json, toJson(rep));
+    if (!args.quiet) {
+      const text = formatPareto(rep);
+      if (args.json === '-') process.stderr.write(text); else process.stdout.write(text);
+    }
+    if (!rep.result.feasibleFound) {
+      process.stderr.write('optimize: no feasible design found (see the constraints)\n');
+      process.exitCode = 1;
+    }
+    return;
   }
   let report;
   try {

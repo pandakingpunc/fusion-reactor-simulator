@@ -76,4 +76,31 @@ describe('optimize CLI', { timeout: 120_000 }, () => {
     expect(r.stderr).toMatch(/no feasible design found/);
     expect(JSON.parse(r.stdout).result.feasible).toBe(false);
   });
+  it('--solver cma-es solves the same small problem', () => {
+    const r = optimize(...SMALL, '--solver', 'cma-es', '--json', '-', '--quiet');
+    expect(r.code).toBe(0);
+    const out = JSON.parse(r.stdout);
+    expect(out.result.solver.method).toBe('augmented Lagrangian + CMA-ES');
+    const nm = JSON.parse(optimize(...SMALL, '--json', '-', '--quiet').stdout);
+    expect(Math.abs(out.result.optimum.Q - nm.result.optimum.Q) / nm.result.optimum.Q).toBeLessThan(0.01);
+  });
+
+  it('--pareto: the front of two objectives as JSON (byte-identical on repeat) and as text; wrong arity is a usage error', () => {
+    expect(optimize('--preset', 'ITER', '--pareto', 'major-radius').stderr).toMatch(/--pareto takes exactly two objectives/);
+    expect(optimize('--preset', 'ITER', '--pareto', 'major-radius,aux-power', '--pop-size', '10').stderr).toMatch(/--pop-size must be a multiple of 4/);
+    const args = ['--preset', 'ITER', '--pareto', 'major-radius,aux-power', '--vars', 'R,B0,fG,T', '--paux-max', '200', '--pop-size', '20', '--generations', '10'];
+    const a = optimize(...args, '--json', '-', '--quiet'), b = optimize(...args, '--json', '-', '--quiet');
+    expect(a.code).toBe(0);
+    expect(a.stdout).toBe(b.stdout);
+    const out = JSON.parse(a.stdout);
+    expect(out).toMatchObject({ schema: 1, tool: 'optimize', mode: 'pareto', problem: { preset: 'ITER', objectives: ['major-radius', 'aux-power'], popSize: 20, generations: 10, seed: 1 } });
+    expect(out.result.feasibleFound).toBe(true);
+    expect(out.result.points.length).toBeGreaterThan(3);
+    expect(out.caveat).toMatch(/^EDUCATIONAL/);
+    const text = optimize(...args);
+    expect(text.code).toBe(0);
+    expect(text.stdout).toMatch(/^Pareto front of ITER: major radius R against auxiliary power/);
+    expect(text.stdout).toMatch(/non-dominated feasible designs/);
+    expect(text.stdout).toMatch(/input hash [0-9a-f]{64}/);
+  });
 });

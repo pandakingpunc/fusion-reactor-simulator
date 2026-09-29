@@ -168,3 +168,22 @@ describe('augmented Lagrangian', () => {
     expect(() => augmentedLagrangian(hs71, [1, 2])).toThrow(/x0 has 2 entries, the problem has 4 variables/);
   });
 });
+
+describe('augmented Lagrangian with another inner minimiser', () => {
+  it('CMA-ES as the inner solver reaches the Hock-Schittkowski #71 optimum as well', async () => {
+    const { cmaes } = await import('./cmaes');
+    const hs71 = {
+      n: 4,
+      f: (x: number[]) => x[0] * x[3] * (x[0] + x[1] + x[2]) + x[2],
+      ineq: (x: number[]) => [25 - x[0] * x[1] * x[2] * x[3]],
+      eq: (x: number[]) => [x[0] ** 2 + x[1] ** 2 + x[2] ** 2 + x[3] ** 2 - 40],
+      lower: [1, 1, 1, 1], upper: [5, 5, 5, 5],
+    };
+    const r = augmentedLagrangian(hs71, [1, 5, 5, 1], {
+      minimizer: (f, x0, lower, upper, maxEvals, outer) => cmaes(f, x0, { lower, upper, maxEvals, sigma0: outer === 1 ? 0.5 : 0.05, seed: 7, tolFun: 1e-14, tolX: 1e-10 }),
+    });
+    expect(r.feasible).toBe(true);
+    expect(Math.abs(r.f - 17.0140173)).toBeLessThan(1e-4);
+    expect(r.violation).toBeLessThan(1e-5);
+  });
+});

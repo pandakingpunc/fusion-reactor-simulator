@@ -15,7 +15,7 @@ import { METRIC_KEYS, MetricKey } from './metrics';
 import { ParamSpec, PriorSet, defaultPriors, H98_SIGMA } from './priors';
 import { parseDist } from './distributions';
 import type { ScanAxis, ScanResult } from './scan';
-import type { DesignReport } from './design';
+import type { DesignReport, ParetoReport } from './design';
 
 /** The preset with this id (the ids of the `validate` CLI); throws RangeError listing the valid ones. */
 export function presetConfig(id: string): ReactorConfig {
@@ -218,6 +218,31 @@ export function formatDesign(r: DesignReport): string {
   L.push(`  beta_N ${fmt(o.betaN)}, q95 ${fmt(o.q95)}, P_L/P_LH ${fmt(o.PLoverPLH)}, He ash ${fmt(o.fHe)}, V ${fmt(o.V_m3)} m^3, B_coil ${fmt(o.B_coil_T)} T, A ${fmt(o.aspect)}, wall load ${fmt(o.wallLoad_MWm2)} MW/m^2`);
   const s = res.solver;
   L.push('', `Solver: ${s.method}, ${s.starts} starts (best: #${s.bestStart + 1}), ${s.evals} evaluations, ${s.outer} outer iterations, ${s.reason}, constraint violation ${s.violation.toExponential(1)}`);
+  L.push(`input hash ${r.inputHash}`);
+  return L.join('\n') + '\n';
+}
+
+/** Human-readable summary of a Pareto report (about 15 evenly spaced designs of the front). */
+export function formatPareto(r: ParetoReport, maxRows = 15): string {
+  const L: string[] = [];
+  const res = r.result, p = r.problem;
+  const [a, b] = res.objectives;
+  L.push(`Pareto front of ${p.preset ?? 'the configuration'}: ${a.label} against ${b.label} (NSGA-II, population ${p.popSize}, ${p.generations} generations, seed ${p.seed})`);
+  L.push(wrap(r.caveat), '');
+  if (!res.feasibleFound) {
+    L.push('NO FEASIBLE DESIGN FOUND: no individual of the final population satisfies all constraints.');
+    L.push(`input hash ${r.inputHash}`);
+    return L.join('\n') + '\n';
+  }
+  L.push(`${res.points.length} non-dominated feasible designs (hypervolume of the scaled front ${fmt(res.hypervolume)}, ${res.evals} evaluations); preset machine: ${a.label} ${fmt(a.preset)} ${a.unit}, ${b.label} ${fmt(b.preset)} ${b.unit}`, '');
+  const names = Object.keys(res.points[0].variables);
+  L.push(`  ${(a.label + (a.unit ? ` [${a.unit}]` : '')).padStart(22)} ${(b.label + (b.unit ? ` [${b.unit}]` : '')).padStart(24)} ${'Q'.padStart(8)} ${'P_aux'.padStart(8)} ${'P_fus'.padStart(8)}  ${names.join(' ')}`);
+  const step = Math.max(1, Math.floor(res.points.length / maxRows));
+  for (let k = 0; k < res.points.length; k += step) {
+    const q = res.points[k];
+    L.push(`  ${fmt(q.objectives[0]).padStart(22)} ${fmt(q.objectives[1]).padStart(24)} ${fmt(q.Q).padStart(8)} ${fmt(q.Paux_MW).padStart(8)} ${fmt(q.Pfus_MW).padStart(8)}  ${names.map((n) => fmt(q.variables[n])).join(' ')}`);
+  }
+  if (step > 1) L.push(`  (every ${step}th of ${res.points.length} designs; all are in the JSON)`);
   L.push(`input hash ${r.inputHash}`);
   return L.join('\n') + '\n';
 }

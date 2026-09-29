@@ -18,7 +18,7 @@
  * solver is a direct search the method is meant for small problems (tens of variables at most).
  * Pure TypeScript, no DOM or Node API.
  */
-import { NelderMeadOptions, nelderMead } from './neldermead';
+import { NelderMeadOptions, OptimResult, nelderMead } from './neldermead';
 
 export interface ConstrainedProblem {
   n: number;
@@ -46,6 +46,11 @@ export interface AugLagOptions {
   muMax?: number;
   /** options of the inner Nelder-Mead solves (bounds are set from the problem) */
   inner?: Omit<NelderMeadOptions, 'lower' | 'upper'>;
+  /**
+   * Replaces Nelder-Mead as the inner minimiser (e.g. CMA-ES for a rugged problem): given the augmented function, the start point, the
+   * bounds, the evaluation budget of this solve and the outer iteration (1, 2, ...), returns the minimiser found.
+   */
+  minimizer?: (f: (x: number[]) => number, x0: number[], lower: readonly number[] | undefined, upper: readonly number[] | undefined, maxEvals: number, outer: number) => OptimResult;
 }
 
 export interface OuterRecord {
@@ -112,7 +117,8 @@ export function augmentedLagrangian(p: ConstrainedProblem, x0: readonly number[]
       }
       return safe(v);
     };
-    const inner = nelderMead(L, x, { ...opts.inner, lower: lo, upper: hi, maxEvals: Math.min(opts.inner?.maxEvals ?? 20000 * Math.max(1, n / 2), Math.max(maxEvals - evals, 10)) });
+    const budget = Math.min(opts.inner?.maxEvals ?? 20000 * Math.max(1, n / 2), Math.max(maxEvals - evals, 10));
+    const inner = opts.minimizer ? opts.minimizer(L, x, lo, hi, budget, outer) : nelderMead(L, x, { ...opts.inner, lower: lo, upper: hi, maxEvals: budget });
     const xNew = inner.x;
     // multiplier updates
     if (p.ineq) { const g = p.ineq(xNew); lambda = lambda.map((l, i) => Math.max(0, l + mu * g[i])); }

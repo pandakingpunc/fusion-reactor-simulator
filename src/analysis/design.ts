@@ -33,6 +33,8 @@ import { greenwaldDensity, lineAverageFactor } from '../physics/limits';
 import { canonicalString } from '../physics/kernel/canonical';
 import { sha256Hex } from '../physics/kernel/sha256';
 import { AugLagOptions, augmentedLagrangian } from './optim/augLag';
+import { cmaes } from './optim/cmaes';
+import { hypervolume2D, nsga2 } from './optim/nsga2';
 import { SteadyState, steadyState } from './steadyState';
 
 export const OPTIMIZATION_CAVEAT =
@@ -63,8 +65,12 @@ export interface DesignConstraints {
   wallLoadMax?: number;
 }
 
+/** inner solver of the augmented Lagrangian: the simplex search (default) or CMA-ES (for a rugged or badly scaled problem) */
+export type DesignMethod = 'nelder-mead' | 'cma-es';
+
 export interface DesignSpec {
   base: MagneticConfig;
+  method?: DesignMethod;
   objective: DesignObjective;
   variables?: readonly DesignVarName[];
   bounds?: Partial<Record<DesignVarName, [number, number]>>;
@@ -179,7 +185,7 @@ export function objectiveValue(objective: DesignObjective, pt: DesignPoint, ref:
   switch (objective) {
     case 'major-radius': return pt.cfg.geometry.R / ref.cfg.geometry.R;
     case 'plasma-volume': return s.V / ref.state.V;
-    case 'aux-power': return s.Paux / 1e6 / Math.max(ref.cfg.heating.P_NBI_MW + ref.cfg.heating.P_ICRH_MW + ref.cfg.heating.P_ECRH_MW, 1);
+    case 'aux-power': return Math.max(s.Paux, 0) / 1e6 / Math.max(ref.cfg.heating.P_NBI_MW + ref.cfg.heating.P_ICRH_MW + ref.cfg.heating.P_ECRH_MW, 1);
     case 'fusion-power': return -s.Pfus / 5e8;
     case 'gain': return -Math.min(s.Q, QCAP) / 10;
   }
@@ -191,7 +197,7 @@ export function objectiveNatural(objective: DesignObjective, pt: DesignPoint): {
   switch (objective) {
     case 'major-radius': return { value: pt.cfg.geometry.R, unit: 'm', label: 'major radius R' };
     case 'plasma-volume': return { value: s.V, unit: 'm^3', label: 'plasma volume' };
-    case 'aux-power': return { value: s.Paux / 1e6, unit: 'MW', label: 'auxiliary power' };
+    case 'aux-power': return { value: Math.max(s.Paux, 0) / 1e6, unit: 'MW', label: 'auxiliary power (0 when ignited)' };
     case 'fusion-power': return { value: s.Pfus / 1e6, unit: 'MW', label: 'fusion power' };
     case 'gain': return { value: s.Q, unit: '', label: 'steady-state Q' };
   }
@@ -278,7 +284,10 @@ export function solveDesign(spec: DesignSpec): DesignResult {
   let evals = 0;
   temps.forEach((T0, s) => {
     const start = toUnit({ ...preset, T: T0, fG: Math.min(0.5 + 0.15 * s, base.limits.greenwald_limit) });
-    const r = augmentedLagrangian(problem, start, { feasTol: 1e-6, ...spec.solver });
+    const cma: AugLagOptions = spec.method === 'cma-es'
+      ? { minimizer: (f, x0, lower, upper, maxEvals, outer) => cmaes(f, x0, { lower, upper, maxEvals, sigma0: outer === 1 ? 0.25 : 0.05, seed: 1 + s, tolFun: 1e-14, tolX: 1e-10 }) }
+      : {};
+    const r = augmentedLagrangian(problem, start, { feasTol: 1e-6, ...cma, ...spec.solver });
     evals += r.evals;
     const better = !best
       || (r.feasible && !best.r.feasible)
@@ -305,7 +314,7 @@ export function solveDesign(spec: DesignSpec): DesignResult {
       aspect: pt.aspect, wallLoad_MWm2: pt.wallLoad,
     },
     feasible: r.feasible,
-    solver: { method: 'augmented Lagrangian + Nelder-Mead', starts: temps.length, bestStart: start, converged: r.converged, reason: r.reason, evals, outer: r.outer, violation: r.violation },
+    solver: { method: `augmented Lagrangian + ${spec.method === 'cma-es' ? 'CMA-ES' : 'Nelder-Mead'}`, starts: temps.length, bestStart: start, converged: r.converged, reason: r.reason, evals, outer: r.outer, violation: r.violation },
   };
 }
 
@@ -332,7 +341,7 @@ export interface DesignReport {
 export function designHash(spec: DesignSpec): string {
   const names = [...(spec.variables ?? DEFAULT_VARS)];
   return sha256Hex(canonicalString({
-    base: spec.base, objective: spec.objective, variables: names, bounds: names.map((n) => boundsFor(spec.base, n, spec.bounds)),
+    base: spec.base, objective: spec.objective, method: spec.method ?? 'nelder-mead', variables: names, bounds: names.map((n) => boundsFor(spec.base, n, spec.bounds)),
     constraints: resolveConstraints(spec.base, spec.constraints), startTemperatures: spec.startTemperatures ?? [6, 10, 16, 25], solver: spec.solver ?? null,
   }));
 }
@@ -347,6 +356,121 @@ export function designReport(spec: DesignSpec, presetId?: string): DesignReport 
       ...(presetId ? { preset: presetId } : {}), objective: spec.objective, variables: names,
       bounds: Object.fromEntries(names.map((n) => [n, boundsFor(spec.base, n, spec.bounds)])), constraints: resolveConstraints(spec.base, spec.constraints),
       startTemperatures: [...(spec.startTemperatures ?? [6, 10, 16, 25])],
+    },
+    result,
+  };
+}
+
+// ---- Pareto front of two objectives (NSGA-II) ---------------------------------------------------------------------
+
+export interface ParetoSpec extends DesignSpec {
+  /** the two objectives, traded off against each other */
+  objectives: readonly [DesignObjective, DesignObjective];
+  popSize?: number;
+  generations?: number;
+  seed?: number;
+  /** start NSGA-II with the single-objective optima of the two objectives in the population (default true) */
+  seedWithOptima?: boolean;
+}
+
+export interface ParetoPoint {
+  /** the two objectives in their natural units (as in ParetoResult.objectives) */
+  objectives: [number, number];
+  variables: Record<string, number>;
+  /** steady-state quantities of the point */
+  Q: number;
+  Paux_MW: number;
+  Pfus_MW: number;
+  betaN: number;
+}
+
+export interface ParetoResult {
+  caveat: string;
+  objectives: { name: DesignObjective; label: string; unit: string; preset: number }[];
+  /** the feasible non-dominated designs, sorted by the first objective */
+  points: ParetoPoint[];
+  feasibleFound: boolean;
+  evals: number;
+  /** hypervolume of the front in the scaled objectives (the ones NSGA-II minimises), against the reference point 1.1 x the worst front value; for comparing runs */
+  hypervolume: number;
+}
+
+export interface ParetoReport {
+  schema: 1;
+  tool: 'optimize';
+  mode: 'pareto';
+  caveat: string;
+  inputHash: string;
+  problem: DesignReport['problem'] & { objectives: DesignObjective[]; popSize: number; generations: number; seed: number };
+  result: ParetoResult;
+}
+
+/**
+ * The trade-off between two objectives under the constraints of the design problem, by NSGA-II (constrained domination): the whole
+ * Pareto front in one run instead of one point per scalarisation. The objectives are minimised in the scaled form of objectiveValue.
+ */
+export function solvePareto(spec: ParetoSpec): ParetoResult {
+  const { base } = spec;
+  if (base.method === 'stellarator') throw new RangeError('the design optimisation covers tokamaks and spherical tokamaks');
+  const [o1, o2] = spec.objectives;
+  for (const o of [o1, o2]) if (!DESIGN_OBJECTIVES.includes(o)) throw new RangeError(`unknown objective '${String(o)}' (${DESIGN_OBJECTIVES.join(', ')})`);
+  if (o1 === o2) throw new RangeError('the two objectives of a Pareto front must differ');
+  const names = [...(spec.variables ?? DEFAULT_VARS)];
+  if (names.length === 0) throw new RangeError('the design needs at least one variable');
+  if (new Set(names).size !== names.length) throw new RangeError('a design variable is listed twice');
+  for (const nm of names) if (!DESIGN_VARS.includes(nm)) throw new RangeError(`unknown design variable '${String(nm)}' (${DESIGN_VARS.join(', ')})`);
+  const bounds = names.map((nm) => boundsFor(base, nm, spec.bounds));
+  bounds.forEach(([lo, hi], i) => { if (!(hi > lo) || !Number.isFinite(lo) || !Number.isFinite(hi)) throw new RangeError(`bounds of ${names[i]}: need finite lo < hi, got [${lo}, ${hi}]`); });
+  const cons = resolveConstraints(base, spec.constraints);
+  const preset = presetDesign(base);
+  const ref = designPoint(base, preset);
+  const full = (x: readonly number[]): DesignValues => { const v = { ...preset }; names.forEach((nm, i) => { v[nm] = x[i]; }); return v; };
+  const nCons = constraintValues(ref, cons).length;
+  // the single-objective optima (one start, 10 keV) as seeds: NSGA-II reaches the ends of the front slowly when the feasible set is narrow
+  const initial: number[][] = [];
+  if (spec.seedWithOptima ?? true) {
+    for (const o of [o1, o2]) {
+      const one = solveDesign({ ...spec, objective: o, startTemperatures: [10] });
+      initial.push(names.map((nm) => one.variables.find((v) => v.name === nm)!.value));
+    }
+  }
+  const r = nsga2({
+    n: names.length, m: 2,
+    f: (x) => { const pt = designPoint(base, full(x)); return [objectiveValue(o1, pt, ref), objectiveValue(o2, pt, ref)]; },
+    g: (x) => { const cv = constraintValues(designPoint(base, full(x)), cons).map((c) => c.g); return cv.length === nCons ? cv : new Array(nCons).fill(1e6); },
+    lower: bounds.map((b) => b[0]), upper: bounds.map((b) => b[1]),
+  }, { popSize: spec.popSize ?? 100, generations: spec.generations ?? 100, seed: spec.seed ?? 1, initial, feasTol: 1e-6 });
+  const feasibleFound = r.front.length > 0 && r.front.every((i) => i.violation === 0);
+  const pts: ParetoPoint[] = (feasibleFound ? r.front : []).map((i) => {
+    const pt = designPoint(base, full(i.x));
+    const n1 = objectiveNatural(o1, pt).value, n2 = objectiveNatural(o2, pt).value;
+    return {
+      objectives: [n1, n2] as [number, number], variables: Object.fromEntries(names.map((nm, k) => [nm, i.x[k]])),
+      Q: pt.state.Q, Paux_MW: pt.state.Paux / 1e6, Pfus_MW: pt.state.Pfus / 1e6, betaN: pt.state.betaN,
+    };
+  });
+  const scaled = feasibleFound ? r.front.map((i) => i.f) : [];
+  const w1 = scaled.length ? Math.max(...scaled.map((f) => f[0])) : 0, w2 = scaled.length ? Math.max(...scaled.map((f) => f[1])) : 0;
+  const refPt: [number, number] = [w1 + 0.1 * Math.abs(w1) + 1e-9, w2 + 0.1 * Math.abs(w2) + 1e-9];
+  return {
+    caveat: OPTIMIZATION_CAVEAT,
+    objectives: [o1, o2].map((o) => ({ name: o, label: objectiveNatural(o, ref).label, unit: objectiveNatural(o, ref).unit, preset: objectiveNatural(o, ref).value })),
+    points: pts, feasibleFound, evals: r.evals, hypervolume: scaled.length ? hypervolume2D(scaled, refPt) : 0,
+  };
+}
+
+/** Solves the Pareto problem and wraps it for the JSON report. */
+export function paretoReport(spec: ParetoSpec, presetId?: string): ParetoReport {
+  const result = solvePareto(spec);
+  const names = [...(spec.variables ?? DEFAULT_VARS)];
+  const popSize = spec.popSize ?? 100, generations = spec.generations ?? 100, seed = spec.seed ?? 1;
+  return {
+    schema: 1, tool: 'optimize', mode: 'pareto', caveat: OPTIMIZATION_CAVEAT,
+    inputHash: sha256Hex(canonicalString({ pareto: true, hash: designHash({ ...spec, objective: spec.objectives[0] }), objectives: spec.objectives, popSize, generations, seed, seedWithOptima: spec.seedWithOptima ?? true })),
+    problem: {
+      ...(presetId ? { preset: presetId } : {}), objective: spec.objectives[0], variables: names,
+      bounds: Object.fromEntries(names.map((n) => [n, boundsFor(spec.base, n, spec.bounds)])), constraints: resolveConstraints(spec.base, spec.constraints),
+      startTemperatures: [], objectives: [...spec.objectives], popSize, generations, seed,
     },
     result,
   };

@@ -4,7 +4,7 @@ import { ITER, SPARC, W7X } from '../physics/presets';
 import type { MagneticConfig } from '../physics/types';
 import { greenwaldDensity, lineAverageFactor } from '../physics/limits';
 import {
-  DESIGN_OBJECTIVES, DESIGN_VARS, OPTIMIZATION_CAVEAT, constraintValues, designHash, designPoint, designReport, objectiveNatural, objectiveValue, presetDesign, resolveConstraints, solveDesign,
+  DESIGN_OBJECTIVES, DESIGN_VARS, OPTIMIZATION_CAVEAT, constraintValues, designHash, designPoint, designReport, paretoReport, solvePareto, objectiveNatural, objectiveValue, presetDesign, resolveConstraints, solveDesign,
 } from './design';
 import { unitSample } from './samplers';
 import { steadyState } from './steadyState';
@@ -237,5 +237,79 @@ describe('design report', () => {
       expect(designHash(other)).not.toBe(r.inputHash);
     }
     expect(designReport({ ...spec, variables: ['fG', 'T'] }).problem.preset).toBeUndefined();
+  });
+});
+
+describe('solver choice and the Pareto front', { timeout: 120_000 }, () => {
+  it('CMA-ES as the inner solver finds the same optimum as the simplex search', () => {
+    const nm = solveDesign({ base: ITER, objective: 'major-radius', ...FAST });
+    const cma = solveDesign({ base: ITER, objective: 'major-radius', method: 'cma-es', ...FAST });
+    expect(cma.solver.method).toBe('augmented Lagrangian + CMA-ES');
+    expect(nm.solver.method).toBe('augmented Lagrangian + Nelder-Mead');
+    expect(cma.feasible).toBe(true);
+    expect(Math.abs(cma.objective.value - nm.objective.value) / nm.objective.value).toBeLessThan(1e-3);
+    expect(designHash({ base: ITER, objective: 'major-radius', method: 'cma-es' })).not.toBe(designHash({ base: ITER, objective: 'major-radius' }));
+  });
+
+  const spec = { base: ITER, objective: 'major-radius' as const, objectives: ['major-radius', 'aux-power'] as ['major-radius', 'aux-power'], constraints: { pauxMaxMW: 200 }, popSize: 60, generations: 40 };
+  const pareto = solvePareto(spec);
+
+  it('R against P_aux: a feasible, non-dominated front that runs from the smallest machine to the one that needs no heating', () => {
+    expect(pareto.feasibleFound).toBe(true);
+    expect(pareto.points.length).toBeGreaterThan(20);
+    expect(pareto.objectives.map((o) => o.name)).toEqual(['major-radius', 'aux-power']);
+    expect(pareto.objectives[0]).toMatchObject({ unit: 'm', preset: 6.2 });
+    expect(pareto.caveat).toBe(OPTIMIZATION_CAVEAT);
+    // sorted by R with P_aux strictly falling: a bigger machine buys lower heating power (no point dominates another)
+    for (let i = 1; i < pareto.points.length; i++) {
+      expect(pareto.points[i].objectives[0]).toBeGreaterThanOrEqual(pareto.points[i - 1].objectives[0]);
+      expect(pareto.points[i].objectives[1]).toBeLessThan(pareto.points[i - 1].objectives[1] + 1e-12);
+    }
+    // the ends are the single-objective optima (they seed the population) ...
+    const single = solveDesign({ base: ITER, objective: 'major-radius', constraints: { pauxMaxMW: 200 }, startTemperatures: [10] });
+    expect(pareto.points[0].objectives[0]).toBeLessThan(single.objective.value * 1.005);
+    // ... and the other end needs no auxiliary power at all (ignition in this model)
+    expect(pareto.points[pareto.points.length - 1].objectives[1]).toBe(0);
+    expect(pareto.hypervolume).toBeGreaterThan(0);
+    expect(pareto.evals).toBe(60 + 40 * 60);
+  });
+
+  it('every point of the front satisfies the constraints and reproduces its reported quantities', () => {
+    const cons = resolveConstraints(ITER, { pauxMaxMW: 200 });
+    for (const p of pareto.points) {
+      const pt = designPoint(ITER, { ...presetDesign(ITER), ...p.variables } as never);
+      for (const c of constraintValues(pt, cons)) expect(c.g, c.id).toBeLessThanOrEqual(1e-6 + 1e-9);
+      expect(pt.cfg.geometry.R).toBeCloseTo(p.objectives[0], 12);
+      expect(Math.max(pt.state.Paux, 0) / 1e6).toBeCloseTo(p.objectives[1], 9);
+      expect(pt.state.Q).toBeCloseTo(p.Q, 6);
+      expect(p.Pfus_MW).toBeCloseTo(pt.state.Pfus / 1e6, 9);
+    }
+  });
+
+  it('is deterministic; without the seeds the front is still produced; a report carries the problem and a hash', () => {
+    expect(solvePareto(spec)).toEqual(pareto);
+    const small = { ...spec, popSize: 20, generations: 8, seedWithOptima: false };
+    const noSeeds = solvePareto(small);
+    expect(noSeeds.evals).toBe(20 + 8 * 20);
+    expect(noSeeds.feasibleFound).toBe(true);
+    const rep = paretoReport(small, 'ITER');
+    expect(rep).toMatchObject({ schema: 1, tool: 'optimize', mode: 'pareto', problem: { preset: 'ITER', objectives: ['major-radius', 'aux-power'], popSize: 20, generations: 8, seed: 1 } });
+    expect(rep.inputHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(paretoReport({ ...small, seed: 2 }).inputHash).not.toBe(rep.inputHash);
+    expect(paretoReport({ ...small, seedWithOptima: true }).inputHash).not.toBe(rep.inputHash);
+  });
+
+  it('reports infeasibility, and rejects invalid problems', () => {
+    const none = solvePareto({ ...spec, constraints: { qMin: 1e4 }, popSize: 8, generations: 3, seedWithOptima: false });
+    expect(none.feasibleFound).toBe(false);
+    expect(none.points).toEqual([]);
+    expect(none.hypervolume).toBe(0);
+    expect(() => solvePareto({ ...spec, objectives: ['gain', 'gain'] })).toThrow(/must differ/);
+    expect(() => solvePareto({ ...spec, objectives: ['gain', 'cost' as never] })).toThrow(/unknown objective 'cost'/);
+    expect(() => solvePareto({ ...spec, base: W7X })).toThrow(/tokamaks and spherical tokamaks/);
+    expect(() => solvePareto({ ...spec, variables: [] })).toThrow(/at least one variable/);
+    expect(() => solvePareto({ ...spec, variables: ['R', 'R'] })).toThrow(/listed twice/);
+    expect(() => solvePareto({ ...spec, variables: ['zz' as never] })).toThrow(/unknown design variable/);
+    expect(() => solvePareto({ ...spec, bounds: { R: [7, 6] } })).toThrow(/bounds of R/);
   });
 });

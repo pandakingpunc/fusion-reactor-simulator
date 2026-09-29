@@ -13,7 +13,7 @@
  * APPROXIMATION: T_i = T_e; H-mode (H98·IPB98) everywhere; no beam-target fusion and no ohmic power.
  */
 import { MagneticConfig } from './types';
-import { plasmaSurface, plasmaVolume, profileIntegral, profileIntegralSplit } from './geometry';
+import { boundaryShape, plasmaSurface, plasmaVolume, profileIntegral, profileIntegralSplit } from './geometry';
 import { tauIPB98y2, tauISS04, tauSTValovic, pLH_threshold, stellaratorHISS04 } from './transport';
 import { FUEL_CHANNELS, FUEL_SPECIES, pairDensity } from './reactivity';
 import { bremsstrahlung, coolingRate, meanCharge, synchrotronTotal, RHO_CORE } from './radiation';
@@ -39,7 +39,8 @@ export interface PopconGrid {
 /** uniformT: eşit aralıklı T ekseni (raster/figür için); varsayılan düşük T'de sıklaştırılmış */
 export function computePopcon(cfg: MagneticConfig, o: { nx?: number; ny?: number; Tmax?: number; nMaxFactor?: number; uniformT?: boolean } = {}): PopconGrid {
   const NX = o.nx ?? 44, NY = o.ny ?? 44, TMAX = o.Tmax ?? 40;
-  const g = cfg.geometry, V = plasmaVolume(g), S = plasmaSurface(g);
+  // volume and surface of the boundary (LCFS) shape, as in the 0D model (geometry.boundaryShape)
+  const g = cfg.geometry, gB = boundaryShape(cfg), V = plasmaVolume(gB), S = plasmaSurface(gB);
   const stell = cfg.method === 'stellarator';
   const aN = cfg.transport.alpha_n, aT = cfg.transport.alpha_T;
   const nG = greenwaldDensity(cfg.Ip_MA, g.a) / lineAverageFactor(aN);

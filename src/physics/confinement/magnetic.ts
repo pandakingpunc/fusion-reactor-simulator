@@ -21,7 +21,7 @@
  * APPROXIMATION: 0D. Profiles are fixed, n∝(1−ρ²)^αn, T∝(1−ρ²)^αT; pedestal, Shafranov shift,
  * turbulence and MHD enter only through the τ_E scaling and the threshold events (ELM/sawtooth/NTM/disruption).
  */
-import { Geometry, plasmaVolume, plasmaSurface, crossSectionArea, q95ForMethod, profileIntegral, profileIntegralSplit } from '../geometry';
+import { Geometry, plasmaVolume, plasmaSurface, crossSectionArea, boundaryShape, q95ForMethod, profileIntegral, profileIntegralSplit } from '../geometry';
 import { FUEL_CHANNELS, FUEL_SPECIES, beamTargetReactivity, beamTargetDensity, burnPerReaction, pairDensity } from '../reactivity';
 import { bremsstrahlung, synchrotronTotal, coolingRate, meanCharge, RHO_CORE } from '../radiation';
 import { tauIPB98y2, tauITER89P, tauISS04, tauSTValovic, pLH_threshold, equilibrationRate, stellaratorHISS04 } from '../transport';
@@ -108,6 +108,8 @@ export class MagneticModel implements SimModel {
 
   private cfg: MagneticConfig;
   private g: Geometry;
+  /** boundary (LCFS) shape of V, S, A: profiles.lcfsKappa/lcfsDelta where given, else g (geometry.boundaryShape) */
+  private gB: Geometry;
   /** n̄/⟨n⟩ (from the profile exponent α_n) */
   private fLine: number;
   private V: number;
@@ -155,9 +157,11 @@ export class MagneticModel implements SimModel {
     this.method = cfg.method;
     this.g = cfg.geometry;
     this.isStell = cfg.method === 'stellarator';
-    this.V = plasmaVolume(this.g);
-    this.S = plasmaSurface(this.g);
-    this.A = crossSectionArea(this.g);
+    // volume, surface and cross-section of the boundary (LCFS) Miller shape; q95 and the scalings keep the nominal shape
+    this.gB = boundaryShape(cfg);
+    this.V = plasmaVolume(this.gB);
+    this.S = plasmaSurface(this.gB);
+    this.A = crossSectionArea(this.gB);
     this.eps = this.g.a / this.g.R;
     this.fLine = lineAverageFactor(cfg.transport.alpha_n);
     const fs = FUEL_SPECIES[cfg.fuel];
@@ -607,7 +611,7 @@ export class MagneticModel implements SimModel {
     let q_div = 0;
     if (this.isStell) q_div = divertorHeatFluxStellarator(this.g, c.B0, c.stellarator.iota23, D.P_SOL, c.divertor.f_rad_div);
     else q_div = divertorHeatFlux(this.g, Math.max(y[IDX.Ip], 1e5), D.P_SOL, c.divertor.f_rad_div, c.divertor.flux_expansion).q_div_MWm2;
-    const nw = neutronWallLoad(this.g, D.P_neutron, 1).load_MWm2;
+    const nw = neutronWallLoad(this.gB, D.P_neutron, 1).load_MWm2;
     const na = y[IDX.na], nb = y[IDX.nb];
     return {
       Ti: D.Ti, Te: D.Te, Ti0: D.T0, ne: D.ne / 1e20, nbar: nbar / 1e20, nG_frac: nbar / nG, fHe: y[IDX.nHe] / D.ne,

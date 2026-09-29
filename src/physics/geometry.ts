@@ -1,7 +1,13 @@
 /**
  * Toroidal geometri ve profil yardımcıları.
- * APPROXIMATION: Plazma kesiti D-şekilli (Miller-benzeri) parametrik eğri; hacim ve
- * yüzey için standart analitik yaklaşımlar (ITER Physics Basis 1999, Böl. 1).
+ *
+ * Plasma cross-section: the Miller boundary R(τ) = R0 + a cos(τ + arcsin(δ) sin τ), Z(τ) = κ a sin τ
+ * (R.L. Miller et al., Phys. Plasmas 5 (1998) 973), the shape the 1.5D / Grad–Shafranov model builds
+ * (equilibrium/miller.ts). Since v4.0 the volume, the surface and the cross-section area of the 0D model
+ * are the exact integrals over that boundary (closed forms below); v3.0.0 used the ellipse formulas
+ * V = 2π² R a² κ and S = 4π² R a √((1 + κ²)/2), which overestimate the Miller shape of the same (κ, δ) by
+ * 3.6 % (JET) to 14 % (MAST-U) in volume and 4–18 % in surface, although their comment claimed "about 3 %".
+ * (κ, δ) are the boundary values: see boundaryShape for the presets that carry 95 %-surface values.
  */
 export interface Geometry {
   R: number; // büyük yarıçap [m]
@@ -10,16 +16,79 @@ export interface Geometry {
   delta: number; // üçgensellik
 }
 
+/** J_n(z) for integer n ≥ 0 by its power series (|z| ≤ π here: 30 terms give the double-precision limit) */
+function besselJ(n: number, z: number): number {
+  let term = 1;
+  for (let k = 1; k <= n; k++) term *= z / 2 / k;
+  let s = 0;
+  for (let m = 0; m < 30; m++) { s += term; term *= -(z * z) / 4 / ((m + 1) * (m + 1 + n)); }
+  return s;
+}
+
+/**
+ * Miller boundary: x = arcsin δ. With Green's theorem, A = ∮ R dZ and V = π ∮ R² dZ, and the Bessel integral
+ * J_n(z) = (1/2π) ∫ cos(nτ − z sin τ) dτ (Abramowitz & Stegun 9.1.21):
+ *  A = π a² κ · 2J₁(x)/x        V = 2π² R a² κ · [2J₁(x)/x − (a/R) J₂(2x)/(2x)]
+ * Both reduce to the ellipse (π a² κ, 2π² R a² κ) for δ = 0 and are checked against the boundary integral
+ * to 1e-12 in reference/geometry.test.ts.
+ */
+function millerAreaFactor(delta: number): number {
+  const x = Math.asin(Math.max(-1, Math.min(1, delta)));
+  return x === 0 ? 1 : (2 * besselJ(1, x)) / x;
+}
+function millerVolumeFactor(delta: number, eps: number): number {
+  const x = Math.asin(Math.max(-1, Math.min(1, delta)));
+  return x === 0 ? 1 : millerAreaFactor(delta) - (eps * besselJ(2, 2 * x)) / (2 * x);
+}
+
+/** Plasma volume V of the Miller boundary [m³] (closed form) */
 export function plasmaVolume(g: Geometry): number {
-  // V ≈ 2π² R a² κ · (1 − δ²/8 ...)  — düşük dereceden düzeltmeler ihmal (APPROXIMATION ~%3)
-  return 2 * Math.PI * Math.PI * g.R * g.a * g.a * g.kappa;
+  return 2 * Math.PI * Math.PI * g.R * g.a * g.a * g.kappa * millerVolumeFactor(g.delta, g.a / g.R);
 }
+
+/** last surface evaluated (the diagnostics ask for it every step) */
+let surfaceKey = '', surfaceValue = 0;
+/**
+ * Plasma surface area S = ∮ 2π R dl of the Miller boundary [m²]: the periodic trapezoid rule on the boundary
+ * (converges geometrically for a smooth closed curve: 1e-13 relative at the 128 points used, κ ≤ 3, |δ| ≤ 0.9).
+ */
 export function plasmaSurface(g: Geometry): number {
-  // S ≈ 4π² R a sqrt((1+κ²)/2)   (poloidal çevre eliptik yaklaşımı)
-  return 4 * Math.PI * Math.PI * g.R * g.a * Math.sqrt((1 + g.kappa * g.kappa) / 2);
+  const key = `${g.R}|${g.a}|${g.kappa}|${g.delta}`;
+  if (key === surfaceKey) return surfaceValue;
+  const N = 128, x = Math.asin(Math.max(-1, Math.min(1, g.delta))), h = (2 * Math.PI) / N;
+  let s = 0;
+  for (let j = 0; j < N; j++) {
+    const t = j * h, ph = t + x * Math.sin(t);
+    const R = g.R + g.a * Math.cos(ph);
+    const dR = -g.a * Math.sin(ph) * (1 + x * Math.cos(t)), dZ = g.kappa * g.a * Math.cos(t);
+    s += R * Math.hypot(dR, dZ);
+  }
+  surfaceKey = key; surfaceValue = 2 * Math.PI * s * h;
+  return surfaceValue;
 }
+/** Cross-section area of the Miller boundary [m²] (closed form) */
 export function crossSectionArea(g: Geometry): number {
-  return Math.PI * g.a * g.a * g.kappa;
+  return Math.PI * g.a * g.a * g.kappa * millerAreaFactor(g.delta);
+}
+
+/**
+ * The boundary shape of a configuration for its 0D volume, surface and cross-section area. The presets carry κ, δ of the
+ * 95 % flux surface (ITER: κ95 = 1.70, δ95 = 0.33, the values q95 and the scalings are written for) and the LCFS shape in
+ * `profiles.lcfsKappa/lcfsDelta` (ITER: κ = 1.85, δ = 0.49, Shimada et al. 2007, the shape the 1.5D model builds); where it
+ * is given the volume and the surface belong to it. The Miller boundary of the ITER LCFS shape has 842 m³ and 683 m², the
+ * ITER design values are 837 m³ and 678 m² (ITER Physics Basis, Nucl. Fusion 39 (1999) 2137, ch. 1, design parameters; +0.6 %
+ * and +0.7 %); the 95 % shape would give 799 m³ and 653 m² (−4.6 % and −3.7 %). Without `profiles` the geometry is the
+ * boundary itself.
+ */
+export function boundaryShape(cfg: { geometry: Geometry; profiles?: { lcfsKappa?: number; lcfsDelta?: number } }): Geometry {
+  const g = cfg.geometry, p = cfg.profiles;
+  return p && (p.lcfsKappa !== undefined || p.lcfsDelta !== undefined)
+    ? { R: g.R, a: g.a, kappa: p.lcfsKappa ?? g.kappa, delta: p.lcfsDelta ?? g.delta } : g;
+}
+
+/** Areal elongation κ_a = V / (2π² R a²) — the definition of IPB98(y,2) and of the ITPA20 scalings (Verdoolaege et al. 2021) */
+export function arealElongation(g: Geometry): number {
+  return plasmaVolume(g) / (2 * Math.PI * Math.PI * g.R * g.a * g.a);
 }
 export function aspectRatio(g: Geometry): number {
   return g.R / g.a;

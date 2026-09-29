@@ -33,9 +33,12 @@ export function defaultMagnetic(over: Partial<MagneticConfig> & { geometry: Magn
 
 export interface Preset { id: string; name: string; desc: string; cfg: ReactorConfig; validation?: string }
 
-// ITER: R=6.2, a=2.0, κ95=1.7 (κ_sep 1.85), δ95=0.33, B=5.3 T, Ip=15 MA, n≈1.0e20, P_aux=50 MW (33 NBI + 17 ICRH ... 20 EC), Q=10 hedef, 400 s. (ITER Physics Basis 1999; Shimada 2007)
+// ITER: R=6.2, a=2.0, κ95=1.7 (κ_sep 1.85), δ95=0.33 (δ_sep 0.49), B=5.3 T, Ip=15 MA, n≈1.0e20, P_aux=50 MW (33 NBI + 17 ICRH ... 20 EC), Q=10 hedef, 400 s. (ITER Physics Basis 1999; Shimada 2007)
+// `geometry` carries the 95 % values (q95, the τ_E scalings); `profiles.lcfsKappa/lcfsDelta` the LCFS shape, which sets the plasma volume
+// and surface of the 0D model (geometry.boundaryShape: 842 m³, 683 m² against the design 837 m³, 678 m²) and the shape of the 1.5D model.
 export const ITER = defaultMagnetic({
   geometry: { R: 6.2, a: 2.0, kappa: 1.7, delta: 0.33 }, B0: 5.3, Ip_MA: 15,
+  profiles: { lcfsKappa: 1.85, lcfsDelta: 0.49 },
   n_target: 1.0e20, n_rampTime: 30,
   heating: { P_NBI_MW: 33, E_NBI_keV: 1000, P_ICRH_MW: 17, f_ICRH_ion: 0.6, P_ECRH_MW: 0, rampTime: 10, autoOff: false },
   // ITER Q=10 senaryosu: Be %2 + Ar %0.12 tohumlama (divertör radyasyonu) → Z_eff ≈ 1.65 (Shimada 2007, Tablo 2)
@@ -112,8 +115,10 @@ export const W7X = defaultMagnetic({
   t_end: 30, seed: 13,
 });
 // EU DEMO 2018 baseline: R=9.07, a=2.93, κ95=1.65, δ95=0.33, B=5.86 T, Ip=17.75 MA, P_fus=2000 MW, P_aux=50 MW, n≈0.8e20, H98=1.1 (Siccinio 2020)
+// (LCFS shape κ = 1.65·1.12 = 1.85, δ = 0.33·1.5 = 0.5: the system-code convention, as for ITER's 1.70 → 1.85 and 0.33 → 0.49)
 export const DEMO = defaultMagnetic({
   geometry: { R: 9.07, a: 2.93, kappa: 1.65, delta: 0.33 }, B0: 5.86, Ip_MA: 17.75,
+  profiles: { lcfsKappa: 1.85, lcfsDelta: 0.5 },
   // DEMO n_G = 0.66e20: tasarım n/n_G ≈ 1.2 (pedestal Greenwald altında, tepeli profil) → limit 1.3 (APPROXIMATION)
   n_target: 0.75e20, n_rampTime: 80,
   // Flat-top P_aux = 50 MW; H-mod erişimi (P_LH ≈ 100+ MW) için rampa sırasında ek ECRH gerekir (Siccinio 2020)
@@ -130,10 +135,10 @@ export const DEMO = defaultMagnetic({
 // 1.5D profil modeli preset'leri: aynı makineler, radyal taşınım + Grad–Shafranov dengesi.
 // ITER/DEMO için LCFS şekli (κ_sep, δ_sep) kullanılır; 0D preset'lerdeki κ, δ 95% yüzey değerleridir
 // (ITER: κ95 = 1.70 → κ_sep = 1.85, δ95 = 0.33 → δ_sep = 0.49; ITER Physics Basis 1999).
-export const ITER_15D: MagneticConfig = { ...ITER, fidelity: '1.5D', profiles: { lcfsKappa: 1.85, lcfsDelta: 0.49 } };
+export const ITER_15D: MagneticConfig = { ...ITER, fidelity: '1.5D' }; // profiles: the LCFS shape of ITER above
 export const JET_15D: MagneticConfig = { ...JET, fidelity: '1.5D' };
 export const SPARC_15D: MagneticConfig = { ...SPARC, fidelity: '1.5D' };
-export const DEMO_15D: MagneticConfig = { ...DEMO, fidelity: '1.5D', profiles: { lcfsKappa: 1.85, lcfsDelta: 0.5 } };
+export const DEMO_15D: MagneticConfig = { ...DEMO, fidelity: '1.5D' }; // profiles: the LCFS shape of DEMO above
 
 // NIF N221204 (Aralık 2022): 2.05 MJ lazer (351 nm), 3.15 MJ verim (G≈1.5); HDC kapsül ~1.05 mm dış yarıçap,
 // DT buz ~ 220 µg (≈ 0.065 mm kalınlık), v_imp ≈ 390 km/s, CR ≈ 30, α ≈ 2.5–3, hohlraum η ≈ 0.10–0.12 (Zylstra 2022, Abu-Shawareb 2024)

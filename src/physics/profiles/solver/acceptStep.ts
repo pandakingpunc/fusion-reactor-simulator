@@ -35,7 +35,7 @@ export function acceptStep(ctx: ProfileContext, fueling: FuelingControl, physics
   const W0 = ctx.storedEnergy(o, w.ni0);
   const dWdt = (W - W0) / dt;
   ctx.GammaB = ctx.dens.GammaF[N];
-  ctx.lastVloop = (2 * Math.PI * (v.psi[N - 1] - o.psi[N - 1])) / dt;
+  ctx.flux.advance(ctx, o, v, dt); // loop voltage and the flux accounting (current/flux.ts)
   // ELM power, exponential memory τ = 1 s
   s.Pelm = o.s.Pelm * Math.exp(-dt / 1.0);
   // smoothed dW/dt of the loss power: the average rate of change of W, which includes the energy the ELM

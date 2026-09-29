@@ -123,7 +123,7 @@ export class ProfileModel implements SimModel {
       acceptStep(ctx, this.fueling, this.physics, t, dt, yOld, y);
       this.coupling.check(ctx, t + dt, y, (tu, yu) => this.updateEquilibrium(tu, yu));
     }, this.events);
-    this.checkpointParts = [contextCheckpoint(ctx), this.coupling, this.stepper, this.physics.transport, ...this.physics.sources, ...this.events];
+    this.checkpointParts = [contextCheckpoint(ctx), this.coupling, this.stepper, this.physics.transport, ...this.physics.sources, ...this.events, ctx.flux];
     this.magnetInfo = checkMagnet(cfg.geometry, cfg.B0, cfg.magnet.tech, cfg.magnet.gap_m, cfg.magnet.coilThickness_m);
     this.coupling.initialize(ctx);
     if (this.magnetInfo.quench) {

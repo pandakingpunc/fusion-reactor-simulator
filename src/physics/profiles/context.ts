@@ -17,6 +17,7 @@ import { DEFAULT_PROFILE_SETTINGS } from './defaults';
 import { checkProfileSettings, type SettingNote } from './settings';
 import { CurrentProgramme, currentWaveform, IP_PROGRAMME_FLOOR } from './control/plasmaCurrent';
 import { gridSpec, type GridSpec, type TransportGeometry } from './geometry1d';
+import { FluxLedger } from './current/flux';
 import { CurrentSolver, DensitySolver, HeatSolver } from './fvsolver';
 import { volumeIntegral } from './sources/deposition';
 import type { BootstrapCoeffs } from './neoclassical';
@@ -176,8 +177,10 @@ export class ProfileContext {
   nsepGain = 1;
   /** proposed next time step [s] */
   dt = 1e-3;
-  /** loop voltage of the last step [V] */
+  /** loop voltage of the last step [V] (current/flux.ts sets it) */
   lastVloop = 0;
+  /** flux accounting: boundary and resistive flux, the flux drawn from the solenoid (current/flux.ts) */
+  readonly flux: FluxLedger;
   disruption: DisruptionState = { cause: 'none', t: 0, W: 0, Ip: 0, text: '' };
 
   // ---------------------------------------------------------------- output
@@ -203,6 +206,7 @@ export class ProfileContext {
     this.grid = gridSpec(this.ps);
     this.layout = new StateLayout(this.N);
     this.w = allocateWorkArrays(this.N);
+    this.flux = new FluxLedger(this.N);
     const g0 = cfg.geometry;
     // the LCFS shape of the boundary is the one the 0D volume, surface and scalings use (geometry.boundaryShape): an edited geometry.kappa or
     // geometry.delta of a preset that carries profiles.lcfsRef95 (ITER15, DEMO15) moves it in the ratio to the 95 % shape (bitwise unchanged at the presets)

@@ -191,7 +191,6 @@ export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: Globa
   const q95v = q95(ctx);
   const qdiv = divertorHeatFlux(ctx.geomB, Math.max(Ip, 1e5), ctx.PSOL, c.divertor.f_rad_div, c.divertor.flux_expansion).q_div_MWm2;
   const nw = neutronWallLoad(ctx.geomB, X.P_neut, 1).load_MWm2;
-  const Vloop = ctx.lastVloop;
   let qmin = Infinity; for (let f = 0; f <= N; f++) qmin = Math.min(qmin, w.qF[f]);
   const Ne = volumeIntegral(g, v.ne);
   ctx.lastDiag = {
@@ -202,7 +201,7 @@ export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: Globa
     Q, triple, lawson: triple / LAWSON_DT, tauE: X.tauE, tauE_scal: X.tauScal, H_mode: ctx.hmode ? 1 : 0, P_LH: P_LH / 1e6, chi_mult: s.Cchi,
     betaN, betaN_th, betaT: betaT * 100, betaP, q95: q95v, q0: w.qF[0], qmin, li, rho_q1: rho1, alpha_ped: aMax / aCrit,
     w32: s.w32 / g.a, w21: s.w21 / g.a, NTM: s.w32 > 0.01 * g.a || s.w21 > 0.01 * g.a ? 1 : 0,
-    f_bs: Ibs / Math.max(Ip, 1), f_cd: Icd / Math.max(Ip, 1), V_loop: Vloop, Ip: Ip_MA,
+    f_bs: Ibs / Math.max(Ip, 1), f_cd: Icd / Math.max(Ip, 1), ...ctx.flux.diagnostics(ctx, Ip, li), Ip: Ip_MA,
     W: X.W / 1e6, Wf: Wfast / 1e6, W_alpha: X.W_alpha / 1e6, W_beam: X.W_beam / 1e6, ignited: ctx.ignited ? 1 : 0, Zeff: ctx.volAvg(w.Zeff), cZ: s.cZ, S_fuel: s.Sfuel / 1e20,
     burnFrac: s.NTfuel > 0 ? s.NTburn / s.NTfuel : 0, fuelFracA: s.fA,
     q_div: qdiv, n_wall: nw, P_heat: X.P_heat / 1e6, P_charged: X.P_chg / 1e6, P_neutron: X.P_neut / 1e6,

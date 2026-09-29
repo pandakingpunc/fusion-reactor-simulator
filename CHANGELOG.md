@@ -205,6 +205,31 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   `'ST_Valovic'`, in the 0D model, POPCON and the 1.5D confinement controller (`tauHmode()` in
   `transport.ts`); see Changed for the variables they take.
 - 0D disruption cause `density_collapse` ('Density collapse - fuelling lost'); see Fixed.
+- Edge physics (`src/physics/edge`): a two-point model of the outer divertor leg with the Stangeby (PPCF 60 (2018)
+  044022) momentum and power loss factors f_mom(T_t), f_cool(T_t), the Eich et al. (NF 53 (2013) 093031, regression
+  #14) heat-flux width with the Makowski et al. (PoP 19 (2012) 056122) divertor spreading, Lengyel radiation of a
+  seed impurity with the Mavrin cooling rates, and the Kallenbach (PPCF 60 (2018) 045006) detachment qualifier
+  q_det; one set of pure functions shared by the 0D model, the 1.5D boundary and POPCON; the power ledger closes
+  to 1e-8.
+- New diagnostics in every tokamak and spherical-tokamak run (0D and 1.5D), a chart group `Edge`: P_sep/R,
+  lambda_q, separatrix T_e (T_u), target T_e, peak target heat flux q_peak, outer-leg power loss f_pwr, detachment
+  state (attached / partially detached / detached), c_z required for detachment (Lengyel upper bound), q_det and
+  divertor neutral pressure; five new rows in the report's engineering table. The c_z row reads `n/a (> 100 %)`
+  where the model finds no attainable seeding (never a clipped 100 %), 0 where a prescribed-radiation run is already
+  detached, and a lower bound with the capped share of the flat-top time where only part of it is capped.
+  Stellarators have no such channels.
+- 1.5D: the opt-in boundary `profiles.edgeModel = 'twoPoint'` takes T_sep from the edge model (default `'legacy'`
+  unchanged; the two agree within 2 % on ITER15); n_sep stays fuelling-controlled.
+- POPCON: `computePopcon(cfg, { edge: true })` adds P_sep/R, peak target heat flux and target T_e maps at the steady
+  state of each cell (opt-in; no view passes it yet).
+- Setup wizard, configuration schema and the share-link validator know the edge options: `divertor.edge.radiation`
+  (prescribed divertor radiation or the Lengyel seed model), `divertor.edge.lambdaQ_mm` (blank = Eich regression #14)
+  and `profiles.edgeModel` in the wizard (English and Turkish); every `divertor.edge.*` option in
+  `schema/fusion-sim.schema.json` and the validator of imported and shared configurations.
+- Limits of the edge model, stated in `src/physics/edge/README.md`: the Mavrin cooling curves are coronal (>= 100 eV),
+  so the Lengyel c_z for detachment is an upper bound (ITER neon several times the ~6 % of the SOLPS-ITER database);
+  lambda_q is the Eich H-mode regression (0.6 mm for ITER against 2 mm of the SOLPS-ITER baseline); q_det is an ASDEX
+  Upgrade scaling used beyond its P_sep/R range; one flux tube, T_i = T_e, no drifts, ELM-averaged.
 
 ### Changed
 - The Report's JSON button writes `<name>_run.json` (the run file above) instead of
@@ -379,6 +404,11 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   the POPCON map itself does.
 - Golden harness: a case may set the target density; the suite keeps one disrupting shot (ITER-pB11 at 1.0e20 m^-3,
   radiative collapse at 27 s), and a test requires it.
+- 1.5D: P_SOL is now the ELM-inclusive power across the separatrix, P_heat - P_rad - dW/dt with the smoothed dW/dt
+  that includes the ELM crashes (ITER15 110.3 -> 121.8 MW, JET15 30.2 -> 35.7 MW, DEMO15 411.3 -> 431.6 MW; the
+  power balance of the flat top is 122.0 MW for ITER15); q_div, the conduction-limited T_sep and the tungsten source
+  follow it. In a ramp-up without ELMs the smoothed dW/dt lags by tau_E, so P_SOL and the derived loads of a short
+  window are lower than the step-wise value of before (SPARC15-short -14 %). Golden re-recorded.
 
 ### Fixed
 - `npm run bench:convergence`: the time-step series (dtMax) failed with "this model has no internal time step

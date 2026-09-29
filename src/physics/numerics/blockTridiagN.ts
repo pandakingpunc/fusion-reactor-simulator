@@ -43,7 +43,7 @@ export class BlockTridiagLU {
 
   /** Factors the matrix with the blocks A, B, C (not modified). Throws SingularMatrixError on a singular pivot block. */
   factor(A: ArrayLike<number>, B: ArrayLike<number>, C: ArrayLike<number>): void {
-    const { n, m, LU, Y, piv, col } = this;
+    const { n, m, LU, Y, col } = this;
     const mm = m * m;
     this.factored = false;
     for (let i = 0; i < n; i++) {

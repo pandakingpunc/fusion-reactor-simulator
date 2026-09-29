@@ -1,0 +1,1513 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:fusion-reactor-simulator:schema:reactor-config",
+  "title": "Fusion Reactor Simulator: reactor configuration",
+  "description": "The configuration of one simulated shot: the argument of `new Simulation(cfg)`. `method` selects the family; every property of a family is listed and unknown properties are rejected. Generated from src/physics/config/schema.ts (npm run schema); do not edit.",
+  "type": "object",
+  "required": [
+    "method"
+  ],
+  "properties": {
+    "method": {
+      "type": "string",
+      "enum": [
+        "tokamak",
+        "spherical_tokamak",
+        "stellarator",
+        "icf_direct",
+        "icf_indirect",
+        "mtf_liner",
+        "mtf_piston",
+        "zpinch_sfs",
+        "maglif",
+        "frc",
+        "mirror",
+        "muon"
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "enum": [
+              "tokamak",
+              "spherical_tokamak",
+              "stellarator"
+            ]
+          }
+        },
+        "required": [
+          "method"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/magneticConfig"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "enum": [
+              "icf_direct",
+              "icf_indirect"
+            ]
+          }
+        },
+        "required": [
+          "method"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/icfConfig"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "enum": [
+              "mtf_liner",
+              "mtf_piston",
+              "zpinch_sfs",
+              "maglif"
+            ]
+          }
+        },
+        "required": [
+          "method"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/mtfConfig"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "enum": [
+              "frc"
+            ]
+          }
+        },
+        "required": [
+          "method"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/frcConfig"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "enum": [
+              "mirror"
+            ]
+          }
+        },
+        "required": [
+          "method"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/mirrorConfig"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "enum": [
+              "muon"
+            ]
+          }
+        },
+        "required": [
+          "method"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/muonConfig"
+      }
+    }
+  ],
+  "$defs": {
+    "geometry": {
+      "type": "object",
+      "properties": {
+        "R": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100,
+          "description": "Major radius. Unit: m.",
+          "x-unit": "m"
+        },
+        "a": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 50,
+          "description": "Minor radius. Unit: m.",
+          "x-unit": "m"
+        },
+        "kappa": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 5,
+          "description": "Elongation of the 95 % flux surface (of the LCFS if profiles.lcfsKappa is not given)."
+        },
+        "delta": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1,
+          "description": "Triangularity of the 95 % flux surface."
+        }
+      },
+      "required": [
+        "R",
+        "a",
+        "kappa",
+        "delta"
+      ],
+      "additionalProperties": false,
+      "description": "Plasma shape (D-shaped Miller-type cross section). Rule minor-radius-below-major-radius: geometry.a must be smaller than geometry.R (aspect ratio R/a above 1).",
+      "x-rules": [
+        {
+          "id": "minor-radius-below-major-radius",
+          "description": "geometry.a must be smaller than geometry.R (aspect ratio R/a above 1).",
+          "reads": [
+            "a",
+            "R"
+          ]
+        }
+      ]
+    },
+    "profileSettings": {
+      "type": "object",
+      "properties": {
+        "nRho": {
+          "type": "integer",
+          "minimum": 8,
+          "maximum": 2000,
+          "description": "Radial cells on rho_tor.",
+          "default": 50
+        },
+        "eqNR": {
+          "type": "integer",
+          "minimum": 9,
+          "maximum": 1025,
+          "description": "Grad-Shafranov grid nodes in R.",
+          "default": 49
+        },
+        "eqUpdateInterval": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100000,
+          "description": "Upper limit of the interval between equilibrium updates. Unit: s.",
+          "x-unit": "s",
+          "default": 10
+        },
+        "lcfsKappa": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 5,
+          "description": "Elongation of the last closed flux surface; the elongation of `geometry` (a 95 % value) if absent."
+        },
+        "lcfsDelta": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1,
+          "description": "Triangularity of the last closed flux surface; the triangularity of `geometry` if absent."
+        },
+        "transportModel": {
+          "type": "string",
+          "enum": [
+            "scaling",
+            "cgm"
+          ],
+          "description": "'scaling': transport constrained by the tau_E scaling law (validated global dynamics); 'cgm': critical-gradient model (predictive, uncalibrated).",
+          "default": "scaling"
+        },
+        "chiShape": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Shape of chi, proportional to 1 + chiShape rho^2.",
+          "default": 3
+        },
+        "stiffness": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Profile stiffness: chi is multiplied by 1 + stiffness max(0, (R/L_T)/critGrad - 1).",
+          "default": 2
+        },
+        "critGrad": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100,
+          "description": "Critical normalised temperature gradient R/L_T (ITG/TEM).",
+          "default": 5
+        },
+        "chiRatio": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100,
+          "description": "chi_i / chi_e.",
+          "default": 1
+        },
+        "DoverChi": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100,
+          "description": "Particle diffusivity over chi_e.",
+          "default": 0.3
+        },
+        "pedestalWidth": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 0.5,
+          "description": "Pedestal width. Unit: rho_tor.",
+          "x-unit": "rho_tor",
+          "default": 0.06
+        },
+        "etbFactor": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "description": "Edge transport barrier: chi_ETB / chi_turb at the pedestal.",
+          "default": 0.08
+        },
+        "alphaCritFactor": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10,
+          "description": "ELM trigger threshold as a multiple of the critical ballooning alpha.",
+          "default": 1
+        },
+        "elmFraction": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1,
+          "description": "ELM crash depth, Delta W / W_ped.",
+          "default": 0.35
+        },
+        "sawtoothShear": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10,
+          "description": "Shear s1 at q = 1 that triggers a sawtooth crash.",
+          "default": 0.2
+        },
+        "ecrhRho": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "ECRH deposition centre. Unit: rho_tor.",
+          "x-unit": "rho_tor",
+          "default": 0.3
+        },
+        "ecrhWidth": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "description": "ECRH deposition width. Unit: rho_tor.",
+          "x-unit": "rho_tor",
+          "default": 0.08
+        },
+        "icrhWidth": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "description": "ICRH deposition width. Unit: rho_tor.",
+          "x-unit": "rho_tor",
+          "default": 0.3
+        },
+        "nbiRtan": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 2,
+          "description": "NBI tangency radius over the major radius.",
+          "default": 0.9
+        },
+        "nbcdEff": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Neutral-beam current-drive efficiency factor.",
+          "default": 0.25
+        },
+        "eccdEff": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Electron-cyclotron current-drive efficiency factor.",
+          "default": 0
+        },
+        "Tsep_keV": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10,
+          "description": "Fixed separatrix temperature; the two-point model if absent. Unit: keV.",
+          "x-unit": "keV"
+        },
+        "nsepFrac": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "description": "Separatrix density over the volume-averaged electron density.",
+          "default": 0.35
+        }
+      },
+      "additionalProperties": false,
+      "description": "1.5D profile-model settings (only used with fidelity \"1.5D\"); every property overrides the model default."
+    },
+    "magneticConfig": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": [
+            "tokamak",
+            "spherical_tokamak",
+            "stellarator"
+          ],
+          "description": "Confinement method."
+        },
+        "geometry": {
+          "$ref": "#/$defs/geometry"
+        },
+        "B0": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100,
+          "description": "Toroidal field on axis. Unit: T.",
+          "x-unit": "T"
+        },
+        "Ip_MA": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 200,
+          "description": "Plasma current (0 for a stellarator: bootstrap current neglected). Unit: MA.",
+          "x-unit": "MA"
+        },
+        "fuel": {
+          "type": "string",
+          "enum": [
+            "DT",
+            "DD",
+            "DHe3",
+            "pB11"
+          ],
+          "description": "Fuel cycle: D-T, D-D, D-3He or p-11B."
+        },
+        "fuelFracA": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of the first species (D-T: n_D / (n_D + n_T))."
+        },
+        "n_target": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1e+23,
+          "description": "Target volume-averaged electron density. Unit: m^-3.",
+          "x-unit": "m^-3"
+        },
+        "n_rampTime": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000,
+          "description": "Density ramp time. Unit: s.",
+          "x-unit": "s"
+        },
+        "heating": {
+          "type": "object",
+          "properties": {
+            "P_NBI_MW": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 5000,
+              "description": "Neutral-beam power. Unit: MW.",
+              "x-unit": "MW"
+            },
+            "E_NBI_keV": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 10000,
+              "description": "Neutral-beam energy per atom (must be positive even with P_NBI_MW = 0). Unit: keV.",
+              "x-unit": "keV"
+            },
+            "P_ICRH_MW": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 5000,
+              "description": "Ion-cyclotron heating power. Unit: MW.",
+              "x-unit": "MW"
+            },
+            "f_ICRH_ion": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Fraction of the ICRH power absorbed by the ions."
+            },
+            "P_ECRH_MW": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 5000,
+              "description": "Electron-cyclotron heating power (electrons only). Unit: MW.",
+              "x-unit": "MW"
+            },
+            "rampTime": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000,
+              "description": "Heating ramp time. Unit: s.",
+              "x-unit": "s"
+            },
+            "autoOff": {
+              "type": "boolean",
+              "description": "Switch the heating off once Q reaches 5 (ignition test)."
+            }
+          },
+          "required": [
+            "P_NBI_MW",
+            "E_NBI_keV",
+            "P_ICRH_MW",
+            "f_ICRH_ion",
+            "P_ECRH_MW",
+            "rampTime",
+            "autoOff"
+          ],
+          "additionalProperties": false,
+          "description": "Auxiliary heating."
+        },
+        "fueling": {
+          "type": "object",
+          "properties": {
+            "method": {
+              "type": "string",
+              "enum": [
+                "gas",
+                "pellet",
+                "nbi",
+                "mixed"
+              ],
+              "description": "Fuelling method."
+            },
+            "maxRate_1e20s": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1000000,
+              "description": "Maximum fuelling rate. Unit: 1e20 s^-1.",
+              "x-unit": "1e20 s^-1"
+            },
+            "pelletDepth": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Pellet penetration depth (fraction of the minor radius)."
+            }
+          },
+          "required": [
+            "method",
+            "maxRate_1e20s",
+            "pelletDepth"
+          ],
+          "additionalProperties": false,
+          "description": "Fuelling."
+        },
+        "impurity": {
+          "type": "object",
+          "properties": {
+            "species": {
+              "type": "string",
+              "enum": [
+                "Be",
+                "C",
+                "Ne",
+                "Ar",
+                "W"
+              ],
+              "description": "Main impurity."
+            },
+            "concentration": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Impurity concentration n_Z / n_e."
+            },
+            "wallReflectivity": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Wall reflectivity for synchrotron radiation."
+            },
+            "W_source_frac": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Additional tungsten source (divertor erosion feeding core accumulation)."
+            },
+            "seedSpecies": {
+              "type": "string",
+              "enum": [
+                "Be",
+                "C",
+                "Ne",
+                "Ar",
+                "W"
+              ],
+              "description": "Divertor seeding impurity (Ar, Ne or N in a real machine)."
+            },
+            "seedConcentration": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Divertor seeding concentration n_seed / n_e (constant, no dynamics)."
+            }
+          },
+          "required": [
+            "species",
+            "concentration",
+            "wallReflectivity",
+            "W_source_frac"
+          ],
+          "additionalProperties": false,
+          "description": "Impurities."
+        },
+        "H98": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10,
+          "description": "H-mode confinement factor relative to the IPB98(y,2) scaling."
+        },
+        "H89": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10,
+          "description": "L-mode confinement factor relative to the ITER89-P scaling."
+        },
+        "scaling": {
+          "type": "string",
+          "enum": [
+            "IPB98y2",
+            "ST_Valovic"
+          ],
+          "description": "Confinement scaling law."
+        },
+        "stellarator": {
+          "type": "object",
+          "properties": {
+            "iota23": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 10,
+              "description": "Rotational transform at two thirds of the radius."
+            },
+            "f_ren": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 10,
+              "description": "Deprecated: ISS04 renormalisation, tau_E = f_ren H98 tau_ISS04 when H_ISS04 is not given."
+            },
+            "H_ISS04": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 10,
+              "description": "Confinement multiplier relative to ISS04: tau_E = H_ISS04 tau_ISS04 (then f_ren and H98 are not used)."
+            }
+          },
+          "required": [
+            "iota23",
+            "f_ren"
+          ],
+          "additionalProperties": false,
+          "description": "Stellarator settings (used with method \"stellarator\")."
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "betaN_limit": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 20,
+              "description": "Troyon beta_N limit."
+            },
+            "greenwald_limit": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 10,
+              "description": "Density limit as a fraction of the Greenwald density."
+            },
+            "q95_limit": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 20,
+              "description": "Lower limit of q95 (disruption below it)."
+            },
+            "W_conc_limit": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "description": "Tungsten concentration limit (radiative collapse above it)."
+            }
+          },
+          "required": [
+            "betaN_limit",
+            "greenwald_limit",
+            "q95_limit",
+            "W_conc_limit"
+          ],
+          "additionalProperties": false,
+          "description": "Operational limits that end the shot."
+        },
+        "transport": {
+          "type": "object",
+          "properties": {
+            "tau_p_over_tau_E": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "description": "Particle confinement time over the energy confinement time."
+            },
+            "tau_He_over_tau_E": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "description": "Helium-ash confinement time over the energy confinement time."
+            },
+            "alpha_n": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10,
+              "description": "Density profile peaking exponent."
+            },
+            "alpha_T": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10,
+              "description": "Temperature profile peaking exponent."
+            }
+          },
+          "required": [
+            "tau_p_over_tau_E",
+            "tau_He_over_tau_E",
+            "alpha_n",
+            "alpha_T"
+          ],
+          "additionalProperties": false,
+          "description": "0D transport and profile shape parameters."
+        },
+        "events": {
+          "type": "object",
+          "properties": {
+            "elms": {
+              "type": "boolean",
+              "description": "Type-I ELMs."
+            },
+            "sawteeth": {
+              "type": "boolean",
+              "description": "Sawtooth crashes."
+            },
+            "ntm": {
+              "type": "boolean",
+              "description": "Neoclassical tearing modes."
+            }
+          },
+          "required": [
+            "elms",
+            "sawteeth",
+            "ntm"
+          ],
+          "additionalProperties": false,
+          "description": "MHD events."
+        },
+        "magnet": {
+          "type": "object",
+          "properties": {
+            "tech": {
+              "type": "string",
+              "enum": [
+                "Cu",
+                "NbTi",
+                "Nb3Sn",
+                "REBCO"
+              ],
+              "description": "Magnet technology (sets the maximum field at the coil)."
+            },
+            "gap_m": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 20,
+              "description": "Plasma-to-coil gap (blanket and vacuum vessel). Unit: m.",
+              "x-unit": "m"
+            },
+            "coilThickness_m": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 20,
+              "description": "Coil thickness. Unit: m.",
+              "x-unit": "m"
+            }
+          },
+          "required": [
+            "tech",
+            "gap_m",
+            "coilThickness_m"
+          ],
+          "additionalProperties": false,
+          "description": "Toroidal-field magnets."
+        },
+        "blanket": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "HCPB",
+                "HCLL",
+                "WCLL",
+                "DCLL",
+                "FLiBe",
+                "none"
+              ],
+              "description": "Breeding blanket concept."
+            },
+            "li6_enrichment": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Lithium-6 enrichment (natural lithium: 0.075)."
+            },
+            "coverage": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Fraction of the wall covered by breeding blanket."
+            }
+          },
+          "required": [
+            "type",
+            "li6_enrichment",
+            "coverage"
+          ],
+          "additionalProperties": false,
+          "description": "Breeding blanket."
+        },
+        "divertor": {
+          "type": "object",
+          "properties": {
+            "f_rad_div": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Fraction of the power radiated in the divertor."
+            },
+            "flux_expansion": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 200,
+              "description": "Poloidal flux expansion at the target."
+            }
+          },
+          "required": [
+            "f_rad_div",
+            "flux_expansion"
+          ],
+          "additionalProperties": false,
+          "description": "Divertor."
+        },
+        "economics": {
+          "type": "object",
+          "properties": {
+            "capital_MUSD_override": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 10000000,
+              "description": "Capital cost overriding the built-in estimate. Unit: MUSD.",
+              "x-unit": "MUSD"
+            },
+            "availability": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Plant availability."
+            },
+            "thermalEff": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "exclusiveMaximum": 1,
+              "description": "Thermal-to-electric conversion efficiency."
+            },
+            "wallPlugEff": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "description": "Heating-system wall-plug efficiency."
+            },
+            "discountRate": {
+              "type": "number",
+              "minimum": 0,
+              "exclusiveMaximum": 1,
+              "description": "Discount rate."
+            },
+            "lifetime_yr": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 200,
+              "description": "Plant lifetime. Unit: yr.",
+              "x-unit": "yr"
+            }
+          },
+          "required": [
+            "availability",
+            "thermalEff",
+            "wallPlugEff",
+            "discountRate",
+            "lifetime_yr"
+          ],
+          "additionalProperties": false,
+          "description": "Economics."
+        },
+        "t_end": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000000,
+          "description": "Duration of the shot. Unit: s.",
+          "x-unit": "s"
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295,
+          "description": "Seed of the deterministic random generator (ELM, sawtooth and jitter sequences); an unsigned 32-bit integer."
+        },
+        "fidelity": {
+          "type": "string",
+          "enum": [
+            "0D",
+            "1.5D"
+          ],
+          "description": "'0D': global power balance; '1.5D': radial profile transport with a Grad-Shafranov equilibrium (tokamak and spherical tokamak only, ignored for a stellarator).",
+          "default": "0D"
+        },
+        "profiles": {
+          "$ref": "#/$defs/profileSettings"
+        }
+      },
+      "required": [
+        "method",
+        "geometry",
+        "B0",
+        "Ip_MA",
+        "fuel",
+        "fuelFracA",
+        "n_target",
+        "n_rampTime",
+        "heating",
+        "fueling",
+        "impurity",
+        "H98",
+        "H89",
+        "scaling",
+        "stellarator",
+        "limits",
+        "transport",
+        "events",
+        "magnet",
+        "blanket",
+        "divertor",
+        "economics",
+        "t_end",
+        "seed"
+      ],
+      "additionalProperties": false,
+      "description": "Magnetic confinement: tokamak, spherical tokamak, stellarator. Rule tokamak-needs-plasma-current: Ip_MA must be above 0 unless the method is stellarator.",
+      "x-rules": [
+        {
+          "id": "tokamak-needs-plasma-current",
+          "description": "Ip_MA must be above 0 unless the method is stellarator.",
+          "reads": [
+            "method",
+            "Ip_MA"
+          ]
+        }
+      ]
+    },
+    "icfConfig": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": [
+            "icf_direct",
+            "icf_indirect"
+          ],
+          "description": "Confinement method."
+        },
+        "E_laser_MJ": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000,
+          "description": "Laser energy on target. Unit: MJ.",
+          "x-unit": "MJ"
+        },
+        "wavelength_nm": {
+          "type": "number",
+          "minimum": 100,
+          "maximum": 5000,
+          "description": "Laser wavelength. Unit: nm.",
+          "x-unit": "nm"
+        },
+        "pulse_ns": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000,
+          "description": "Pulse duration. Unit: ns.",
+          "x-unit": "ns"
+        },
+        "capsuleRadius_um": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100000,
+          "description": "Outer capsule radius. Unit: um.",
+          "x-unit": "um"
+        },
+        "fuelMass_ug": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10000000,
+          "description": "DT fuel mass. Unit: ug.",
+          "x-unit": "ug"
+        },
+        "ablatorMass_ug": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000000,
+          "description": "Ablator mass. Unit: ug.",
+          "x-unit": "ug"
+        },
+        "ablator": {
+          "type": "string",
+          "enum": [
+            "CH",
+            "HDC",
+            "Be"
+          ],
+          "description": "Ablator material."
+        },
+        "adiabat": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Fuel adiabat alpha (1 = cold degenerate)."
+        },
+        "convergenceRatio": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 500,
+          "description": "Target convergence ratio."
+        },
+        "implosionVelocity_kms": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 5000,
+          "description": "Implosion velocity. Unit: km/s.",
+          "x-unit": "km/s"
+        },
+        "hohlraumEff": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Indirect drive: laser to X-ray to capsule coupling."
+        },
+        "absorption": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Direct drive: laser absorption fraction."
+        },
+        "asymmetry_rms": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Low-mode asymmetry (rms). Unit: %.",
+          "x-unit": "%"
+        },
+        "surfaceRoughness_nm": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000,
+          "description": "Surface roughness (Rayleigh-Taylor seed). Unit: nm.",
+          "x-unit": "nm"
+        },
+        "fuel": {
+          "type": "string",
+          "enum": [
+            "DT",
+            "DD",
+            "DHe3",
+            "pB11"
+          ],
+          "description": "Fuel cycle: D-T, D-D, D-3He or p-11B."
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295,
+          "description": "Seed of the deterministic random generator (ELM, sawtooth and jitter sequences); an unsigned 32-bit integer."
+        },
+        "driverEff": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "description": "Driver (laser) wall-plug efficiency for Q_eng (default 0.1).",
+          "default": 0.1
+        },
+        "thermalEff": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "description": "Thermal-to-electric efficiency for Q_eng (default 0.4).",
+          "default": 0.4
+        }
+      },
+      "required": [
+        "method",
+        "E_laser_MJ",
+        "wavelength_nm",
+        "pulse_ns",
+        "capsuleRadius_um",
+        "fuelMass_ug",
+        "ablatorMass_ug",
+        "ablator",
+        "adiabat",
+        "convergenceRatio",
+        "implosionVelocity_kms",
+        "hohlraumEff",
+        "absorption",
+        "asymmetry_rms",
+        "surfaceRoughness_nm",
+        "fuel",
+        "seed"
+      ],
+      "additionalProperties": false,
+      "description": "Laser inertial confinement fusion, direct or indirect drive."
+    },
+    "mtfConfig": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": [
+            "mtf_liner",
+            "mtf_piston",
+            "maglif",
+            "zpinch_sfs"
+          ],
+          "description": "Confinement method."
+        },
+        "r0_m": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100,
+          "description": "Initial plasma radius. Unit: m.",
+          "x-unit": "m"
+        },
+        "L_m": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100,
+          "description": "Length. Unit: m.",
+          "x-unit": "m"
+        },
+        "n0": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1e+32,
+          "description": "Initial density. Unit: m^-3.",
+          "x-unit": "m^-3"
+        },
+        "T0_keV": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000,
+          "description": "Initial temperature. Unit: keV.",
+          "x-unit": "keV"
+        },
+        "B0": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000,
+          "description": "Initial magnetic field. Unit: T.",
+          "x-unit": "T"
+        },
+        "compressionRatio": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 1000,
+          "description": "Compression ratio r0 / r_min."
+        },
+        "driverEnergy_MJ": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000000,
+          "description": "Driver energy. Unit: MJ.",
+          "x-unit": "MJ"
+        },
+        "compressionTime_us": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000000000,
+          "description": "Compression duration. Unit: us.",
+          "x-unit": "us"
+        },
+        "jitter_us": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000000,
+          "description": "Piston or liner synchronisation error. Unit: us.",
+          "x-unit": "us"
+        },
+        "linerThicknessRatio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Liner thickness over radius (magneto-Rayleigh-Taylor)."
+        },
+        "preheat_kJ": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000,
+          "description": "MagLIF laser preheat energy. Unit: kJ.",
+          "x-unit": "kJ"
+        },
+        "current_MA": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000,
+          "description": "Z-pinch or MagLIF driver current. Unit: MA.",
+          "x-unit": "MA"
+        },
+        "flowShear": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Z-pinch sheared-flow stabilisation (0 to 1)."
+        },
+        "fuel": {
+          "type": "string",
+          "enum": [
+            "DT",
+            "DD",
+            "DHe3",
+            "pB11"
+          ],
+          "description": "Fuel cycle: D-T, D-D, D-3He or p-11B."
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295,
+          "description": "Seed of the deterministic random generator (ELM, sawtooth and jitter sequences); an unsigned 32-bit integer."
+        }
+      },
+      "required": [
+        "method",
+        "r0_m",
+        "L_m",
+        "n0",
+        "T0_keV",
+        "B0",
+        "compressionRatio",
+        "driverEnergy_MJ",
+        "compressionTime_us",
+        "jitter_us",
+        "linerThicknessRatio",
+        "preheat_kJ",
+        "current_MA",
+        "flowShear",
+        "fuel",
+        "seed"
+      ],
+      "additionalProperties": false,
+      "description": "Magnetised target fusion, Z-pinch and MagLIF."
+    },
+    "frcConfig": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": [
+            "frc"
+          ],
+          "description": "Confinement method."
+        },
+        "rs_m": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100,
+          "description": "Separatrix radius. Unit: m.",
+          "x-unit": "m"
+        },
+        "L_m": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000,
+          "description": "Length. Unit: m.",
+          "x-unit": "m"
+        },
+        "Be_T": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100,
+          "description": "External field. Unit: T.",
+          "x-unit": "T"
+        },
+        "n0": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1e+30,
+          "description": "Density. Unit: m^-3.",
+          "x-unit": "m^-3"
+        },
+        "T0_keV": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000,
+          "description": "Initial temperature. Unit: keV.",
+          "x-unit": "keV"
+        },
+        "P_NBI_MW": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000,
+          "description": "Neutral-beam power. Unit: MW.",
+          "x-unit": "MW"
+        },
+        "E_NBI_keV": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100000,
+          "description": "Neutral-beam energy per atom. Unit: keV.",
+          "x-unit": "keV"
+        },
+        "t_end": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10000,
+          "description": "Duration. Unit: s.",
+          "x-unit": "s"
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295,
+          "description": "Seed of the deterministic random generator (ELM, sawtooth and jitter sequences); an unsigned 32-bit integer."
+        },
+        "fuel": {
+          "type": "string",
+          "enum": [
+            "DT",
+            "DD",
+            "DHe3",
+            "pB11"
+          ],
+          "description": "Fuel cycle: D-T, D-D, D-3He or p-11B."
+        }
+      },
+      "required": [
+        "method",
+        "rs_m",
+        "L_m",
+        "Be_T",
+        "n0",
+        "T0_keV",
+        "P_NBI_MW",
+        "E_NBI_keV",
+        "t_end",
+        "seed",
+        "fuel"
+      ],
+      "additionalProperties": false,
+      "description": "Field-reversed configuration."
+    },
+    "mirrorConfig": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": [
+            "mirror"
+          ],
+          "description": "Confinement method."
+        },
+        "L_m": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000,
+          "description": "Length. Unit: m.",
+          "x-unit": "m"
+        },
+        "a_m": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100,
+          "description": "Plasma radius. Unit: m.",
+          "x-unit": "m"
+        },
+        "B_center_T": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100,
+          "description": "Central field. Unit: T.",
+          "x-unit": "T"
+        },
+        "mirrorRatio": {
+          "type": "number",
+          "exclusiveMinimum": 1,
+          "maximum": 1000,
+          "description": "Mirror ratio R_m (loss-cone angle sin^2 = 1/R_m); must exceed 1."
+        },
+        "n0": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1e+30,
+          "description": "Density. Unit: m^-3.",
+          "x-unit": "m^-3"
+        },
+        "T_keV": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000,
+          "description": "Temperature. Unit: keV.",
+          "x-unit": "keV"
+        },
+        "P_aux_MW": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000,
+          "description": "Auxiliary heating power. Unit: MW.",
+          "x-unit": "MW"
+        },
+        "tandem": {
+          "type": "boolean",
+          "description": "Tandem mirror with end plugs."
+        },
+        "t_end": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10000,
+          "description": "Duration. Unit: s.",
+          "x-unit": "s"
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295,
+          "description": "Seed of the deterministic random generator (ELM, sawtooth and jitter sequences); an unsigned 32-bit integer."
+        },
+        "fuel": {
+          "type": "string",
+          "enum": [
+            "DT",
+            "DD",
+            "DHe3",
+            "pB11"
+          ],
+          "description": "Fuel cycle: D-T, D-D, D-3He or p-11B."
+        },
+        "plugPotential": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Tandem end-plug potential e phi_c / T_i (default 1).",
+          "default": 1
+        }
+      },
+      "required": [
+        "method",
+        "L_m",
+        "a_m",
+        "B_center_T",
+        "mirrorRatio",
+        "n0",
+        "T_keV",
+        "P_aux_MW",
+        "tandem",
+        "t_end",
+        "seed",
+        "fuel"
+      ],
+      "additionalProperties": false,
+      "description": "Magnetic mirror."
+    },
+    "muonConfig": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": [
+            "muon"
+          ],
+          "description": "Confinement method."
+        },
+        "muonRate_per_s": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1e+25,
+          "description": "Muon production rate. Unit: s^-1.",
+          "x-unit": "s^-1"
+        },
+        "muonCost_GeV": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000,
+          "description": "Energy cost per muon. Unit: GeV.",
+          "x-unit": "GeV"
+        },
+        "stickingProb": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Alpha-sticking probability per fusion."
+        },
+        "density_LHD": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10,
+          "description": "Target density in units of the liquid-hydrogen density."
+        },
+        "T_K": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100000,
+          "description": "Target temperature. Unit: K.",
+          "x-unit": "K"
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295,
+          "description": "Seed of the deterministic random generator (ELM, sawtooth and jitter sequences); an unsigned 32-bit integer."
+        }
+      },
+      "required": [
+        "method",
+        "muonRate_per_s",
+        "muonCost_GeV",
+        "stickingProb",
+        "density_LHD",
+        "T_K",
+        "seed"
+      ],
+      "additionalProperties": false,
+      "description": "Muon-catalysed fusion."
+    }
+  }
+}

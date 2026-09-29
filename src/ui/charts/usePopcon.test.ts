@@ -46,6 +46,23 @@ describe('steerPatch', () => {
   });
 });
 
+describe('usePopcon: the edge option', () => {
+  it('posts the job with edge: true only when asked, and asks again when the option changes', () => {
+    const f = fakePopconFactory();
+    const { rerender } = renderHook(({ edge }) => usePopcon(ITER, { createWorker: f.create, edge }), { initialProps: { edge: false } });
+    const w: FakePopconWorker = f.workers[0];
+    expect(w.last('compute')).toMatchObject({ job: 1 });
+    expect(w.last('compute')!.edge).toBeUndefined();
+    rerender({ edge: true });
+    expect(w.last('compute')).toMatchObject({ job: 2, edge: true });
+    rerender({ edge: true });
+    expect(w.sent.filter((m) => m.type === 'compute')).toHaveLength(2); // nothing changed: no new job
+    rerender({ edge: false });
+    expect(w.last('compute')).toMatchObject({ job: 3 });
+    expect(w.last('compute')!.edge).toBeUndefined();
+  });
+});
+
 describe('popconCfg', () => {
   it('is the configuration itself while the controls equal its values, so an unchanged map is not recomputed', () => {
     expect(popconCfg(ITER)).toBe(ITER);

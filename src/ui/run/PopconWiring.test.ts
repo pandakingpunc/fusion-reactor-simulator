@@ -112,6 +112,38 @@ describe('POPCON on the run screen', () => {
     expect(h.w.last('control')).toEqual({ type: 'control', patch: { H98: 1.3 } });
   });
 
+  it('the Divertor edge switch asks the POPCON worker for the edge maps and the readout shows them; a stellarator has no switch', () => {
+    const h = mount();
+    fireEvent.click(presetRunButton('ITER'));
+    h.roundTrip();
+    const [g0] = h.map() as GridMsg[];
+    expect(g0.grid.qPeak).toBeUndefined();
+    const pw = h.pop.workers[0];
+    expect(pw.last('compute')!.edge).toBeUndefined();
+    fireEvent.click(screen.getByLabelText('Divertor edge'));
+    expect(pw.last('compute')).toMatchObject({ job: 2, edge: true });
+    const [g] = h.map() as GridMsg[];
+    expect(g.grid.qPeak).toHaveLength(g.grid.nx * g.grid.ny);
+    // hovering a cell reads the edge values next to the map's own
+    const v: PopconView = { width: W, height: 280, ...g.axes };
+    const p = toPx(v, g.grid.n[8], g.grid.T[6]);
+    fireEvent.mouseMove(popconCanvas()!, { clientX: p.x, clientY: p.y });
+    const readout = screen.getByTestId('popcon-readout').textContent!;
+    expect(readout).toMatch(/P_sep\/R [\d.e+-]+ MW\/m · q_peak [\d.e+-]+ MW\/m² · T_t [\d.e+-]+ eV/);
+    // and switching it off goes back to the plain map
+    fireEvent.click(screen.getByLabelText('Divertor edge'));
+    expect(pw.last('compute')!.edge).toBeUndefined();
+  });
+
+  it('a stellarator run has the map without the edge switch', () => {
+    const h = mount();
+    fireEvent.click(presetRunButton('W7X'));
+    h.roundTrip();
+    h.map();
+    expect(screen.getByText('Live POPCON')).toBeTruthy();
+    expect(screen.queryByLabelText('Divertor edge')).toBeNull();
+  });
+
   it('once the shot is over the map is read-only', () => {
     const h = mount();
     fireEvent.click(presetRunButton('JET')); // a short shot

@@ -58,6 +58,8 @@ export const tr: Dict = {
   'popcon.hintSteer': 'bir noktadaki değerler için haritanın üzerinde gezinin; atışı oraya yönlendirmek için tıklayın',
   'popcon.error': 'POPCON hesaplanamadı: {msg}',
   'popcon.unavailable': 'POPCON haritası bir web worker gerektirir; bu tarayıcı sunmuyor.',
+  'popcon.edge': 'Divertör kenarı',
+  'popcon.edgeTitle': 'Haritaya kenar modelini ekler: hedefe düşen tepe ısı akısının 10 MW/m² çizgisi ile bağlı (10 eV) ve ayrılmış (2 eV) sınırları; okumaya P_sep/R, q_peak ve T_t eklenir',
   'popcon.selfHeated': 'kendini ısıtır',
   'popcon.betaLimit': 'β_N sınırının üstünde',
   'popcon.belowLH': 'L-H eşiğinin altında',

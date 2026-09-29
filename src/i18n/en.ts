@@ -62,6 +62,8 @@ export const en = {
   'popcon.error': 'POPCON could not be computed: {msg}',
   'popcon.unavailable': 'The POPCON map needs a web worker, which this browser does not offer.',
   'popcon.selfHeated': 'heats itself',
+  'popcon.edge': 'Divertor edge',
+  'popcon.edgeTitle': 'Add the edge model to the map: the 10 MW/m² line of the peak target heat flux and the attached (10 eV) and detached (2 eV) boundaries; the readout gains P_sep/R, q_peak and T_t',
   'popcon.betaLimit': 'above the β_N limit',
   'popcon.belowLH': 'below the L-H threshold',
   'popcon.aboveGreenwald': 'above the Greenwald density',

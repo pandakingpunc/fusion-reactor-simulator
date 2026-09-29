@@ -56,6 +56,8 @@ export interface PopconOptions {
   createWorker?: PopconWorkerFactory;
   /** stage plan (default: 16 × 16, then 44 × 44 at rest); keep the array stable between renders */
   stages?: readonly PopconStage[];
+  /** add the edge model's maps (P_sep/R, peak target heat flux, target T_e) to the grids; tokamaks only, a stellarator's grid has none */
+  edge?: boolean;
 }
 
 /** POPCON grid of `cfg`, computed off the page's thread and refined while the configuration rests. */
@@ -63,6 +65,7 @@ export function usePopcon(cfg: MagneticConfig | null, opts: PopconOptions = {}):
   const provided = useContext(PopconWorkerContext);
   const create = opts.createWorker ?? provided;
   const stages = opts.stages ?? DEFAULT_POPCON_STAGES;
+  const edge = opts.edge === true;
   const [state, setState] = useState<PopconState>(INITIAL);
   const workerRef = useRef<PopconWorkerLike | null>(null);
   const jobRef = useRef(0);
@@ -92,8 +95,8 @@ export function usePopcon(cfg: MagneticConfig | null, opts: PopconOptions = {}):
     if (!cfg || !w) return;
     const job = ++jobRef.current;
     setState((s) => ({ ...s, pending: true }));
-    w.postMessage({ type: 'compute', job, cfg, stages });
-  }, [cfg, stages, create]);
+    w.postMessage({ type: 'compute', job, cfg, stages, ...(edge ? { edge: true } : {}) });
+  }, [cfg, stages, edge, create]);
 
   return state;
 }

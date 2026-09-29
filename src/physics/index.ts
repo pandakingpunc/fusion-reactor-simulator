@@ -45,7 +45,7 @@ export type { SimulationOptions } from './simulation';
  * @public
  */
 export type {
-  ReactorConfig, MagneticConfig, ICFConfig, MTFConfig, FRCConfig, MirrorConfig, MuonConfig, ProfileSettings, EdgeOptions,
+  ReactorConfig, MagneticConfig, ICFConfig, MTFConfig, FRCConfig, MirrorConfig, MuonConfig, ProfileSettings, EdgeOptions, SystemsConfig,
   Method, Fidelity, MagnetTech, BlanketType, FuelingMethod,
   HistoryFrame, SimEvent, EventKind, ShotReport, ScoreEntry, TerminationInfo, DiagSpec, EqSnapshot,
   ActuatorEntry, SimCheckpoint, SimModel,
@@ -192,6 +192,25 @@ export { greenwaldDensity, betaNormalized } from './limits';
 export { plasmaVolume, plasmaSurface, aspectRatio, q95 } from './geometry';
 /** @experimental */
 export { C as CONSTANTS, IMPURITIES } from './constants';
+
+/**
+ * The systems-lite engineering models behind the engineering block of the shot report (v4.0): `assessSystems` runs them on a configuration
+ * and the flat-top means of a shot (TF coil stress, central-solenoid flux budget, cryoplant, radial build, TBR), the others are the models
+ * themselves (`tfCoil`: PROCESS-style three-layer plane-stress Tresca stress of the inboard leg; `fluxBudget`; `cryoPlant`, whose
+ * pulsed-field load is spread over the design pulse of the plant, `plantPulseLength_s`; `radialBuild`; `tritiumBreedingRatio`) and the
+ * PROCESS 1990 cost accounts (`costAccounts`, `costOfElectricity`, an educational first-of-a-kind estimate that is not part of the shot
+ * report). Optional inputs of a configuration: `MagneticConfig.systems`.
+ * @experimental
+ */
+export {
+  assessSystems, systemsReportKeys, tfCoil, fluxBudget, cryoPlant, plantPulseLength_s, DEFAULT_PULSE_LENGTH_S, radialBuild, tritiumBreedingRatio,
+  costContext, costAccounts, costOfElectricity,
+} from './systems';
+/** @experimental */
+export type {
+  SystemsInput, SystemsAssessment, TFCoilInput, TFCoilOptions, TFCoilResult, FluxInput, FluxBudget, FluxMeasurement, CryoInput, CryoResult,
+  RadialBuildInput, RadialBuild, BuildLayer, TBROptions, CostPlant, CostResult, CostCtx, CoelcInput, CoelcResult,
+} from './systems';
 
 /**
  * The literature validation table and its evaluation (what `npm run validate` uses).

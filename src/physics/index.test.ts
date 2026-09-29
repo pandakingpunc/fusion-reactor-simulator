@@ -16,7 +16,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 
 /** The runtime exports of the library. Add a name here when you add it to index.ts. */
 const EXPECTED = [
-   'CONFIG_SCHEMA_ID', 'CONFINEMENT_SCALINGS', 'CONSTANTS', 'ConfigPathError', 'ConfigValidationError', 'DEFAULT_PROFILE_SETTINGS', 'DEMO', 'DEMO_15D',
+   'CONFIG_SCHEMA_ID', 'CONFINEMENT_SCALINGS', 'CONSTANTS', 'ConfigPathError', 'ConfigValidationError', 'DEFAULT_PROFILE_SETTINGS', 'DEFAULT_PULSE_LENGTH_S', 'DEMO', 'DEMO_15D',
    'DIIID', 'DIRECT_DRIVE', 'FINGERPRINT_SCHEMA', 'FLAT_TOP_START', 'FUEL_CHANNELS', 'GF_PISTON', 'IMPURITIES', 'ITER', 'ITER_15D', 'JET', 'JET_15D',
    'JT60SA', 'MAGNETIC_DIAGS', 'MASTU', 'MAX_RAMP_GRID', 'METHODS', 'METHOD_FAMILY', 'METHOD_LABELS', 'MIN_RAMP_STEP', 'MIRROR', 'MTF_LINER', 'MUON',
    'ModelContractError', 'NIF', 'NonFiniteStateError', 'PRESETS', 'PROFILE_DIAGS', 'ProfileModel', 'REFERENCE_CHECKS', 'SPARC', 'SPARC_15D',
@@ -27,6 +27,8 @@ const EXPECTED = [
    'parseScenario', 'parseSettingValue', 'plasmaSurface', 'plasmaVolume', 'presetIds', 'presets', 'q95', 'rampTemplate', 'readMetric', 'requirePreset',
    'runDigest', 'runFingerprint', 'runShot', 'scenarioFromJSON', 'scenarioToJSON', 'setPath', 'sha256Hex', 'sigmav', 'summarizeRun',
    'supportsProfiles', 'tauIPB98y2', 'tauISS04', 'tauITER89P', 'tauITPA20', 'tauITPA20IL', 'tauSTValovic', 'validateConfig', 'validateScenario',
+   'assessSystems', 'systemsReportKeys', 'tfCoil', 'fluxBudget', 'cryoPlant', 'plantPulseLength_s', 'radialBuild', 'tritiumBreedingRatio',
+   'costContext', 'costAccounts', 'costOfElectricity',
 ];
 
 describe('the public barrel', () => {
@@ -87,6 +89,21 @@ describe('the public barrel', () => {
     expect(() => api.parseScenario({ schema: 1, rampStep: api.MIN_RAMP_STEP / 10 })).toThrow(api.ScenarioError);
     const unknownControl = { schema: 1, waveforms: { no_such_control: { kind: 'step', points: [[0.1, 1]] } } } as api.ScenarioSpec;
     expect(() => new api.Simulation(cfg, { scenario: unknownControl })).toThrow(api.ScenarioError);
+  });
+  it('a program can run the systems-lite models on a configuration through the barrel alone', () => {
+    const input = { cfg: api.ITER, g: api.ITER.geometry, isStellarator: false, P_fus_MW: 500, P_neutron_MW: 400 };
+    const a = api.assessSystems(input);
+    expect(a.tf.tresca_MPa).toBeGreaterThan(300);
+    expect(a.tf.tresca_MPa).toBeLessThan(660); // the ITER inboard leg is inside the Nb3Sn limit
+    expect(a.tbr).toBeGreaterThan(1);
+    expect(a.pulseLength_s).toBe(api.DEFAULT_PULSE_LENGTH_S);
+    expect(api.assessSystems({ ...input, cfg: { ...api.ITER, systems: { pulseLength_s: 400 } } }).pulseLength_s).toBe(400); // MagneticConfig.systems
+    expect(api.systemsReportKeys(a)['TF stress margin']).toBeGreaterThan(0);
+    expect(api.plantPulseLength_s(-1)).toBe(api.DEFAULT_PULSE_LENGTH_S);
+    expect(api.tritiumBreedingRatio('HCPB', 0.6, 0.9)).toBeGreaterThan(1);
+    // a validated configuration carries the block through the schema
+    expect(api.validateConfig({ ...api.ITER, systems: { pulseLength_s: 400, tf: { nCoils: 16 } } }).ok).toBe(true);
+    expect(api.validateConfig({ ...api.ITER, systems: { pulseLength_s: -1 } }).ok).toBe(false);
   });
 });
 

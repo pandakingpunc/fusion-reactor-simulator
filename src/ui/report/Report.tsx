@@ -7,6 +7,7 @@ import { fmtNum, fmtTime } from '../format';
 import { TimeChart } from '../charts/TimeChart';
 import { PALETTE } from '../format';
 import { exportCSV, exportJSON, exportReportCSV } from './exportShot';
+import { TerminationBox } from '../run/TerminationBox';
 
 interface Props { shot: SavedShot | null; onRerun: () => void; onEdit: () => void }
 
@@ -20,7 +21,6 @@ export function Report({ shot, onRerun, onEdit }: Props) {
   if (!shot) return <div className="panel muted">{t('rep.empty')}</div>;
   const { report: r, meta, frames, events, cfg, name } = shot;
   const term = r.termination;
-  const termCls = term.disruption ? 'bad' : term.natural ? 'ok' : '';
   const scoreCls = r.score >= 70 ? 'ok' : r.score >= 35 ? 'warn' : 'bad';
   const tUnit = r.timeUnit;
   const secs = (x: number) => (tUnit === 's' ? fmtTime(x, 's') : `${fmtNum(x * (tUnit === 'ns' ? 1e9 : 1e6))} ${tUnit}`);
@@ -86,11 +86,7 @@ export function Report({ shot, onRerun, onEdit }: Props) {
 
       <div className="panel">
         <h3>{t('rep.termination')}</h3>
-        <div className={`diag-box ${termCls}`}>
-          <div><b>{term.reason}</b> <span className="muted small">@ {fmtTime(term.t, meta.timeUnit)}</span></div>
-          <p style={{ margin: '6px 0' }}>{term.diagnosis}</p>
-          <div><span className="accent">{t('rep.fix')}</span> {term.fix}</div>
-        </div>
+        <TerminationBox term={term} timeUnit={meta.timeUnit} full />
         {term.disruption && (
           <>
             <h3 style={{ marginTop: 10 }}>{t('rep.disruption')}</h3>

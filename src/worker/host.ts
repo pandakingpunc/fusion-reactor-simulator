@@ -13,6 +13,7 @@
  */
 import { Simulation } from '../physics/simulation';
 import { NonFiniteStateError, SimulationError } from '../physics/kernel/errors';
+import { EquilibriumInitFailure } from '../physics/profiles/failures';
 import { HistoryFrame, ShotReport, SimEvent, SimModel } from '../physics/types';
 import { FromWorker, PROTOCOL_VERSION, SimMeta, ToWorker, simSecondsPerWallSecond, toUiFrame } from './protocol';
 import { defaultSchedule } from './schedule';
@@ -104,8 +105,9 @@ export function createSimHost(post: (m: FromWorker) => void, opts: SimHostOption
 
   function postError(err: unknown, id?: number, branch?: number, stop = true) {
     if (stop) stopLoop();
-    // RunError and the kernel's typed errors (kernel/errors.ts) are raised on purpose: their message is the whole story
-    const msg = err instanceof RunError || err instanceof SimulationError ? err.message
+    // RunError, the kernel's typed errors (kernel/errors.ts) and the 1.5D model's refusal of an impossible boundary
+    // (EquilibriumInitFailure, e.g. a > R) are raised on purpose: their message is the whole story
+    const msg = err instanceof RunError || err instanceof SimulationError || err instanceof EquilibriumInitFailure ? err.message
       : err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err);
     post({ type: 'error', msg, id, branchId: branch });
   }
@@ -279,7 +281,7 @@ export function createSimHost(post: (m: FromWorker) => void, opts: SimHostOption
           branchId = msg.branchId;
           const index = Math.max(0, Math.min(msg.index, sim.history.length - 1));
           sim.rewindTo(index);
-          post({ type: 'rewound', id: runId, branchId, index, t: sim.t, controls: sim.model.getControls() });
+          post({ type: 'rewound', id: runId, branchId, index, t: sim.t, nEvents: sim.events.length, controls: sim.model.getControls() });
           // Rewinding to the final frame of a finished shot leaves nothing to simulate: the new branch is
           // complete at once (otherwise play/step would do nothing and the page would wait forever).
           // rewindTo() restores the shot's termination from the frame's checkpoint; a zero-length advance

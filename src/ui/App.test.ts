@@ -172,6 +172,27 @@ describe('App: robustness of the wizard and the drawings', () => {
     expect((h.w.last('init')!.cfg as MagneticConfig).geometry.R).toBe(6.2);
   });
 
+  it('blocks RUN while the minor radius is not smaller than the major radius, and says so on the run step', () => {
+    const h = mount();
+    fireEvent.click(screen.getByText('Geometry'));
+    typeInto(numberInput('Minor radius a'), '3.5'); // ITER: R = 6.2 m; a = 3.5 is fine, R = 3 is not
+    expect(screen.queryByRole('alert')).toBeNull();
+    typeInto(numberInput('Major radius R'), '3');
+    expect(screen.getByRole('alert').textContent).toContain('must be smaller than the major radius');
+    expect(screen.getByText('!').getAttribute('title')).toContain('Fix the inconsistent values first');
+    fireEvent.click(screen.getByText('RUN'));
+    expect(screen.getByRole('alert').textContent).toContain('Inconsistent values');
+    const start = screen.getByRole('button', { name: '▶ START SHOT' }) as HTMLButtonElement;
+    expect(start.disabled).toBe(true);
+    fireEvent.click(start);
+    expect(h.w.sent.filter((m) => m.type === 'init')).toEqual([]);
+    fireEvent.click(screen.getByText('Geometry'));
+    typeInto(numberInput('Major radius R'), '6.2');
+    fireEvent.click(screen.getByText('RUN'));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect((screen.getByRole('button', { name: '▶ START SHOT' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('a stock preset with documented blank settings is not blocked and keeps their explanations', () => {
     mount();
     fireEvent.click(screen.getByText('ITER · 1.5D profiles'));

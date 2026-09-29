@@ -63,6 +63,8 @@ export function RunScreen({ sim, onReport, onSetup }: Props) {
   const canSeek = status === 'ready' || status === 'paused' || status === 'done';
 
   const seekTo = (idx: number) => sim.rewind(Math.max(0, Math.min(idx, frames.length - 1)));
+  // frame times do not strictly increase: the terminal frame of a failed 1.5D step repeats the time of the frame before it;
+  // the first frame at or after `time` is then the last good one, which is the state worth rewinding to
   const seekT = (time: number) => { let lo = 0; while (lo < frames.length - 1 && frames[lo].t < time) lo++; seekTo(lo); };
   // each panel fails on its own: a drawing error shows in that panel, the rest of the run screen goes on
   const keys = [state.runId, state.branchId];

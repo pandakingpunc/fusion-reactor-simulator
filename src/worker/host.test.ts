@@ -44,6 +44,11 @@ describe('simulation worker host (protocol v2)', () => {
     h.host.handle({ type: 'rewind', index: 2, branchId: 1 });
     const [rewound] = h.take();
     expect(rewound).toMatchObject({ type: 'rewound', id: 7, branchId: 1, index: 2 });
+    // the kernel's event count at the frame: the page truncates its event list by it
+    const sim = new Simulation(TAE);
+    sim.advance(TAE.t_end / 4);
+    sim.rewindTo(2);
+    if (rewound.type === 'rewound') expect(rewound.nEvents).toBe(sim.events.length);
 
     h.host.handle({ type: 'step', simDt: TAE.t_end });
     const after = h.take();

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { FieldDef, isRequired } from './schema';
+import { FieldDef, fieldHint, fieldLabel, isRequired } from './schema';
 import { useT } from '../state/store';
 
 interface Props { def: FieldDef; value: unknown; onChange: (v: unknown) => void }
@@ -8,26 +8,27 @@ interface Props { def: FieldDef; value: unknown; onChange: (v: unknown) => void 
 export function Field({ def, value, onChange }: Props) {
   const t = useT();
   const type = def.type ?? 'number';
+  const label = fieldLabel(def, t), hint = fieldHint(def, t);
   if (type === 'bool') {
     return (
       <label className="field">
-        <span className="lbl"><span>{def.label}</span></span>
+        <span className="lbl"><span>{label}</span></span>
         <span className="row" style={{ gap: 6 }}>
           <input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} />
           <span className="small muted">{value ? t('field.on') : t('field.off')}</span>
         </span>
-        {def.hint && <span className="hint">{def.hint}</span>}
+        {hint && <span className="hint">{hint}</span>}
       </label>
     );
   }
   if (type === 'select') {
     return (
       <label className="field">
-        <span className="lbl"><span>{def.label}</span></span>
+        <span className="lbl"><span>{label}</span></span>
         <select value={String(value ?? '')} onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}>
           {def.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
-        {def.hint && <span className="hint">{def.hint}</span>}
+        {hint && <span className="hint">{hint}</span>}
       </label>
     );
   }
@@ -65,14 +66,15 @@ function NumberField({ def, value, onChange }: { def: FieldDef; value: number | 
   // blank: a required field blocks the run (warning); where blank is a documented setting, its hint explains it
   const missing = shown === undefined && isRequired(def);
   const warn = out || missing;
+  const own = fieldHint(def, t);
   const hint = out ? t('field.outOfRange', { min: def.min!, max: def.max! })
     : missing ? t('field.required')
-    : shown === undefined ? def.hint ?? t('field.empty')
-    : def.hint;
+    : shown === undefined ? own ?? t('field.empty')
+    : own;
   return (
     <label className="field">
       <span className="lbl">
-        <span>{def.label}</span>
+        <span>{fieldLabel(def, t)}</span>
         {def.unit && <span className="unit">{def.unit}</span>}
       </span>
       <input type="text" inputMode="decimal" className="num" value={text} style={warn ? { borderColor: 'var(--warn)' } : undefined}

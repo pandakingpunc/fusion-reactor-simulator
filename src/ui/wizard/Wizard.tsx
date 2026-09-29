@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { Method, ReactorConfig } from '../../physics/types';
 import { Field } from './Field';
-import { METHOD_DEFAULT, METHOD_INFO, PRESETS, STEP_IDS, STEP_TITLES, StepId, fieldVisible, getPath, missingRequired, setPath, stepsFor } from './schema';
+import type { CrossIssue } from './schema';
+import { METHOD_DEFAULT, METHOD_INFO, PRESETS, STEP_IDS, STEP_TITLES, StepId, crossFieldIssues, fieldLabel, fieldVisible, getPath, missingRequired, setPath, stepsFor } from './schema';
 import { fmtNum } from '../format';
 import { useT } from '../state/store';
 
@@ -26,7 +27,11 @@ export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
   const activePreset = PRESETS.find((p) => p.cfg === cfg)?.id;
   // required fields left blank: the model has no default for them, so RUN stays blocked
   const missing = useMemo(() => missingRequired(cfg), [cfg]);
-  const blocked = missing.length > 0 ? t('wiz.missingBlocked', { fields: missing.map((m) => m.field.label).join(', ') }) : undefined;
+  // values that are legal one by one but not together (a ≥ R): the run is blocked as well
+  const issues = useMemo(() => crossFieldIssues(cfg), [cfg]);
+  const blocked = missing.length > 0 ? t('wiz.missingBlocked', { fields: missing.map((m) => fieldLabel(m.field, t)).join(', ') })
+    : issues.length > 0 ? t('wiz.crossBlocked', { issues: issues.map((i) => t(i.key, i.params)).join(' ') })
+    : undefined;
   const goToStep = (id: string) => { const i = STEP_IDS.indexOf(id as StepId); if (i >= 0) setStepIdx(i); };
 
   const pickMethod = (m: Method) => {
@@ -75,7 +80,7 @@ export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
         </>
       );
     }
-    if (id === 'run') return <RunSummary cfg={cfg} name={name} onRun={onRun} missing={missing} blocked={blocked} goToStep={goToStep} />;
+    if (id === 'run') return <RunSummary cfg={cfg} name={name} onRun={onRun} missing={missing} issues={issues} blocked={blocked} goToStep={goToStep} />;
     const def = steps.find((s) => s.id === id);
     if (!def) return <p className="muted">{t('wiz.noSettingsMethod')}</p>;
     const fields = def.fields.filter((f) => fieldVisible(cfg.method, f.path, cfg));
@@ -83,6 +88,7 @@ export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
       <>
         <h2>{stepIdx + 1} · {def.title}</h2>
         {def.note && <p className="muted small">{def.note}</p>}
+        <CrossIssues issues={issues.filter((i) => i.step === id)} />
         {fields.length === 0 && !def.note && <p className="muted">{t('wiz.noSettings')}</p>}
         <div className="fields">
           {fields.map((f) => <Field key={f.path} def={f} value={getPath(cfg, f.path) ?? f.def} onChange={(v) => update(f.path, v)} />)}
@@ -98,10 +104,12 @@ export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
         <div className="steps">
           {STEP_IDS.map((id, i) => {
             const empty = missing.filter((m) => m.step.id === id);
+            const inconsistent = issues.filter((i) => i.step === id);
             return (
               <div key={id} className={`step ${i === stepIdx ? 'active' : ''} ${i < stepIdx ? 'done' : ''}`} onClick={() => setStepIdx(i)}>
                 <span className="idx">{i + 1}</span><span>{STEP_TITLES[id]}</span>
-                {empty.length > 0 && <span className="badge warn" title={t('wiz.missingBlocked', { fields: empty.map((m) => m.field.label).join(', ') })}>!</span>}
+                {empty.length > 0 && <span className="badge warn" title={t('wiz.missingBlocked', { fields: empty.map((m) => fieldLabel(m.field, t)).join(', ') })}>!</span>}
+                {empty.length === 0 && inconsistent.length > 0 && <span className="badge warn" title={t('wiz.crossBlocked', { issues: inconsistent.map((i) => t(i.key, i.params)).join(' ') })}>!</span>}
               </div>
             );
           })}
@@ -143,19 +151,39 @@ export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
   );
 }
 
+/** Inconsistent value combinations, with a link to the step that holds them when shown on the run summary. */
+function CrossIssues({ issues, goToStep }: { issues: CrossIssue[]; goToStep?: (id: string) => void }) {
+  const t = useT();
+  if (issues.length === 0) return null;
+  return (
+    <div className="diag-box" role="alert" style={{ margin: '8px 0' }}>
+      <b className="warn">{t('wiz.crossTitle')}</b> <span className="small muted">{t('wiz.crossHint')}</span>
+      <ul className="small" style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+        {issues.map((i) => (
+          <li key={i.key}>
+            {goToStep ? <a href="#" onClick={(e) => { e.preventDefault(); goToStep(i.step); }}>{t(i.key, i.params)}</a> : t(i.key, i.params)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 interface RunSummaryProps {
   cfg: ReactorConfig;
   name: string;
   onRun: (c: ReactorConfig) => void;
   /** required fields left blank (RUN is blocked while there are any) */
   missing: ReturnType<typeof missingRequired>;
+  /** inconsistent combinations of values (RUN is blocked while there are any) */
+  issues: CrossIssue[];
   /** why RUN is disabled (undefined when it is not) */
   blocked: string | undefined;
   goToStep: (id: string) => void;
 }
 
 /** Son adım: özet + ÇALIŞTIR */
-function RunSummary({ cfg, name, onRun, missing, blocked, goToStep }: RunSummaryProps) {
+function RunSummary({ cfg, name, onRun, missing, issues, blocked, goToStep }: RunSummaryProps) {
   const t = useT();
   const steps = stepsFor(cfg.method);
   return (
@@ -170,13 +198,14 @@ function RunSummary({ cfg, name, onRun, missing, blocked, goToStep }: RunSummary
           <ul className="small" style={{ margin: '4px 0 0', paddingLeft: 18 }}>
             {missing.map(({ step, field }) => (
               <li key={field.path}>
-                <a href="#" onClick={(e) => { e.preventDefault(); goToStep(step.id); }}>{field.label}</a>
+                <a href="#" onClick={(e) => { e.preventDefault(); goToStep(step.id); }}>{fieldLabel(field, t)}</a>
                 <span className="muted"> · {step.title}</span>
               </li>
             ))}
           </ul>
         </div>
       )}
+      <CrossIssues issues={issues} goToStep={goToStep} />
       <button className="btn primary" style={{ fontSize: 15, padding: '10px 26px', margin: '8px 0 16px' }} disabled={!!blocked} title={blocked}
         onClick={() => onRun(cfg)}>{t('wiz.start')}</button>
       <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
@@ -191,7 +220,7 @@ function RunSummary({ cfg, name, onRun, missing, blocked, goToStep }: RunSummary
                   {fields.map((f) => {
                     const v = getPath(cfg, f.path) ?? f.def;
                     const shown = typeof v === 'number' ? fmtNum(v / (f.scale ?? 1)) : typeof v === 'boolean' ? (v ? t('field.on') : t('field.off')) : v === undefined || v === '' ? '—' : String(v);
-                    return <tr key={f.path}><td>{f.label}</td><td className="num">{shown} <span className="muted small">{f.unit ?? ''}</span></td></tr>;
+                    return <tr key={f.path}><td>{fieldLabel(f, t)}</td><td className="num">{shown} <span className="muted small">{f.unit ?? ''}</span></td></tr>;
                   })}
                 </tbody>
               </table>

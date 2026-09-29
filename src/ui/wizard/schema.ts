@@ -4,6 +4,8 @@
  * (UI değeri = cfg değeri / scale) — böylece n [m⁻³] arayüzde 1e20 biriminde görünür.
  */
 import { Method, ReactorConfig } from '../../physics/types';
+import { en, MessageKey } from '../../i18n/en';
+import type { Translate } from '../../i18n';
 import { DEFAULT_PROFILE_SETTINGS as PS } from '../../physics/profiles/defaults';
 import { DIIID, DIRECT_DRIVE, GF_PISTON, ITER, JET, JT60SA, MASTU, MIRROR, MTF_LINER, MUON, NIF, PRESETS, SPARC, TAE, W7X, ZAP, ZMACHINE, DEMO } from '../../physics/presets';
 
@@ -25,7 +27,20 @@ export interface FieldDef {
    * required: RUN stays blocked while it is empty (see missingRequired).
    */
   optional?: boolean;
+  /** i18n keys of `label` / `hint` (`label` and `hint` stay the English text, see `txt`); fields without a key are shown as written */
+  labelKey?: MessageKey;
+  hintKey?: MessageKey;
 }
+
+/** Label and hint of a field from the message dictionary: the English text is the fallback, the keys let Field translate it. */
+const txt = (labelKey: MessageKey, hintKey?: MessageKey): Pick<FieldDef, 'label' | 'hint' | 'labelKey' | 'hintKey'> =>
+  ({ label: en[labelKey], labelKey, ...(hintKey ? { hint: en[hintKey], hintKey } : {}) });
+
+/** Displayed label of a field in the interface language. */
+export const fieldLabel = (f: FieldDef, t: Translate): string => (f.labelKey ? t(f.labelKey) : f.label);
+/** Displayed hint of a field in the interface language. */
+export const fieldHint = (f: FieldDef, t: Translate): string | undefined => (f.hintKey ? t(f.hintKey) : f.hint);
+
 export interface StepDef { id: string; title: string; fields: FieldDef[]; note?: string }
 
 export const STEP_IDS = ['method', 'geometry', 'fuel', 'driver', 'heating', 'run'] as const;
@@ -75,7 +90,7 @@ const MAGNETIC_STEPS: StepDef[] = [
     { path: 't_end', label: 'Shot duration', unit: 's', min: 0.2, max: 5000, step: 0.5 },
     { path: 'seed', label: 'RNG seed', min: 0, max: 1e6, step: 1, hint: 'Same seed = same ELM/sawtooth sequence' },
     { path: 'stellarator.iota23', label: 'ι (2/3 radius)', min: 0.2, max: 2, step: 0.01, hint: 'Stellarator only' },
-    { path: 'stellarator.f_ren', label: 'ISS04 f_ren', min: 0.3, max: 1.5, step: 0.01, hint: 'Configuration multiplier (W7-X ≈ 0.7–1)' },
+    { path: 'stellarator.f_ren', label: 'ISS04 f_ren', min: 0.3, max: 1.5, step: 0.01, hint: 'Configuration multiplier (W7-X ≈ 0.7–1); superseded by H_ISS04' },
   ] },
   { id: 'fuel', title: 'Fuel & impurities', fields: [
     fuel(),
@@ -111,10 +126,11 @@ const MAGNETIC_STEPS: StepDef[] = [
     { path: 'heating.f_ICRH_ion', label: 'ICRH ion fraction', min: 0, max: 1, step: 0.05 },
     { path: 'heating.P_ECRH_MW', label: 'P_ECRH', unit: 'MW', min: 0, max: 200, step: 0.5, hint: 'Heats electrons only' },
     { path: 'heating.rampTime', label: 'Heating ramp', unit: 's', min: 0.01, max: 200, step: 0.1 },
-    { path: 'heating.autoOff', label: 'Ignition test: Q ≥ 5 → turn off heating', type: 'bool' },
+    { path: 'heating.autoOff', type: 'bool', ...txt('wf.autoOff', 'wf.autoOff.hint') },
     { path: 'fueling.method', label: 'Fueling method', type: 'select', options: [{ value: 'gas', label: 'Gas puffing (edge, efficiency ~0.3)' }, { value: 'pellet', label: 'Pellet (deep)' }, { value: 'nbi', label: 'NBI' }, { value: 'mixed', label: 'Mixed' }] },
     { path: 'fueling.maxRate_1e20s', label: 'Max. fueling rate', unit: '10²⁰ /s', min: 0, max: 5000, step: 1 },
     { path: 'fueling.pelletDepth', label: 'Pellet penetration depth', min: 0.05, max: 1, step: 0.05 },
+    { path: 'stellarator.H_ISS04', min: 0.3, max: 2, step: 0.01, optional: true, ...txt('wf.hiss04', 'wf.hiss04.hint') },
     { path: 'H98', label: 'H₉₈ factor', min: 0.3, max: 2, step: 0.01, hint: 'IPB98(y,2) multiplier; 1 = standard H-mode' },
     { path: 'H89', label: 'H₈₉ (L-mode) factor', min: 0.3, max: 3, step: 0.01 },
     { path: 'scaling', label: 'Confinement scaling', type: 'select', options: [{ value: 'IPB98y2', label: 'IPB98(y,2)' }, { value: 'ST_Valovic', label: 'ST (Valovic)' }] },
@@ -178,6 +194,8 @@ const ICF_STEPS: StepDef[] = [
     { path: 'implosionVelocity_kms', label: 'Implosion velocity', unit: 'km/s', min: 100, max: 600, step: 5, hint: 'Ignition ≳ 350–400 km/s' },
     { path: 'hohlraumEff', label: 'Hohlraum efficiency (indirect)', min: 0.02, max: 0.3, step: 0.005 },
     { path: 'absorption', label: 'Absorption (direct)', min: 0.2, max: 1, step: 0.01 },
+    { path: 'driverEff', min: 0.01, max: 0.5, step: 0.005, def: 0.1, ...txt('wf.driverEff', 'wf.driverEff.hint') },
+    { path: 'thermalEff', min: 0.2, max: 0.6, step: 0.01, def: 0.4, ...txt('wf.thermalEff', 'wf.thermalEff.hint') },
   ] },
   { id: 'heating', title: 'Heating', fields: [], note: 'In ICF, the driver supplies heating: the hotspot is heated by PdV work from the shell\'s kinetic energy; alpha deposition initiates the burn wave.' },
 ];
@@ -238,7 +256,8 @@ const MIRROR_STEPS: StepDef[] = [
     { path: 'T_keV', label: 'T', unit: 'keV', min: 0.1, max: 100, step: 0.1 }] },
   { id: 'driver', title: 'Field', fields: [
     { path: 'B_center_T', label: 'Central B', unit: 'T', min: 0.1, max: 20, step: 0.1 },
-    { path: 'tandem', label: 'Tandem (end plugs)', type: 'bool' }] },
+    { path: 'tandem', label: 'Tandem (end plugs)', type: 'bool' },
+    { path: 'plugPotential', min: 0, max: 6, step: 0.1, def: 1, ...txt('wf.plugPotential', 'wf.plugPotential.hint') }] },
   { id: 'heating', title: 'Heating', fields: [{ path: 'P_aux_MW', label: 'P_aux', unit: 'MW', min: 0, max: 500, step: 0.5 }] },
 ];
 
@@ -271,8 +290,14 @@ export function stepsFor(method: Method): StepDef[] {
 export function fieldVisible(method: Method, path: string, cfg?: ReactorConfig): boolean {
   if (path === 'fidelity') return method === 'tokamak' || method === 'spherical_tokamak';
   if (path.startsWith('profiles.')) return (method === 'tokamak' || method === 'spherical_tokamak') && (cfg as { fidelity?: string } | undefined)?.fidelity === '1.5D';
-  if (path.startsWith('stellarator.')) return method === 'stellarator';
+  if (path.startsWith('stellarator.')) {
+    // an explicit H_ISS04 replaces the old f_ren · H98 product: those two are then not used
+    if (path === 'stellarator.f_ren' && (cfg as { stellarator?: { H_ISS04?: number } } | undefined)?.stellarator?.H_ISS04 !== undefined) return false;
+    return method === 'stellarator';
+  }
+  if (path === 'plugPotential') return method === 'mirror' && (cfg === undefined || !!(cfg as { tandem?: boolean }).tandem);
   if (path === 'Ip_MA' || path === 'scaling') return method !== 'stellarator';
+  if (path === 'H98' && method === 'stellarator') return (cfg as { stellarator?: { H_ISS04?: number } } | undefined)?.stellarator?.H_ISS04 === undefined;
   if (path.startsWith('limits.') || path.startsWith('events.')) return method !== 'stellarator';
   if (path === 'hohlraumEff') return method === 'icf_indirect';
   if (path === 'absorption') return method === 'icf_direct';
@@ -304,6 +329,38 @@ export function missingRequired(cfg: ReactorConfig): { step: StepDef; field: Fie
   }
   return out;
 }
+
+/**
+ * A combination of individually legal values that cannot describe a plasma. RUN stays blocked while there is one
+ * (like an empty required field); `key` and `params` give the message, `step` the wizard step that holds the values.
+ */
+export interface CrossIssue { step: StepId; paths: string[]; key: MessageKey; params: Record<string, string | number> }
+
+/** the 1.5D Grad–Shafranov box reaches R ± 1.06 a (box margin of equilibrium/gs.ts): R must be larger than 1.06 a */
+const GS_BOX = 1.06;
+
+const isMagneticTorus = (m: Method) => m === 'tokamak' || m === 'spherical_tokamak' || m === 'stellarator';
+
+/**
+ * Cross-field checks of a configuration (the field ranges cannot see them): a torus needs a < R (aspect ratio above 1),
+ * and the 1.5D model, which solves the Grad–Shafranov equilibrium in a box around the plasma, needs R > 1.06 a. Without
+ * the check the 1.5D model refuses the shot with its typed EquilibriumInitFailure; the wizard says why before the run.
+ * Empty or non-finite values are not compared (missingRequired reports them).
+ */
+export function crossFieldIssues(cfg: ReactorConfig): CrossIssue[] {
+  const out: CrossIssue[] = [];
+  if (!isMagneticTorus(cfg.method)) return out;
+  const { R, a } = (cfg as { geometry: { R?: number; a?: number } }).geometry ?? {};
+  if (typeof R !== 'number' || typeof a !== 'number' || !Number.isFinite(R) || !Number.isFinite(a) || R <= 0 || a <= 0) return out;
+  const paths = ['geometry.R', 'geometry.a'];
+  if (a >= R) out.push({ step: 'geometry', paths, key: 'wiz.cross.aR', params: { a: fmtCross(a), R: fmtCross(R) } });
+  else if ((cfg as { fidelity?: string }).fidelity === '1.5D' && fieldVisible(cfg.method, 'profiles.nRho', cfg) && R <= GS_BOX * a) {
+    out.push({ step: 'geometry', paths, key: 'wiz.cross.aR15', params: { a: fmtCross(a), R: fmtCross(R), ratio: fmtCross(R / a) } });
+  }
+  return out;
+}
+
+const fmtCross = (x: number) => +x.toPrecision(4);
 
 export function getPath(obj: unknown, path: string): unknown {
   return path.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), obj);

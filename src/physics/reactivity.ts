@@ -267,7 +267,7 @@ export interface FuelChannel {
    * Charged products and their birth energies (Σ E = Echarged). The Stix critical energy of the fast-product pool,
    * the ion-heating fraction G and the slowing-down time are computed per product and power-weighted.
    * The energies follow from two-body kinematics (E_1 = Q m_2/(m_1+m_2)); the 3 α of p-¹¹B share equally
-   * (APPROXIMATION: the real α spectrum is broad). The D-T α has the literature's 3.5 MeV (Echarged).
+   * (APPROXIMATION: the real α spectrum is broad). The D-T α has 3.561 MeV, see DT_ALPHA_MEV.
    */
   products: ChargedProduct[];
   /**
@@ -276,6 +276,16 @@ export interface FuelChannel {
    */
   ash: number;
 }
+
+/**
+ * D + T → ⁴He + n, reactants at rest: Q = 17.589 MeV (AME2020 atomic masses, Huang et al. and Wang et al., Chin. Phys. C 45
+ * (2021) 030002 and 030003) shared by exact relativistic two-body kinematics, T_n = Q (Q + 2 m_α)/(2 (m_n + m_α + Q)):
+ * 14.028 MeV for the neutron and 3.561 MeV for the ⁴He nucleus (T_α = Q − T_n; nuclear masses = atomic masses minus the
+ * electrons). The round 3.5 + 14.1 MeV of the textbooks (sum 17.6 MeV) and the 3.52 + 14.07 MeV of the integer mass-number
+ * rule Q/5 : 4Q/5 are 1.7 % and 1.2 % below the alpha energy: v3.0.0 used 3.5 + 14.1, so its P_charged + P_neutron
+ * was 1.000625 P_fusion and its alpha heating 1.7 % low. reference/reactivity.test.ts recomputes the split from the masses.
+ */
+const DT_ALPHA_MEV = 3.561, DT_NEUTRON_MEV = 14.028;
 
 // charged products (nuclear masses, amu — CODATA 2018)
 const ALPHA = (E_MeV: number): ChargedProduct => ({ name: 'He4', A: 4.001506, Z: 2, E_MeV });
@@ -294,7 +304,7 @@ const DD_NHE3: FuelChannel = { name: 'D+D→n+He3', Etot_MeV: 3.27, Echarged_MeV
  * branches (D-T, D-³He) is not tracked — the products are assumed to be pumped out without returning as fuel.
  */
 export const FUEL_CHANNELS: Record<FuelType, FuelChannel[]> = {
-  DT: [{ name: 'D+T', Etot_MeV: 17.589, Echarged_MeV: 3.5, Eneutron_MeV: 14.1, sameSpecies: false, sigmav: sigmav.DT, products: [ALPHA(3.5)], ash: 1 }],
+  DT: [{ name: 'D+T', Etot_MeV: 17.589, Echarged_MeV: DT_ALPHA_MEV, Eneutron_MeV: DT_NEUTRON_MEV, sameSpecies: false, sigmav: sigmav.DT, products: [ALPHA(DT_ALPHA_MEV)], ash: 1 }],
   DD: [DD_PT, DD_NHE3],
   DHe3: [
     { name: 'D+He3', Etot_MeV: 18.35, Echarged_MeV: 18.35, Eneutron_MeV: 0, sameSpecies: false, sigmav: sigmav.DHe3, products: [ALPHA(3.67), PROTON(14.68)], ash: 1 },

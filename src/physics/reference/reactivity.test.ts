@@ -294,22 +294,25 @@ describe('reaction energy bookkeeping', () => {
     expect(rel(ch.Echarged_MeV, k.charged)).toBeLessThan(1e-3);
   });
 
-  // BUG(ws2a): FUEL_CHANNELS D-T has E_charged = 3.5 MeV (1.7 % below the 3.561 MeV kinematic value)
-  // and E_neutron = 14.1 MeV (0.5 % above 14.028 MeV), so the alpha heating per reaction is 1.7 % low.
+  // v3.0.0 had E_charged = 3.5 MeV (1.7 % below the 3.561 MeV kinematic value) and E_neutron = 14.1 MeV
+  // (0.5 % above 14.028 MeV), so the alpha heating per reaction was 1.7 % low (fixed in v4.0, ws2c).
   // A 0.1 % tolerance separates the exact split from the non-relativistic one (α 0.56 % off) and
   // from 3.52 + 14.07 (α 1.1 % off). Consistent values: 3.561 + 14.028 = 17.589 MeV = E_tot.
-  it.fails('D-T: neutron and alpha energies follow two-body kinematics within 0.1 % (BUG(ws2a): 3.5 + 14.1 MeV)', () => {
+  it('D-T: neutron and alpha energies follow two-body kinematics within 0.1 % (3.561 + 14.028 MeV)', () => {
     const ch = channel('D+T'), k = splitAtRest(Q['D+T'], nuclear(M.He4, 2));
     expect(rel(ch.Eneutron_MeV, k.neutron), 'E_neutron').toBeLessThan(1e-3);
     expect(rel(ch.Echarged_MeV, k.charged), 'E_charged').toBeLessThan(1e-3);
   });
 
-  // BUG(ws2a): D-T lists E_tot = 17.589 MeV but E_charged + E_neutron = 3.5 + 14.1 = 17.6 MeV, so the
-  // models create P_charged + P_neutron = 1.000625 P_fus (0.3 MW extra at ITER's 500 MW); constants.ts
-  // FUSION.DT has the same pair. The at-rest kinematic split of 17.589 MeV is 3.561 + 14.028 MeV
-  // (test above), which also closes this sum.
-  it.fails('E_charged + E_neutron = E_tot for every channel (BUG(ws2a): D-T sums to 17.6 MeV)', () => {
+  // v3.0.0 listed E_tot = 17.589 MeV but E_charged + E_neutron = 3.5 + 14.1 = 17.6 MeV, so the models created
+  // P_charged + P_neutron = 1.000625 P_fus (0.3 MW extra at ITER's 500 MW). The at-rest kinematic split of
+  // 17.589 MeV is 3.561 + 14.028 MeV (test above), which also closes this sum (fixed in v4.0, ws2c).
+  it('E_charged + E_neutron = E_tot for every channel (D-T: 3.561 + 14.028 = 17.589 MeV)', () => {
     for (const ch of all) expect(ch.Echarged_MeV + ch.Eneutron_MeV, ch.name).toBeCloseTo(ch.Etot_MeV, 9);
+  });
+
+  it('the birth energies of the charged products of every channel add up to E_charged (the fast-ion pool books them)', () => {
+    for (const ch of all) expect(ch.products.reduce((t, p) => t + p.E_MeV, 0), ch.name).toBeCloseTo(ch.Echarged_MeV, 9);
   });
 
   it('fuel species charges and masses are the nuclear ones', () => {

@@ -159,16 +159,16 @@ export function widen(tolerance: PolicyTolerance, [lo, hi]: readonly [number, nu
 }
 
 /**
- * P_alpha / P_fusion of a D-T tokamak preset. The alpha particles carry 3.52 MeV of the 17.59 MeV released by
- * D + T → ⁴He + n, a share of 0.200, and P_alpha is the heating by the charged products alone (the injected
- * beams are P_beam_heat, a separate diagnostic), so the share cannot exceed it. v3 booked the beam heating as
- * P_alpha and read 0.24 for ITER.
+ * P_alpha / P_fusion of a D-T tokamak preset. The alpha particles carry 3.561 MeV of the 17.589 MeV released by
+ * D + T → ⁴He + n (exact two-body kinematics of the AME2020 masses, reactivity.ts), a share of 0.2025, and P_alpha is
+ * the heating by the charged products alone (the injected beams are P_beam_heat, a separate diagnostic), so the share
+ * cannot exceed it. v3 booked the beam heating as P_alpha and read 0.24 for ITER.
  */
 const ALPHA_SHARE = (preset: string): ReferenceCheck => ({
   id: `${preset}.alphaShare`, preset, metric: 'P_alpha / P_fusion (flat-top)', path: 'derived.alphaShare', value: 0.2, unit: '',
-  ref: 'ITER Physics Basis ch. 1, 1999', source: SRC.ipb1999ch1, doi: DOI.ipb1999ch1, accept: [0, 0.21], tolerance: 'stated', kind: 'sanity',
-  basis: 'a bound from the energetics of D + T → ⁴He (3.52 MeV) + n (14.07 MeV): the alphas carry 3.52/17.59 = 0.200 of the fusion power ' +
-    'and P_alpha, the deposited heating of the charged products alone, cannot exceed it; +5 % of slack because P_alpha = W_α/τ lags a ' +
+  ref: 'ITER Physics Basis ch. 1, 1999', source: SRC.ipb1999ch1, doi: DOI.ipb1999ch1, accept: [0, 0.213], tolerance: 'stated', kind: 'sanity',
+  basis: 'a bound from the energetics of D + T → ⁴He (3.561 MeV) + n (14.028 MeV): the alphas carry 3.561/17.589 = 0.2025 of the fusion power ' +
+    'and P_alpha, the deposited heating of the charged products alone, cannot exceed it; +5 % of slack (0.2126, rounded up to 0.213) because P_alpha = W_α/τ lags a ' +
     'P_fus that is not exactly steady on the flat top. Guards the v3 bookkeeping that counted the NBI heating in P_alpha (0.24 for ITER)',
 });
 

@@ -53,9 +53,11 @@ describe('alpha share P_alpha / P_fus of the D-T tokamak presets', () => {
       expect(evaluateCheck(c, 106.1 / 538.3).status, p).toBe('pass');
       expect(evaluateCheck(c, 172.9 / 715.5).status, p).toBe('fail');
     }
-    // the energy released by D + T → ⁴He + n: 3.52 of 17.59 MeV, and 5 % of slack
-    expect(3.52 / 17.59).toBeCloseTo(0.2, 3);
-    expect(check('ITER.alphaShare').accept).toEqual([0, 0.21]);
+    // the energy released by D + T → ⁴He + n: 3.561 of 17.589 MeV (exact two-body kinematics), and 5 % of slack
+    expect(3.561 / 17.589).toBeCloseTo(0.2025, 4);
+    expect(check('ITER.alphaShare').accept).toEqual([0, 0.213]);
+    expect(0.2025 * 1.05).toBeLessThan(0.213);
+    expect(0.2025 * 1.05).toBeGreaterThan(0.2125);
   });
 });
 

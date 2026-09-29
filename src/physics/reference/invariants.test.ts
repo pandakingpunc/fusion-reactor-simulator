@@ -216,8 +216,8 @@ describe.each(MAGNETIC)('magnetic 0D: %s (t_end = %s s)', (id, tEnd) => {
         if (!(d[k] >= 0)) expect.fail(`${id} t=${f.t}: ${k} = ${d[k]} < 0`);
       }
       if (!(fastPoolsMJ(d) >= 0)) expect.fail(`${id} t=${f.t}: fast pools ${fastPoolsMJ(d)} < 0`);
-      // 1e-3 admits the D-T 3.5 + 14.1 ≠ 17.589 MeV split (BUG(ws2a) in reactivity.test.ts, 6e-4)
-      if (d.P_fus > 0 && Math.abs((d.P_charged + d.P_neutron) / d.P_fus - 1) > 1e-3) expect.fail(`${id} t=${f.t}: P_charged + P_neutron = ${d.P_charged + d.P_neutron} vs P_fus ${d.P_fus}`);
+      // v3.0.0 booked the D-T split as 3.5 + 14.1 ≠ 17.589 MeV (P_charged + P_neutron = 1.000625 P_fus); since v4.0 it closes to rounding
+      if (d.P_fus > 0 && Math.abs((d.P_charged + d.P_neutron) / d.P_fus - 1) > 1e-9) expect.fail(`${id} t=${f.t}: P_charged + P_neutron = ${d.P_charged + d.P_neutron} vs P_fus ${d.P_fus}`);
       if (d.P_bt > d.P_fus * (1 + 1e-12)) expect.fail(`${id} t=${f.t}: beam-target ${d.P_bt} > P_fus ${d.P_fus}`);
     }
   });

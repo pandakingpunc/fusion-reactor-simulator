@@ -77,7 +77,7 @@ export function normalisedGradient(gradP: number, Ip: number, perimeter: number)
   return (2 * gradP * perimeter * perimeter) / (MU0 * Ip * Ip);
 }
 
-/** C: the maximum normalised pedestal gradient at the ELM onset of the DIII-D fit at its ITER-shaped reference point, 6.22 */
+/** C: the maximum normalised pedestal gradient at the ELM onset of the DIII-D fit at its ITER-shaped reference point, 6.21 */
 export const PB_GRADIENT = normalisedGradient(
   DIIID_PB_FIT.coefficient * Math.pow(DIIID_PB_FIT.IpBT, DIIID_PB_FIT.exponent), DIIID_PB_FIT.Ip, DIIID_PB_FIT.perimeterPerCircumference * 2 * Math.PI * DIIID_PB_FIT.a,
 );

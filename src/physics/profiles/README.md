@@ -28,6 +28,7 @@ current equilibrium and transport geometry, work arrays, plasma and controller s
 | `solver/` | `pipeline.ts` (evaluation order), `coupledStep.ts` (the TR-BDF2 step: the stage solver, error control, event localisation, failures), `newtonStage.ts` (Newton–Raphson on a stage; the block-tridiagonal LU, the coloured Jacobian and the damped Newton iteration are `numerics/blockTridiagN.ts` and `numerics/newton.ts`), `trbdf2.ts` (method constants, error estimate, controller), `localise.ts` (dense output and event crossing), `acceptStep.ts` (update after an accepted step) |
 | `coupling/equilibrium.ts` | Grad–Shafranov coupling: initial solve (guarded, `eqguard.ts`), update policy, the update as a self-consistent solve (`coupling/outer.ts`: outer iteration of the tables on the equilibrium's own surfaces; `coupling/tables.ts`: node and table helpers); a geometry that replaces another one is built on the radial grid of the one it replaces |
 | `events/` | `EventModel` plug-ins: `LH`, `ELM`, `sawtooth`, `NTM`, `burn`, `warnings`, `disruption`; `triggers.ts` (the margins of the ELM and sawtooth thresholds the stepper localises) |
+| `pedestal/` | opt-in EPED1-type pedestal (`pedestalModel: 'eped1'`) and Loarte ELM size (`elmLoss: 'loarte'`): `eped1.ts` (KBM width and peeling–ballooning height, pure functions), `PedestalModel.ts` (the adaptive barrier, the pressure limit that triggers the ELM, the pedestal at the last ELM onset), `loarte.ts` (ν*_ped and the ΔW_ELM/W_ped fit), `elmSize.ts` (the crash that carries that energy) |
 | `diagnostics.ts` | time traces (`PROFILE_DIAGS` are the ones the UI shows), profiles, power totals |
 | `checkpoint.ts` | `Checkpointable` and the checkpoint store (rewind) |
 
@@ -354,6 +355,45 @@ on a shot they can both run (`lossPower.test.ts`, `ignition.test.ts`, `fastIons.
   content that jumped to W_ss at once was 4.6 times the injected energy in a JET15 shot with a 500 keV beam and ended
   it in a spurious Troyon-limit disruption.
 
+## Pedestal and ELM size (opt-in)
+
+`ProfileSettings.pedestalModel = 'fixed'` (the default) is the pedestal of the settings: width `pedestalWidth` (0.06), barrier depth
+`etbFactor` (0.08), an ELM when α_ped/α_crit > 1 (`alphaCritFactor`) and a crash of `elmFraction` (0.35) × U(0.8, 1.2) of the pedestal region. `'eped1'`
+replaces all four with an EPED1-type pedestal (`pedestal/`; formulae, sources and what is anchored to what are in the headers of `eped1.ts`,
+`PedestalModel.ts`, `loarte.ts` and `elmSize.ts`); `elmLoss = 'loarte'` replaces the crash size alone. The defaults change nothing (golden unchanged).
+
+- **Width and height.** The KBM width Δψ = 0.076 β_p,ped^{1/2} (Snyder et al. 2009; Groebner et al., GA-A26243) and a peeling–ballooning height that is
+  anchored to the DIII-D fit (∇p)_max = 103 (I_p B_T)^0.94 kPa/ψ_N (Groebner et al.) meet at one pedestal (Δψ, β_p,ped) at every evaluation, at the pedestal density of
+  the state (β_p,ped ∝ (n_ped/n_G)^0.34, the exponent of the EPED prediction for ITER, Snyder 2015). Δψ is mapped to ρ̂ on the flux-surface table of the
+  equilibrium: the pedestal top is ρ_top = 1 − Δρ (the `Tped` of the diagnostics), the limit is p_lim = β_p,ped B̄_p²/2μ0 with B̄_p = μ0 I_p/L. The radial grid is packed
+  for Δρ = 0.045 (`PEDESTAL_GRID_WIDTH`), since the packing is built before the first equilibrium exists.
+- **Imposition.** An adaptive transport barrier, not a source: χ inside ρ_top is multiplied by `etbFactor` · A · k(r), r = p_top/p_lim, k = min(r⁶, 30) above the limit,
+  and A ∈ [1/16, 1] an integrator that deepens the barrier while the pedestal is below its limit (H-mode only; τ_A = τ_E/4). A heat sink in the pedestal cells would have to
+  be booked as a loss channel (the TR-BDF2 energy identity), a change of χ carries its own accounting. The ELM fires when r > 1 after its refractory time τ_E/8 (the α test
+  is not applied). Diagnostics `ped_*` (width, β_p,ped, p, p_lim, r, A k, ν*_ped, n_e, T_i, T_p = p/2 n e) and, for the pedestal at the onset of the last ELM (what EPED predicts),
+  `ped_Te_elm`, `ped_p_elm`, `ped_Tp_elm`.
+- **ELM size.** `'loarte'`: ΔW_ELM = f(ν*_ped) W_ped U(0.8, 1.2), W_ped = 3/2 n_e,ped (T_e,ped + T_i,ped) V, f = 0.0642 ν*^−0.388 (a fit to Fig. 11 of Loarte et al. 2003; 0.189 at the
+  paper's ITER ν*_ped = 0.062 against its 22/112 = 0.196). ITER-size ELMs (20 MJ and more) do not fit into the standard crash region, so the shape is depth up to 0.5, then the
+  width of the region up to 0.25 (Loarte: ELMs affect the outer 10 to 30 % of the radius), then depth up to 0.95.
+
+Against the published numbers (`pedestal/pedestal.test.ts`): ITER at 15 MA, Δψ = 0.036 and 93 kPa at n_ped/n_G = 0.5 (Snyder 2009: 92 kPa); at the EPED baseline density
+7·10¹⁹ m⁻³, 98 kPa, β_N,ped = 0.62 (published 0.6 to 0.7), T_ped = p/2 n e = 4.4 keV (4 to 5 keV); over the published H-mode branch of Snyder 2015 (Z_eff = 1.7) the pressure is 11 to 18 % higher. ITER15 with both
+options (`ITER15-EPED` golden case; 34 to 50 s, 56 ELMs): T_ped (flat-top mean of T_e at the top) 4.96 keV, 0.55 % from 100 radial cells; the pedestal at the onset of the ELM is at the limit (87 kPa
+against 84), 6.9 keV in T_e at n_ped = 0.45·10²⁰ m⁻³, where the published EPED curve gives 72 kPa at the shot's Z_eff of 1.46 (+21 %). With the default-size crash and `'eped1'` alone the mean is 6.2 keV: the mean over an ELM cycle depends on how far each ELM
+collapses the pedestal, the pedestal at the onset does not.
+
+Not modelled or open. The height is a similarity closure (the shape and q95 of the DIII-D ITER-demonstration discharges; the P–B dependence on global β_N, shape and ν* beyond the density is
+not kept). n_ped comes from the density model, which puts it low (0.45·10²⁰ m⁻³ in ITER15, 0.7·10²⁰ assumed by EPED), so T_e,ped is high for the pressure. The ELM frequency stays the τ_E/8 limit of `ElmEvents`: with
+Loarte-size ELMs (27 MJ) the ELMs carry about half of P_loss in ITER15 (16 % with the default size), the published expectation for ITER is about 1 to 2 Hz. An NTM onset (ITER15, 65 to 70 s, as with the fixed pedestal) cuts P_fus
+by a third to 40 %.
+
+**Review of the ELM trigger of the fixed pedestal (WS6a).** α_ped = max over the faces from ρ_ped − 0.02 of 2 μ0 R q² |dp/dr|/B0², against α_crit = 1.1 (1 + κ²(1 + 5δ²))/2 (the constant and the shape factor
+have no citation in the code and none was found in this review). Findings, none of which changes the default path: (1) on the packed grid the maximum sits at the last face, the separatrix (ITER15, 80 s: 5.01, the
+last interior face 4.80, α_crit 4.69), because α rises through the barrier with q² at a nearly constant gradient. Dropping that face moves the ELM count by at most one and T_ped by at most 2 % (ITER15, JET15, DIII-D, SPARC15), so it is not a defect. (2) SPARC15
+never triggers: over its 10 s α_ped/α_crit stays between 0.02 and 0.97, no ELM fires, and the flat-top mean 0.92 is a steady level just under the limit, set by the heat flux through a barrier of fixed depth (the KBM clamp acts only
+above 1), not a cycle mean; SPARC15-pB11 sits at 0.31, also without ELMs. JET15, DIII-D15 and MASTU15 have flat-top means of 1.08, 1.17 and 1.40 (MASTU15 up to 5.7): the refractory time τ_E/8, not the trigger, sets their ELM rate.
+(3) The fixed pedestal is therefore transport-limited where the power is low and recovery-limited where it is high; the `'eped1'` barrier adapts to the limit in both. No change to the default trigger was made.
+
 ## Plug-in interfaces
 
 `new ProfileModel(cfg, { transport?, sources?, events? })` replaces the transport model or the
@@ -507,6 +547,7 @@ model take part as soon as they implement the hooks; other parts are listed in
 | `../numerics/blockTridiagN.test.ts`, `../numerics/newton.test.ts` | the block-tridiagonal solver for block sizes 1 to 5 against dense LU (pivoting inside blocks, several right-hand sides, singular blocks), the coloured Jacobian against the column-by-column one and a linear map, the damped Newton iteration (quadratic convergence, the chord variant, the line search, the bounds, a Jacobian passed in, the failure reasons) |
 | `solver/newtonStage.test.ts` | the residual of a stage is a function of the state alone, its coloured Jacobian is the Jacobian, its root is the Picard fixed point, quadratic convergence on a smooth stage, the choice of the solver, the fallback (a shot with every Newton solve failing is the PC-Picard shot bit for bit), chunk invariance and exact rewind of a Newton shot |
 | `settings.test.ts` | the check of `rtol`, `atol` and `dtMax` (out-of-domain values, the shortest step) and shots that stall without it (a step limit of 0, −1 or NaN, a NaN or zero tolerance): the replacement is a warning at t = 0 and the shot is the default one bit for bit, stepped with a bound on the step count |
+| `pedestal/pedestal.test.ts` | the KBM width and the P–B height against the published EPED prediction for ITER (Snyder 2009, 2010, 2015), the Loarte fit against its ITER extrapolation, the ELM crash shape (depth, then width, then depth; met exactly), the barrier integrator, checkpointing, settings checks, and shots: ELMs at the limit, bitwise rewind and chunking, ITER15 T_ped against the published 4 to 5 keV and 50 against 100 cells |
 | `initialCurrent.test.ts` | the current of the initial state: every cell of the t = 0 profile positive for the presets with both grids, the enclosed current of the last interior face below I_p, the scale of the equilibrium and its guards |
 | `currentDiffusion.test.ts` | the skin-time response of a uniform cylinder to a step of I_p against the Bessel series and its second order in Δt, the Φ̇_b term (a frozen flux is carried with the moving grid), the Hinton–Hazeltine form with a non-constant F, the plasma-current programme (waveform, a shot whose boundary current follows it) and the control `Ip_MA` (a change at a step boundary, the log replay, the rewind, no control when a programme drives the current) |
 | `solver/coupledStep.test.ts` | the TR-BDF2 step on whole shots: error control against a tight reference, `dtMax`, rejections and their counters, the energy identity, ELM counts against the step limit, the checkpoint of the counters |

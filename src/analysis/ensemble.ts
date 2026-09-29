@@ -110,6 +110,8 @@ export interface EnsemblePlan {
   spec: EnsembleSpec;
   /** number of parameters */
   d: number;
+  /** parameter paths, in column order */
+  names: string[];
   /** number of runs */
   runs: number;
   /** parameter values, runs x d, row-major */
@@ -160,7 +162,7 @@ export function planEnsemble(spec: EnsembleSpec): EnsemblePlan {
     return c;
   };
   return {
-    spec, d, runs, values, saltelli: analysis === 'sensitivity', notes, config,
+    spec, d, names: priors.params.map((p) => p.path), runs, values, saltelli: analysis === 'sensitivity', notes, config,
     tasks: () => Array.from({ length: runs }, (_, row) => ({ id: `r${row}`, cfg: config(row) })),
     block: (row) => (analysis === 'sensitivity' ? (Math.floor(row / n) === 0 ? 'A' : Math.floor(row / n) === 1 ? 'B' : `AB${Math.floor(row / n) - 1}`) : 'MC'),
   };
@@ -208,7 +210,7 @@ export interface EnsembleResult {
   caveat: string;
   inputHash: string;
   system: { preset?: string; method: string; fidelity: string; t_end_s: number; runSeed: RunSeedMode };
-  design: { analysis: Analysis; sampler: SamplerKind; seed: number; n: number; runs: number; notes: string[] };
+  design: { analysis: Analysis; sampler: SamplerKind; seed: number; n: number; runs: number; confidence: number; bootstrap: number; notes: string[] };
   parameters: ReturnType<typeof describeParam>[];
   /** over the propagation sample: all runs of a propagate design, the A and B blocks of a Saltelli design */
   runs: { total: number; valid: number; failed: number; completed: number; disrupted: number; other: number; endReasons: Record<string, number>; failures: { run: number; error: string }[] };
@@ -316,7 +318,7 @@ export function summarizeEnsemble(plan: EnsemblePlan, outcomes: readonly SimOutc
     schema: 1, tool: 'uq', caveat: CAVEAT,
     inputHash: ensembleHash(spec),
     system: { ...(spec.preset ? { preset: spec.preset } : {}), method: base.method, fidelity: base.fidelity ?? '0D', t_end_s: spec.tEnd ?? base.t_end ?? NaN, runSeed: spec.runSeed },
-    design: { analysis: spec.analysis, sampler: spec.sampler, seed: spec.seed, n: spec.n, runs, notes: plan.notes },
+    design: { analysis: spec.analysis, sampler: spec.sampler, seed: spec.seed, n: spec.n, runs, confidence: conf, bootstrap: spec.bootstrap, notes: plan.notes },
     parameters: spec.priors.params.map((p) => describeParam(spec.base, p)),
     runs: {
       total, valid: valid.length, failed, completed: completed.length, disrupted: disrupted.length,
@@ -367,9 +369,9 @@ const csvCell = (s: string): string => (/[",\r\n]/.test(s) ? `"${s.replace(/"/g,
 const csvNum = (v: number): string => (Number.isFinite(v) ? String(v) : '');
 
 /** One row per run: run index, block, the parameter values, the metrics and the end reason (or the error of a failed run). */
-export function toCsv(plan: EnsemblePlan, outcomes: readonly SimOutcome[]): string {
-  const { d, spec } = plan;
-  const head = ['run', 'block', ...spec.priors.params.map((p) => p.path), ...METRIC_KEYS, 'end_reason'];
+export function toCsv(plan: Pick<EnsemblePlan, 'd' | 'names' | 'values' | 'block'>, outcomes: readonly SimOutcome[]): string {
+  const { d } = plan;
+  const head = ['run', 'block', ...plan.names, ...METRIC_KEYS, 'end_reason'];
   const lines = [head.map(csvCell).join(',')];
   outcomes.forEach((o, row) => {
     const cells = [String(row), plan.block(row)];

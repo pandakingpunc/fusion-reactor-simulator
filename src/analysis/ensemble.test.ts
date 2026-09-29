@@ -210,7 +210,7 @@ describe('summary of the outcomes', () => {
     expect(res.caveat).toMatch(/^EDUCATIONAL/);
     expect(res.inputHash).toBe(ensembleHash(plan.spec));
     expect(res.system).toEqual({ preset: 'JET', method: 'tokamak', fidelity: '0D', t_end_s: 1, runSeed: 'fixed' });
-    expect(res.design).toMatchObject({ analysis: 'propagate', sampler: 'lhs', seed: 3, n: 40, runs: 40 });
+    expect(res.design).toMatchObject({ analysis: 'propagate', sampler: 'lhs', seed: 3, n: 40, runs: 40, confidence: 0.95, bootstrap: 50 });
     expect(res.parameters.map((p) => p.path)).toEqual(['H98', 'n_target', 'impurity.concentration']);
     expect(res.parameters[0].nominal).toBe(JET.H98);
     expect(res.sensitivity).toBeUndefined();

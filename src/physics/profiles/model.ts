@@ -303,6 +303,12 @@ export class ProfileModel implements SimModel {
         'Forced transport steps': this.forcedSteps,
         'Transport steps (accepted / rejected by the error test)': `${this.stepper.stats.accepted} / ${this.stepper.stats.rejected}`,
         ...(this.stepper.stats.newtonIters > 0 ? { 'Newton iterations / Jacobians / Picard fallbacks': `${this.stepper.stats.newtonIters} / ${this.stepper.stats.jacobians} / ${this.stepper.stats.fallbacks}` } : {}),
+        // a predictive transport model leaves confinement to the physics: what it arrives at, against the H-mode scalings at the same loss power
+        ...(this.physics.transport.predictive ? {
+          'Emergent τ_E (flat-top mean, s)': +avg('tauE').toFixed(2),
+          'Emergent H98(y,2) (flat-top mean)': +avg('H98y2').toFixed(2),
+          'Emergent H(ITPA20) (flat-top mean)': +avg('HITPA20').toFixed(2),
+        } : {}),
       },
       extraExtras: {
         'T_e axis (final, keV)': +(d.Te0 ?? 0).toFixed(2), 'T_ped (final, keV)': +(d.Tped ?? 0).toFixed(2), 'T_sep (final, keV)': +(d.Tsep ?? 0).toFixed(3),

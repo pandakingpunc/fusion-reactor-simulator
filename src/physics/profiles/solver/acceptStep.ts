@@ -14,7 +14,7 @@ import type { ProfileContext } from '../context';
 import { evolveInventories } from '../composition';
 import { advanceFastIons } from '../fastIons';
 import { updatePsol } from '../boundary/sol';
-import { confinementTimes, lossPower, updateTransportMultiplier } from '../control/confinement';
+import { confinementTimes, emergentH, lossPower, updateTransportMultiplier } from '../control/confinement';
 import { FuelingControl } from '../control/fueling';
 import { powerTotals, writeDiagnostics } from '../diagnostics';
 import { evolveIslands } from '../events/ntm';
@@ -50,6 +50,7 @@ export function acceptStep(ctx: ProfileContext, fueling: FuelingControl, physics
   const nbar = ctx.lineAvg(v.ne);
   const P_loss = lossPower(ctx, P.P_heat, P.P_rad_core, ctx.dWdtS);
   const { tauScal, tauE, tauT } = confinementTimes(ctx, predictive, v, W, P_loss, nbar);
+  const H = predictive ? emergentH(ctx, s.Ip / 1e6, nbar, P_loss, tauE) : undefined;
   updateTransportMultiplier(ctx, predictive, dt, o, v, W, P_loss, tauScal);
   fueling.updateSeparatrixGain(ctx, t, dt, nbar, tauT);
   // He ash, impurity, fuel mix
@@ -65,5 +66,5 @@ export function acceptStep(ctx: ProfileContext, fueling: FuelingControl, physics
   evolveIslands(ctx, dt, o, v);
   // state of plug-in modules
   physics.accepted(t, dt, o, v);
-  writeDiagnostics(ctx, v, { ...P, W, dWdt, W_alpha: ctx.WfAlpha, W_beam: ctx.WfBeam, tauE, tauScal, P_loss, nbar, P_bound: ctx.Pbound });
+  writeDiagnostics(ctx, v, { ...P, W, dWdt, W_alpha: ctx.WfAlpha, W_beam: ctx.WfBeam, tauE, tauScal, P_loss, nbar, P_bound: ctx.Pbound, H });
 }

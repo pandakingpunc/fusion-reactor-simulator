@@ -6,8 +6,8 @@
  *   scalars      every finite number of the ShotReport, nested fields flattened to dotted paths
  *                (array items as path[i]; booleans as 0/1) plus warnings.length
  *   labels       method, time unit and termination reason
- *   flatTop      frame-weighted flat-top averages of every diagnostic (src/physics/analysis/flatTop;
- *                the published definition, which skips missing and non-finite samples)
+ *   flatTop      time-weighted flat-top averages of every diagnostic (src/physics/analysis/flatTop, the
+ *                published definition since v4.0; it skips missing and non-finite samples)
  *   history      for every diagnostic key of any frame, over the whole run: min, max and frame mean
  *                of the finite samples, and how many frames lack the key or hold NaN/±Infinity —
  *                so a NaN, a dropped key or a changed value anywhere in the run is caught
@@ -53,7 +53,7 @@ export interface GoldenCase {
    * Settings changed from the preset, for combinations no preset uses (the wizard offers every
    * fuel for every method and 1.5D for both tokamak methods). Plain data: cases go to workers.
    */
-  overrides?: { fuel?: FuelType; fidelity?: Fidelity };
+  overrides?: { fuel?: FuelType; fidelity?: Fidelity; n_target?: number };
 }
 
 /**
@@ -62,6 +62,11 @@ export interface GoldenCase {
  * SPARC15-short is a 3 s variant of SPARC15 (ramp-up, L–H transition, first ELMs) for the fast
  * vitest subset. The variants after MUON cover what no preset does: D-³He and p-¹¹B in 0D and
  * 1.5D, 1.5D D-D, 1.5D spherical tokamak, and the two fuels in an FRC and a mirror.
+ *
+ * ITER-pB11 keeps the target density of the ITER preset before v4.0 (1.0e20 m^-3): p-11B fuel radiates more than it burns there and the shot
+ * ends in a radiative-collapse disruption at about 28 s, the one golden case with a thermal quench, current quench and termination
+ * scalars (ws2c lowered the preset to 0.914e20, where the same fuel survives to the end at P_rad/P_heat = 0.93 and no golden case disrupted
+ * any more; regress/pb11Collapse.test.ts pins both densities). Any other case that disrupts is a second guard, not a replacement.
  */
 export const GOLDEN_CASES: readonly GoldenCase[] = [
   { id: 'ITER', preset: 'ITER' },
@@ -87,7 +92,7 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
   { id: 'MIRROR', preset: 'MIRROR' },
   { id: 'MUON', preset: 'MUON' },
   { id: 'ITER-DHe3', preset: 'ITER', tEnd: 100, overrides: { fuel: 'DHe3' } },
-  { id: 'ITER-pB11', preset: 'ITER', tEnd: 100, overrides: { fuel: 'pB11' } },
+  { id: 'ITER-pB11', preset: 'ITER', tEnd: 100, overrides: { fuel: 'pB11', n_target: 1.0e20 } },
   { id: 'SPARC15-DHe3', preset: 'SPARC15', tEnd: 3, overrides: { fuel: 'DHe3' } },
   { id: 'SPARC15-pB11', preset: 'SPARC15', tEnd: 3, overrides: { fuel: 'pB11' } },
   { id: 'DIIID15', preset: 'DIIID', tEnd: 3, overrides: { fidelity: '1.5D' } },
@@ -129,6 +134,10 @@ export function caseConfig(c: GoldenCase): ReactorConfig {
     if (!MAGNETIC_METHODS.includes(cfg.method)) throw new Error(`golden case ${c.id}: preset ${c.preset} (${cfg.method}) has no fidelity setting`);
     cfg = { ...cfg, fidelity: o.fidelity } as ReactorConfig;
     if (o.fidelity === '1.5D' && !runsProfiles(cfg)) throw new Error(`golden case ${c.id}: ${cfg.method} has no 1.5D model`);
+  }
+  if (o.n_target !== undefined) {
+    if (!('n_target' in cfg)) throw new Error(`golden case ${c.id}: preset ${c.preset} (${cfg.method}) has no n_target setting`);
+    cfg = { ...cfg, n_target: o.n_target } as ReactorConfig;
   }
   if (c.tEnd === undefined) return cfg;
   if (!('t_end' in cfg)) throw new Error(`golden case ${c.id}: preset ${c.preset} (${cfg.method}) has no t_end to shorten`);

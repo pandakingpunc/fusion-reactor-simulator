@@ -266,6 +266,13 @@ describe('golden cases', () => {
     expect(() => caseConfig({ id: 'x', preset: 'NIF', overrides: { fidelity: '1.5D' } })).toThrow(/has no fidelity setting/);
     expect(() => caseConfig({ id: 'x', preset: 'W7X', overrides: { fidelity: '1.5D' } })).toThrow(/stellarator has no 1\.5D model/);
     expect(() => caseConfig({ id: 'x', preset: 'NIF', tEnd: 1 })).toThrow(/has no t_end/);
+    // a target density: the preset's is replaced in a copy, and a device without one refuses it
+    const iter = PRESETS.find((p) => p.id === 'ITER')!.cfg as MagneticConfig;
+    const hot = caseConfig({ id: 'x', preset: 'ITER', overrides: { fuel: 'pB11', n_target: 1.0e20 } }) as MagneticConfig;
+    expect(hot).toMatchObject({ fuel: 'pB11', n_target: 1.0e20 });
+    expect(iter.n_target).not.toBe(1.0e20);
+    expect(iter.fuel).toBe('DT');
+    expect(() => caseConfig({ id: 'x', preset: 'NIF', overrides: { n_target: 1e20 } })).toThrow(/has no n_target setting/);
   });
 });
 

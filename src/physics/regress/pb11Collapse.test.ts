@@ -3,8 +3,9 @@
  * 100 s, 50 MW of external heating, Z_eff ~ 4.6) ended in a radiative collapse at ~28 s although the
  * v3 baseline (3d04e96) ran to the scheduled end. Since v4.0 (ws2c) the ITER preset's density target is re-based
  * to the design n̄/n_G = 0.85 (0.914e20 m^-3 volume average instead of 1.0e20), which is on the surviving side of
- * this marginal balance: the golden case ITER-pB11 now runs to the scheduled end, and the tests below use the
- * former target (1.0e20) where they pin the collapse.
+ * this marginal balance: the preset's own p-11B shot now runs to the scheduled end. The golden case ITER-pB11
+ * keeps the former target (1.0e20, an override of the case) so that the suite still has a disrupting shot, and the
+ * tests below pin both sides.
  *
  * The baseline survived because of an ELM artefact, not because of physics. At 60 s it took off
  *   - an ELM-averaged power of 0.3 P_heat = 23.3 MW, 5.5 times the whole transport loss W/tau_E = 4.2 MW
@@ -47,7 +48,7 @@ describe('ITER-pB11: the radiative collapse follows from the density ramp, not f
     }
   });
 
-  it('the golden case ITER-pB11 (target 0.914e20 m^-3 since v4.0: n̄/n_G = 0.85 of the design point) survives to the scheduled end, radiating < P_heat', () => {
+  it('ITER with p-11B at the preset density (0.914e20 m^-3 since v4.0: n̄/n_G = 0.85 of the design point) survives to the scheduled end, radiating < P_heat', () => {
     const sim = run({ n_target: ITER.n_target });
     expect(ITER.n_target).toBe(0.914e20);
     expect(sim.model.terminated?.natural).toBe(true);

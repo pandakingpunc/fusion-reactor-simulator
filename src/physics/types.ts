@@ -80,6 +80,46 @@ export interface ProfileSettings {
   Tsep_keV?: number;
   /** n_sep / ⟨n_e⟩ */
   nsepFrac: number;
+  /**
+   * Boundary conditions T_sep, n_sep of the transport equations. 'legacy' (default): the conduction-limited
+   * two-point T_sep of profiles/boundary/sol.ts (outboard share 0.6, clamped to 0.03–0.5 keV).
+   * 'twoPoint': T_sep = T_u of the edge model (src/physics/edge: Eich λ_q, divertor spreading, outer-leg share of P_SOL;
+   * only the guard band of 5 eV – 2 keV), the same functions as the edge diagnostics. n_sep stays fuelling-controlled in both.
+   */
+  edgeModel?: 'legacy' | 'twoPoint';
+}
+
+/**
+ * Edge (SOL and divertor) model options (src/physics/edge, a two-point model with Stangeby loss factors, Lengyel
+ * radiation and Eich/Makowski heat-flux widths). All optional; the defaults and their sources are in
+ * src/physics/edge/params.ts.
+ */
+export interface EdgeOptions {
+  /** share of P_sep carried by the outer target leg (default 2/3) */
+  outerShare?: number;
+  /** divertor spreading S/λ_q (default 1.22, i.e. λ_int = 3 λ_q) */
+  spreadingRatio?: number;
+  /** absolute spreading S [mm]; overrides spreadingRatio */
+  S_mm?: number;
+  /** midplane heat-flux width [mm]; overrides the Eich regression #14 */
+  lambdaQ_mm?: number;
+  /** length of the divertor leg as a fraction of the connection length π q95 R (default 0.3) */
+  divertorLengthFraction?: number;
+  /** parallel electron conductivity κ0e [W m⁻¹ eV^{-7/2}] (default 2000) */
+  kappa0e?: number;
+  /** sheath heat transmission coefficient γ (default 7) */
+  sheathGamma?: number;
+  /** momentum/power loss fit vs. the target temperature (default 'stangeby1') */
+  lossFit?: 'stangeby1' | 'stangeby2' | 'body2025';
+  /** 'prescribed' (default): the divertor radiates divertor.f_rad_div of the power; 'lengyel': the seed impurity radiates (Lengyel model) */
+  radiation?: 'prescribed' | 'lengyel';
+  /** seed concentration of the SOL relative to impurity.seedConcentration (default 1) */
+  seedEnrichment?: number;
+  /** target electron temperature that defines the detachment onset of the c_z requirement [eV] (default 5) */
+  detachTt_eV?: number;
+  /** 1/sin β of the target plate (default 3) and the strike-point radius offset as a fraction of a (default 0.3) */
+  targetTilt?: number;
+  strikeRadiusFraction?: number;
 }
 
 /** Kesit çizimi için akı yüzeyi anlık görüntüsü (dengeden) */
@@ -131,7 +171,7 @@ export interface MagneticConfig {
   events: { elms: boolean; sawteeth: boolean; ntm: boolean };
   magnet: { tech: MagnetTech; gap_m: number; coilThickness_m: number };
   blanket: { type: BlanketType; li6_enrichment: number; coverage: number };
-  divertor: { f_rad_div: number; flux_expansion: number };
+  divertor: { f_rad_div: number; flux_expansion: number; /** edge model options (src/physics/edge) */ edge?: EdgeOptions };
   economics: { capital_MUSD_override?: number; availability: number; thermalEff: number; wallPlugEff: number; discountRate: number; lifetime_yr: number };
   t_end: number; // s
   seed: number;

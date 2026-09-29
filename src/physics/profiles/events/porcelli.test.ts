@@ -50,8 +50,8 @@ describe('the constants and definitions of the paper', () => {
   it('τ_A = R √3/v_A, ρ̂ = ρ_i/r̄_1 and τ_R agree with their SI definitions (Alfvén speed of the ions at n_e0, thermal Larmor radius, Spitzer resistivity)', () => {
     const { ctx, st, g, terms } = state();
     const t = terms()!;
-    const w = ctx.w;
-    const A = (2.014 * w.na[0] + 3.016 * w.nb[0]) / (w.na[0] + w.nb[0]);
+    const fa = JET_15D.fuelFracA ?? 0.5;
+    const A = fa * 2.014 + (1 - fa) * 3.016;
     const vA = g.B0 / Math.sqrt(MU0 * A * MP * st.ne[0]);
     expect(rel(t.tauA, (g.R0 * Math.sqrt(3)) / vA)).toBeLessThan(0.03);
     const Ti0 = st.Ti[0] * 1.602176634e-16;
@@ -140,6 +140,20 @@ describe('the terms of δŴ', () => {
 });
 
 describe('the conditions and the margin', () => {
+  it('the margin is a function of the state alone: overwriting every work array of the context (the last Picard iterate of an attempt) changes nothing', () => {
+    for (const extra of [{}, { fastIonModel: 'profile' as const }]) {
+      const w = state(extra);
+      const f = w.ctx.fast;
+      if (f) { w.g.rhoC.forEach((r, i) => { f.beam[0].W[i] = 2e4 * Math.exp(-((r / 0.3) ** 2)); }); f.updatePressure(); } else { w.ctx.WfBeam = 1e6; w.ctx.WfAlpha = 2e5; }
+      const ts = { Te: w.st.Te, Ti: w.st.Ti, ne: w.st.ne, psi: w.st.psi, niOverNe: w.rat, Ip: w.st.s.Ip };
+      const a = porcelliMargin(w.ctx, ts, w.sc);
+      for (const arr of Object.values(w.ctx.w)) for (let i = 0; i < arr.length; i++) arr[i] = 1e3 * Math.sin(i + 1);
+      expect(porcelliMargin(w.ctx, ts, w.sc)).toBe(a);
+      expect(a).not.toBe(-1);
+    }
+  });
+
+
   it('no q = 1 surface: no terms, margin −1; the margin of the stepper is the maximum over the three conditions of their relative margins', () => {
     const above = state({}, 1.1, 1.5);
     expect(above.terms()).toBeNull();
@@ -230,11 +244,11 @@ describe('the trigger in a running model', () => {
   }, 120000);
 
   it('with the shear trigger and no reset option the run is the legacy one (no Porcelli text in its events); the options change the run', () => {
-    const legacy = run({ sawtoothTrigger: 'shear' }, 0.25);
+    const legacy = run({ sawtoothTrigger: 'shear' }, 0.4);
     const saw = legacy.events.filter((e: SimEvent) => e.kind === 'sawtooth');
     expect(saw.length).toBeGreaterThanOrEqual(1);
     expect(saw.some((e) => /Porcelli/.test(e.msg))).toBe(false);
-    const p = run({}, 0.25);
+    const p = run({}, 0.4);
     expect(p.history[p.history.length - 1].y).not.toEqual(legacy.history[legacy.history.length - 1].y);
   }, 120000);
 

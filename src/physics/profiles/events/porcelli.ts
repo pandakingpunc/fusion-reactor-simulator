@@ -28,7 +28,8 @@
  * with E_fast = 0, where it reduces to ideal instability alone); E_fast and Z_fast are the pressure-weighted mean energy (E_0 τ_W/τ_th of the slowing-down
  * distribution, heating.ts) and charge of the beam ions and the fusion products there, (ii) B_p1 at the outboard midplane is μ0 I(r_1)/(π r_1 (1 + κ_1)),
  * the value for an elliptical current distribution, (iii) p_i is the thermal ion pressure, p includes the fast ions (the fields of the 'profile' fast-ion
- * model, or the pools of the scalar model distributed like the steady beam and alpha content). The margin returned to the stepper is continuous:
+ * model, or the pools of the scalar model over fixed peaked shapes). Nothing of the work arrays is read: the margin is a function of the profiles of
+ * the state, the configuration and the fast-ion state of the last accepted step (the stepper evaluates it inside an attempt). The margin returned to the stepper is continuous:
  * max over the three conditions of (left − right)/(|left| + |right| + 10⁻³), positive when a condition holds.
  */
 import { FUEL_CHANNELS, FUEL_SPECIES } from '../../reactivity';
@@ -78,7 +79,9 @@ function atFaces(rhoF: ArrayLike<number>, a: ArrayLike<number>, i: number, rho: 
 
 /**
  * The fast-ion pressure profiles [Pa] of the beam and of the fusion products on the cells: the fields of the 'profile' fast-ion model, or the scalar
- * pools distributed like the steady contents of the work arrays (w.Wbeam, w.Walpha; flat when the source is off), each with the pool's content.
+ * pools spread over fixed peaked shapes, (1 − ρ̂²)^2.5 for the beam and (1 − ρ̂²)^3 for the products (APPROXIMATION: the scalar model has no radial
+ * profile of its fast ions; the steady deposition profiles of the work arrays would make the margin a function of the last evaluation and not of the
+ * state), each carrying the pool's content. Both are functions of the state of the last accepted step, held fixed over an attempt.
  */
 export function fastPressureProfiles(ctx: ProfileContext, pb: Float64Array, pa: Float64Array): void {
   const N = ctx.N;
@@ -91,12 +94,16 @@ export function fastPressureProfiles(ctx: ProfileContext, pb: Float64Array, pa: 
     }
     return;
   }
-  const w = ctx.w, dV = ctx.tg.dV, V = ctx.tg.volume;
+  const g = ctx.tg;
   let sb = 0, sa = 0;
-  for (let i = 0; i < N; i++) { sb += w.Wbeam[i] * dV[i]; sa += w.Walpha[i] * dV[i]; }
   for (let i = 0; i < N; i++) {
-    pb[i] = ctx.WfBeam > 0 ? (2 / 3) * ctx.WfBeam * (sb > 0 ? w.Wbeam[i] / sb : 1 / V) : 0;
-    pa[i] = ctx.WfAlpha > 0 ? (2 / 3) * ctx.WfAlpha * (sa > 0 ? w.Walpha[i] / sa : 1 / V) : 0;
+    const x = 1 - g.rhoC[i] * g.rhoC[i];
+    pb[i] = Math.pow(x, 2.5); pa[i] = Math.pow(x, 3);
+    sb += pb[i] * g.dV[i]; sa += pa[i] * g.dV[i];
+  }
+  for (let i = 0; i < N; i++) {
+    pb[i] = ctx.WfBeam > 0 && sb > 0 ? ((2 / 3) * ctx.WfBeam * pb[i]) / sb : 0;
+    pa[i] = ctx.WfAlpha > 0 && sa > 0 ? ((2 / 3) * ctx.WfAlpha * pa[i]) / sa : 0;
   }
 }
 
@@ -203,9 +210,12 @@ export function porcelliTerms(ctx: ProfileContext, st: TriggerState, sc: Trigger
 
   // time and frequency scales
   const Ti0 = Math.max(st.Ti[0], 0.01), ne0 = st.ne[0] / 1e20;
-  const na = ctx.w.na[0], nb = ctx.w.nb[0];
+  // the ion mass and the ion sum of the fuel of the configuration (the mix of the species a and b; impurities and ash not counted: functions of the
+  // configuration, not of the work arrays, which the margin must not read)
   const sp = FUEL_SPECIES[ctx.cfg.fuel];
-  const Ai = na + nb > 0 ? (na * sp.a.A + nb * sp.b.A) / (na + nb) : 0.5 * (sp.a.A + sp.b.A);
+  const fa = ctx.cfg.fuelFracA ?? sp.fracA;
+  const Ai = fa * sp.a.A + (1 - fa) * sp.b.A;
+  const ionSumFuel = (fa * sp.a.Z * sp.a.Z) / sp.a.A + ((1 - fa) * sp.b.Z * sp.b.Z) / sp.b.A;
   const tauA = 0.8e-6 * (R / BT) * Math.sqrt(Ai * Math.max(ne0, 1e-3));
   // |dp_i/dr|/p_i at q = 1: the ion pressure over the two cells around ρ_1, the radius from the faces
   const i0 = Math.min(Math.max(cellIndex(g, rho1), 1), N - 2);
@@ -223,8 +233,7 @@ export function porcelliTerms(ctx: ProfileContext, st: TriggerState, sc: Trigger
   const fast = ptq > 1e-3 * Math.max(pR1, 1e-30) && ptq > 0;
   let omegaDh = 0;
   if (fast) {
-    const iq0 = Math.min(iq, N - 1);
-    const [Eb, Zb, Ea, Za] = meanFastEnergies(ctx, interpCells(g, st.Te, rho1), interpCells(g, st.ne, rho1), Math.max(ctx.w.ionSum[iq0], 0.1));
+    const [Eb, Zb, Ea, Za] = meanFastEnergies(ctx, interpCells(g, st.Te, rho1), interpCells(g, st.ne, rho1), ionSumFuel);
     omegaDh = (500 / (BT * R * rBar1)) * ((pbq * Eb) / Math.max(Zb, 1) + (paq * Ea) / Math.max(Za, 1)) / ptq;
   }
 

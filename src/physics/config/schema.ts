@@ -44,7 +44,7 @@ const FUELINGS = keysOf<FuelingMethod>({ gas: 0, pellet: 0, nbi: 0, mixed: 0 });
 const FIDELITIES = keysOf<Fidelity>({ '0D': 0, '1.5D': 0 });
 const SPECIES = keysOf<ImpuritySpecies>(IMPURITIES);
 const ABLATORS = keysOf<ICFConfig['ablator']>({ CH: 0, HDC: 0, Be: 0 });
-const SCALINGS = keysOf<MagneticConfig['scaling']>({ IPB98y2: 0, ST_Valovic: 0 });
+const SCALINGS = keysOf<MagneticConfig['scaling']>({ IPB98y2: 0, ITPA20: 0, 'ITPA20-IL': 0, ST_Valovic: 0 });
 const TRANSPORT_MODELS = keysOf<ProfileSettings['transportModel']>({ scaling: 0, cgm: 0 });
 const MAGNETIC_METHODS = keysOf<MagneticConfig['method']>({ tokamak: 0, spherical_tokamak: 0, stellarator: 0 });
 const ICF_METHODS = keysOf<ICFConfig['method']>({ icf_direct: 0, icf_indirect: 0 });
@@ -105,6 +105,10 @@ const profileSettings = partial<ProfileSettings>({
   eqUpdateInterval: num({ exMin: 0, max: 1e5, unit: 's', def: PS.eqUpdateInterval, doc: 'Upper limit of the interval between equilibrium updates.' }),
   lcfsKappa: opt(num({ min: 1, max: 5, doc: 'Elongation of the last closed flux surface; the elongation of `geometry` (a 95 % value) if absent.' })),
   lcfsDelta: opt(num({ min: -1, max: 1, doc: 'Triangularity of the last closed flux surface; the triangularity of `geometry` if absent.' })),
+  lcfsRef95: opt(object<NonNullable<ProfileSettings['lcfsRef95']>>({
+    kappa: num({ min: 1, max: 5, doc: 'Elongation of the 95 % surface that lcfsKappa belongs to.' }),
+    delta: num({ min: -1, max: 1, doc: 'Triangularity of the 95 % surface that lcfsDelta belongs to.' }),
+  }, { doc: 'The 95 % surface shape (kappa95, delta95) that lcfsKappa and lcfsDelta belong to. The 0D volume, surface and cross-section then follow an edited `geometry.kappa` or `geometry.delta` in the ratio kappa/kappa95 and delta/delta95 (the ITER and DEMO presets); without it the LCFS values are absolute.' })),
   transportModel: oneOf(TRANSPORT_MODELS, "'scaling': transport constrained by the tau_E scaling law (validated global dynamics); 'cgm': critical-gradient model (predictive, uncalibrated).", PS.transportModel),
   chiShape: num({ min: 0, max: 100, def: PS.chiShape, doc: 'Shape of chi, proportional to 1 + chiShape rho^2.' }),
   stiffness: num({ min: 0, max: 100, def: PS.stiffness, doc: 'Profile stiffness: chi is multiplied by 1 + stiffness max(0, (R/L_T)/critGrad - 1).' }),
@@ -171,7 +175,7 @@ const magneticShape: Shape<MagneticConfig> = {
   }, { doc: 'Impurities.' }),
   H98: num({ exMin: 0, max: 10, doc: 'H-mode confinement factor relative to the IPB98(y,2) scaling.' }),
   H89: num({ exMin: 0, max: 10, doc: 'L-mode confinement factor relative to the ITER89-P scaling.' }),
-  scaling: oneOf(SCALINGS, 'Confinement scaling law.'),
+  scaling: oneOf(SCALINGS, "Confinement scaling law of the H-mode: 'IPB98y2' (default), 'ITPA20' or 'ITPA20-IL' (Verdoolaege et al. 2021, areal elongation and average LCFS triangularity), 'ST_Valovic' (spherical tokamak); H98 multiplies the selected scaling."),
   stellarator: object<Stellarator>({
     iota23: num({ exMin: 0, max: 10, doc: 'Rotational transform at two thirds of the radius.' }),
     f_ren: num({ exMin: 0, max: 10, doc: 'Deprecated: ISS04 renormalisation, tau_E = f_ren H98 tau_ISS04 when H_ISS04 is not given.' }),

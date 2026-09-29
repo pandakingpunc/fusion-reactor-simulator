@@ -223,6 +223,29 @@
           "maximum": 1,
           "description": "Triangularity of the last closed flux surface; the triangularity of `geometry` if absent."
         },
+        "lcfsRef95": {
+          "type": "object",
+          "properties": {
+            "kappa": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 5,
+              "description": "Elongation of the 95 % surface that lcfsKappa belongs to."
+            },
+            "delta": {
+              "type": "number",
+              "minimum": -1,
+              "maximum": 1,
+              "description": "Triangularity of the 95 % surface that lcfsDelta belongs to."
+            }
+          },
+          "required": [
+            "kappa",
+            "delta"
+          ],
+          "additionalProperties": false,
+          "description": "The 95 % surface shape (kappa95, delta95) that lcfsKappa and lcfsDelta belong to. The 0D volume, surface and cross-section then follow an edited `geometry.kappa` or `geometry.delta` in the ratio kappa/kappa95 and delta/delta95 (the ITER and DEMO presets); without it the LCFS values are absolute."
+        },
         "transportModel": {
           "type": "string",
           "enum": [
@@ -596,9 +619,11 @@
           "type": "string",
           "enum": [
             "IPB98y2",
+            "ITPA20",
+            "ITPA20-IL",
             "ST_Valovic"
           ],
-          "description": "Confinement scaling law."
+          "description": "Confinement scaling law of the H-mode: 'IPB98y2' (default), 'ITPA20' or 'ITPA20-IL' (Verdoolaege et al. 2021, areal elongation and average LCFS triangularity), 'ST_Valovic' (spherical tokamak); H98 multiplies the selected scaling."
         },
         "stellarator": {
           "type": "object",

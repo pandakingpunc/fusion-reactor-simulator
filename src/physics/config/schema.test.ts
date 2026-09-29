@@ -53,6 +53,23 @@ describe('every shipped configuration is valid', () => {
   });
 });
 
+describe('the v4.0 confinement and geometry options', () => {
+  for (const scaling of ['IPB98y2', 'ITPA20', 'ITPA20-IL', 'ST_Valovic']) {
+    it(`scaling ${scaling} is accepted`, () => {
+      const c = preset('ITER');
+      c.scaling = scaling;
+      expect(validateConfig(c).issues.map(formatIssue)).toEqual([]);
+    });
+  }
+  it('the ITER and DEMO presets carry the 95 % shape of their LCFS values (profiles.lcfsRef95) and validate', () => {
+    for (const id of ['ITER', 'DEMO', 'ITER15', 'DEMO15']) {
+      const c = preset(id);
+      expect(c.profiles.lcfsRef95).toEqual({ kappa: expect.any(Number), delta: expect.any(Number) });
+      expect(validateConfig(c).issues.map(formatIssue)).toEqual([]);
+    }
+  });
+});
+
 describe('the wizard only offers values the schema accepts', () => {
   for (const method of METHODS) {
     it(method, () => {
@@ -170,6 +187,10 @@ const MUTANTS: Mutant[] = [
   m('unknown transport model', 'ITER15', set('profiles.transportModel', 'bgb'), 'profiles.transportModel', 'enum'),
   m('pedestal wider than half the radius', 'ITER15', set('profiles.pedestalWidth', 0.7), 'profiles.pedestalWidth', 'range'),
   m('LCFS elongation below 1', 'ITER15', set('profiles.lcfsKappa', 0.8), 'profiles.lcfsKappa', 'range'),
+  m('reference elongation of the LCFS below 1', 'ITER15', set('profiles.lcfsRef95.kappa', 0.5), 'profiles.lcfsRef95.kappa', 'range'),
+  m('reference triangularity of the LCFS above 1', 'ITER15', set('profiles.lcfsRef95.delta', 1.5), 'profiles.lcfsRef95.delta', 'range'),
+  m('reference of the LCFS without triangularity', 'ITER15', del('profiles.lcfsRef95.delta'), 'profiles.lcfsRef95.delta', 'required'),
+  m('reference of the LCFS as a number', 'ITER15', set('profiles.lcfsRef95', 1.7), 'profiles.lcfsRef95', 'type'),
   m('profiles is a string', 'ITER15', set('profiles', 'on'), 'profiles', 'type'),
   m('misspelled 1.5D setting', 'ITER15', set('profiles.chiShap', 3), 'profiles.chiShap', 'unknown_key', /did you mean 'chiShape'/),
   m('unknown method', 'ITER', set('method', 'tokamak2'), 'method', 'enum', /did you mean 'tokamak'/),

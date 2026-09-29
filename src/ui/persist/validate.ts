@@ -11,7 +11,7 @@
  * (written by a newer one), a value outside the wizard's range, a required number left blank. NaN, ±Infinity
  * and a blank field are numbers of the right type: a half-edited draft configuration shares like any other.
  */
-import { ActuatorEntry, Method, METHOD_LABELS, ReactorConfig } from '../../physics/types';
+import { ActuatorEntry, EdgeOptions, Method, METHOD_LABELS, ReactorConfig } from '../../physics/types';
 import { DEFAULT_PROFILE_SETTINGS } from '../../physics/profiles/defaults';
 import { fieldVisible, getPath, METHOD_DEFAULT, missingRequired, PRESETS, stepsFor } from '../wizard/schema';
 
@@ -59,6 +59,16 @@ const templates = new Map<Method, Template>();
  */
 const OPTIONAL_SECTIONS = ['profiles'];
 
+/**
+ * The options of the edge model (divertor.edge.*, an optional block that no preset carries and the wizard offers only in part):
+ * they are settings of this version, not fields of a newer one. Exhaustive over EdgeOptions, so a new option is a compile error here.
+ */
+const EDGE_OPTION_TYPES: Record<keyof EdgeOptions, LeafType> = {
+  outerShare: 'number', spreadingRatio: 'number', S_mm: 'number', lambdaQ_mm: 'number', divertorLengthFraction: 'number', kappa0e: 'number',
+  sheathGamma: 'number', lossFit: 'string', radiation: 'string', seedEnrichment: 'number', detachTt_eV: 'number', targetTilt: 'number',
+  strikeRadiusFraction: 'number',
+};
+
 function walk(v: unknown, path: string, leaves: Map<string, LeafType>, sections?: string[]): void {
   if (v === undefined || v === null) return;
   if (typeof v === 'object' && !Array.isArray(v)) {
@@ -76,7 +86,10 @@ function templateFor(method: Method): Template {
   const required: string[] = [];
   for (const p of PRESETS) if (p.cfg.method === method) walk(p.cfg, '', leaves);
   walk(METHOD_DEFAULT[method], '', leaves, required);
-  if (method === 'tokamak' || method === 'spherical_tokamak') walk(DEFAULT_PROFILE_SETTINGS, 'profiles', leaves);
+  if (method === 'tokamak' || method === 'spherical_tokamak') {
+    walk(DEFAULT_PROFILE_SETTINGS, 'profiles', leaves);
+    for (const [k, type] of Object.entries(EDGE_OPTION_TYPES)) leaves.set(`divertor.edge.${k}`, type);
+  }
   const enums = new Map<string, Set<string>>();
   const ranges = new Map<string, [number, number]>();
   for (const step of stepsFor(method)) {

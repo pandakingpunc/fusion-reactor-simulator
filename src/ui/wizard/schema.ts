@@ -116,6 +116,8 @@ const MAGNETIC_STEPS: StepDef[] = [
     { path: 'blanket.coverage', label: 'Blanket coverage', min: 0, max: 1, step: 0.01 },
     { path: 'divertor.f_rad_div', label: 'Divertor radiation fraction', min: 0, max: 0.95, step: 0.01 },
     { path: 'divertor.flux_expansion', label: 'Flux expansion', min: 1, max: 30, step: 0.5 },
+    { path: 'divertor.edge.radiation', type: 'select', def: 'prescribed', options: [{ value: 'prescribed', label: 'Prescribed (divertor radiation fraction)' }, { value: 'lengyel', label: 'Seed impurity (Lengyel model)' }], ...txt('wf.edgeRadiation', 'wf.edgeRadiation.hint') },
+    { path: 'divertor.edge.lambdaQ_mm', unit: 'mm', min: 0.1, max: 20, step: 0.05, optional: true, ...txt('wf.lambdaQ', 'wf.lambdaQ.hint') },
     { path: 'economics.availability', label: 'Availability', min: 0.01, max: 1, step: 0.01 },
     { path: 'economics.thermalEff', label: 'Thermal efficiency', min: 0.2, max: 0.6, step: 0.01 },
     { path: 'economics.wallPlugEff', label: 'Heating wall-plug efficiency', min: 0.1, max: 0.8, step: 0.01 },
@@ -169,6 +171,7 @@ const MAGNETIC_STEPS: StepDef[] = [
     { path: 'profiles.nbcdEff', label: '1.5D · NBCD efficiency factor', min: 0, max: 1, step: 0.01, def: PS.nbcdEff },
     { path: 'profiles.eccdEff', label: '1.5D · ECCD efficiency factor', min: 0, max: 1, step: 0.01, def: PS.eccdEff },
     { path: 'profiles.nsepFrac', label: '1.5D · separatrix density n_sep/⟨n_e⟩', min: 0.1, max: 0.8, step: 0.01, def: PS.nsepFrac },
+    { path: 'profiles.edgeModel', type: 'select', def: 'legacy', options: [{ value: 'legacy', label: 'Conduction-limited T_sep (default)' }, { value: 'twoPoint', label: 'Edge model T_sep (Eich λ_q, two-point)' }], ...txt('wf.edgeModel', 'wf.edgeModel.hint') },
     { path: 'profiles.Tsep_keV', label: '1.5D · separatrix T_e', unit: 'keV', min: 0.02, max: 0.5, step: 0.005, optional: true, hint: 'Blank = two-point model (Eich λ_q)' },
   ] },
 ];
@@ -292,6 +295,8 @@ export function fieldVisible(method: Method, path: string, cfg?: ReactorConfig):
   if (path === 'fidelity') return method === 'tokamak' || method === 'spherical_tokamak';
   // the LCFS shape sets the volume, surface and cross-section of the 0D model as well as the boundary of the 1.5D one
   if (path === 'profiles.lcfsKappa' || path === 'profiles.lcfsDelta') return method === 'tokamak' || method === 'spherical_tokamak';
+  // the edge model (two-point SOL) exists for tokamaks and spherical tokamaks; a stellarator has no such divertor
+  if (path.startsWith('divertor.edge.')) return method === 'tokamak' || method === 'spherical_tokamak';
   if (path.startsWith('profiles.')) return (method === 'tokamak' || method === 'spherical_tokamak') && (cfg as { fidelity?: string } | undefined)?.fidelity === '1.5D';
   if (path.startsWith('stellarator.')) {
     // an explicit H_ISS04 replaces the old f_ren · H98 product: those two are then not used

@@ -211,6 +211,24 @@ describe('share codec: decoding refuses what is not a configuration', () => {
     expect(checkConfig(iter).errors.join('; ')).toMatch(/profiles\.lcfsRef95\.kappa: expected a number/);
   });
 
+  it('the edge model options are known settings (no warning), typed and, where the wizard offers a choice, restricted', () => {
+    const c = structuredClone(PRESETS.find((p) => p.id === 'ITER15')!.cfg) as unknown as { divertor: Record<string, unknown>; profiles: Record<string, unknown> };
+    c.profiles.edgeModel = 'twoPoint';
+    c.divertor.edge = { outerShare: 0.7, spreadingRatio: 1.2, S_mm: 1, lambdaQ_mm: 1.5, divertorLengthFraction: 0.3, kappa0e: 2000, sheathGamma: 7, lossFit: 'body2025',
+      radiation: 'lengyel', seedEnrichment: 1, detachTt_eV: 5, targetTilt: 3, strikeRadiusFraction: 0.3 };
+    const ok = checkConfig(c);
+    expect(ok.errors).toEqual([]);
+    expect(ok.warnings.filter((w) => /edge|divertor/.test(w))).toEqual([]);
+    (c.divertor.edge as Record<string, unknown>).radiation = 'coronal';
+    expect(checkConfig(c).errors.join('; ')).toMatch(/divertor\.edge\.radiation: 'coronal' is not one of/);
+    (c.divertor.edge as Record<string, unknown>).radiation = 'lengyel';
+    (c.divertor.edge as Record<string, unknown>).kappa0e = 'high';
+    expect(checkConfig(c).errors.join('; ')).toMatch(/divertor\.edge\.kappa0e: expected a number/);
+    (c.divertor.edge as Record<string, unknown>).kappa0e = 2000;
+    c.profiles.edgeModel = 'threePoint';
+    expect(checkConfig(c).errors.join('; ')).toMatch(/profiles\.edgeModel: 'threePoint' is not one of/);
+  });
+
   it('a hostile scenario is refused; an odd but usable configuration is accepted with warnings', async () => {
     const good = JSON.parse(JSON.stringify(PRESETS[0].cfg)) as Record<string, unknown>;
     let deep: unknown = 1;

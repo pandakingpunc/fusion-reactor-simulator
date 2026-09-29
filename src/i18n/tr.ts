@@ -161,6 +161,12 @@ export const tr: Dict = {
   'wf.lcfsDelta': 'LCFS üçgensellik δ_LCFS',
   'wf.lcfsDelta.hint': 'Boş = yukarıdaki δ. LCFS uzama oranı gibi kullanılır (0D hacim ve yüzey, 1.5D sınır) ve ITPA20 ölçeklemelerinin ortalama LCFS üçgenselliğidir.',
   'wf.h98.hint': 'Aşağıda seçilen H-kipi ölçeklemesinin çarpanı (değiştirilmedikçe IPB98(y,2)); 1 = ölçekleme yayımlandığı gibi.',
+  'wf.edgeRadiation': 'Diverter ışıma modeli',
+  'wf.edgeRadiation.hint': 'Öngörülen: diverter yukarıda verilen oranda ışır. Katkı safsızlığı: “Fuel & impurities” adımındaki katkı safsızlığı ışır (Lengyel modeli); katkı yoksa orada ışıma olmaz. Kenar kanalları (hedef T_e, tepe ısı akısı, ayrılma) buna uyar.',
+  'wf.lambdaQ': 'Isı akısı genişliği λ_q',
+  'wf.lambdaQ.hint': 'Boş = Eich regresyonu #14 (Eich vd. 2013; ITER ≈ 0,6 mm). Bir değer, kenar tanılarında ve iki noktalı sınırda onun yerine geçer.',
+  'wf.edgeModel': '1.5D · ayrım yüzeyi sıcaklık modeli',
+  'wf.edgeModel.hint': 'İletimle sınırlı T_sep (varsayılan) veya kenar modelinin T_sep değeri (Eich λ_q, diverter yayılması, dış kol güç payı). İkisi ITER’de yüzde birkaç içinde uyuşur; hiçbiri ölçümle doğrulanmadı.',
   'wf.scaling': 'Hapsolma ölçeklemesi',
   'wf.scaling.hint': 'IPB98(y,2) ITER standardıdır; ITPA20 ve ITPA20-IL (Verdoolaege vd. 2021) alan uzamasını ve ortalama LCFS üçgenselliğini kullanır; ST (Valovič) küresel tokamaklar içindir. H₉₈ seçilen ölçeklemeyi çarpar.',
 

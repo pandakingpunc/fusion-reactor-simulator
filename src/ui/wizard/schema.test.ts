@@ -26,7 +26,7 @@ describe('required wizard fields', () => {
         }
       }
     }
-    expect([...blankInPresets].sort()).toEqual(['impurity.seedConcentration', 'profiles.Tsep_keV', 'profiles.lcfsDelta', 'profiles.lcfsKappa', 'stellarator.H_ISS04']);
+    expect([...blankInPresets].sort()).toEqual(['divertor.edge.lambdaQ_mm', 'impurity.seedConcentration', 'profiles.Tsep_keV', 'profiles.lcfsDelta', 'profiles.lcfsKappa', 'stellarator.H_ISS04']);
   });
 
   it('lists a cleared required field with its step, and ignores hidden and documented-default fields', () => {
@@ -119,6 +119,40 @@ describe('fields of the v4 configuration options', () => {
       sim.runAll();
       expect(sim.history.every((f) => Number.isFinite(f.d.tauE)), scaling).toBe(true);
     }
+  });
+
+  it('the edge model options: radiation model and heat-flux width for tokamaks, the boundary temperature model in 1.5D only, translated', async () => {
+    for (const cfg of [ITER, MASTU, ITER_15D]) {
+      expect(fieldVisible(cfg.method, 'divertor.edge.radiation', cfg), cfg.method).toBe(true);
+      expect(fieldVisible(cfg.method, 'divertor.edge.lambdaQ_mm', cfg), cfg.method).toBe(true);
+    }
+    expect(fieldVisible('stellarator', 'divertor.edge.radiation', W7X)).toBe(false); // a stellarator has no two-point SOL
+    expect(fieldVisible('stellarator', 'divertor.f_rad_div', W7X)).toBe(true); // the legacy divertor load still uses it
+    expect(fieldVisible('tokamak', 'profiles.edgeModel', ITER)).toBe(false);
+    expect(fieldVisible('tokamak', 'profiles.edgeModel', ITER_15D)).toBe(true);
+    expect(field('tokamak', 'profiles.edgeModel').options!.map((o) => o.value)).toEqual(['legacy', 'twoPoint']);
+    expect(field('tokamak', 'divertor.edge.radiation').options!.map((o) => o.value)).toEqual(['prescribed', 'lengyel']);
+    expect(field('tokamak', 'divertor.edge.lambdaQ_mm')).toMatchObject({ optional: true, unit: 'mm' });
+    expect(field('tokamak', 'divertor.edge.lambdaQ_mm').hint).toMatch(/^Blank = Eich regression/);
+    // an empty choice shows the model default and blocks no run
+    expect(paths(ITER)).toEqual([]);
+    await loadLocale('tr');
+    const en = translator('en'), tr = translator('tr');
+    for (const path of ['profiles.edgeModel', 'divertor.edge.radiation', 'divertor.edge.lambdaQ_mm']) {
+      const f = field('tokamak', path);
+      expect(f.labelKey, path).toBeDefined();
+      expect(fieldLabel(f, en), path).toBe(f.label);
+      expect(fieldLabel(f, tr), path).not.toBe(f.label);
+      expect(fieldHint(f, tr), path).not.toBe(fieldHint(f, en));
+    }
+  });
+
+  it('a wizard choice of the edge model runs: the lengyel radiation mode and the two-point boundary', () => {
+    const cfg = setPath(setPath({ ...ITER, t_end: 3 } as ReactorConfig, 'divertor.edge.radiation', 'lengyel'), 'impurity.seedSpecies', 'Ne');
+    const sim = new Simulation(setPath(cfg, 'impurity.seedConcentration', 0.01));
+    sim.runAll();
+    const last = sim.history[sim.history.length - 1].d;
+    for (const k of ['P_sep_R', 'lambda_q', 'T_t', 'q_peak', 'cz_det']) expect(Number.isFinite(last[k]), k).toBe(true);
   });
 
   it('the ignition-test switch says it also works in 1.5D and how (a ramp over the heating ramp time)', () => {

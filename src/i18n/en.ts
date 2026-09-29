@@ -164,6 +164,12 @@ export const en = {
   'wf.lcfsDelta': 'LCFS triangularity δ_LCFS',
   'wf.lcfsDelta.hint': 'Blank = δ above. Used like the LCFS elongation (0D volume and surface, 1.5D boundary) and as the average LCFS triangularity of the ITPA20 scalings.',
   'wf.h98.hint': 'Multiplier of the H-mode scaling chosen below (IPB98(y,2) unless changed); 1 = the scaling as published.',
+  'wf.edgeRadiation': 'Divertor radiation model',
+  'wf.edgeRadiation.hint': 'Prescribed: the divertor radiates the fraction set above. Seed impurity: the seeding impurity of the Fuel & impurities step radiates (Lengyel model); without a seed nothing radiates there. The edge channels (target T_e, peak heat flux, detachment) follow it.',
+  'wf.lambdaQ': 'Heat-flux width λ_q',
+  'wf.lambdaQ.hint': 'Blank = Eich regression #14 (Eich et al. 2013; ITER ≈ 0.6 mm). A value overrides it for the edge diagnostics and the two-point boundary.',
+  'wf.edgeModel': '1.5D · separatrix temperature model',
+  'wf.edgeModel.hint': 'Conduction-limited T_sep (default) or T_sep of the edge model (Eich λ_q, divertor spreading, outer-leg power share). The two agree within a few percent on ITER; neither is validated against measurement.',
   'wf.scaling': 'Confinement scaling',
   'wf.scaling.hint': 'IPB98(y,2) is the ITER standard; ITPA20 and ITPA20-IL (Verdoolaege et al. 2021) take the areal elongation and the average LCFS triangularity; ST (Valovič) is for spherical tokamaks. H₉₈ multiplies the chosen scaling.',
 

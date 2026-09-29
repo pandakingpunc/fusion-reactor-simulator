@@ -62,6 +62,16 @@ takes `--threads N` (default: cores − 1).
 - `figures`: `--only popcon,mhd`, `--scan 7` (scan grid), `--formats pdf`, `--out DIR`.
 - `golden`: `--only NIF,ITER15`; `--update` with `--reason TEXT` or `--reason-file FILE`. See
   [Regression testing](#regression-testing).
+- `uq`: uncertainty quantification of a preset by an ensemble of full simulations (seeded Sobol' /
+  Latin hypercube / Monte Carlo design, priors on H98, density, impurities and 1.5D profile
+  settings): P(Q >= 10), P(disruption), P(n/n_G > 1), quantiles, rank correlations and, with
+  `--analysis sensitivity`, Sobol' first-order and total indices with bootstrap intervals.
+  `npm run -s uq -- --preset ITER --n 128 --json uq-iter.json`; the same `--seed` gives byte-identical
+  JSON at any `--threads`. `scan`: parameter grid or sampled scan by full simulations
+  (`--param H98=0.8:1.2:5`). `optimize`: design optimisation of a tokamak preset on the steady-state
+  power balance (`--objective major-radius|plasma-volume|aux-power|fusion-power|gain`, `--pareto A,B`
+  for a two-objective front). All three write JSON/CSV and carry an "educational" caveat; the
+  library is in `src/analysis` (see its README).
 - `npm run stress:exit -- 300 8` (opt-in soak): starts 300 `validate` and `golden` processes on
   fixture inputs (independent of the physics), 8 at a time, and checks that each ends with its
   documented exit code (0 or 1) and no signal. A short version of it is part of `npm test`.
@@ -157,7 +167,10 @@ src/physics/
   simulation.ts       Common driver (0D/1.5D selection, recording, rewind)
 src/cli/              Node command-line tools: args (strict flag parser), pool (worker_threads),
                       presetRunner.worker, validate.cli (npm run validate), figures.cli (npm run figures),
-                      golden.cli (npm run golden / golden:update)
+                      golden.cli (npm run golden / golden:update), uq.cli / scan.cli / optimize.cli
+                      (npm run uq / scan / optimize)
+src/analysis/         Uncertainty quantification and optimisation (samplers, Sobol' indices, ensembles, Nelder-Mead,
+                      augmented Lagrangian, CMA-ES, NSGA-II); DOM-free, Node only in analysis/node
 src/regression/       Golden snapshot extraction, comparator and pool worker
 src/plot/             Plotting engine: figure, svg, pdf, png, mathtext, fonts, ticks, contour, colors
   figures/            Paper figures (equilibrium, profiles, timetrace, popcon, validation, reactivity, verification, mhd, scan, generic)

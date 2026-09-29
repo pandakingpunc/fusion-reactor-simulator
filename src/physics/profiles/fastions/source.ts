@@ -68,15 +68,18 @@ export class FastIonSource implements SourceModel {
     return f;
   }
 
-  geometryChanged(): void {
+  geometryChanged(_ctx: ProfileContext, tg: TransportGeometry): void {
     for (const c of this.cache) c.invalidate();
     this.alphaCache.invalidate();
+    // the energy of a cell is kept when the cell volumes change (pool.ts remap)
+    this.fast.remap(tg.dV);
   }
 
   prepare(ctx: ProfileContext, _t: number, st: ProfileState, K: StepConstants): void {
     const f = this.fast, g = ctx.tg, w = ctx.w, N = ctx.N, cfg = ctx.cfg;
     const fs = FUEL_SPECIES[cfg.fuel];
     const { Te, Ti, ne } = st;
+    if (!f.isBound) f.remap(g.dV);
     const aMid = 0.5 * (g.RoutF[N] - g.RinF[N]);
     const scale = ctx.ps.fastOrbitScale ?? 1;
     f.comps.forEach((comp, k) => {
@@ -145,7 +148,7 @@ export class FastIonSource implements SourceModel {
 
   restore(_rec: Readonly<CheckpointRecord>, aux: Readonly<CheckpointAux> | undefined): void {
     const ctx = this.ctx;
-    this.fast.restore(aux, ctx.WfBeam, ctx.WfAlpha, ctx.tg.volume);
+    this.fast.restore(aux, ctx.WfBeam, ctx.WfAlpha, ctx.tg.dV);
   }
 
   /** The beam heating of the attempt: the smoothed birth power of each component, delivered with a and b, split between the electrons and the ions by G */

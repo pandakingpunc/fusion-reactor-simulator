@@ -16,8 +16,10 @@
  *
  *   f(v, ξ) = S τ_s / (2π (v³ + v_c³)) Σ_l (2l + 1)/2 P_l(ξ) P_l(ξ_b) [ v³ (v_b³ + v_c³) / (v_b³ (v³ + v_c³)) ]^{l(l+1) Ẑ/6},
  *
- * Ẑ = A_f Σ_j n_j Z_j² / (n_e A_j) (the ratio of the scattering on the ions to the drag on the electrons; = A_f × the ionSum of
- * criticalEnergy). The moments the model uses, all in closed form except the current integral:
+ * Ẑ = ν_d^ions τ_s (v/v_c)³ = (Σ_j n_j Z_j²) / (A_f Σ_j n_j Z_j²/A_j) = Z_eff / (A_f × ionSum) (pitchScatteringZhat): the pitch-angle
+ * scattering rate on the ions (Rutherford, ∝ n_j Z_j² / m_f² v³, independent of the mass of the target) over the ion energy drag (∝ n_j Z_j² /
+ * (m_f m_j v³), which defines v_c). One species of mass A_j: Ẑ = A_j/A_f (a deuteron beam into deuterium 1; heavier targets scatter more per
+ * unit of drag). The moments the model uses, all in closed form except the current integral:
  *
  *   density        n_f = ∫ f d³v = S τ_s/3 · ln(1 + (E_0/E_c)^{3/2})      (= S τ_th, heating.ts slowingDownTime)
  *   energy         W   = ∫ (m v²/2) f d³v = S E_0 τ_W,  τ_W = (τ_s/2) (1 − G(E_0/E_c))   (heating.ts fastIonEnergyTime)
@@ -68,6 +70,15 @@ export function slowingDownMoments(p: SlowingDownParams): SlowingDownMoments {
 /** The same τ_th and τ_W from the plasma parameters through heating.ts (a consistency handle for tests): [τ_th, τ_W] */
 export function slowingDownTimes(Te_keV: number, ne: number, A: number, Z: number, E0_keV: number, Ec_keV: number): [number, number] {
   return [slowingDownTime(Te_keV, ne, A, Z, E0_keV, Ec_keV), fastIonEnergyTime(Te_keV, ne, A, Z, E0_keV, Ec_keV)];
+}
+
+/**
+ * Ẑ of the Gaffey distribution: the pitch-angle scattering of the fast ion on the plasma ions over their energy drag, in units of the
+ * v_c³/(τ_s v³) of the drag: Ẑ = (Σ n_j Z_j²/n_e) / (A_f Σ n_j Z_j²/(n_e A_j)) = Z_eff,ions / (A_f × ionSum). `zeff`: Σ n_j Z_j²/n_e of the ions (the plasma
+ * Z_eff), `ionSum`: Σ n_j Z_j²/(n_e A_j) (composition.ts, criticalEnergy), `A_f` the mass number of the fast ion.
+ */
+export function pitchScatteringZhat(zeff: number, ionSum: number, A_f: number): number {
+  return zeff / (A_f * Math.max(ionSum, 1e-30));
 }
 
 /** Legendre polynomial P_l(x), l = 0…4 (the terms of the pitch expansion that the moments and the tests need) */

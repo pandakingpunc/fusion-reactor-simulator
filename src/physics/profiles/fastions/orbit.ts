@@ -52,7 +52,7 @@ export const MAX_SIGMA = 0.5;
 
 /**
  * The exponentially scaled modified Bessel function e^{−x} I_0(x), x ≥ 0 (Abramowitz and Stegun, Handbook of Mathematical Functions, 9.8.1
- * and 9.8.2: polynomial approximations, relative error below 2e-7).
+ * and 9.8.2: polynomial approximations, absolute error below 1.9e-7 of x^{1/2} e^{-x} I_0(x), about 0.4).
  */
 export function besselI0e(x: number): number {
   if (x < 3.75) {

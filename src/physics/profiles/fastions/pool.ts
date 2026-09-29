@@ -129,8 +129,8 @@ export class PoolField {
 /** The energies of one accepted step: the beam (all components) and the alpha field [J] */
 export interface StepLedger { beam: FieldLedger; alpha: FieldLedger }
 
-/** Snapshot of the state of the fields (restore after a failed step) */
-export interface FastIonSnapshot { beam: Float64Array[]; alpha: Float64Array; lastStep: StepLedger }
+/** Snapshot of the state of the fields (restore after a failed step): the fields, the cell volumes they are expressed on, the last ledger */
+export interface FastIonSnapshot { beam: Float64Array[]; alpha: Float64Array; dV: Float64Array; lastStep: StepLedger }
 
 const zeroLedger = (): FieldLedger => ({ birth: 0, delivered: 0, dContent: 0 });
 
@@ -150,6 +150,10 @@ export class FastIonProfile {
   private readonly ptot: Float64Array;
   /** the energy ledger of the last accepted step */
   lastStep: StepLedger = { beam: zeroLedger(), alpha: zeroLedger() };
+  /** the cell volumes the energy densities are expressed on (the geometry of the last adoption); `bound` is false until the first one is known */
+  private readonly dVref: Float64Array;
+  private bound = false;
+  get isBound(): boolean { return this.bound; }
 
   constructor(readonly N: number, comps: readonly BeamComponent[]) {
     this.comps = comps;
@@ -158,6 +162,26 @@ export class FastIonProfile {
     this.beamBirth = comps.map(() => new Float64Array(N));
     this.pFast = new Float64Array(N);
     this.ptot = new Float64Array(N);
+    this.dVref = new Float64Array(N);
+  }
+
+  /**
+   * A new transport geometry (the equilibrium was updated): the energy in a cell is kept, w_i ← w_i ΔV_old,i/ΔV_new,i, so that ∫ w dV does not jump
+   * at an adoption (the thermal profiles are densities and jump by the change of V′, a documented limitation of the model; the fast-ion energy is an
+   * inventory the ledger accounts for). The first call only records the volumes.
+   */
+  remap(dV: ArrayLike<number>): void {
+    if (this.bound) {
+      for (let i = 0; i < this.N; i++) {
+        const r = this.dVref[i] / dV[i];
+        if (r === 1) continue;
+        for (const f of this.beam) f.W[i] *= r;
+        this.alpha.W[i] *= r;
+      }
+      this.updatePressure();
+    }
+    for (let i = 0; i < this.N; i++) this.dVref[i] = dV[i];
+    this.bound = true;
   }
 
   /** ∫ w dV of the beam fields and of the alpha field [J] */
@@ -213,7 +237,7 @@ export class FastIonProfile {
 
   snapshot(): FastIonSnapshot {
     return {
-      beam: this.beam.map((f) => Float64Array.from(f.W)), alpha: Float64Array.from(this.alpha.W),
+      beam: this.beam.map((f) => Float64Array.from(f.W)), alpha: Float64Array.from(this.alpha.W), dV: Float64Array.from(this.dVref),
       lastStep: { beam: { ...this.lastStep.beam }, alpha: { ...this.lastStep.alpha } },
     };
   }
@@ -221,6 +245,7 @@ export class FastIonProfile {
   restoreSnapshot(s: FastIonSnapshot): void {
     this.beam.forEach((f, k) => f.W.set(s.beam[k]));
     this.alpha.W.set(s.alpha);
+    this.dVref.set(s.dV); this.bound = s.dV[0] > 0;
     this.lastStep = { beam: { ...s.lastStep.beam }, alpha: { ...s.lastStep.alpha } };
     this.updatePressure();
   }
@@ -232,12 +257,15 @@ export class FastIonProfile {
 
   /**
    * Restore: the fields of the checkpoint; a record without them (from elsewhere) gets uniform fields that carry the contents `WfBeam`, `WfAlpha`
-   * of the shared context over the volume V (each beam component in proportion to its power fraction).
+   * of the shared context over the volume V = Σ ΔV of the cells `dV` (each beam component in proportion to its power fraction).
    */
-  restore(aux: Readonly<CheckpointAux> | undefined, WfBeam: number, WfAlpha: number, volume: number): void {
+  restore(aux: Readonly<CheckpointAux> | undefined, WfBeam: number, WfAlpha: number, dV: ArrayLike<number>): void {
     const s = aux?.fastions as FastIonSnapshot | undefined;
-    if (s && s.beam.length === this.beam.length && s.alpha.length === this.N) { this.restoreSnapshot(s); return; }
-    const v = Math.max(volume, 1e-30);
+    if (s && s.beam.length === this.beam.length && s.alpha.length === this.N && s.dV?.length === this.N) { this.restoreSnapshot(s); return; }
+    let vol = 0;
+    for (let i = 0; i < this.N; i++) { vol += dV[i]; this.dVref[i] = dV[i]; }
+    this.bound = true;
+    const v = Math.max(vol, 1e-30);
     this.beam.forEach((f, k) => f.W.fill((this.comps[k].f * WfBeam) / v));
     this.alpha.W.fill(WfAlpha / v);
     this.lastStep = { beam: zeroLedger(), alpha: zeroLedger() };

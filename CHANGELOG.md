@@ -237,8 +237,10 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   ITER preset does not sustain its burn under either scaling (tau_E about 15 % below IPB98(y,2)).
 - Low-density branch of the L-H threshold: below Ryter's density minimum (eq. 3 of Nucl. Fusion 54 (2014) 083003)
   the threshold rises as (n_min/n)^2, the penalty of the SPARC design studies (Hughes et al., J. Plasma Phys. 86
-  (2020) 865860504), no longer as n_min/n. Neither Martin (2008) nor Ryter gives the exponent; the first L-H
-  transition of a ramp-up moves by 0.1 s (JET) to 0.6 s (DEMO15) between Martin only and this branch.
+  (2020) 865860504), no longer as n_min/n. Neither Martin (2008) nor Ryter gives the exponent. Only ramp-ups that
+  start below n_min move: their first L-H transition comes 0.06 s (JT-60SA) to 0.3 s (DEMO15) later than with
+  n_min/n, and 0.13 s (DIII-D) to 0.6 s (DEMO15, JET 0.27 s) later than with Martin's law alone; ITER, ITER15,
+  DEMO and MAST-U (heating-ramp limited or above n_min) move by 0.02 s at most.
 - ITER (0D) `n_target` 1.0e20 -> 0.914e20 and DEMO (0D) 0.75e20 -> 0.711e20: the target of the 0D model is the
   volume average, the design points are the line-averaged n/n_G = 0.85 (ITER) and 1.2 (EU-DEMO 2018 baseline,
   Siccinio et al. 2022; their table 1 writes it as the angle-bracket <n>/n_GW, which may mean the volume average:

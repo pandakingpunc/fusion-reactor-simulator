@@ -48,7 +48,7 @@ export interface ProfileSettings {
   gridPacking?: number;
   /**
    * error control of the transport time step (TR-BDF2, profiles/solver/coupledStep.ts): the local error estimate of T_e, T_i, n_e
-   * and ψ must stay below atol · max|y| + rtol · |y| in every cell (default rtol 1e-3, atol 1e-4: the profile maximum is the
+   * and ψ must stay below atol · max|y| + rtol · |y| in every cell (default rtol 1e-2, atol 1e-4: the profile maximum is the
    * scale of the absolute tolerance), and the step is at most dtMax seconds (default 0.5)
    */
   rtol?: number;

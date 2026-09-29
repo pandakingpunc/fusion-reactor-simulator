@@ -2,7 +2,10 @@
  * Energy conservation of the 1.5D model: the convective heat flux of the heat solver against an
  * analytic steady state, the exact discrete energy identity of one heat step with the flux across
  * the separatrix (HeatSolver.boundaryLoss), and the energy balance of the full model over a
- * burning flat-top, closed by that flux (P_bound).
+ * burning flat-top, closed by that flux (P_bound). The TR-BDF2 step conserves energy in its own quadrature:
+ * ΔW/Δt = w (P_n + P_γ) + d P_{n+1} with P = P_heat − P_rad − P_bound at the old, the intermediate and the new state and
+ * w = √2/4, d = 1 − √2/2 (CoupledStepper.energyResidual); the instantaneous P_bound of the diagnostics closes it only
+ * up to the change of P within the step.
  */
 import { describe, expect, it } from 'vitest';
 import { Simulation } from '../simulation';
@@ -107,7 +110,7 @@ describe('heat solver: convection and the flux across the separatrix', () => {
 });
 
 describe('discrete energy balance of the full model', () => {
-  it('ITER15 flat-top: every accepted step has |dW/dt − (P_heat − P_rad − P_bound)| < 1e-4 P_heat', () => {
+  it('ITER15 flat-top: every accepted step closes ΔW/Δt = w (P_n + P_γ) + d P_{n+1} to 1e-4 of P_heat (P = P_heat − P_rad − P_bound)', () => {
     // flat-top: after the 10 s heating ramp and the 30 s density ramp
     const tFlat = 40, tEnd = 150;
     const sim = new Simulation({ ...ITER_15D, t_end: tEnd });
@@ -115,10 +118,10 @@ describe('discrete energy balance of the full model', () => {
     const post = m.postStep.bind(m);
     const steps: { t: number; resid: number; bound: number }[] = [];
     m.postStep = (t, dt, y) => {
-      // before the event models run: lastDiag holds the diagnostics the accepted step wrote
+      // before the event models run: lastDiag holds the diagnostics the accepted step wrote; the stepper's last attempt is the accepted one
       if (dt > 0 && t > tFlat && m.ctx.phase === 'normal') {
         const d = m.ctx.lastDiag;
-        steps.push({ t, resid: (d.dWdt - (d.P_heat - d.P_rad - d.P_bound)) / d.P_heat, bound: d.P_bound / d.P_heat });
+        steps.push({ t, resid: m.stepper.energyResidual, bound: d.P_bound / d.P_heat });
       }
       return post(t, dt, y);
     };

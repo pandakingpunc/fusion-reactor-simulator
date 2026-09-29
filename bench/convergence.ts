@@ -39,7 +39,7 @@ const CLI = defineCli({
     rtols: { type: 'list', default: ['1e-2', '1e-3', '1e-4'], metavar: 'T,T,T', help: 'three tolerances of the time-step error control (rtol), coarse to fine' },
     dts: { type: 'list', default: ['0.5', '0.05', '0.01'], metavar: 'S,S,S', help: 'three time-step limits [s], coarse to fine' },
     'base-grid': { type: 'int', default: 50, min: 5, metavar: 'N', help: 'nRho of the tolerance and time-step series' },
-    'base-rtol': { type: 'number', default: 1e-3, min: 1e-12, metavar: 'T', help: 'rtol of the radial-resolution and time-step series' },
+    'base-rtol': { type: 'number', default: 1e-2, min: 1e-12, metavar: 'T', help: 'rtol of the radial-resolution and time-step series' },
     't-end': { type: 'number', min: 1, metavar: 'S', help: 'shorten the discharge (default: the preset, 400 s); for smoke tests' },
     packing: { type: 'number', min: 0, metavar: 'P', help: 'edge packing of the radial cells (ProfileSettings.gridPacking; 0: uniform grid; default: the model default)' },
     threads: { type: 'int', min: 1, help: 'worker threads (default: min(6, cores − 1))' },

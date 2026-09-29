@@ -15,6 +15,7 @@ import { heatingPowers } from '../control/actuators';
 import { currentProfiles } from '../qprofile';
 import { volumeIntegral } from '../sources/deposition';
 import type { EventModel } from './EventModel';
+import { CRASH_RESTART_DT } from './elm';
 import { LHTransition } from './lh';
 import { ElmEvents } from './elm';
 import { SawtoothEvents } from './sawtooth';
@@ -114,7 +115,7 @@ describe('type-I ELMs', () => {
     expect(st.s.cZ).toBeCloseTo(before.cZ * (1 - 0.1 * fW), 14);
     expect(st.s.Pelm - before.Pelm).toBeCloseTo(dW, 6);
     expect(ctx.diagStale).toBe(true);
-    expect(ctx.dt).toBe(Math.max(0.01 * 0.2, 5e-4));
+    expect(ctx.dt).toBe(CRASH_RESTART_DT);
   });
 
   it('waits τ_E/8 for the pedestal to recover; the checkpoint restores the timer and the ELM record', () => {
@@ -175,7 +176,7 @@ describe('sawtooth crashes', () => {
     // full reconnection: q ≥ 1.01 inside the mixing radius, no q = 1 surface left
     for (let f = 1; f < N / 2; f++) expect(ctx.w.qF[f]).toBeGreaterThan(1.01 - 1e-9);
     expect(ctx.diagStale).toBe(true);
-    expect(ctx.dt).toBe(5e-3);
+    expect(ctx.dt).toBe(CRASH_RESTART_DT);
     // low β_N: no NTM seed islands
     expect(st.s.w32).toBe(0);
     expect(st.s.w21).toBe(0);

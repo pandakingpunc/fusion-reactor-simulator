@@ -27,8 +27,9 @@
  * in its own fields is its own business (an `accepted` hook that fails half-way must not leave itself half-updated).
  *
  * What the error estimate does not see: the quantities that are updated once per accepted step and held fixed within it (the
- * scalars of the state: C_χ and its integral term, the inventories, the fast-ion pools, P_SOL; the sources' prepare) are first
- * order in Δt. The step is also limited by STEP_MAX_CHANGE, a hard failure at a relative change of 35 %.
+ * scalars of the state: C_χ and its integral term, the inventories, the fast-ion pools, P_SOL and the boundary values, the fueling
+ * command; the sources' prepare) are first order in Δt. A relative change of a profile above STEP_MAX_CHANGE (35 %) within a step counts
+ * as an error above the tolerance, in proportion to the change.
  */
 import { AndersonMixer } from '../../numerics/anderson';
 import { KEV, ProfileContext, StepConstants } from '../context';
@@ -67,7 +68,7 @@ export const STEP_MAX_LOCALISE = 3;
 export const PICARD_MAX_ITER = 12;
 export const PICARD_DEPTH = 4;
 /** defaults of ProfileSettings.rtol and atol */
-export const DEFAULT_RTOL = 1e-3;
+export const DEFAULT_RTOL = 1e-2;
 export const DEFAULT_ATOL = 1e-4;
 
 /** Result of one implicit attempt: accepted, largest relative change, what it threw, the scaled error estimate (1 = the tolerance) */
@@ -148,7 +149,6 @@ export class CoupledStepper implements Checkpointable {
   lastErrAt = { field: 0, cell: 0 };
 
   private readonly triggers: readonly EventTrigger[];
-  private readonly N: number;
   // old-state rates and references (per volume)
   private readonly U0e: Float64Array; private readonly U0i: Float64Array;
   private readonly Rne: Float64Array; private readonly RTe: Float64Array; private readonly RTi: Float64Array; private readonly Rpsi: Float64Array;
@@ -180,7 +180,7 @@ export class CoupledStepper implements Checkpointable {
     /** event models: those with a trigger are localised inside a step */
     events: readonly EventModel[] = [],
   ) {
-    const N = (this.N = ctx.N);
+    const N = ctx.N;
     const arr = () => new Float64Array(N);
     this.triggers = events.flatMap((e) => (e.trigger ? [e.trigger] : []));
     this.U0e = arr(); this.U0i = arr(); this.Rne = arr(); this.RTe = arr(); this.RTi = arr(); this.Rpsi = arr();
@@ -279,8 +279,9 @@ export class CoupledStepper implements Checkpointable {
     }
     this.accept(t, dt, yOld, y);
     this.stats.accepted++;
-    // Δt control: the PI controller on the error of the step, or, for a step that was cut short (by the output time
-    // or an event: it says nothing about the length that was proposed), on the error that the full Δt would have had (∝ Δt³)
+    // Δt control: the integral controller on the error of the step, or, for a step that was cut short (by the output time
+    // or an event: it says nothing about the length that was proposed), on the error that the full Δt would have had (∝ Δt³, the
+    // asymptotic law; the error of a short step is small and the extrapolation makes the proposal for the next step no larger than 2 times it)
     const errFull = cut ? (r.err ?? 0) * Math.pow(dtFull / dt, 3) : (r.err ?? 0);
     const fac = acceptedFactor(errFull, retried);
     const next = (cut ? dtFull : dt) * fac;
@@ -396,9 +397,12 @@ export class CoupledStepper implements Checkpointable {
     ctx.Pbound = (lb.e + lb.i) * KEV;
     const P = powerTotals(ctx, K);
     const netNew = P.P_heat - P.P_rad - ctx.Pbound;
-    // final consistency
+    // final consistency: the composition, the q profile and the pressure of the new state (the pressure of the work arrays is that of the
+    // last Picard iterate, a step of the iteration behind, and the pedestal gradient α_ped/α_crit of the diagnostics and of the ELM
+    // trigger amplifies the difference)
     composition(ctx, v.Te, v.ne, s);
     currentProfiles(ctx, v.psi, s.Ip);
+    for (let i = 0; i < N; i++) w.p[i] = (v.ne[i] * Math.max(v.Te[i], 0.01) + w.ni[i] * Math.max(v.Ti[i], 0.01)) * KEV;
     let change = 0, finite = true;
     for (let i = 0; i < N; i++) {
       if (!isFinite(v.Te[i]) || !isFinite(v.Ti[i]) || !isFinite(v.ne[i]) || !isFinite(v.psi[i])) finite = false;
@@ -544,17 +548,15 @@ export class CoupledStepper implements Checkpointable {
     }
     // the filter: one solve of each system with the coefficients of the last iterate, the estimate as the reference state, no sources
     // and zero boundary values
-    {
-      const U0e = this.fU0e, U0i = this.fU0i;
-      for (let i = 0; i < N; i++) { U0e[i] = 1.5 * v.ne[i] * eTe[i]; U0i[i] = 1.5 * w.ni[i] * eTi[i]; }
-      ctx.dens.filter({ dt: dtEff, D: w.D, v: w.v }, eNe, fNe);
-      ctx.heat.solve({
-        dt: dtEff, ne0: v.ne, ne1: v.ne, ni0: w.ni, ni1: w.ni, Te0: zero, Ti0: zero, U0e, U0i, chiE: w.chiE, chiI: w.chiI,
-        Qe: zero, Qi: zero, Le: w.Le, Li: w.Li, TeStar: zero, TiStar: zero, nuEq: w.nuEq, GammaF: ctx.dens.GammaF,
-        convCoef: HEAT_CONVECTION, TeB: 0, TiB: 0, nB: ctx.bc.n,
-      }, fTe, fTi);
-      ctx.cur.solve({ dt: dtEff, psi0: ePsi, sigma: w.sigma, jniB: zero, Ip: 0 }, fPsi);
-    }
+    const U0e = this.fU0e, U0i = this.fU0i;
+    for (let i = 0; i < N; i++) { U0e[i] = 1.5 * v.ne[i] * eTe[i]; U0i[i] = 1.5 * w.ni[i] * eTi[i]; }
+    ctx.dens.filter({ dt: dtEff, D: w.D, v: w.v }, eNe, fNe);
+    ctx.heat.solve({
+      dt: dtEff, ne0: v.ne, ne1: v.ne, ni0: w.ni, ni1: w.ni, Te0: zero, Ti0: zero, U0e, U0i, chiE: w.chiE, chiI: w.chiI,
+      Qe: zero, Qi: zero, Le: w.Le, Li: w.Li, TeStar: zero, TiStar: zero, nuEq: w.nuEq, GammaF: ctx.dens.GammaF,
+      convCoef: HEAT_CONVECTION, TeB: 0, TiB: 0, nB: ctx.bc.n,
+    }, fTe, fTi);
+    ctx.cur.solve({ dt: dtEff, psi0: ePsi, sigma: w.sigma, jniB: zero, Ip: 0 }, fPsi);
     const aTe = atol * Math.max(maxAbs(o.Te), maxAbs(v.Te)), aTi = atol * Math.max(maxAbs(o.Ti), maxAbs(v.Ti));
     const aNe = atol * Math.max(maxAbs(o.ne), maxAbs(v.ne)), aPsi = atol * Math.max(maxAbs(o.psi), maxAbs(v.psi));
     let err = 0;

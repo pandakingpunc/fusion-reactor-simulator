@@ -17,35 +17,46 @@ current equilibrium and transport geometry, work arrays, plasma and controller s
 | `work.ts` | work arrays `ctx.w` (cell arrays of N, face arrays of N + 1), allocated once |
 | `context.ts` | `ProfileContext`, `StepConstants` (held fixed over a step), `onGeometry` cache hooks |
 | `geometry1d.ts` | the radial grid (uniform, or packed towards the edge: `GridSpec`, `buildGrid`, `cellIndex`, `faceValue`, …) and the transport geometry on it, ρ̂ = √(Φ/Φ_b), from equilibrium tables (`EquilibriumTables`) |
-| `fvsolver.ts` | implicit finite-volume solvers (heat, density, current), `boundaryLoss` (P_bound) |
+| `fvsolver.ts` | implicit finite-volume solvers (heat, density, current) with the reference state and explicit rate of a TR-BDF2 stage, their right-hand sides (`residual`, `rate`) and error-estimate filter, `boundaryLoss` (P_bound) |
 | `composition.ts` | quasi-neutral composition; He ash, impurity and fuel-mix inventories |
 | `qprofile.ts` | ψ → ψ′, q, enclosed current, ⟨j·B⟩; q95 |
 | `boundary/sol.ts` | separatrix values (two-point T_sep, n_sep), lagged P_SOL |
 | `sources/` | `SourceModel` plug-ins: `nbi`, `rf`, `fusion`, `radiation`, `exchange`; `current.ts` (σ_neo, bootstrap, ohmic); `deposition.ts` (profiles, NBI chord). `fusion` evaluates every channel of the fuel with the helpers the 0D model uses (`pairDensity`, `burnPerReaction`, the products of `FUEL_CHANNELS`) |
 | `transport/` | `TransportModel` plug-ins: `scaling`, `cgm`; `coefficients.ts` adds barrier (`pedestal.ts`), D and pinch, NTM islands, neoclassical floor |
 | `control/` | heating (with the ignition-test ramp-down) and density programmes, fueling feedback, loss power P_L, τ_E scaling and the C_χ controller |
-| `solver/` | `pipeline.ts` (evaluation order), `coupledStep.ts` (Picard step, Δt control, failures), `acceptStep.ts` (update after an accepted step) |
+| `solver/` | `pipeline.ts` (evaluation order), `coupledStep.ts` (the TR-BDF2 step: Picard with Anderson mixing, error control, event localisation, failures), `trbdf2.ts` (method constants, error estimate, controller), `localise.ts` (dense output and event crossing), `acceptStep.ts` (update after an accepted step) |
 | `coupling/equilibrium.ts` | Grad–Shafranov coupling: initial solve, update policy, guarded updates (`eqguard.ts`) |
-| `events/` | `EventModel` plug-ins: `LH`, `ELM`, `sawtooth`, `NTM`, `burn`, `warnings`, `disruption` |
+| `events/` | `EventModel` plug-ins: `LH`, `ELM`, `sawtooth`, `NTM`, `burn`, `warnings`, `disruption`; `triggers.ts` (the margins of the ELM and sawtooth thresholds the stepper localises) |
 | `diagnostics.ts` | time traces (`PROFILE_DIAGS` are the ones the UI shows), profiles, power totals |
 | `checkpoint.ts` | `Checkpointable` and the checkpoint store (rewind) |
 
 ## One step
 
-`CoupledStepper.step` (normal phase) takes an implicit step from `yOld` to `y`:
+`CoupledStepper.step` (normal phase) advances `y` from t towards `tMax` by one TR-BDF2 step (below) and returns the new
+time; the step may end earlier than `tMax` (at an event, see "Time stepping"). An **attempt** (`implicitStep`, one TR-BDF2
+step at one Δt) does:
 
-1. once per attempt, on the old state: composition → q profile → boundary values → step constants
+1. once, on the old state: composition → q profile → boundary values → step constants
    (`heatingPowers`, then every source's `prepare`, then the neoclassical closure) → fueling
-   source (`w.Sn`) → every source's `particles`;
-2. Picard iterations (≤ 8) on the iterate: transport coefficients (χ relaxed by ½) → density solve →
-   composition → every source's `heat` → q profile → current sources (σ, bootstrap, every source's
-   `current`, ohmic) → `assembleHeatSources` → heat solve (T_e, T_i together) → current solve;
-3. P_bound from the last heat solve, final composition and q profile.
+   source (`w.Sn`) → every source's `particles`; the trigger margins of the events that have one;
+2. the rates of the old state (`oldRates`): transport coefficients, every source's `heat`, the current sources, then the
+   right-hand sides of the density, energy and current equations (`DensitySolver.residual`, `HeatSolver.residual`,
+   `CurrentSolver.rate`), per volume: the explicit source of the trapezoidal stage and the R_n of the error estimate;
+3. stage 1, the trapezoidal rule to t + γΔt (γ = 2 − √2), and stage 2, BDF2 from the old and the intermediate state to
+   t + Δt. Both are backward-Euler-like solves over the same interval dΔt (d = 1 − √2/2): stage 1 with the old state as
+   reference and its rate as an explicit source, stage 2 with the reference aU_γ + bU_n (a = 1.207, b = −0.207) and no
+   source (`HeatInputs.U0e`, `Xe`, `DensityInputs.X`, `CurrentInputs.rate0`). Within a stage, Picard iterations on the
+   iterate, accelerated by Anderson mixing of (T_e, T_i, n_e) (depth 4, at most 12 iterations, converged at a relative
+   change of 0.1 rtol): transport coefficients → density solve → composition → every source's `heat` → q profile → current
+   sources (σ, bootstrap, every source's `current`, ohmic) → `assembleHeatSources` → heat solve (T_e, T_i together) →
+   current solve. Stage 2 starts from the extrapolated stage 1;
+4. P_bound from the last heat solve, final composition and q profile; the scaled error estimate of the step.
 
-A failed attempt (Picard not converged, a change above 35 %, a non-finite state, or a `NumericalFailure`
-or `GSFailure` thrown by a module) is retried with Δt × 0.4 (and runs the per-attempt parts of 1.
-again); after 12 attempts one forced attempt is accepted if finite, otherwise the shot ends with a
-`StepFailure`. Any other exception thrown inside a step (a `TypeError` of a plug-in, a violated
+The error estimate accepts the step or repeats it with a smaller Δt (rejection: an attempt that is not a failure). A **failed**
+attempt (Picard not converged in a stage, a non-finite state, or a `NumericalFailure` or `GSFailure` thrown by a module) is
+retried with Δt × 0.4 (and runs the per-attempt parts of 1. again); after 12 failed attempts one forced attempt is accepted if
+finite, otherwise the shot ends with a `StepFailure`. A relative change of a profile above 35 % within a step counts as an error
+above the tolerance, in proportion to the change. Any other exception thrown inside a step (a `TypeError` of a plug-in, a violated
 invariant) is a programming error: it propagates out of `Simulation.advance` with `y` put back to
 the start of the step. That covers the update after the accepted step too (the `accepted` hooks,
 the equilibrium update): `CoupledStepper.step` snapshots the scalars of the context that a step
@@ -64,9 +75,11 @@ re-evaluated on it).
 produced (t = 0, after an MHD crash, after a rewind) evaluate everything from `y` through
 `PhysicsPipeline.evaluateWorkArrays`.
 
-Energy bookkeeping: over an accepted step `dWdt = P_heat − P_rad − P_bound` to the Picard tolerance
-(`energy.test.ts`: < 1e-4 P_heat over the ITER15 flat-top). A new heating or loss channel must keep
-this closure: put its power density into a work array, add it in `assembleHeatSources` and in
+Energy bookkeeping: the TR-BDF2 step conserves energy in its own quadrature, ΔW/Δt = w (P_n + P_γ) + d P_{n+1} with
+P = P_heat − P_rad − P_bound at the old, the intermediate and the new state and w = √2/4
+(`CoupledStepper.energyResidual`, `energy.test.ts`: < 1e-4 P_heat over the ITER15 flat-top). The P_bound of the diagnostics is that
+of the new state, so `dWdt = P_heat − P_rad − P_bound` holds only up to the change of P within the step. A new heating or loss
+channel must keep the closure: put its power density into a work array, add it in `assembleHeatSources` and in
 `powerTotals` (`diagnostics.ts`). The stored energy has one definition, `ctx.storedEnergy`
 (W = Σ 3/2 (n_e T_e + n_i T_i) ΔV).
 
@@ -105,6 +118,77 @@ takes the cell that contains ρ_ped, 0.02 wide in the steep barrier gradient).
 ITER15 flat-top numbers against the grid (400 s; `npm run bench:convergence`, table in the v4 changelog): with p = 4
 N = 50 and N = 100 differ by less than 1 % in Q, f_bs, ℓ_i and T_ped; the uniform grid by 1.6 % in Q, 1.7 % in ℓ_i
 and 3.4 % in T_ped.
+
+## Time stepping
+
+**Method.** TR-BDF2 (Bank et al., IEEE Trans. CAD 4 (1985) 436; Hosea and Shampine, Appl. Numer. Math. 20 (1996) 21;
+`solver/trbdf2.ts`): second order, L-stable, one step (no history, so a crash restarts it at no cost). The conserved quantities of the
+equations are the density n_e, the energy contents (3/2) n_e T_e and (3/2) n_i T_i and ψ; the finite-volume solvers of `fvsolver.ts`
+solve a stage as they solved a backward-Euler step, with the reference state and the explicit rate above. The inputs that are held
+fixed over a step (heating powers, boundary values, the fueling source, the sources' `prepare`) are those of the old state.
+
+**Error control** (`ProfileSettings.rtol`, `atol`, `dtMax`; defaults 1e-2, 1e-4, 0.5 s). The embedded estimate of the local truncation
+error, a linear combination of R_n Δt and the three states that costs no further evaluation, is converted to T_e, T_i, n_e and ψ and
+compared with `atol · max|y| + rtol · |y|` in every cell; the step is accepted when the largest ratio is at most 1. The raw estimate
+is filtered with the inverse of the iteration matrix, `(I − dΔt J)⁻¹`, which is one more solve of each system with the frozen
+coefficients of the last iterate (Hosea and Shampine, section 5): the outermost cells (a half cell from the separatrix) are stiff over a
+step, the trapezoidal stage rings on them and the raw estimate reports the ringing, 100 to 1000 times the error of the cells inside;
+the filter damps a component by 1/(1 + λ d Δt) and leaves the smooth ones alone. The maximum norm is the one that converges the
+flat-top numbers; a root-mean-square norm takes half the steps and leaves Q about 1 % low (ITER15, 80 s). The next Δt is
+Δt · 0.9 · err^(−1/2) within [0.2, 2] (an integral controller with no memory besides Δt, which is what the checkpoint records; the
+exponent is between the 1/3 of the asymptotic error and what the estimate shows in practice, where the edge barrier and the
+kinks of a crash dominate it); a rejected step is repeated with the step at which the error would be 0.9, the exponent measured
+from two attempts. `CRASH_RESTART_DT` (0.5 ms) is proposed after an ELM or sawtooth crash. The counters
+(`CoupledStepper.stats`: accepted, rejected, failed, localised, Picard iterations) are part of the checkpoint and the report.
+
+**Events at the crossing** (`solver/localise.ts`). The ELM and the sawtooth crash used to fire after the first step that ended beyond
+their threshold, so their time was late by up to a step and their rate depended on it. An event model with an `EventTrigger`
+(`events/EventModel.ts`, `events/triggers.ts`) gives the stepper a margin (α_ped/α_crit − 1; s₁ − s_crit; positive beyond the
+threshold, evaluated from the profiles only) and the earliest time it may fire (the end of its refractory period). When the margin
+changes sign inside an accepted step, or the event becomes ready inside it, Brent's method (`numerics/roots.ts`) finds the crossing on
+the dense output of the step (the quadratic through the three TR-BDF2 states), and the step is repeated with the length that ends
+there; the crash then acts on the profiles at the crossing. The event is aimed 0.1 % beyond the threshold, and the ELM 2 % beyond its
+recovery time τ_E/8, so that the model's own test passes on the diagnostics of the shortened step; if the interpolation missed, the margin of the
+shortened step is still negative, no event fires, and the next step localises again from there (a delay by a fraction of a step,
+never a lost event). In the ITER15 H-mode the ELMs are limited by the recovery time (α_ped/α_crit stays above 1 between crashes), so the
+count follows the recovery time and not the step: 238 ELMs in 80 s at every Δt limit and tolerance. The L–H transition, the NTM onset and
+the other events are not localised.
+
+**Picard and Anderson.** The frozen-coefficient Picard iteration oscillates where χ depends steeply on the gradient (the critical-gradient
+model: the differential diffusivity is 20 times χ near the threshold): a third of the attempts of ITER15 `cgm` failed, the mean step was
+0.35 ms and the 10 s ramp-up took 30 s. Anderson mixing (`numerics/anderson.ts`) of the iterate converges in three to six iterations per
+stage: under 3 % of the attempts are repeated and the 10 s run takes about 5 s.
+
+**What the error estimate does not see.** The quantities that are updated once per accepted step and held fixed within it (C_χ and its
+integral term, P_SOL and the boundary values, the fueling command, the source deposition, the inventories, the fast-ion pools) are first
+order in Δt, and the error control cannot resolve them: the flat-top means of ITER15 keep a dependence on the step of a few tenths of a
+per cent (Q +0.3 % from a Δt limit of 0.5 s to 10 ms, the table below), and the first 80 s of the H-mode, before the means settle, +0.6 % for
+a limit of 5 ms. One consequence is a
+step-to-step oscillation of the boundary values (P_SOL responds to the dW/dt of the last step, and T_sep to P_SOL) that keeps the
+outermost cells at the error limit and the step near 10 ms; feeding P_SOL with the smoothed dW/dt (an open issue of the edge work) removes
+it and allows steps of 20 to 80 ms between ELMs.
+
+**Cost.** A TR-BDF2 step is two Picard solves and the evaluation of the old state, about three times the work of the backward-Euler step, and
+the error control takes more steps in the H-mode (the edge is stiff over a step and ELM cycles of 0.3 s hold 20 to 30 steps): ITER15 (400 s)
+takes about 40 s of CPU time at the default tolerance against 10 s with the backward-Euler step, and the golden 1.5D cases 2 to 4 times as
+long. `rtol` 1e-3 adds a half, 1e-4 doubles it again; the flat-top means do not move with the tolerance beyond the noise of the ELM cycle (table).
+
+## Convergence
+
+`npm run bench:convergence` (ITER15, 400 s, flat-top means; `bench/convergence.ts`, Richardson error estimates of `bench/richardson.ts`). One
+parameter at a time, the others at their defaults (nRho 50, gridPacking 4, rtol 1e-2, dtMax 0.5 s):
+
+| | Q | f_bs | ℓ_i(3) | T_ped [keV] | steps | ELMs |
+| --- | --- | --- | --- | --- | --- | --- |
+| nRho 25 / 50 / 100 | 10.32 / 10.56 / 10.62 | 0.2317 / 0.2286 / 0.2301 | 0.7186 / 0.7431 / 0.7426 | 3.603 / 3.401 / 3.412 | 23222 / 30241 / 40543 | 1300 / 1325 / 1331 |
+| rtol 1e-2 / 1e-3 / 1e-4 | 10.56 / 10.60 / 10.59 | 0.2286 / 0.2294 / 0.2289 | 0.7431 / 0.7399 / 0.7422 | 3.401 / 3.408 / 3.404 | 30241 / 48516 / 56827 | 1325 / 1326 / 1326 |
+| dtMax 0.5 / 0.05 / 0.01 s | 10.56 / 10.55 / 10.59 | 0.2286 / 0.2290 / 0.2294 | 0.7431 / 0.7414 / 0.7400 | 3.401 / 3.404 / 3.413 | 30241 / 31015 / 50854 | 1325 / 1325 / 1330 |
+
+Between nRho 50 and 100 the changes are 0.6 % (Q), 0.7 % (f_bs), 0.1 % (ℓ_i) and 0.3 % (T_ped); between the tolerances 1e-2 and 1e-4 0.3 %,
+0.1 %, 0.1 % and 0.1 %; between the Δt limits 0.5 s and 0.01 s 0.3 %, 0.4 %, 0.4 % and 0.4 %. The ELM count, which followed the step of the
+backward-Euler stepper (1101 to 1131 with the time-step limit and the grid), varies by 0.4 % over the tolerances and the limits and 2 % over the
+grid. The scatter of the flat-top means between neighbouring runs (0.1 to 0.4 %) is that of the sawtooth and ELM sequences, which the Richardson
+fit reads as oscillatory convergence (the GCI of the finest runs is about 1 % for Q, f_bs, ℓ_i and T_ped in the tolerance and the Δt series).
 
 ## Definitions shared with the 0D model
 
@@ -157,14 +241,16 @@ All hooks are optional:
   the source's particle source density [m⁻³ s⁻¹] into `w.Sn` (the density solve uses the sum; the
   fueling feedback on n̄ closes the electron balance, but a source that changes the fuel mix or
   the impurity inventory accounts for that itself);
-- `heat(ctx, st, K)`: every Picard iteration on the iterate (its composition is current);
-- `current(ctx, st, K)`: every Picard iteration; add driven current into `ctx.w.jcdB`;
+- `heat(ctx, st, K)`: every Picard iteration of both stages on the iterate (its composition is current), and once on
+  the old state (its rate);
+- `current(ctx, st, K)`: the same; add driven current into `ctx.w.jcdB`;
 - `accepted(ctx, t, dt, yOld, y)`: once after each accepted step of the normal phase (also a
   forced one; not during the quench phases): the place to evolve state;
 - `geometryChanged(ctx, tg)`: rebuild caches that depend on the transport geometry.
 
-`prepare`, `particles`, `heat` and `current` are evaluations, not events. A retried step runs
-`prepare` and `particles` again, `heat` and `current` run once per Picard iteration, and `prepare`
+`prepare`, `particles`, `heat` and `current` are evaluations, not events. A repeated step (rejected by the error
+control, failed, or shortened to end at an event) runs `prepare` and `particles` again, `heat` and `current` run once per Picard
+iteration of each stage and once on the old state (at least five times per attempt), and `prepare`
 (with the other work-array evaluations) also runs for a state no step produced (first frame, after
 an equilibrium swap, after an MHD crash). Write them as functions of (state, t, the source's own
 state) that leave that state unchanged. A population that evolves from step to step is integrated
@@ -190,7 +276,15 @@ next frame re-evaluates the diagnostics) and may cap `ctx.dt`; it conserves what
 conserve (the sawtooth crash conserves particles and electron and ion energy exactly). A model that
 takes energy out of the thermal plasma between two steps (an ELM crash, a pellet) adds it to
 `ctx.crashE` [J], so that the dW/dt of the loss power counts it as a loss of energy and not as a
-fall in confinement (`acceptStep` takes it off at the next accepted step).
+fall in confinement (`acceptStep` takes it off at the next accepted step). It proposes a small step after the crash
+(`ctx.dt = Math.min(ctx.dt, CRASH_RESTART_DT)`): the error control grows it from there.
+
+An event that fires when a threshold on the profiles is crossed provides an `EventTrigger` (`trigger` on the model): `margin(ctx, st,
+scratch)`, positive beyond the threshold and computed from the profiles only (no work arrays, no state of the model: the stepper
+calls it on the old and the new state of a step and on the interpolation between them), and `readyAt(ctx)`, the end of the model's
+refractory period. The stepper then ends a step at the crossing ("Time stepping"); `afterStep` keeps its own test on the
+diagnostics of the step that ends there, and the two must agree (the margin is `α_ped/α_crit − 1` for the ELM, and the ELM's `readyAt`
+is aimed 2 % beyond the recovery time so that `afterStep`'s strict test passes).
 
 **Checkpointable** (`checkpoint.ts`): every module with state beyond `y` implements `save(rec, aux)`
 and `restore(rec, aux)` (the context part also carries the last diagnostics and, in the quench
@@ -249,14 +343,25 @@ model take part as soon as they implement the hooks; other parts are listed in
   the same pools); only their pressure follows the pool dynamics above, with no fast-ion transport or loss. The pool
   is scalar: its τ_W is the source-weighted mean over the cells, not a profile.
 - `'cgm'` is uncalibrated; its outermost face uses the gradient between the last two cells, not
-  the one to the separatrix value, and it is slow on JET-size machines.
+  the one to the separatrix value. The ITER15 ramp-up takes about 5 s per 10 s of discharge (JET-size machines are
+  slower: the steps are shorter).
 - P_SOL (two-point T_sep) follows the lagged global balance P_heat − P_rad − dW/dt, not P_bound, on
-  purpose: the instantaneous flux would couple T_sep and the edge gradient step by step.
+  purpose: the instantaneous flux would couple T_sep and the edge gradient step by step. The raw dW/dt of the last step still
+  makes P_SOL and T_sep oscillate from step to step at Δt above about 15 ms (the outermost cells then hold the step near
+  10 ms in the ITER15 H-mode); the smoothed dW/dt (`ctx.dWdtS`) would not (an open issue of the edge work).
+- The step is second order in the transport equations only. The quantities that are updated once per accepted step (C_χ, P_SOL and the
+  boundary values, the fueling command, the source deposition, the inventories) are first order, and the flat-top numbers of the
+  ELM H-mode keep a dependence on Δt that the tolerance does not remove ("Time stepping").
+- The L–H transition, the NTM onset and the burn/ignition events are localised to the step, not inside it; only the ELM and
+  the sawtooth crash end a step at the crossing.
 
 ## Tests
 
 | File | Covers |
 | --- | --- |
+| `solver/trbdf2.test.ts`, `solver/localise.test.ts` | TR-BDF2 constants, second order, L-stability and the embedded error estimate on scalar problems; the controller; the dense output and the crossing of an event margin |
+| `fvsolver.test.ts` | the solvers' right-hand sides against their solutions, the reference state and explicit rate of a stage, the error-estimate filter |
+| `solver/coupledStep.test.ts` | the TR-BDF2 step on whole shots: error control against a tight reference, `dtMax`, rejections and their counters, the energy identity, ELM counts against the step limit, the checkpoint of the counters |
 | `modules.test.ts` | state layout, work arrays, module wiring, checkpoint keys, the three plug-in interfaces (hooks and their call counts, particle source, state over accepted steps and rewinds) |
 | `events/events.test.ts` | every event model through `afterStep`, with checkpoints |
 | `energy.test.ts` | convection vs an analytic steady state, exact energy identity of a heat step, full-model energy balance (ITER15) |

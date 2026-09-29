@@ -17,7 +17,6 @@ import {
 } from './geometry1d';
 import { alphaMHD, rhoOfQ, shearAt } from './mhd';
 import { volumeIntegral } from './sources/deposition';
-import type { MagneticConfig } from '../types';
 import { rel } from './testkit';
 
 const PACK: GridSpec = gridSpec({ gridPacking: 4, pedestalWidth: 0.06 })!;
@@ -372,8 +371,8 @@ describe('the model on a packed grid', () => {
     const post = m.postStep.bind(m);
     let worst = 0, n = 0;
     m.postStep = (t, dt, y) => {
-      const d = m.ctx.lastDiag;
-      if (dt > 0 && t > 1.6 && m.ctx.phase === 'normal') { worst = Math.max(worst, Math.abs((d.dWdt - (d.P_heat - d.P_rad - d.P_bound)) / d.P_heat)); n++; }
+      // the discrete energy balance of the TR-BDF2 step (CoupledStepper.energyResidual)
+      if (dt > 0 && t > 1.6 && m.ctx.phase === 'normal') { worst = Math.max(worst, Math.abs(m.stepper.energyResidual)); n++; }
       return post(t, dt, y);
     };
     const r = sim.runAll();
@@ -393,39 +392,30 @@ describe('the model on a packed grid', () => {
 });
 
 /**
- * gridPacking 0 is the uniform grid of the last release: the result of these two shots is what
- * the code produced before the grid became a parameter (recorded from the commit before it, where the
- * tests of the whole suite passed on it).
+ * gridPacking 0 is the uniform grid of v3. With the backward-Euler step of v3 this path reproduced the last release bit for bit (two
+ * pinned shots, recorded before the grid became a parameter, and the sha256 of every frame of the nine 1.5D golden cases: stage A of
+ * the v4 solver work); the TR-BDF2 step changes every 1.5D number, so those pins are gone. What stays: the uniform path is taken, it runs
+ * the model to its end with a closed energy balance, and it agrees with the packed grid on the global numbers of a short shot.
  */
-describe('gridPacking 0 reproduces the uniform-grid model', () => {
-  const PINS: Record<string, { cfg: () => MagneticConfig; d: Record<string, number>; events: Record<string, number>; nSteps: number }> = {
-    'SPARC15 3 s': {
-      cfg: () => ({ ...SPARC_15D, t_end: 3, profiles: { ...SPARC_15D.profiles, gridPacking: 0 } }),
-      d: {
-        Te: 10.6239618289934, Ti: 10.3795237082012, Tped: 4.75377712700776, Tsep: 0.395225966949509, Q: 5.4422565477909, W: 24.4670675041086, q95: 4.15863324892357,
-        q0: 0.963616120958095, li: 0.749876913418482, f_bs: 0.173285357639057, alpha_ped: 0.818384355919387, P_fus: 139.821506951894, tauE: 0.577396301184033,
-        betaN: 1.14792242909926, P_bound: 42.5855725222923, P_SOL: 42.6273671535482,
-      },
-      events: { ELM: 0, sawtooth: 0, LH: 1 }, nSteps: 820,
-    },
-    'ITER15 60 s': {
-      cfg: () => ({ ...ITER_15D, t_end: 60, profiles: { ...ITER_15D.profiles, gridPacking: 0 } }),
-      d: {
-        Te: 12.8291910551208, Ti: 12.0257848891266, Tped: 4.99703794212069, Tsep: 0.416451532395839, Q: 16.0838974681984, W: 390.93498261399, q95: 3.51509365865492,
-        q0: 1.11563525758922, li: 0.75219325041469, f_bs: 0.291048180679776, alpha_ped: 1.10527199307346, P_fus: 804.488602800639, tauE: 2.17534404350504,
-        betaN: 2.29309708122076, P_bound: 167.04972046627, P_SOL: 163.770519448464,
-      },
-      events: { ELM: 148, sawtooth: 0, LH: 1 }, nSteps: 1924,
-    },
-  };
-
-  it.each(Object.keys(PINS))('%s', (name) => {
-    const pin = PINS[name];
-    const sim = new Simulation(pin.cfg());
-    sim.runAll();
-    const d = sim.history[sim.history.length - 1].d;
-    for (const [k, v] of Object.entries(pin.d)) expect(rel(d[k], v), `${name}: ${k}`).toBeLessThan(1e-9);
-    for (const [k, v] of Object.entries(pin.events)) expect(sim.events.filter((e) => e.kind === k).length, `${name}: ${k} events`).toBe(v);
-    expect(sim.nSteps).toBe(pin.nSteps);
-  }, 60000);
+describe('gridPacking 0 runs the model on the uniform grid', () => {
+  it('SPARC15 3 s: the transport geometry is the uniform one, the shot ends as scheduled with finite diagnostics and a closed energy balance, and Q is within 3 % of the packed grid', () => {
+    const run = (packing: number) => {
+      const sim = new Simulation({ ...SPARC_15D, t_end: 3, profiles: { ...SPARC_15D.profiles, gridPacking: packing } });
+      const m = sim.model as ProfileModel;
+      const post = m.postStep.bind(m);
+      let worst = 0;
+      m.postStep = (t, dt, y) => { if (dt > 0 && t > 1.6 && m.ctx.phase === 'normal') worst = Math.max(worst, Math.abs(m.stepper.energyResidual)); return post(t, dt, y); };
+      const r = sim.runAll();
+      return { sim, m, r, worst };
+    };
+    const u = run(0), p = run(4);
+    expect(u.m.ctx.tg.uniform).toBe(true);
+    expect(p.m.ctx.tg.uniform).toBe(false);
+    for (const x of [u, p]) {
+      expect(x.r.termination.natural).toBe(true);
+      for (const v of Object.values(x.sim.history[x.sim.history.length - 1].d)) expect(Number.isFinite(v)).toBe(true);
+      expect(x.worst).toBeLessThan(1e-4);
+    }
+    expect(rel(u.sim.history[u.sim.history.length - 1].d.Q, p.sim.history[p.sim.history.length - 1].d.Q)).toBeLessThan(0.03);
+  }, 120000);
 });

@@ -116,7 +116,7 @@ face (its half cell is a face of the pedestal, and with cells 0.005 wide the ste
 there), and T_ped is the temperature at ρ_ped interpolated between the two centres around it (the uniform grid
 takes the cell that contains ρ_ped, 0.02 wide in the steep barrier gradient).
 
-ITER15 flat-top numbers against the grid (400 s; `npm run bench:convergence`, table in the v4 changelog): with p = 4
+ITER15 flat-top numbers against the grid (400 s; `npm run bench:convergence`, table under "Convergence" below): with p = 4
 N = 50 and N = 100 differ by less than 1 % in Q, f_bs, ℓ_i and T_ped; the uniform grid by 1.6 % in Q, 1.7 % in ℓ_i
 and 3.4 % in T_ped.
 

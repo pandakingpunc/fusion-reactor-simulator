@@ -123,6 +123,13 @@ export interface ProfileSettings {
    * only the guard band of 5 eV – 2 keV), the same functions as the edge diagnostics. n_sep stays fuelling-controlled in both.
    */
   edgeModel?: 'legacy' | 'twoPoint';
+  /**
+   * Coefficients of the bootstrap current and of the neoclassical conductivity (profiles/neoclassical.ts, profiles/current/redl.ts).
+   * 'sauter' (default): Sauter, Angioni and Lin-Liu, Phys. Plasmas 6 (1999) 2834 with the correction of 9 (2002) 5140. 'redl': Redl et al.,
+   * Phys. Plasmas 28 (2021) 022502, the same structure refitted to the numerical code NEO: less bootstrap current in the collisional edge and
+   * with impurities. Both use the trapped fraction, collisionalities and Z_eff of Sauter's definitions.
+   */
+  neoclassicalModel?: 'sauter' | 'redl';
 }
 
 /**

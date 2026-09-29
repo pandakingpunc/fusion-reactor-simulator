@@ -3,13 +3,16 @@
  *
  *  - neoclassical conductivity σ_neo and the bootstrap current ⟨j_bs·B⟩ (Sauter, Angioni &
  *    Lin-Liu, Phys. Plasmas 6 (1999) 2834, Eqs. (5), (13)–(18); α corrected in Phys. Plasmas 9
- *    (2002) 5140; neoclassical.ts), with the ρ derivatives of p, T_e, T_i by central differences
- *    (one-sided to the separatrix value at the edge), and the plasma pressure p = n_e T_e + n_i T_i;
+ *    (2002) 5140; neoclassical.ts; or, with ProfileSettings.neoclassicalModel = 'redl', the coefficients
+ *    of Redl et al., Phys. Plasmas 28 (2021) 022502, current/redl.ts), with the ρ derivatives of p, T_e, T_i
+ *    by central differences (one-sided to the separatrix value at the edge), and the plasma pressure
+ *    p = n_e T_e + n_i T_i;
  *  - driven current: the current() hooks of the sources (NBCD in nbi.ts, ECCD in rf.ts), with the
  *    common efficiency scaling I_CD = γ P/(n̄₂₀ R0), ⟨j·B⟩ ≈ j B0 (cdDensity20, cdTeFactor);
  *  - ohmic heating of the inductive part: P_Ω = (⟨j·B⟩ − ⟨j_ni·B⟩)² / (σ ⟨B²⟩).
  */
 import { KEV, ProfileContext } from '../context';
+import { sigmaNeoRedl } from '../current/redl';
 import { sigmaNeo, bootstrapJB } from '../neoclassical';
 import type { ProfileState } from '../state';
 
@@ -28,9 +31,10 @@ export function neoclassicalCurrent(ctx: ProfileContext, st: ProfileState): void
   const w = ctx.w, g = ctx.tg, N = ctx.N;
   const { Te, Ti, ne } = st;
   const dpsiC = (i: number) => 0.5 * (w.dpsiF[i] + w.dpsiF[i + 1]);
+  const conductivity = ctx.ps.neoclassicalModel === 'redl' ? sigmaNeoRedl : sigmaNeo;
   for (let i = 0; i < N; i++) {
     const Tev = Math.max(Te[i], 0.01);
-    w.sigma[i] = sigmaNeo(g.ftC[i], w.nuE[i], ne[i], Tev * 1e3, Math.max(w.Zeff[i], 1));
+    w.sigma[i] = conductivity(g.ftC[i], w.nuE[i], ne[i], Tev * 1e3, Math.max(w.Zeff[i], 1));
     w.p[i] = (ne[i] * Tev + w.ni[i] * Math.max(Ti[i], 0.01)) * KEV;
   }
   // bootstrap: ρ derivatives at the centres (central differences; one-sided to the boundary value at the edge)

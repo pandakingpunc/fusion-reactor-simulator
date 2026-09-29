@@ -49,6 +49,7 @@ const SCALINGS = keysOf<MagneticConfig['scaling']>({ IPB98y2: 0, ITPA20: 0, 'ITP
 const TRANSPORT_MODELS = keysOf<ProfileSettings['transportModel']>({ scaling: 0, cgm: 0 });
 const EDGE_MODELS = keysOf<NonNullable<ProfileSettings['edgeModel']>>({ legacy: 0, twoPoint: 0 });
 const NONLINEAR_SOLVERS = keysOf<NonNullable<ProfileSettings['nonlinearSolver']>>({ auto: 0, picard: 0, newton: 0, pc: 0 });
+const NEOCLASSICAL_MODELS = keysOf<NonNullable<ProfileSettings['neoclassicalModel']>>({ sauter: 0, redl: 0 });
 const EDGE_LOSS_FITS = keysOf<NonNullable<EdgeOptions['lossFit']>>({ stangeby1: 0, stangeby2: 0, body2025: 0 });
 const EDGE_RADIATIONS = keysOf<NonNullable<EdgeOptions['radiation']>>({ prescribed: 0, lengyel: 0 });
 const MAGNETIC_METHODS = keysOf<MagneticConfig['method']>({ tokamak: 0, spherical_tokamak: 0, stellarator: 0 });
@@ -143,6 +144,7 @@ const profileSettings = partial<ProfileSettings>({
   Tsep_keV: opt(num({ exMin: 0, max: 10, unit: 'keV', doc: 'Fixed separatrix temperature; the two-point model if absent.' })),
   nsepFrac: num({ exMin: 0, max: 1, def: PS.nsepFrac, doc: 'Separatrix density over the volume-averaged electron density.' }),
   edgeModel: opt(oneOf(EDGE_MODELS, "Separatrix temperature of the 1.5D boundary. 'legacy': conduction-limited two-point T_sep (outboard share 0.6, clamped to 0.03-0.5 keV); 'twoPoint': T_sep of the edge model (Eich lambda_q, divertor spreading, outer-leg power share), guard band 5 eV - 2 keV. The edge diagnostics use the edge model either way.", 'legacy')),
+  neoclassicalModel: opt(oneOf(NEOCLASSICAL_MODELS, "Coefficients of the bootstrap current and of the neoclassical conductivity. 'sauter': Sauter, Angioni and Lin-Liu (1999, with the 2002 correction); 'redl': Redl et al. (2021), the same structure refitted to the numerical code NEO (less bootstrap current in the collisional edge and with impurities).", 'sauter')),
 }, { doc: '1.5D profile-model settings (only used with fidelity "1.5D"); every property overrides the model default.' });
 
 type Heating = MagneticConfig['heating'];

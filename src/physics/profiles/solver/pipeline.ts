@@ -41,6 +41,7 @@ export class PhysicsPipeline {
   /** Quantities held fixed over one step, from the old state st (its composition and q evaluated) */
   stepConstants(t: number, st: ProfileState): StepConstants {
     const ctx = this.ctx;
+    this.transport.prepare?.(ctx, t, st);
     const btR = FUEL_CHANNELS[ctx.cfg.fuel].map(() => new Float64Array(ctx.N));
     const K: StepConstants = { ...heatingPowers(ctx, t), shine: 0, btR, Eb: ctx.cfg.heating.E_NBI_keV, Psync: 0, S_nbi: 0 };
     for (const s of this.sources) s.prepare?.(ctx, t, st, K);

@@ -30,6 +30,16 @@ export interface TransportModel extends Partial<Checkpointable> {
   /** true: τ_E is predicted (W/P_loss); false: W is held to the τ_E scaling by the C_χ controller */
   readonly predictive: boolean;
   /**
+   * Once per attempt, on the OLD state st of the step (its composition and q profile evaluated, ctx.w.qF is its q profile), and for every
+   * state that no step produced (PhysicsPipeline.stepConstants runs it before the step constants). The place for what the closure holds
+   * fixed over the step: a quantity that depends on the profile as a whole (a non-local temperature difference) or on second derivatives
+   * of ψ (the magnetic shear), which the block-tridiagonal Jacobian of the Newton solve (solver/newtonStage.ts, a cell couples to its two
+   * neighbours) cannot represent. It must be a function of (t, st) and of the model's settings only, so that a step stays a function of
+   * its inputs (chunk invariance, exact rewind); what it keeps is recomputed at every call and needs no checkpoint. The lag is first order
+   * in the step, like C_χ or P_SOL, and invisible to the error estimate.
+   */
+  prepare?(ctx: ProfileContext, t: number, st: ProfileState): void;
+  /**
    * Anomalous χ_e, χ_i [m²/s] on the faces f = 0 … N for the iterate st (ctx.w.qF holds its q
    * profile, ctx.bc the separatrix values), before barrier, islands and floors.
    */

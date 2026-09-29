@@ -80,6 +80,20 @@ describe('view controls', () => {
     expect(log).toEqual([`orbit ${-KEY_STEP_PX} 0`, `orbit 0 ${KEY_STEP_PX}`, `zoom ${KEY_ZOOM.toFixed(4)}`, `zoom ${(1 / KEY_ZOOM).toFixed(4)}`]);
     expect(prevented).toBe(false);
   });
+  it('leaves the browser shortcuts alone: Ctrl/Cmd/Alt with a handled key is neither acted on nor prevented', () => {
+    const { el, log } = setup();
+    let prevented = 0;
+    const preventDefault = () => { prevented++; };
+    for (const mod of ['ctrlKey', 'metaKey', 'altKey']) {
+      for (const key of ['0', '+', '=', '-', 'Home', 'ArrowLeft', 'ArrowRight']) el.fire('keydown', { key, [mod]: true, preventDefault });
+    }
+    expect(log).toEqual([]);
+    expect(prevented).toBe(0);
+    // Shift alone (needed to type '+') still works
+    el.fire('keydown', { key: '+', shiftKey: true, preventDefault });
+    expect(log).toEqual([`zoom ${KEY_ZOOM.toFixed(4)}`]);
+    expect(prevented).toBe(1);
+  });
   it('does nothing while there is no viewer, and detaches every listener', () => {
     const el = new FakeEl();
     const detach = attachControls(el as unknown as HTMLElement, () => null);

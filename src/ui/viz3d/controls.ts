@@ -56,6 +56,8 @@ export function attachControls(el: HTMLElement, target: () => ControlTarget | nu
   };
   const dbl = () => target()?.resetView();
   const key = (e: KeyboardEvent) => {
+    // leave the browser and OS shortcuts alone (Ctrl/Cmd + / - / 0 zoom the page, Alt+Left/Right is history)
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     const v = target();
     if (!v) return;
     const actions: Record<string, () => void> = {

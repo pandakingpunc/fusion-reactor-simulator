@@ -87,8 +87,8 @@ describe('remapContents', () => {
 });
 
 describe('the first update of an ITER15 shot', () => {
-  // t = 5.0 s: the first update. The contents and the enclosed current do not jump across it, and the loop voltage of the step after it is that
-  // of the steps before it (0.4 V; without the remap the state took 14 V for one step to make up the disagreement at the boundary)
+  // the first update of the shot (t = 0.8 s). The contents and the enclosed current do not jump across it, and the loop voltage of the step after it
+  // is that of the steps before it (0.8 V; without the remap the state took 31 V for one step to make up the disagreement at the boundary)
   const m = new Simulation({ ...ITER_15D, t_end: 6 }).model as ProfileModel;
   const y = m.initialState();
   m.diagnostics(0, y);

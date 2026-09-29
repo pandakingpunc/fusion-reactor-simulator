@@ -75,7 +75,11 @@
  * SCENARIO_CONTROLS only adds labels, units and sanity limits. The 1.5D model exposes the plasma current as the
  * control Ip_MA (the boundary condition of its current diffusion: a waveform of it is a staircase of the model's
  * steps, so give it a rampStep); the shape keys (κ, δ, ...) work in waveforms at once when a model exposes them
- * and get an entry here.
+ * and get an entry here. No model exposes them (checked in lane ws6c, v4.0): the 1.5D boundary shape is the fixed
+ * boundary of the Grad-Shafranov solver (its grid, ProfileContext.geomB, the volume, the q95 and alpha_crit of the
+ * pedestal are built once from the configuration), and the volume, surface, q95 and limits of the 0D model are fixed
+ * at construction: a live kappa needs a moving boundary (a shape programme in the equilibrium coupling, with its
+ * own remap of the state and the rates of the flux and volume terms), which is the free-boundary work.
  */
 import { canonicalString } from './kernel/canonical';
 import { ScenarioError, type ScenarioIssue } from './kernel/errors';

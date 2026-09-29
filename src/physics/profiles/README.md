@@ -26,7 +26,9 @@ current equilibrium and transport geometry, work arrays, plasma and controller s
 | `transport/` | `TransportModel` plug-ins: `scaling`, `cgm`; `coefficients.ts` adds barrier (`pedestal.ts`), D and pinch, NTM islands, neoclassical floor |
 | `control/` | heating (with the ignition-test ramp-down) and density programmes, the plasma-current programme I_p(t) (`plasmaCurrent.ts`), fueling feedback, loss power P_L, τ_E scaling and the C_χ controller |
 | `solver/` | `pipeline.ts` (evaluation order), `coupledStep.ts` (the TR-BDF2 step: the stage solver, error control, event localisation, failures), `newtonStage.ts` (Newton–Raphson on a stage; the block-tridiagonal LU, the coloured Jacobian and the damped Newton iteration are `numerics/blockTridiagN.ts` and `numerics/newton.ts`), `trbdf2.ts` (method constants, error estimate, controller), `localise.ts` (dense output and event crossing), `acceptStep.ts` (update after an accepted step) |
+| `current/` | `flux.ts`: the flux ledger (V_loop at the boundary, V_res, ψ_used, ψ_res, ψ_ind: "Flux accounting"); `redl.ts`: the Redl et al. coefficients of the bootstrap current and of σ_neo, the option `neoclassicalModel: 'redl'` |
 | `coupling/equilibrium.ts` | Grad–Shafranov coupling: initial solve (guarded, `eqguard.ts`), update policy, the update as a self-consistent solve (`coupling/outer.ts`: outer iteration of the tables on the equilibrium's own surfaces; `coupling/tables.ts`: node and table helpers); a geometry that replaces another one is built on the radial grid of the one it replaces |
+| `coupling/remap.ts` | the conservative remap of the state at the adoption of a new equilibrium ("Adopting a new equilibrium") |
 | `events/` | `EventModel` plug-ins: `LH`, `ELM`, `sawtooth`, `NTM`, `burn`, `warnings`, `disruption`; `triggers.ts` (the margins of the ELM and sawtooth thresholds the stepper localises) |
 | `diagnostics.ts` | time traces (`PROFILE_DIAGS` are the ones the UI shows), profiles, power totals |
 | `checkpoint.ts` | `Checkpointable` and the checkpoint store (rewind) |
@@ -303,10 +305,10 @@ accepted step. It comes from one of two sources (`ProfileContext.ipAt`):
     not part of the fingerprint (the caller owns its determinism).
 
 `MagneticConfig.Ip_MA` is what the initial equilibrium is solved for and should equal the current at t = 0; the Grad–Shafranov updates use the I_p of the
-state; the current quench of a disruption overrides the current. Not done: the equilibrium coupling updates by the interval, β_p and ℓ_i, not by a
-change of I_p (β_p ∝ I_p⁻² follows a large change, a small fast ramp does not trigger it), so a ramp runs on a geometry that is up to an update
-interval old (a request to the coupling lane: an update when |ΔI_p|/I_p exceeds 10 %); the setup wizard does not offer the waveform, and the run
-controls give `Ip_MA` the automatic slider range of an unknown key (a `CONTROL_DEFS` entry is the UI lane's).
+state; the current quench of a disruption overrides the current. The equilibrium coupling also updates on a change of I_p (an update is due at once when
+|I_p − I_p,eq|/I_p,eq exceeds `EQ_IP_TRIGGER` = 10 %, without waiting a quarter of the interval: "Adopting a new equilibrium"), so a ramp never runs on
+a geometry more than 10 % of the current behind. The setup wizard does not offer the waveform, and the run controls give `Ip_MA` the automatic
+slider range of an unknown key (a `CONTROL_DEFS` entry is the UI lane's).
 
 **The moving coordinate.** The grid is ρ̂ = √(Φ/Φ_b): if the toroidal flux Φ_b through the boundary changes, a flux surface (Φ fixed) moves
 in ρ̂ with dρ̂/dt = −ρ̂ Φ̇_b/(2Φ_b), the equation above holds at fixed Φ and at fixed ρ̂ ∂ψ/∂t|ρ̂ = ∂ψ/∂t|Φ + (ρ̂ Φ̇_b/(2Φ_b)) ∂ρ̂ψ.
@@ -317,9 +319,80 @@ not change; the successive equilibria differ in Φ_b by 10⁻⁴ to 10⁻³, of 
 up to ±1.2·10⁻³ with the V′ of a face changing by 0.5 to 1.7 %), which is the accuracy of the Grad–Shafranov solver and not a rate: taking (Φ_b,new −
 Φ_b,old)/Δt_update for Φ̇_b would feed noise into the current diffusion at the level of 10⁻³ of ψ per second. A free-boundary or shape-programme
 coupling supplies the rate. The V′ of the conservative form is not inside the time derivative of ψ (as it is in the heat and particle equations,
-whose contents n V′ change with V′), so the current equation has no V̇′ term; those of the heat and particle equations are not implemented: the
-geometry is piecewise constant between adoptions, a jump at an adoption (V′ of a face by up to 1.7 %, the total volume fixed) would be a conservative
-remap of the contents, which the coupling lane's interpolation of the geometry in time would replace.
+whose contents n V′ change with V′), so the current equation has no V̇′ term. The geometry is piecewise constant between adoptions; what the
+V̇′ terms of the heat and particle equations and the Φ̇_b term of the current equation do over the time a geometry changes is done at the adoption
+itself, for a geometry that changes at one instant: the conservative remap of "Adopting a new equilibrium". A coupling that interpolates the
+geometry in time (free boundary, a shape programme) would supply the rates and replace the remap.
+
+## Flux accounting and the plasma circuit
+
+**Ledger** (`current/flux.ts`, `FluxLedger`, a `Checkpointable`; the shared formulas and the literature are in `confinement/circuit.ts`). The loop voltage of
+the model is the voltage at the plasma boundary, V_B = 2π ∂ψ_b/∂t with ψ_b the flux at ρ̂ = 1 (the boundary gradient of the I_p condition, not the flux of the
+last cell centre, which a half cell away from the edge carried the noise of the outer cells); the ledger integrates it over the accepted steps
+together with the resistive flux 2π Σ (∂ψ/∂t) dI and keeps the Poynting closure V_B I = dW/dt + V_R I, W = ½ L_i I², as a running residual (0.06 % of the boundary
+flux in the first 60 s of ITER15). It publishes `V_loop` (boundary), `V_res` (resistive: the Joule power of the inductive part over I_p, with the
+non-inductive work added), `psi_used`, `psi_res` and `psi_ind` (V s). `psi_used = L_e I_p + Ψ_B + the ramp-up of the state at t = 0` is the requirement
+of the whole pulse that the CS budget of `systems/csFlux.ts` takes (its `flatTopLimit_s` is the flat top the solenoid allows: the simulated burn window
+plus the flux left over the mean loop voltage of that window); the ramp-up before t = 0 is not simulated and is the Ejima estimate, `C_E μ0 R I_p`
+resistive plus `L_i I_p` inductive (C_E = 0.4 by default, `systems.cs.ejima`; the reasons are in the header of `circuit.ts`). The ledger is part of the step
+snapshot of the stepper (a step that is undone does not stay in the integral) and of the checkpoints (a run continued from a checkpoint continues it bit for bit).
+
+Verification (`current/flux.test.ts`): the boundary flux, the resistive flux and the field energy of the skin-time response of a uniform cylinder to a step
+of I_p against the Bessel-series closed forms to 1 % at 0.1 and 0.5 skin times (first order in the cell width, independent of the step), the late-time
+limits (V = 2 R0 I_p/(σ a²), W = μ0 R0 I_p²/8), and on ITER15 the identity Ψ_B = Ψ_R + ΔW/I_p to 1 %, also through a current ramp. The report publishes the
+CS keys only when the design gives a solenoid (`systems.cs`): the radial build of the presets does not resolve it, and the margins they gave were wrong.
+
+**0D model** (`confinement/circuit.ts`, `PlasmaCircuit`, a few lines in `magnetic.ts`). No profile of the current: V_loop = (1 − f_NI) P_oh/I_p with
+the bootstrap fraction from the fit of Wilson (Nucl. Fusion 32 (1992) 257; coefficients of the PROCESS implementation) and f_cd = 0; `f_bs`, `f_cd`,
+`f_NI` and `V_loop` are published, the flux is the integral of V_loop over the frames plus the ramp-up estimate, so the model carries no flux state.
+The inductances are `externalInductance` (μ0 R (ln(8R/(a√κ)) − 2)) and `internalInductance` (μ0 R ℓ_i/2).
+
+**Non-inductive fractions of the 1.5D model.** `f_bs = I_bs/I_p`, `f_cd = I_cd/I_p` and `f_NI` = their sum, from the enclosed currents of the source profiles.
+`profiles.neoclassicalModel` (`'sauter'`, default; `'redl'`) selects the coefficient set of the bootstrap current (L31, L32, L34, α) and of the neoclassical
+conductivity in one place: Sauter, Angioni and Lin-Liu (Phys. Plasmas 6 (1999) 2834, with 9 (2002) 5140), or Redl et al. (Phys. Plasmas 28 (2021) 022502,
+eqs. 10–21, `current/redl.ts`), the same structure refitted to the code NEO: less bootstrap current in the collisional edge (ν*_e of a few and above, where
+Sauter's coefficient is the larger one) and with impurities. Sauter's trapped fraction and collisionalities are kept. The golden case `SPARC15-redl` pins the option.
+
+## Adopting a new equilibrium
+
+The transport equations are written on ρ̂ with the geometry of the current equilibrium, and a cell holds N_i = n_i ΔV_i particles and W_i = (3/2)(n_e T_e + n_i T_i) ΔV_i
+of energy while that geometry is held. A new equilibrium replaces the geometry at one instant (the update is quasi-static, every 5–20 s), and without more
+the profiles of the old geometry would become the state of the new one: the cell volumes differ (by up to 3 % at the L-H transition, 1 % in a flat top),
+so the contents jumped: at the 30 adoptions of the first 60 s of ITER15 the stored energy changed by +0.07 to +0.35 % in the ramp-up and by −1.3 to −1.9 % (the
+particles by −0.5 to −0.7 %) at five of the six adoptions after 42 s, with no source in the balance, and the enclosed current at the faces changed by the ratio of
+V′g2 with ψ held, so that the interior and the boundary condition disagreed and the first step after an update took a loop voltage of 31 V at t = 0.8 s (0.8 V before it)
+and 1 to 3.5 V late in the flat top (0.02 to 0.03 V before it) to make up the difference. `coupling/remap.ts` (`remapContents`)
+does at the instant of the adoption what the V̇′ terms of the heat and particle equations and the Φ̇_b term of the current equation would do over the time the
+geometry changes, taken to the limit: n_e ← n_e ΔV_old/ΔV_new (particles kept; T_e, T_i unchanged, so the energy is kept: the equilibrium changes the metric
+at the accuracy of its solver, not by a compression that does pdV work), and ψ shifted so that the enclosed current I = V′g2 ∂ρ̂ψ/(2π μ0) is kept at every face and ψ_b
+is continuous. The flux ledger is not touched. The pressure profile the equilibrium was solved for changes by the ratio of the volumes (a few percent of a cell
+at most); the next update takes its tables from the state as it is. `coupling/remap.test.ts`: the contents and the enclosed current for two metrics, the
+identity for an unchanged geometry, and the first update of an ITER15 shot (particles to 10⁻⁹, stored energy to 3·10⁻³, the loop voltage of the next step
+within 20 % of the previous ones); over the 30 adoptions of the first 60 s of ITER15 the particles are kept to 10⁻⁵ % and the stored energy to 0.025 %.
+
+**When an update is due**: the interval `eqUpdateInterval`, β_p or ℓ_i changed by 10 % / 5 % (not before a quarter of the interval), and now also
+|I_p − I_p,eq|/I_p,eq > `EQ_IP_TRIGGER` = 0.1, at once: a ramp of I_p moves q95 with it and β_p with its inverse square, and the geometry of a fast ramp must not be up
+to an interval old. A ramp from 8 to 12 MA in 2 s with a 100 s interval asks for 3–6 updates, none rejected, and follows q95 ∝ 1/I_p to 12 %
+(`remap.test.ts`). `eqIp` is part of the checkpoint record.
+
+## Start-up
+
+The shot starts at t = 0 with the full current, a cold plasma (T_e0 about 2 keV) and the density at a third of its target, and the heating and density ramps of the
+preset. Checked on the 0D and 1.5D presets (probe and `startup.test.ts`):
+
+- **The ohmic L-H transition of the first v4.0 runs (at 0.06 s) is gone.** The first transition is the crossing of P_loss with P_LH by the auxiliary heating (JET15: 0.32 s at
+  13 MW against P_oh = 2.7 MW and P_LH = 22 MW at t = 0; DIIID15: 0.10 s; ITER15: 8.1 s; ITER 0D: 9.4 s). The one exception is MAST-U (0D and 1.5D): the Joule power
+  of its initial state, 0.17 MW at 0.13·10²⁰ m⁻³, is already above the threshold of 0.13 MW, so the transition comes when the 50 ms guard of `events/lh.ts` ends
+  (0.051 s); ohmic H-modes at low density exist on spherical tokamaks, and the initial state is what a start-up from nothing does not have (open issue).
+- **The central ion temperature overshoots its flat-top value** by 1.3 to 2.7 times (raw peak T_i0 in the first seconds: ITER15 45 keV at 12 s against 22 keV in the flat
+  top, where the first v4.0 runs had 65–76 keV; JET15 27 against 10 keV; DIIID15 12 against 6; SPARC15 35 against 26). It is not an artefact of the start-up
+  state: the auxiliary heating ramps up faster than the density (`heating.rampTime` against `n_rampTime`: ITER 10 s against 30 s, DEMO 20 against 80, JET 0.5 against 1.5), and a plasma
+  heated at half its density is hot (T ∝ P^0.31 n^−0.59 at the τ_E scaling; with the α heating it is positive feedback). A heating ramp as long as the density ramp removes
+  most of it (ITER15 with rampTime 30 s: 12.6 keV in L-mode by 10 s; DIIID15 with 1 s: 8.5 keV; JET15 with 1.5 s: 18 keV, with 3 s: 14 keV). The report excludes
+  the window t < max(n_rampTime, heating.rampTime) from T_max and the score. A preset decision, not a model change: a heating ramp that follows the density ramp
+  moves every preset and its golden case (open issue for the preset owner).
+- Not done: a current ramp-up from a low current (the `IpWaveform` programme does it; the ledger then draws the ramp flux from the simulated ramp and the Ejima estimate only
+  for the current at t = 0).
 
 ## Definitions shared with the 0D model
 
@@ -523,6 +596,11 @@ model take part as soon as they implement the hooks; other parts are listed in
 | `transport/transport.test.ts` | 'cgm' smoke test (ITER15 ramp-up; runs through `runAllYielding`) |
 | `integrity.test.ts` | equilibrium swaps (fresh work arrays), GS failures, the current-scale gate and retry timing, step failures (numerical failures retried, programming errors propagate with the state put back, also from the update after the accepted step), reported τ_E, initial equilibrium, replays from quench frames |
 | `grid.test.ts` | the radial grid: the uniform path double for double, the packed grid (cells across the pedestal, smoothness, one map for every N), lookups; diffusion operator with a manufactured solution (observed order 2.0 on the packed grid), conservation of energy, particles and enclosed current, `alphaMHD` with the separatrix face; pins of two uniform-grid shots |
+| `current/flux.test.ts` | the flux ledger against the Bessel series of the skin-time response of a uniform cylinder (Ψ_B, Ψ_R, W to 1 %), the closure Ψ_B = Ψ_R + ΔW/I_p on ITER15 and through a ramp, the ramp-up of the first frame, a run from a checkpoint bit for bit |
+| `current/redl.test.ts` | the analytic limits of the Redl et al. fits, values read off the figures of the paper, the difference to Sauter in the collisional edge, the option in a shot (the default is bit for bit) |
+| `coupling/remap.test.ts` | the conservative remap (particles, energy, enclosed current, boundary flux), the first update of ITER15 (no jump of the contents, no voltage spike) and the update on a change of I_p |
+| `startup.test.ts` | the L-H transition of the first seconds is driven by the auxiliary heating, and the temperature overshoot follows the heating ramp (JET15) |
+| `../confinement/circuit.test.ts` | inductances, the Ejima ramp-up flux, the flux of the circuit, the Wilson bootstrap fraction, the 0D loop voltage and its keys |
 | `profiles.test.ts` | solver verification (analytic), neoclassical, MHD helpers, integration runs |
 
 Tests that run for more than a few seconds of wall time use `runAllYielding` (`src/testing/yielding.ts`): it advances in

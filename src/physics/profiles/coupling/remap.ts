@@ -7,11 +7,13 @@
  * I(ρ̂) = V' g2 ∂ρ̂ψ/(2π μ0). A new equilibrium replaces the geometry at one instant (the update is quasi-static, every 5 to 20 s), and the
  * profiles as functions of ρ̂ (T, n_e, ψ) that were the state of the old geometry become the state of the new one. The cell volumes differ (the
  * total volume is that of the fixed boundary, but ΔV of a cell changes by up to 3 % at the L-H transition and 1 % in a flat top: the
- * Shafranov shift and the pedestal move volume between the cells), so without a remap the contents jump: ITER15 gained 0.1 to 1.1 % of its
- * stored energy and 0.04 to 0.3 % of its particles at each of the seven updates of its first 60 s (JET15 lost 0.6 % at one), with no
- * source in the balance, and the enclosed current at the faces changed by the ratio of V' g2 with ψ held, so that the boundary condition
- * (the current I_p, imposed on the new geometry) and the interior disagreed and the first step after the update took a loop voltage
- * of 14 V (0.4 V before it) to make up the difference in the outermost cells.
+ * Shafranov shift and the pedestal move volume between the cells), so without a remap the contents jump: at the 30 adoptions of the first
+ * 60 s of ITER15 the stored energy changed by +0.07 to +0.35 % in the ramp-up and by −1.3 to −1.9 % (the particles by −0.5 to −0.7 %) at five
+ * of the six adoptions after 42 s, with no source in the balance, and the enclosed current at the faces changed by the ratio of V' g2 with ψ
+ * held, so that the boundary condition (the current I_p, imposed on the new geometry) and the interior disagreed and the first step after
+ * the update took a loop voltage of 31 V at t = 0.8 s (0.8 V before it) and 1 to 3.5 V late in the flat top (0.02 to 0.03 V before it) to
+ * make up the difference in the outermost cells. With the remap the particles are kept to 10⁻⁵ % and the stored energy to 0.025 %
+ * (the composition follows n_e through inventories that do not scale with the cell volume).
  *
  * This is what the V̇' terms of the heat and particle equations (∂(n V')/∂t and ∂((3/2) n T V')/∂t at fixed ρ̂ carry the change of V' of a
  * surface into the profile) and the Φ̇_b term of the current equation do over the time the geometry changes, taken to the limit of an

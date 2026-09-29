@@ -179,7 +179,8 @@ export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: Globa
   const betaN = (betaT * 100 * g.a * g.B0) / Math.max(Ip_MA, 0.01);
   const betaN_th = (betaThermal * 100 * g.a * g.B0) / Math.max(Ip_MA, 0.01);
   const Bpa = (MU0 * Ip) / g.perimeter;
-  const betaP = (2 * MU0 * pAvg) / (Bpa * Bpa);
+  // (with the 'profile' fast-ion model the equilibrium's pressure table carries the fast ions, and so does β_p)
+  const betaP = (2 * MU0 * (ctx.fast ? pAvg + ((2 / 3) * Wfast) / g.volume : pAvg)) / (Bpa * Bpa);
   // ℓ_i(3) = 2∫B_p² dV/(μ0² I_p² R0), B_p² ≈ g2 ψ'²
   let bp2 = 0;
   for (let i = 0; i < N; i++) { const dps = 0.5 * (w.dpsiF[i] + w.dpsiF[i + 1]); bp2 += g.g2C[i] * dps * dps * g.dV[i]; }

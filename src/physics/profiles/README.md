@@ -205,9 +205,13 @@ model take part as soon as they implement the hooks; other parts are listed in
   (only their ψ is used, as the start of the next part), so a part that is used is solved again from its own ψ on the default
   surface table before anything reads it (one iteration): the mapping mismatch and the transport geometry need the full table.
   With less than 75 %, or if the current table still needs rescaling by more than `CURRENT_SCALE_LIMIT`
-  (0.5) at consistent surfaces, or the outer iteration stops above `OUTER_ACCEPT` (5e-3; twice that for a limited update,
-  whose tables lag the surfaces by the rest of the change), it is rejected, counted, warned
-  about and retried with a back-off. The core inside two grid spacings carries a flat current table: ⟨j_φ/R⟩ = 2π dI/dV of the
+  (0.5) at consistent surfaces, or the best equilibrium of the outer iteration has a mapping mismatch above `OUTER_LIMIT`
+  (1e-2, half a transport cell; the same for a limited update, whose tables lag the surfaces by the rest of the change), it is
+  rejected, counted, warned about and retried with a back-off. Between `OUTER_ACCEPT` (5e-3, where an iteration that
+  stops contracting is taken as done) and the limit the update is adopted and counted as one that needed help: JET15 in the
+  ramp-up has a first iteration of 9e-3 that overshoots to 1.8e-2 and contracts to 5.2e-3, and rejecting it holds the geometry
+  for a whole update interval, which is worse than the shift of half a cell at most. The new geometry is built on the radial
+  grid of the one it replaces (`geometryFromEquilibrium(…, grid)`), whatever that grid is. The core inside two grid spacings carries a flat current table: ⟨j_φ/R⟩ = 2π dI/dV of the
   innermost cells dips there and the surfaces are below what the grid resolves. The 1.5D golden cases accept all of their updates.
 - The transport-geometry cell volumes are ∫V' dρ̂ over each cell, scaled once to the volume of the equilibrium. The
   equilibrium's output table has 101 nodes clustered at the edge (`surfaceLevels` in `equilibrium/gs.ts`: q, ⟨|∇ψ|²⟩ and dV/dψ_N

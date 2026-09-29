@@ -62,7 +62,10 @@ export interface ConsistentSpec {
 export interface ConsistentOptions {
   /** mapping mismatch (rms Δρ_tor) below which the tables are consistent with the equilibrium */
   tol: number;
-  /** mismatch up to which an iteration that stops contracting is taken as converged (the acceptance tolerance of the caller) */
+  /**
+   * mismatch up to which an iteration that stops contracting is taken as done (more iterations against the same limit only
+   * cost). Whether the result is adopted is the caller's decision; its limit (OUTER_LIMIT) is larger.
+   */
   accept: number;
   /** outer iterations at most */
   maxOuter: number;

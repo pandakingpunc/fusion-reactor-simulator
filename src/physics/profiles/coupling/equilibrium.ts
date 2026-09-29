@@ -25,6 +25,7 @@ import { EquilibriumInitFailure } from '../failures';
 import { geometryFromEquilibrium } from '../geometry1d';
 import type { ProfileState } from '../state';
 import { solveConsistent } from './outer';
+import type { ConsistentResult } from './outer';
 import { coreFlat } from './tables';
 
 /**
@@ -49,12 +50,34 @@ export const CURRENT_SCALE_LIMIT = 0.5;
  * minus the ρ the table node was made for) below which the tables are taken as consistent with the equilibrium, 10 % of a
  * transport cell of the default 50 (the normal updates of the golden 1.5D cases reach 1e−3 in two or three iterations;
  * the noise floor of the innermost nodes, where the GS grid cannot resolve the surfaces, is a few 1e−4); the outer
- * iterations at most; and the mismatch up to which an iteration that did not get below the tolerance is still accepted
- * (a quarter of a cell) because its current table is consistent to within CURRENT_SCALE_LIMIT.
+ * iterations at most; and the mismatch up to which an iteration that stops contracting is taken as done (a quarter of a
+ * cell: more iterations against the same limit only cost).
  */
 export const OUTER_TOL = 2e-3;
 export const OUTER_MAX = 8;
 export const OUTER_ACCEPT = 5e-3;
+
+/**
+ * The mapping mismatch above which the best equilibrium of an outer iteration that did not get below OUTER_TOL is not
+ * adopted: half a transport cell of the default 50. Between OUTER_ACCEPT and this limit the p(ρ) and ⟨j_φ/R⟩(ρ) that the
+ * equilibrium carries are shifted against the transport's by less than half a cell, and the geometry built from it is
+ * still closer to the profiles than the equilibrium the shot would be held at otherwise (a rejected update lets the
+ * geometry lag by at least a quarter of an update interval, and the ramp-up is where the profiles change fastest).
+ * JET15 in the ramp-up has an update whose first iteration (9e-3) overshoots (1.8e-2) and contracts to 5.2e-3: it was
+ * rejected against a limit of 5e-3, a few percent above it; with 15 % less current the best mismatch of an update is 5.7e-3.
+ * An update that is taken between the two is counted as one that needed help (`eqRetried`). A limited update
+ * (`ConsistentResult.fraction` < 1, whose tables lag the surfaces by the rest of the change) already had this bound;
+ * beyond it the update is rejected, counted and reported.
+ */
+export const OUTER_LIMIT = 2 * OUTER_ACCEPT;
+
+/**
+ * Whether the result of an outer iteration is adopted (before the geometry built from it is checked): it converged to
+ * OUTER_TOL, or its mapping mismatch is within OUTER_LIMIT. Limited (partial) updates have the same limit.
+ */
+export function outerAdoptable(r: Pick<ConsistentResult, 'converged' | 'delta'>): boolean {
+  return r.converged || r.delta <= OUTER_LIMIT;
+}
 
 /** options of every table solve of an update: warm start, at most 60 Anderson iterations to 1e−5 (mixing 1, restart when the residual is 3 times the smallest so far) */
 const UPDATE_SOLVE: Partial<EquilibriumOptions> = { tol: 1e-5, maxIter: 60, relax: 1, restartGrowth: 3 };
@@ -171,8 +194,10 @@ export class EquilibriumCoupling implements Checkpointable {
    * The equilibrium is the self-consistent one (solveConsistent): its tables sit on its own flux surfaces to within
    * OUTER_TOL. It is accepted if its current table needs no rescaling beyond CURRENT_SCALE_LIMIT to meet I_p (the
    * gate against a stale geometry, which the outer iteration normally removes), if the outer iteration converged
-   * or stopped within OUTER_ACCEPT, and if the transport geometry built from it is usable (finite metrics, positive
-   * cell volumes). The attempt log of the update is `eqAttempts`, one entry per solve.
+   * or its mapping mismatch is within OUTER_LIMIT (outerAdoptable), and if the transport geometry built from it is
+   * usable (finite metrics, positive cell volumes). The geometry is built on the radial grid of the one it replaces
+   * (`ctx.tg`): the transport equations were set up on that grid. The attempt log of the update is `eqAttempts`, one
+   * entry per solve.
    */
   update(ctx: ProfileContext, t: number, y: Float64Array, evaluate: (t: number, st: ProfileState) => void): boolean {
     const g = ctx.tg, w = ctx.w, N = ctx.N, v = ctx.view(y);
@@ -207,12 +232,12 @@ export class EquilibriumCoupling implements Checkpointable {
     this.eqStats = { it: last.iterations, res: last.residual };
     const reject = (why: string): false => { last.rejected = why; return false; };
     if (!res.eq) return reject(last.rejected ?? res.reason ?? 'no equilibrium');
-    if (!res.converged && (res.delta > OUTER_ACCEPT * (res.fraction < 1 ? 2 : 1))) return reject(res.reason ?? `the tables did not converge to the equilibrium's surfaces (rms Δρ_tor = ${res.delta.toExponential(1)})`);
+    if (!outerAdoptable(res)) return reject(res.reason ?? `the tables did not converge to the equilibrium's surfaces (rms Δρ_tor = ${res.delta.toExponential(1)})`);
     // only a singular system of the metric splines is a numerical failure of the geometry; anything else is a bug and propagates
     let tg;
-    try { tg = geometryFromEquilibrium(res.eq, N, ctx.geomB); } catch (e) { if (e instanceof SingularMatrixError) return reject(solverErrorMessage(e)); throw e; }
+    try { tg = geometryFromEquilibrium(res.eq, N, ctx.geomB, g); } catch (e) { if (e instanceof SingularMatrixError) return reject(solverErrorMessage(e)); throw e; }
     if (!isUsableGeometry(tg)) return reject('the transport geometry of the equilibrium has non-finite metrics or a non-positive cell volume');
-    if (res.hard) this.eqRetried++;
+    if (res.hard || (!res.converged && res.delta > OUTER_ACCEPT)) this.eqRetried++;
     if (res.fraction < 1) {
       ctx.warnOnce('gs-limited', t, `Grad–Shafranov update followed only ${(100 * res.fraction).toFixed(0)} % of the change of the transport profiles: the equilibrium of the whole change did not converge (pressure and current tables at the limit of what the boundary can hold); the geometry lags the profiles by the rest — reported once, at t = ${t.toFixed(2)} s`);
     }

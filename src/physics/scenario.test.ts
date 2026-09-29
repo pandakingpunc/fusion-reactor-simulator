@@ -259,11 +259,45 @@ describe('triggers', () => {
     expect(sc.step(0.1, frame(0, 0, { x: 2 })).patch).toEqual({});
   });
 
-  it('a dwell time (hold) counts on consecutive frames and restarts when the condition fails; after delays the firing', () => {
-    const sc = new Scenario(interlockTemplate('x', '<', 1, { H98: 0.9 }, { hold: 2, after: 5 }), CONTROLS);
-    const fired = run(sc, [[0, 0.5], [1, 0.5], [2, 0.5], [3, 3], [4, 0.5], [5, 0.5], [6, 0.5], [7, 0.5], [8, 0.5]]).map((s) => s.notes.length);
-    // holds from t = 0..2, fails at 3, holds again from 4; `after` = 5: the dwell counts from 5, so it fires at 7
-    expect(fired).toEqual([0, 0, 0, 0, 0, 0, 0, 1, 0]);
+  it('a dwell time (hold) counts on consecutive frames and restarts when the condition fails', () => {
+    const sc = new Scenario(interlockTemplate('x', '<', 1, { H98: 0.9 }, { hold: 2 }), CONTROLS);
+    const fired = run(sc, [[0, 0.5], [1, 0.5], [2, 3], [3, 0.5], [4, 0.5], [5, 0.5], [6, 0.5], [7, 0.5]]).map((s) => s.notes.length);
+    // true at 0..1 (only 1 s), false at 2, true again from 3: 3 + 2 = 5
+    expect(fired).toEqual([0, 0, 0, 0, 0, 1, 0, 0]);
+  });
+
+  it('hold and after are independent gates: it fires at the first frame with t >= after whose condition has held for hold', () => {
+    /** the first frame time at which interlock {hold, after} fires on the samples x(t = 0, 1, 2, ...), or -1 (x < 1 is the condition) */
+    const firstFire = (opts: { hold?: number; after?: number }, x: number[]): number => {
+      const sc = new Scenario(interlockTemplate('x', '<', 1, { H98: 0.9 }, opts), CONTROLS);
+      return run(sc, x.map((v, t) => [t, v] as [number, number])).findIndex((s) => s.notes.length > 0);
+    };
+    const T = 0.5, F = 3; // condition true / false
+    const hold2After5 = { hold: 2, after: 5 };
+    // true since t = 0: the dwell (2) is over long before `after`, so it fires at `after` (5), not at 7
+    expect(firstFire(hold2After5, [T, T, T, T, T, T, T, T, T, T])).toBe(5);
+    // true since 4 (false before): the dwell is over at 6, after 5
+    expect(firstFire(hold2After5, [F, F, F, F, T, T, T, T, T, T])).toBe(6);
+    // true since 5: 7
+    expect(firstFire(hold2After5, [F, F, F, F, F, T, T, T, T, T])).toBe(7);
+    // true 0..2, false at 3, true from 4: the failure restarted the dwell, and 4 + 2 = 6 >= 5
+    expect(firstFire(hold2After5, [T, T, T, F, T, T, T, T, T, T])).toBe(6);
+    // true 0..1, false at 2, true from 3: 3 + 2 = 5 = after
+    expect(firstFire(hold2After5, [T, T, F, T, T, T, T, T, T, T])).toBe(5);
+    // true at 0..6, false at 7: it has fired at 5 already
+    expect(firstFire(hold2After5, [T, T, T, T, T, T, T, F, F, F])).toBe(5);
+    // a failure at 5 (the frame `after` is reached at) restarts the dwell, which counts from 6: 8
+    expect(firstFire(hold2After5, [T, T, T, T, T, F, T, T, T, T])).toBe(8);
+    // never true long enough
+    expect(firstFire(hold2After5, [T, T, F, T, T, F, T, T, F, T])).toBe(-1);
+    // each gate alone
+    expect(firstFire({ hold: 3 }, [F, F, T, T, T, T, T])).toBe(5);
+    expect(firstFire({ after: 4 }, [T, T, T, T, T, T, T])).toBe(4);
+    expect(firstFire({}, [F, T, T])).toBe(1);
+    // the state carries the start of the stretch (checkpoints)
+    const sc = new Scenario(interlockTemplate('x', '<', 1, { H98: 0.9 }, hold2After5), CONTROLS);
+    run(sc, [[0, F], [1, T], [2, T]]);
+    expect(sc.save()).toMatchObject({ armed: [1], since: [1], fired: [0] });
   });
 
   it("'repeat' with hysteresis re-arms only after the diagnostic has crossed back over the band, and applies the release patch", () => {

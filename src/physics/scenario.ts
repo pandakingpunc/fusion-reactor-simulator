@@ -42,8 +42,14 @@
  *    trigger reacts within one output interval. Reading frames and not the live model makes the
  *    evaluation independent of how the caller chunks time and of a rewind: after a rewind the frame that
  *    was the last one is the last one again, and its trigger state comes back with its checkpoint.
- *  - `hold` is the time the condition must hold on consecutive frames, `after` the earliest time at which
- *    the trigger may fire. 'once' triggers fire once per run branch. 'repeat' triggers re-arm when the
+ *  - `hold` and `after` are two independent conditions on the firing time. `hold`: the condition must have
+ *    held on consecutive frames for this long, counted from the first frame of the current unbroken
+ *    stretch of frames that satisfy it (the frame time is the clock; a frame that does not satisfy the
+ *    condition restarts the count, also before `after`). `after`: no firing before this time. The trigger
+ *    fires at the first frame that meets both: t >= after and t - (start of the stretch) >= hold. So with
+ *    hold = 2 and after = 5, a condition that has been true since t = 0 fires at t = 5, one that became
+ *    true at t = 4 fires at t = 6.
+ *  - 'once' triggers fire once per run branch. 'repeat' triggers re-arm when the
  *    condition is false again (with `hysteresis` > 0: when the diagnostic has crossed back over value −
  *    hysteresis for '>' and '>=', value + hysteresis for '<' and '<='); the optional `release` patch is
  *    applied when they re-arm. Triggers are evaluated in list order; a later one wins a conflict.
@@ -100,9 +106,15 @@ export interface TriggerSpec {
   diag: string;
   op: TriggerOp;
   value: number;
-  /** the condition must hold on consecutive frames for this long before the trigger fires (default 0) */
+  /**
+   * dwell time (default 0): the condition must have held on consecutive frames for this long, counted from
+   * the first frame of the current unbroken stretch that satisfies it (also from before `after`)
+   */
   hold?: number;
-  /** earliest firing time (default 0) */
+  /**
+   * earliest firing time (default 0), independent of `hold`: the trigger fires at the first frame with
+   * t >= after whose condition has held for `hold` (hold 2, after 5: true since 0 fires at 5, true since 4 at 6)
+   */
   after?: number;
   /** control values written when it fires */
   set: Record<string, number>;
@@ -190,18 +202,6 @@ const MAX_TOTAL_POINTS = 20000;
 const MAX_TRIGGERS = 128;
 const MAX_SET_KEYS = 32;
 
-/** Where a scenario is checked: the control and diagnostic keys of the model it is attached to (all optional). */
-export interface ScenarioContext {
-  /** control keys of the model (getControls()); when given, a waveform or trigger naming another key is an issue */
-  controls?: readonly string[];
-  /** diagnostic keys of a frame (HistoryFrame.d); when given, a trigger on another key is an issue */
-  diagnostics?: readonly string[];
-  /** replaces SCENARIO_CONTROLS (labels, sanity limits) */
-  controlInfo?: Readonly<Record<string, ControlInfo>>;
-}
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
 /**
  * Smallest rampStep [time unit] of any scenario. Every grid point is a step of the run, and a grid finer than
  * the floating-point spacing of the times it runs over would not advance at all.
@@ -210,6 +210,20 @@ export const MIN_RAMP_STEP = 1e-6;
 /** With the end time of the model known: at most this many rampStep grid points per waveform segment over the run (rampStep >= tEnd / MAX_RAMP_GRID). */
 export const MAX_RAMP_GRID = 1e4;
 
+/** Where a scenario is checked: the control and diagnostic keys of the model it is attached to (all optional). */
+export interface ScenarioContext {
+  /** control keys of the model (getControls()); when given, a waveform or trigger naming another key is an issue */
+  controls?: readonly string[];
+  /** diagnostic keys of a frame (HistoryFrame.d); when given, a trigger on another key is an issue */
+  diagnostics?: readonly string[];
+  /** replaces SCENARIO_CONTROLS (labels, sanity limits) */
+  controlInfo?: Readonly<Record<string, ControlInfo>>;
+  /** end time of the model's run [time unit]; when given, a rampStep below tEnd / MAX_RAMP_GRID is an issue */
+  tEnd?: number;
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
 const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -218,8 +232,6 @@ const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Num
  * Checks a scenario (any parsed JSON) and returns its normalised form: points sorted by time, default
  * values dropped, empty parts removed. The normalised form is what is stored, fingerprinted and
  * serialised. All problems are listed (with paths), not just the first.
-  /** end time of the model's run [time unit]; when given, a rampStep below tEnd / MAX_RAMP_GRID is an issue */
-  tEnd?: number;
  */
 export function validateScenario(input: unknown, ctx: ScenarioContext = {}): { ok: true; spec: ScenarioSpec } | { ok: false; issues: ScenarioIssue[] } {
   const issues: ScenarioIssue[] = [];
@@ -269,6 +281,14 @@ export function validateScenario(input: unknown, ctx: ScenarioContext = {}): { o
   if (input.schema !== SCENARIO_SCHEMA) bad('schema', `must be ${SCENARIO_SCHEMA}`);
   if (input.name !== undefined && (typeof input.name !== 'string' || input.name.length > 120)) bad('name', 'must be a string of at most 120 characters');
   const rampStep = optNumber(input, 'rampStep', '', 0, true);
+  if (rampStep !== undefined) {
+    const floor = isFiniteNumber(ctx.tEnd) && ctx.tEnd > 0 ? Math.max(MIN_RAMP_STEP, ctx.tEnd / MAX_RAMP_GRID) : MIN_RAMP_STEP;
+    if (rampStep < floor) {
+      bad('rampStep', floor === MIN_RAMP_STEP
+        ? `must be >= ${MIN_RAMP_STEP} (every grid point is a step of the run)`
+        : `must be >= ${fmt(floor)} = t_end / ${MAX_RAMP_GRID} (at most ${MAX_RAMP_GRID} grid points over the run)`);
+    }
+  }
 
   // waveforms
   const waveforms: Record<string, WaveformSpec> = {};
@@ -281,14 +301,6 @@ export function validateScenario(input: unknown, ctx: ScenarioContext = {}): { o
       for (const key of [...keys].sort()) {
         const path = `waveforms.${key}`;
         const w = input.waveforms[key];
-  if (rampStep !== undefined) {
-    const floor = isFiniteNumber(ctx.tEnd) && ctx.tEnd > 0 ? Math.max(MIN_RAMP_STEP, ctx.tEnd / MAX_RAMP_GRID) : MIN_RAMP_STEP;
-    if (rampStep < floor) {
-      bad('rampStep', floor === MIN_RAMP_STEP
-        ? `must be >= ${MIN_RAMP_STEP} (every grid point is a step of the run)`
-        : `must be >= ${fmt(floor)} = t_end / ${MAX_RAMP_GRID} (at most ${MAX_RAMP_GRID} grid points over the run)`);
-    }
-  }
         const keyOk = checkKey(key, path, 'control');
         if (!isRecord(w)) { bad(path, 'must be {kind, points}'); continue; }
         noUnknown(w, ['kind', 'points'], path);
@@ -454,6 +466,11 @@ function lastAtMost(a: ArrayLike<number>, x: number): number {
   return r;
 }
 
+/** A double greater than x, at most a few units in the last place above it (x finite and >= 0 here: times): x·2^-52 is at least one ulp of x. */
+function nextDoubleUp(x: number): number {
+  return x + Math.max(x * Number.EPSILON, Number.MIN_VALUE);
+}
+
 /** The value of a waveform at time t, or undefined before its first point. */
 function waveformValue(w: BoundWaveform, t: number): number | undefined {
   const i = lastAtMost(w.t, t + T_EPS);
@@ -466,11 +483,6 @@ function waveformValue(w: BoundWaveform, t: number): number | undefined {
 
 function compare(op: TriggerOp, a: number, b: number): boolean {
   switch (op) {
-/** A double greater than x, at most a few units in the last place above it (x finite and >= 0 here: times): x·2^-52 is at least one ulp of x. */
-function nextDoubleUp(x: number): number {
-  return x + Math.max(x * Number.EPSILON, Number.MIN_VALUE);
-}
-
     case '>': return a > b;
     case '>=': return a >= b;
     case '<': return a < b;
@@ -610,8 +622,8 @@ export class Scenario {
     if (this.armed[i]) {
       if (!holds) { this.since[i] = -1; return; }
       if (this.since[i] < 0) this.since[i] = frame.t;
-      const start = Math.max(this.since[i], tr.after ?? 0);
-      if (frame.t < (tr.after ?? 0) - T_EPS || frame.t - start < (tr.hold ?? 0) - T_EPS) return;
+      // two independent gates (see the header): the dwell counts from the start of the stretch, `after` is a plain time
+      if (frame.t < (tr.after ?? 0) - T_EPS || frame.t - this.since[i] < (tr.hold ?? 0) - T_EPS) return;
       this.armed[i] = 0;
       this.fired[i]++;
       this.write(tr.set, written);

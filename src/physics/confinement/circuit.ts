@@ -35,8 +35,10 @@
  * stabilisation in ITER" and contains no flux accounting: it is not a source of any number here.)
  *
  * The 0D model has no radial current profile: its loop voltage is the one of a steady current, V = (1 - f_NI) P_oh / I_p with the
- * Joule power of the full current (`heating.ohmicPower`), the bootstrap fraction from the Wilson fit (below), and no inductive voltage
- * (I_p and l_i are constant except in a disruption).
+ * Joule power of the full current (`heating.ohmicPower`; the 0D ohmic heating itself is left as it was: it does not carry the factor
+ * (1 - f_NI)^2 that a non-inductive current puts on the Joule power of the inductive part), the bootstrap fraction from the Wilson fit (below),
+ * and no inductive voltage (I_p and l_i are constant except in a disruption). Its flux is the integral of that voltage over the frames plus
+ * the ramp-up estimate above (systems/csFlux.ts).
  */
 import { C } from '../constants';
 
@@ -149,59 +151,49 @@ export function circuitFlux(p: { R: number; a: number; kappa: number; Ip: number
 /** Parameters of the 0D circuit (fixed for the run) */
 export interface CircuitParams {
   R: number; a: number; kappa: number;
-  /** plasma current at t = 0 [A] */
-  Ip0: number;
-  /** l_i(3) of the plasma (0D: constant) */
-  li: number;
-  /** Ejima coefficient */
-  ejima: number;
   /** profile exponents of the 0D model: n ~ (1 - rho^2)^alpha_n, T ~ (1 - rho^2)^alpha_T */
   alphaN: number; alphaT: number;
-  /** q95 of the equilibrium; the axis value is taken as q_0 = 1 (sawteeth) */
+}
+
+/** The state of the 0D plasma the circuit is evaluated at */
+export interface CircuitState {
+  /** plasma current [A] */
+  Ip: number;
+  /** thermal poloidal beta (limits.betaPoloidal of the thermal pressure) and q95 */
+  betaPth: number;
   q95: number;
+  /** Joule power of the full current [W] (heating.ohmicPower) */
+  P_oh: number;
 }
 
 /**
- * The 0D circuit: the bootstrap fraction (Wilson), the loop voltage of a steady current with a non-inductive fraction, and the
- * integral of the loop voltage over the run (trapezoid over the steps of the model; part of the model's checkpoint record).
+ * The 0D circuit: the bootstrap fraction (Wilson) and the loop voltage of a steady current with a non-inductive fraction. No state: the flux of
+ * a run is the integral of the loop voltage over its frames plus the ramp-up (`fluxFromHistory`, `fluxBudget` of systems/csFlux.ts; a cumulative
+ * flux in the model would be one more component of the state vector of the integrator, whose error norm would change with it, and a
+ * record that changes at every step, which the FSAL reuse of the kernel takes for a changed model).
  */
 export class PlasmaCircuit {
-  /** integral of the loop voltage from t = 0 [V s] and the previous point of it */
-  psiB = 0;
-  private tPrev = 0;
-  private vPrev = NaN;
   constructor(readonly p: CircuitParams) {}
 
-  /** bootstrap fraction of the pressure state: thermal poloidal beta `betaP` (limits.betaPoloidal), Wilson 1992 */
-  fBootstrap(betaPth: number): number {
+  /** bootstrap fraction of the pressure state: thermal poloidal beta `betaPth` (limits.betaPoloidal), q_0 = 1, Wilson 1992 */
+  fBootstrap(betaPth: number, q95: number): number {
     const p = this.p;
     const q0 = 1;
-    return bootstrapFractionWilson(Math.max(p.q95 / q0 - 1, 1e-3), p.alphaN + p.alphaT, p.alphaT, betaPth, q0, p.q95, p.R, p.a);
+    return bootstrapFractionWilson(Math.max(q95 / q0 - 1, 1e-3), p.alphaN + p.alphaT, p.alphaT, betaPth, q0, q95, p.R, p.a);
   }
 
-  /** loop voltage [V] of the Joule power P_oh [W] of the full current I [A] with the non-inductive fraction f_NI */
+  /** loop voltage [V] of the Joule power P_oh [W] of the full current I [A] with the non-inductive fraction f_NI (clamped to 0..1) */
   loopVoltage(P_oh: number, Ip: number, fNI: number): number {
     return Ip > 0 ? ((1 - Math.min(Math.max(fNI, 0), 1)) * P_oh) / Ip : 0;
   }
 
-  /** adds the loop voltage V at time t to the integral (trapezoid; the first point counts as constant back to t = 0) */
-  advance(t: number, V: number): void {
-    if (!(t > this.tPrev) || !Number.isFinite(V)) return;
-    const v0 = Number.isFinite(this.vPrev) ? this.vPrev : V;
-    this.psiB += 0.5 * (v0 + V) * (t - this.tPrev);
-    this.tPrev = t; this.vPrev = V;
-  }
-
-  /** the flux accounting at the current `Ip`; the 0D loop voltage is resistive, so the resistive flux is the integral itself */
-  flux(Ip: number): CircuitFlux {
-    const p = this.p;
-    return circuitFlux({ R: p.R, a: p.a, kappa: p.kappa, Ip, Ip0: p.Ip0, li0: p.li, ejima: p.ejima, psiB: this.psiB, psiR: this.psiB });
-  }
-
-  save(rec: Record<string, number>): void { rec.circPsi = this.psiB; rec.circT = this.tPrev; rec.circV = Number.isFinite(this.vPrev) ? this.vPrev : 0; rec.circHas = +Number.isFinite(this.vPrev); }
-  restore(rec: Readonly<Record<string, number>>): void {
-    this.psiB = Number.isFinite(rec.circPsi) ? rec.circPsi : 0;
-    this.tPrev = Number.isFinite(rec.circT) ? rec.circT : 0;
-    this.vPrev = rec.circHas ? rec.circV : NaN;
+  /**
+   * The keys the 0D model publishes: `f_bs` (Wilson), `f_cd` (0: the 0D model has no current drive), `f_NI` and `V_loop` [V]. `normal` is false
+   * in the quench phases of a disruption, when the current is not a steady one and the loop voltage is the inductive voltage of the quench, which
+   * the circuit does not model: it is then 0.
+   */
+  diagnostics(s: CircuitState, normal = true): Record<string, number> {
+    const fbs = this.fBootstrap(s.betaPth, s.q95);
+    return { f_bs: fbs, f_cd: 0, f_NI: fbs, V_loop: normal ? this.loopVoltage(s.P_oh, s.Ip, fbs) : 0 };
   }
 }

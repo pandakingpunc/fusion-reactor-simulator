@@ -30,6 +30,7 @@ import { greenwaldDensity, betaToroidal, betaNormalized, betaPoloidal, lineAvera
 import { disruptionReport, DisruptionCause, DISRUPTION_LABELS, DISRUPTION_FIXES } from '../disruption';
 import { checkMagnet, MAGNET_TECH, divertorHeatFlux, divertorHeatFluxStellarator, neutronWallLoad } from '../engineering';
 import { buildMagneticReport, LAWSON_DT } from './magneticReport';
+import { PlasmaCircuit } from './circuit';
 import { EDGE_DIAGS, edgeDiagnostics } from '../edge';
 import { RNG } from '../rng';
 import { U } from '../units';
@@ -97,6 +98,8 @@ export const MAGNETIC_DIAGS: DiagSpec[] = [
   { key: 'Zeff', label: 'Z_eff', unit: '', group: 'Impurities' },
   { key: 'cZ', label: 'c_Z (n_Z/n_e)', unit: '', group: 'Impurities', log: true },
   { key: 'Ip', label: 'I_p', unit: 'MA', group: 'MHD' },
+  { key: 'f_bs', label: 'Bootstrap fraction (Wilson 1992)', unit: '', group: 'Current' },
+  { key: 'V_loop', label: 'Loop voltage (steady current, non-inductive part removed)', unit: 'V', group: 'Current' },
   { key: 'S_fuel', label: 'Fueling', unit: '1e20 /s', group: 'Density' },
   { key: 'burnFrac', label: 'T burn fraction', unit: '', group: 'Fuel' },
   { key: 'q_div', label: 'Divertor heat flux', unit: 'MW/m²', group: 'Engineering' },
@@ -134,6 +137,8 @@ export class MagneticModel implements SimModel {
   private M: number; // ortalama yakıt kütlesi (amu)
   private rng: RNG;
   private isStell: boolean;
+  /** bootstrap fraction and loop voltage of a steady current (circuit.ts) */
+  private circuit: PlasmaCircuit;
 
   // dahili durum
   private phase: Phase = 'normal';
@@ -186,7 +191,8 @@ export class MagneticModel implements SimModel {
     this.method = cfg.method;
     this.g = cfg.geometry;
     this.isStell = cfg.method === 'stellarator';
-    this.diagSpecs = this.isStell ? MAGNETIC_DIAGS.filter((s) => s.group !== 'Edge') : MAGNETIC_DIAGS; // no two-point SOL in a stellarator
+    this.diagSpecs = this.isStell ? MAGNETIC_DIAGS.filter((s) => s.group !== 'Edge' && s.group !== 'Current') : MAGNETIC_DIAGS; // no two-point SOL and no plasma current in a stellarator
+    this.circuit = new PlasmaCircuit({ R: cfg.geometry.R, a: cfg.geometry.a, kappa: cfg.geometry.kappa, alphaN: cfg.transport.alpha_n, alphaT: cfg.transport.alpha_T });
     // volume, surface and cross-section of the boundary (LCFS) Miller shape; q95 and the scalings keep the nominal shape
     this.gB = boundaryShape(cfg);
     this.V = plasmaVolume(this.gB);
@@ -647,12 +653,13 @@ export class MagneticModel implements SimModel {
     else q_div = divertorHeatFlux(this.g, Math.max(y[IDX.Ip], 1e5), D.P_SOL, c.divertor.f_rad_div, c.divertor.flux_expansion).q_div_MWm2;
     const nw = neutronWallLoad(this.gB, D.P_neutron, 1).load_MWm2;
     const na = y[IDX.na], nb = y[IDX.nb];
+    const q95v = this.isStell ? 0 : q95ForMethod(this.method, this.g, c.B0, Math.max(Ip_MA, 0.01));
     return {
       Ti: D.Ti, Te: D.Te, Ti0: D.T0, ne: D.ne / 1e20, nbar: nbar / 1e20, nG_frac: nbar / nG, fHe: y[IDX.nHe] / D.ne,
       P_fus: D.P_fus / 1e6, P_bt: D.P_bt / 1e6, P_alpha: D.P_alpha / 1e6, P_beam_heat: D.P_beam / 1e6, P_aux: (D.P_NBI + D.P_ICRH + D.P_ECRH) / 1e6, P_oh: D.P_oh / 1e6,
       P_brems: D.P_brems / 1e6, P_sync: D.P_sync / 1e6, P_line: D.P_line / 1e6, P_rad: D.P_rad / 1e6, P_cond: D.P_cond / 1e6,
       P_transport: D.P_transport / 1e6, Q, tauE: D.tauE, H_mode: this.hmode ? 1 : 0, P_ELM: D.P_ELM / 1e6, P_LH: P_LH / 1e6, P_loss: D.P_loss / 1e6, dWdt: D.dWdt / 1e6, P_rad_core: D.P_rad_core / 1e6, P_ei: D.P_ei / 1e6,
-      betaN: bN, betaN_th: bN_th, betaT: bT * 100, q95: this.isStell ? 0 : q95ForMethod(this.method, this.g, c.B0, Math.max(Ip_MA, 0.01)), NTM: this.ntm ? 1 : 0,
+      betaN: bN, betaN_th: bN_th, betaT: bT * 100, q95: q95v, NTM: this.ntm ? 1 : 0,
       W: W / 1e6, Wf: Wfast / 1e6, W_alpha: y[IDX.Wa] / 1e6, W_beam: y[IDX.Wb] / 1e6, ignited: this.ignited ? 1 : 0, triple, lawson: triple / LAWSON_DT,
       Zeff: D.Zeff, cZ: y[IDX.nZ] / D.ne, Ip: Ip_MA, S_fuel: D.S_fuel / 1e20,
       burnFrac: y[IDX.NTfuel] > 0 ? y[IDX.NTburn] / y[IDX.NTfuel] : 0,
@@ -661,6 +668,8 @@ export class MagneticModel implements SimModel {
       Efus_MJ: y[IDX.Efus] / 1e6, Ein_MJ: y[IDX.Ein] / 1e6, Nn: y[IDX.Nn],
       // edge model (two-point): P_sep/R, T_t, q_peak, detachment state, c_z for detachment (tokamaks; a stellarator has no such SOL)
       ...(this.isStell ? {} : edgeDiagnostics(c, this.g, D.P_SOL, y[IDX.Ip], D.ne, this.M)),
+      // bootstrap fraction (Wilson) and the loop voltage of a steady current (circuit.ts); no current, no circuit in a stellarator
+      ...(this.isStell ? {} : this.circuit.diagnostics({ Ip: y[IDX.Ip], betaPth: betaPoloidal(p_th, Math.max(y[IDX.Ip], 1), this.g.a, this.g.kappa), q95: q95v, P_oh: D.P_oh }, this.phase === 'normal' || this.phase === 'ended')),
     };
   }
 

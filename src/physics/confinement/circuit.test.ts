@@ -95,7 +95,7 @@ describe('bootstrap fraction of Wilson (1992)', () => {
 });
 
 describe('the 0D circuit', () => {
-  const params = { R: 6.2, a: 2, kappa: 1.7, Ip0: 15e6, li: 0.85, ejima: 0.4, alphaN: 0.5, alphaT: 1, q95: 3.1 };
+  const params = { R: 6.2, a: 2, kappa: 1.7, alphaN: 0.5, alphaT: 1 };
 
   it('the loop voltage of a steady current is (1 - f_NI) P_ohmic / I_p, and 0 without a current', () => {
     const c = new PlasmaCircuit(params);
@@ -105,45 +105,22 @@ describe('the 0D circuit', () => {
     expect(c.loopVoltage(1e6, 0, 0.2)).toBe(0);
   });
 
-  it('integrates the voltage with the trapezoid rule and counts the first point back to t = 0', () => {
+  it('the Wilson fraction uses the profile exponents and q95 of the model (q0 = 1)', () => {
     const c = new PlasmaCircuit(params);
-    c.advance(1, 0.5);
-    expect(c.psiB).toBeCloseTo(0.5, 12); // constant back to t = 0
-    c.advance(3, 0.1);
-    expect(c.psiB).toBeCloseTo(0.5 + 0.5 * (0.5 + 0.1) * 2, 12);
-    c.advance(3, 9); // no time has passed: nothing is added
-    c.advance(4, NaN); // and a non-number is ignored
-    expect(c.psiB).toBeCloseTo(1.1, 12);
+    expect(c.fBootstrap(1, 3.1)).toBeCloseTo(bootstrapFractionWilson(2.1, 1.5, 1, 1, 1, 3.1, 6.2, 2), 12);
+    expect(c.fBootstrap(1, 3.1)).toBeGreaterThan(0);
+    expect(c.fBootstrap(1, 0.9)).toBe(0); // q95 below q0: not a profile the fit is for
   });
 
-  it('its record round-trips and a restored circuit continues as the original does', () => {
-    const a = new PlasmaCircuit(params), b = new PlasmaCircuit(params);
-    a.advance(1, 0.2); a.advance(2, 0.3);
-    const rec: Record<string, number> = {};
-    a.save(rec);
-    b.restore(rec);
-    a.advance(5, 0.1); b.advance(5, 0.1);
-    expect(b.psiB).toBe(a.psiB);
-    // a record from elsewhere without the keys restores an empty circuit
-    const e = new PlasmaCircuit(params);
-    e.advance(1, 1);
-    e.restore({});
-    expect(e.psiB).toBe(0);
-    e.advance(2, 0.4);
-    expect(e.psiB).toBeCloseTo(0.8, 12);
-  });
-
-  it('the flux accounting of the 0D circuit is the resistive flux of the integral plus the ramp-up estimate', () => {
+  it('publishes f_bs, f_cd = 0, f_NI and V_loop; the loop voltage carries the bootstrap fraction and is 0 outside the normal phase', () => {
     const c = new PlasmaCircuit(params);
-    c.advance(10, 0.05);
-    const f = c.flux(15e6);
-    expect(f.psiRes).toBeCloseTo(ejimaFlux(6.2, 15e6) + 0.5, 9);
-    expect(f.psiUsed).toBeCloseTo(plasmaInductance(6.2, 2, 1.7, 0.85) * 15e6 + ejimaFlux(6.2, 15e6) + 0.5, 6);
-  });
-
-  it('the Wilson fraction of the circuit uses the profile exponents and q95 of the model', () => {
-    const c = new PlasmaCircuit(params);
-    expect(c.fBootstrap(1)).toBeCloseTo(bootstrapFractionWilson(2.1, 1.5, 1, 1, 1, 3.1, 6.2, 2), 12);
-    expect(c.fBootstrap(1)).toBeGreaterThan(0);
+    const s = { Ip: 15e6, betaPth: 1, q95: 3.1, P_oh: 1.2e6 };
+    const d = c.diagnostics(s);
+    expect(Object.keys(d).sort()).toEqual(['V_loop', 'f_NI', 'f_bs', 'f_cd']);
+    expect(d.f_cd).toBe(0);
+    expect(d.f_NI).toBe(d.f_bs);
+    expect(d.V_loop).toBeCloseTo((1 - d.f_bs) * 1.2e6 / 15e6, 12);
+    expect(c.diagnostics(s, false).V_loop).toBe(0);
+    expect(c.diagnostics(s, false).f_bs).toBe(d.f_bs);
   });
 });

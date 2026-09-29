@@ -53,6 +53,7 @@ import type { ProfileState } from '../state';
 import { assembleHeatSources } from '../sources';
 import type { PhysicsPipeline } from './pipeline';
 import { EVENT_DT_MIN, locateEvent, stageWeights } from './localise';
+import { STEP_DT_MIN } from '../settings';
 import { NewtonStage } from './newtonStage';
 import { TRBDF2_A, TRBDF2_B, TRBDF2_D, TRBDF2_EST, TRBDF2_GAMMA, acceptedFactor, errorExponent, rejectedFactor } from './trbdf2';
 
@@ -62,8 +63,8 @@ export const STEP_MAX_ATTEMPTS = 12;
 export const STEP_DT_FLOOR = 1e-7;
 /** relative change of a profile within one step above which an attempt fails */
 export const STEP_MAX_CHANGE = 0.35;
-/** bounds of the proposed Δt [s]; the upper one is ProfileSettings.dtMax when that is smaller */
-export const STEP_DT_MIN = 1e-6;
+/** bounds of the proposed Δt [s]; the upper one is ProfileSettings.dtMax when that is smaller (the lower one lives with the check of the settings, settings.ts, which keeps dtMax above it) */
+export { STEP_DT_MIN };
 export const STEP_DT_MAX = 0.5;
 /** repetitions of a step after a rejection by the error test before the step is accepted at the floor */
 export const STEP_MAX_REJECTS = 40;

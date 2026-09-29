@@ -14,6 +14,7 @@ import { RNG } from '../rng';
 import type { Equilibrium } from '../equilibrium/gs';
 import type { MagneticConfig, ProfileSettings, SimEvent, TerminationInfo } from '../types';
 import { DEFAULT_PROFILE_SETTINGS } from './defaults';
+import { checkProfileSettings, type SettingNote } from './settings';
 import { CurrentProgramme, currentWaveform, IP_PROGRAMME_FLOOR } from './control/plasmaCurrent';
 import { gridSpec, type GridSpec, type TransportGeometry } from './geometry1d';
 import { CurrentSolver, DensitySolver, HeatSolver } from './fvsolver';
@@ -85,12 +86,18 @@ export type CrashHook = (kind: 'sawtooth' | 'ELM', t: number, before: CrashSnaps
  * setting that is `undefined` (or `null`) is blank, not a value: the setup wizard stores that for
  * an emptied input, and it leaves the default (or, for the optional settings without one, the
  * documented "blank" behaviour) in force. Spreading it would overwrite the default with undefined.
+ *
+ * The step-control settings rtol, atol and dtMax that are outside their domain (settings.ts) are replaced by the default; `notes` lists
+ * what was replaced.
  */
-export function profileSettings(cfg: MagneticConfig): ProfileSettings {
+export function resolveProfileSettings(cfg: MagneticConfig): { ps: ProfileSettings; notes: SettingNote[] } {
   const user: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(cfg.profiles ?? {})) if (v !== undefined && v !== null) user[k] = v;
-  return { ...DEFAULT_PROFILE_SETTINGS, eqUpdateInterval: Math.min(Math.max(cfg.t_end / 20, 0.5), 20), ...(user as Partial<ProfileSettings>) };
+  return checkProfileSettings({ ...DEFAULT_PROFILE_SETTINGS, eqUpdateInterval: Math.min(Math.max(cfg.t_end / 20, 0.5), 20), ...(user as Partial<ProfileSettings>) });
 }
+
+/** The settings of a shot (resolveProfileSettings without the notes) */
+export function profileSettings(cfg: MagneticConfig): ProfileSettings { return resolveProfileSettings(cfg).ps; }
 
 export class ProfileContext {
   // ---------------------------------------------------------------- configuration
@@ -188,7 +195,10 @@ export class ProfileContext {
 
   constructor(cfg: MagneticConfig) {
     this.cfg = cfg;
-    this.ps = profileSettings(cfg);
+    const resolved = resolveProfileSettings(cfg);
+    this.ps = resolved.ps;
+    // a setting that was replaced is said once, at the start of the shot (the first step's events)
+    for (const n of resolved.notes) this.warnOnce(`settings.${n.key}`, 0, `${n.message}.`);
     this.N = Math.max(16, Math.round(this.ps.nRho));
     this.grid = gridSpec(this.ps);
     this.layout = new StateLayout(this.N);

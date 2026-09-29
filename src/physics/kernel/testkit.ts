@@ -117,15 +117,12 @@ export function applyRandomControls(sim: Simulation, seed: number, prob: number)
 }
 
 /**
- * RNG.getState() returns mulberry32's unreduced accumulator while setState() reduces it modulo
- * 2^32 (both give the same random sequence), so a rewound run stores smaller numbers in
- * frame.internal.rng. Compare modulo 2^32 until rng.ts keeps its state reduced.
+ * Kept for the callers that compare a rewound run: rng.ts keeps its state reduced modulo 2^32 (it used to hand out
+ * an unreduced accumulator that a rewound run stored as a smaller number), so the run digest is rewind invariant
+ * and there is nothing to normalise any more. Returns the run itself.
  */
 export function normalizeRng(r: Run): Run {
-  return {
-    history: r.history.map((f) => ('rng' in f.internal ? { ...f, internal: { ...f.internal, rng: f.internal.rng >>> 0 } } : f)),
-    events: r.events,
-  };
+  return r;
 }
 
 /** Where two runs first differ, or null if bitwise equal. */

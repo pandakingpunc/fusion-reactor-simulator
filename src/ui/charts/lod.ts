@@ -126,7 +126,7 @@ export class FrameColumns {
 const columns = (buckets: number) => Math.max(1, Math.floor(Number.isFinite(buckets) ? buckets : 1));
 
 /** ascending, duplicate-free merge of two ascending index lists */
-function mergeAscending(a: readonly number[], b: readonly number[]): number[] {
+export function mergeIndices(a: readonly number[], b: readonly number[]): number[] {
   if (!b.length) return a as number[];
   const out: number[] = [];
   let i = 0, j = 0;
@@ -218,7 +218,7 @@ export function lodIndices(frames: FrameColumns | readonly LodFrame[], key: stri
     if (x > vMax) { vMax = x; iMax = i; }
   }
   flush();
-  return mergeAscending(out, keep.filter((i) => i >= a && i < b));
+  return mergeIndices(out, keep.filter((i) => i >= a && i < b));
 }
 
 /**

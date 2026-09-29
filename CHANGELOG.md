@@ -196,7 +196,8 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   Sauter (2016) (MAST-U 34 -> 18); stellarator confinement is an explicit `H_ISS04` x tau_ISS04
   (`stellarator.f_ren` stays as a deprecated alias); T_max and the design score ignore the start-up transient.
   Together with the fixes below ITER flat-top Q went 14.0 -> 10.1 and P_fus 715 -> 523 MW, and the ITER-pB11
-  shot radiatively collapses at 28 s instead of surviving on an ELM-power artefact.
+  shot radiatively collapsed at 28 s instead of surviving on an ELM-power artefact (a marginal power balance:
+  with the ITER density re-base below it runs to the scheduled end again).
 - 0D diagnostics `P_beam_heat`, `P_transport` (W/tau_E), `P_ELM`, `P_loss`, `dWdt`, `P_rad_core`, `P_ei`,
   `betaN_th`, `W_alpha`, `W_beam`, `ignited`, `nbar`; `P_cond` is now the continuous conduction W/tau_E - P_ELM.
 - MagLIF stagnation lasts about 2 ns (the dwell time scales with t_c/CR) instead of 30 ns: Z D-D yield
@@ -237,7 +238,8 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 - ITER (0D) `n_target` 1.0e20 -> 0.914e20 and DEMO (0D) 0.75e20 -> 0.711e20: the target of the 0D model is the
   volume average, the design points are the line-averaged n/n_G = 0.85 (ITER) and 1.2 (EU-DEMO 2018 baseline,
   Siccinio et al. 2022), which the flat tops now reach to 2.5 % (0.84 and 1.17; before 0.92 and 1.24). The 1.5D
-  presets already regulate the line average and keep their targets.
+  presets already regulate the line average and keep their targets. The ITER-pB11 golden case, whose power balance
+  is marginal (1.0e20 collapses at 28 s, 0.85e20 survives), now runs to the scheduled end.
 - MAST-U preset: the first-campaign scenario (R 0.8 m, a 0.5 m, kappa 2.1, delta 0.47, 0.75 MA, 0.55 T, 2 MW of NBI
   absorbed; Harrison et al. 2024, Imada et al. 2024) instead of the machine's design-maximum shape: q95 18.2 -> 6.4
   (the published band is 5-10, so the `MASTU.q95` known failure is gone) and MASTU15 (1.5D) q95 17.6 -> 6.4.

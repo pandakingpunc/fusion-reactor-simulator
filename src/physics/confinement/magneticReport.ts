@@ -5,7 +5,9 @@
  * fHe, Zeff) skor, mühendislik ve ekonomi özetini üretir.
  */
 import { Geometry } from '../geometry';
-import { MAGNET_TECH, MagnetCheck, economics, neutronWallLoad, tritiumBreedingRatio } from '../engineering';
+import { MAGNET_TECH, MagnetCheck, economics, neutronWallLoad } from '../engineering';
+import { assessSystems, systemsReportKeys } from '../systems/assess';
+import { fluxFromHistory } from '../systems/csFlux';
 import { U } from '../units';
 import { flatTopMean } from '../analysis/flatTop';
 import { edgeReportEntriesOf } from '../edge';
@@ -67,9 +69,14 @@ export function buildMagneticReport(ctx: MagneticReportContext, hist: HistoryFra
   const Pfus_avg = avg('P_fus'), Paux_avg = avg('P_aux') + avg('P_oh');
   const Pn_avg = avg('P_neutron');
   const nwl = neutronWallLoad(ctx.g, Pn_avg * 1e6, c.economics.availability);
-  const tbr = tritiumBreedingRatio(c.blanket.type, c.blanket.li6_enrichment, c.blanket.coverage);
   const mag = ctx.magnetInfo;
-  const P_recirc_other = 0.05 * Pfus_avg + 20 + (c.magnet.tech === 'Cu' ? 0.02 * mag.storedEnergy_GJ * 1e3 * 10 : 5); // pompalar/kriyo/bakır bobin direnci (APPROXIMATION)
+  // systems-lite (src/physics/systems): TF coil stress, CS flux budget, radial build, TBR, cryoplant. The burn flux is the loop-voltage
+  // integral over the frames after the start-up (V_loop where the model has it, else P_ohmic / I_p), l_i(3) the flat-top mean where known.
+  const flux = ctx.isStell ? undefined : fluxFromHistory(hist, tStartup);
+  const li = hist.some((h) => h.d.li !== undefined) ? avg('li') : undefined;
+  const sys = assessSystems({ cfg: c, g: ctx.g, isStellarator: ctx.isStell, P_fus_MW: Pfus_avg, P_neutron_MW: Pn_avg, li, flux });
+  const tbr = sys.tbr;
+  const P_recirc_other = 0.05 * Pfus_avg + 20 + (c.magnet.tech === 'Cu' ? 0.02 * mag.storedEnergy_GJ * 1e3 * 10 : sys.cryo.P_cryo_MW); // pumps and house load (APPROXIMATION); cryoplant power of the superconducting coils (heat load x W/W, systems/cryo.ts) or the copper coil resistance (APPROXIMATION)
   const eco = economics({
     V_core_m3: ctx.V, magnetCostRel: MAGNET_TECH[c.magnet.tech].cost_rel, P_fus_MW: Pfus_avg, P_aux_MW: Paux_avg, P_recirc_MW: P_recirc_other,
     thermalEff: c.economics.thermalEff, wallPlugEff: c.economics.wallPlugEff, availability: c.economics.availability,
@@ -81,7 +88,7 @@ export function buildMagneticReport(ctx: MagneticReportContext, hist: HistoryFra
   const warnings: string[] = [];
   if (tbr < 1.05 && c.fuel === 'DT') warnings.push(`TBR = ${tbr.toFixed(2)} < 1.05 — this reactor cannot breed its own tritium.`);
   if (max(d('q_div')) > 10) warnings.push(`Peak divertor heat flux ${max(d('q_div')).toFixed(0)} MW/m² > 10 MW/m² — target plates cannot withstand this; increase the divertor radiation fraction.`);
-  if (mag.overstress) warnings.push(`TF coil stress ${mag.stress_MPa.toFixed(0)} MPa > ${mag.stress_limit} MPa limit.`);
+  warnings.push(...sys.warnings); // TF stress over the limit, CS flux short of the requirement
   if (nwl.dpa_per_year > 20) warnings.push(`Neutron damage ${nwl.dpa_per_year.toFixed(0)} dpa/year — the first wall needs replacement within a few years.`);
   if (eco.P_net_MW < 0) warnings.push(`Negative net electricity (${eco.P_net_MW.toFixed(0)} MW): Q_eng < 1, the plant draws power from the grid.`);
   if (ctx.extraWarnings) warnings.push(...ctx.extraWarnings);
@@ -116,14 +123,15 @@ export function buildMagneticReport(ctx: MagneticReportContext, hist: HistoryFra
     lawsonNote: `Reference (nTτ_E)_ignition ≈ ${lawsonRef.toExponential(1)} keV s m⁻³ (${c.fuel}); 1.0 = ignition threshold (profile effects neglected).`,
     termination: term, score: Math.round(score), scoreBreakdown, historical, warnings,
     engineering: {
-      'B_coil (T)': +mag.B_coil.toFixed(2), 'Technology B_max (T)': mag.B_max, 'TF stress (MPa)': +mag.stress_MPa.toFixed(0), 'Stress limit (MPa)': mag.stress_limit,
-      'Magnetic energy (GJ)': +mag.storedEnergy_GJ.toFixed(2),
+      'B_coil (T)': +mag.B_coil.toFixed(2), 'Technology B_max (T)': mag.B_max, 'TF stress (MPa)': +sys.tf.tresca_MPa.toFixed(0), 'Stress limit (MPa)': mag.stress_limit,
+      'Magnetic energy (GJ)': +(sys.tf.W_J / 1e9).toFixed(2),
       'Divertor q_max (MW/m²)': +max(d('q_div')).toFixed(1), 'Neutron wall load (MW/m²)': +nwl.load_MWm2.toFixed(2), 'dpa/year': +nwl.dpa_per_year.toFixed(1),
       ...edgeReportEntriesOf(hist),
       'TBR': +tbr.toFixed(3), 'Tritium burn fraction': +(last.d.burnFrac ?? 0).toFixed(3),
       'Avg. P_fusion (MW)': +Pfus_avg.toFixed(1), 'P_thermal (MW)': +eco.P_th_MW.toFixed(0), 'Gross P_electric (MW)': +eco.P_gross_MW.toFixed(0),
       'P_recirculating (MW)': +eco.P_recirc_MW.toFixed(0), 'Net P_electric (MW)': +eco.P_net_MW.toFixed(0),
       'Capital cost (M$)': +eco.Ccap_MUSD.toFixed(0), 'LCOE ($/MWh)': isFinite(eco.LCOE_USD_MWh) ? +eco.LCOE_USD_MWh.toFixed(0) : 'n/a (net<0)', 'EROI': +eco.EROI.toFixed(1),
+      ...systemsReportKeys(sys),
       ...(ctx.extraEngineering ?? {}),
     },
     extras: {

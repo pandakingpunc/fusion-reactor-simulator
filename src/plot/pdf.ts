@@ -95,14 +95,20 @@ function toUnicodeCMap(pairs: [number, number][]): string {
 /** Adobe's StemV estimate from the OS/2 weight class */
 const stemV = (weight: number) => Math.round(10 + 220 * ((weight - 50) / 900) ** 2);
 
-interface PageOut { chunks: Chunk[]; w: number; h: number }
+/** one page: its content, its size and the graphics-state / image resources it uses (fonts are shared by all pages) */
+interface PageOut { chunks: Chunk[]; w: number; h: number; gs: string[]; ims: string[] }
 
 /** Single-page PDF of one display list. */
 export function toPDF(dl: DisplayList, o: PdfOptions = {}): Uint8Array {
   return toPDFDocument([dl], o);
 }
 
-/** Multi-page PDF (one display list per page, each page sized to its list); fonts are shared across pages. */
+/**
+ * Multi-page PDF (one display list per page, each page sized to its list). All pages draw from one
+ * FontSet and share one embedded subset per face: the subset holds the glyphs of every page (so a
+ * viewer loads each font program once and the file grows with the glyphs used, not with the number of
+ * pages). Graphics states and images are page resources: a page lists only the ones it draws.
+ */
 export function toPDFDocument(pages: readonly DisplayList[], o: PdfOptions = {}): Uint8Array {
   if (!pages.length) throw new Error('toPDFDocument: no pages');
   const fonts: FontSet = pages[0].fonts;
@@ -117,6 +123,8 @@ export function toPDFDocument(pages: readonly DisplayList[], o: PdfOptions = {})
     const H = dl.height;
     const Y = (y: number) => H - y;
     const c: Chunk[] = [];
+    const pageGs: string[] = [], pageIms: string[] = [];
+    const gsHere = (a: number) => { const name = gsFor(a); if (!pageGs.includes(name)) pageGs.push(name); return name; };
     const pathOps = (d: PathCmd[]) => d.map((q) => q[0] === 'Z' ? 'h' : q[0] === 'M' ? `${n(q[1])} ${n(Y(q[2]))} m` : q[0] === 'L' ? `${n(q[1])} ${n(Y(q[2]))} l`
       : `${n(q[1])} ${n(Y(q[2]))} ${n(q[3])} ${n(Y(q[4]))} ${n(q[5])} ${n(Y(q[6]))} c`).join(' ');
     const styleOps = (s: Style) => {
@@ -124,7 +132,7 @@ export function toPDFDocument(pages: readonly DisplayList[], o: PdfOptions = {})
       if (s.stroke) a.push(`${n(s.stroke[0])} ${n(s.stroke[1])} ${n(s.stroke[2])} RG`, `${n(s.lw ?? 1)} w`, `[${(s.dash ?? []).map(n).join(' ')}] 0 d`,
         `${s.cap === 'round' ? 1 : s.cap === 'square' ? 2 : 0} J`, `${s.join === 'round' ? 1 : s.join === 'bevel' ? 2 : 0} j`);
       if (s.fill) a.push(`${n(s.fill[0])} ${n(s.fill[1])} ${n(s.fill[2])} rg`);
-      if (s.alpha !== undefined && s.alpha < 1) a.push(`/${gsFor(s.alpha)} gs`);
+      if (s.alpha !== undefined && s.alpha < 1) a.push(`/${gsHere(s.alpha)} gs`);
       return a.join(' ');
     };
     for (const p of dl.prims) {
@@ -139,6 +147,7 @@ export function toPDFDocument(pages: readonly DisplayList[], o: PdfOptions = {})
         case 'image': {
           const name = `Im${images.length + 1}`;
           images.push({ name, w: p.w, h: p.h, rgb: p.rgb, smooth: p.smooth });
+          pageIms.push(name);
           c.push(`q ${n(p.dw)} 0 0 ${n(p.dh)} ${n(p.x)} ${n(Y(p.y + p.dh))} cm /${name} Do Q\n`);
           break;
         }
@@ -201,7 +210,7 @@ export function toPDFDocument(pages: readonly DisplayList[], o: PdfOptions = {})
         }
       }
     }
-    outPages.push({ chunks: c, w: dl.width, h: dl.height });
+    outPages.push({ chunks: c, w: dl.width, h: dl.height, gs: pageGs, ims: pageIms });
   }
 
   // ---- font subsets (fixed face order → deterministic object numbering)
@@ -235,9 +244,12 @@ export function toPDFDocument(pages: readonly DisplayList[], o: PdfOptions = {})
     return { dict: `<< /Length ${s.length}${o.deflate ? ' /Filter /FlateDecode' : ''}${extra} >>`, s };
   };
 
-  const res = '<<' + (fontIds.length ? ` /Font << ${fontIds.map((x) => `/${x.f.res} ${x.type0} 0 R`).join(' ')} >>` : '') +
-    (gsIds.length ? ` /ExtGState << ${gsIds.map((g) => `/${g.name} ${g.id} 0 R`).join(' ')} >>` : '') +
-    (imgIds.length ? ` /XObject << ${imgIds.map((g) => `/${g.name} ${g.id} 0 R`).join(' ')} >>` : '') + ' /ProcSet [/PDF /Text /ImageC] >>';
+  const fontRes = fontIds.length ? ` /Font << ${fontIds.map((x) => `/${x.f.res} ${x.type0} 0 R`).join(' ')} >>` : '';
+  const gsId = new Map(gsIds.map((g) => [g.name, g.id]));
+  const imId = new Map(imgIds.map((g) => [g.name, g.id]));
+  const resources = (pg: PageOut) => '<<' + fontRes +
+    (pg.gs.length ? ` /ExtGState << ${pg.gs.map((n) => `/${n} ${gsId.get(n)} 0 R`).join(' ')} >>` : '') +
+    (pg.ims.length ? ` /XObject << ${pg.ims.map((n) => `/${n} ${imId.get(n)} 0 R`).join(' ')} >>` : '') + ' /ProcSet [/PDF /Text /ImageC] >>';
   objs.set(catalogId, { body: `<< /Type /Catalog /Pages ${pagesId} 0 R >>` });
   objs.set(pagesId, { body: `<< /Type /Pages /Kids [${pageIds.map((p) => `${p.page} 0 R`).join(' ')}] /Count ${pageIds.length} >>` });
   outPages.forEach((pg, k) => {
@@ -247,7 +259,7 @@ export function toPDFDocument(pages: readonly DisplayList[], o: PdfOptions = {})
       return `<${ch.gids.map((g) => hex4(f.cid.get(g)!)).join('')}>`;
     }).join('');
     const st = stream(latin1(text));
-    objs.set(pageIds[k].page, { body: `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${n(pg.w)} ${n(pg.h)}] /Resources ${res} /Contents ${pageIds[k].content} 0 R >>` });
+    objs.set(pageIds[k].page, { body: `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${n(pg.w)} ${n(pg.h)}] /Resources ${resources(pg)} /Contents ${pageIds[k].content} 0 R >>` });
     objs.set(pageIds[k].content, { body: st.dict, stream: st.s });
   });
   for (const g of gsIds) objs.set(g.id, { body: `<< /Type /ExtGState /CA ${n(g.a)} /ca ${n(g.a)} >>` });

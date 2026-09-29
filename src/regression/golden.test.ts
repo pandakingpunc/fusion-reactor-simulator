@@ -273,6 +273,13 @@ describe('golden cases', () => {
     expect(iter.n_target).not.toBe(1.0e20);
     expect(iter.fuel).toBe('DT');
     expect(() => caseConfig({ id: 'x', preset: 'NIF', overrides: { n_target: 1e20 } })).toThrow(/has no n_target setting/);
+    // profile settings (an opt-in module of the 1.5D model): layered on the preset's own in a copy, refused where no profile model runs
+    const eped = caseConfig(goldenCase('ITER15-EPED')) as MagneticConfig;
+    expect(eped.profiles).toMatchObject({ pedestalModel: 'eped1', elmLoss: 'loarte', lcfsKappa: 1.85 });
+    expect(eped.t_end).toBe(30);
+    expect((PRESETS.find((p) => p.id === 'ITER15')!.cfg as MagneticConfig).profiles).not.toHaveProperty('pedestalModel');
+    expect(() => caseConfig({ id: 'x', preset: 'ITER', overrides: { profiles: { pedestalModel: 'eped1' } } })).toThrow(/profile settings need a 1\.5D magnetic case/);
+    expect(() => caseConfig({ id: 'x', preset: 'NIF', overrides: { profiles: {} } })).toThrow(/profile settings need a 1\.5D magnetic case/);
   });
 
   it('the stored suite keeps a shot that ends in a disruption, so that the quench frames, the disruption report and its termination label are under golden', () => {

@@ -3,9 +3,10 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join, parse, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { CliUsageError } from '../args';
-import { CliInputError, extensionOf, findPackageRoot, nodeIo, parseJsonFile, resolveConfig, takeRepeated, type CliIo } from './common';
+import { CliInputError, extensionOf, findPackageRoot, nodeIo, ownGitInfo, parseJsonFile, resolveConfig, takeRepeated, type CliIo } from './common';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const WORK = mkdtempSync(join(tmpdir(), 'fusion-common-'));
@@ -90,5 +91,32 @@ describe('helpers', () => {
   it('takeRepeated leaves other flags alone and reports a dangling flag as a usage error', () => {
     expect(takeRepeated(['--a', '1'], ['set'])).toEqual({ rest: ['--a', '1'], values: { set: [] } });
     expect(() => takeRepeated(['--param'], ['param'])).toThrow(CliUsageError);
+  });
+});
+
+describe('ownGitInfo', () => {
+  const git = (cwd: string, ...a: string[]) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...a], { cwd, encoding: 'utf8' });
+  const hasGit = spawnSync('git', ['--version']).status === 0;
+  it.skipIf(!hasGit)('reports the commit of the package own repository, never that of a repository the package sits inside', () => {
+    // a consumer project (a git repository) with the package installed under node_modules (not a repository of its own)
+    const consumer = join(WORK, 'consumer');
+    const pkg = join(consumer, 'node_modules', 'fusion-reactor-simulator');
+    mkdirSync(pkg, { recursive: true });
+    writeFileSync(join(pkg, 'package.json'), '{"name":"fusion-reactor-simulator","version":"1.2.3"}');
+    expect(git(consumer, 'init', '-q').status).toBe(0);
+    git(consumer, 'add', '-A', '-f');
+    expect(git(consumer, 'commit', '-q', '-m', 'consumer').status).toBe(0);
+    const consumerSha = git(consumer, 'rev-parse', 'HEAD').stdout.trim();
+    expect(consumerSha).toMatch(/^[0-9a-f]{40}$/);
+    expect(ownGitInfo(pkg)).toBeNull();
+    expect(ownGitInfo(consumer)).toEqual({ sha: consumerSha, dirty: false });
+    // a package that is its own repository does report its commit
+    const own = join(WORK, 'own');
+    mkdirSync(own, { recursive: true });
+    writeFileSync(join(own, 'a.txt'), 'x');
+    git(own, 'init', '-q');
+    git(own, 'add', '-A');
+    git(own, 'commit', '-q', '-m', 'own');
+    expect(ownGitInfo(own)?.sha).toBe(git(own, 'rev-parse', 'HEAD').stdout.trim());
   });
 });

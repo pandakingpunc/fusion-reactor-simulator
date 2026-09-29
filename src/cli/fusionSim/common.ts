@@ -191,6 +191,16 @@ export function resolveConfig(args: ConfigArgs, sets: readonly string[], io: Cli
 
 // ── provenance ──────────────────────────────────────────────────────────────────────────────────────
 
+/**
+ * The commit of the package's own repository, or null. `git rev-parse` walks up the directory tree, so a
+ * package installed under node_modules of some other project would report that project's commit; the
+ * repository must therefore have its top level at the package root (a `.git` directory, or the `.git` file
+ * of a linked worktree, sits directly in it).
+ */
+export function ownGitInfo(root: string): { sha: string; dirty: boolean } | null {
+  return existsSync(join(root, '.git')) ? gitInfo(root) : null;
+}
+
 /** The provenance block of an output: what produced it and which run it is. No path, user name or timestamp. */
 export function provenanceBlock(ctx: CliContext, cfg: ReactorConfig, preset: string | undefined): Record<string, unknown> {
   const version = packageVersionOf(ctx);
@@ -199,7 +209,7 @@ export function provenanceBlock(ctx: CliContext, cfg: ReactorConfig, preset: str
     generator: 'fusion-sim',
     version,
     conceptDoi: CONCEPT_DOI,
-    git: ctx.root ? gitInfo(ctx.root) : null,
+    git: ctx.root ? ownGitInfo(ctx.root) : null,
     runtime: runtimeInfo(),
     preset: preset ?? null,
     seed,

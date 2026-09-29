@@ -25,6 +25,8 @@ export function seedSpecies(ctx: ProfileContext): ImpuritySpecies | null {
 
 /** Composition: fuel densities from quasi-neutrality, Z_eff, ion sum (writes w.na … w.ionSum) */
 export function composition(ctx: ProfileContext, Te: ArrayLike<number>, ne: ArrayLike<number>, s: ScalarView): void {
+  // profile-resolved He ash and impurities (impurity/): the same arrays from the density profiles of the state
+  if (ctx.impurity) { ctx.impurity.composition(Te, ne, s); return; }
   const w = ctx.w, N = ctx.N;
   const fs = FUEL_SPECIES[ctx.cfg.fuel];
   const im = ctx.cfg.impurity;

@@ -47,6 +47,8 @@ import type { ElmEvents } from './events/elm';
 import type { EquilibriumInitFailure, StepFailure } from './failures';
 import type { TransportGeometry } from './geometry1d';
 import type { GsAttempt } from './eqguard';
+import { ImpurityModel } from './impurity/model';
+import { impurityMode } from './impurity/config';
 import { currentProfiles, equilibriumCurrentScale, matchEdgeCurrent } from './qprofile';
 import { defaultSources, SourceModel } from './sources';
 import { acceptStep } from './solver/acceptStep';
@@ -114,7 +116,11 @@ export class ProfileModel implements SimModel {
     this.outputDt = Math.max(cfg.t_end / 800, 0.002);
     this.nState = ctx.layout.size;
     if (modules.plasmaCurrent) ctx.setCurrentProgramme(modules.plasmaCurrent);
-    this.physics = new PhysicsPipeline(ctx, modules.transport ?? createTransportModel(ctx.ps.transportModel), modules.sources ?? defaultSources());
+    // profile-resolved He ash and impurities (ProfileSettings.impurityTransport): a source model (line radiation of the third species, the
+    // advance after each accepted step, its checkpoint) that also owns the composition of the state
+    if (impurityMode(ctx.ps) !== 'legacy') ctx.impurity = new ImpurityModel(ctx);
+    const sources = [...(modules.sources ?? defaultSources()), ...(ctx.impurity ? [ctx.impurity] : [])];
+    this.physics = new PhysicsPipeline(ctx, modules.transport ?? createTransportModel(ctx.ps.transportModel), sources);
     this.fueling = new FuelingControl(ctx);
     const ev = defaultEvents(modules.events);
     this.events = ev.list; this.elm = ev.elm; this.disruption = ev.disruption;
@@ -201,6 +207,7 @@ export class ProfileModel implements SimModel {
     s.Ip = Ip0;
     s.Sfuel = 0;
     ctx.bc = { Te: 0.05, Ti: 0.05, n: fsep * n0 };
+    ctx.impurity?.initialise(ctx.view(y));
     composition(ctx, Te, ne, s);
     currentProfiles(ctx, psi, s.Ip);
     return y;
@@ -303,6 +310,10 @@ export class ProfileModel implements SimModel {
         'Forced transport steps': this.forcedSteps,
         'Transport steps (accepted / rejected by the error test)': `${this.stepper.stats.accepted} / ${this.stepper.stats.rejected}`,
         ...(this.stepper.stats.newtonIters > 0 ? { 'Newton iterations / Jacobians / Picard fallbacks': `${this.stepper.stats.newtonIters} / ${this.stepper.stats.jacobians} / ${this.stepper.stats.fallbacks}` } : {}),
+        ...(ctx.impurity ? {
+          'Impurity transport': ctx.impurity.mode === 'facit' ? 'profiles, anomalous + FACIT neoclassical' : 'profiles, anomalous',
+          'He ash fraction n_He/n_e (avg.)': +avg('fHe').toFixed(4), 'He ash fraction on axis (final)': +(d.fHe0 ?? 0).toFixed(4),
+        } : {}),
       },
       extraExtras: {
         'T_e axis (final, keV)': +(d.Te0 ?? 0).toFixed(2), 'T_ped (final, keV)': +(d.Tped ?? 0).toFixed(2), 'T_sep (final, keV)': +(d.Tsep ?? 0).toFixed(3),

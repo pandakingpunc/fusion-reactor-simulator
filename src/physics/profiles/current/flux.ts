@@ -134,6 +134,14 @@ export class FluxLedger implements Checkpointable {
     return { V_loop: this.vB, V_res: this.vR, psi_used: f.psiUsed, psi_res: f.psiRes, psi_ind: f.psiInd };
   }
 
+  /** the numbers of the ledger, for the step snapshot of the stepper (a step that fails after its accepted update is undone) */
+  snapshot(): { psiB: number; psiR: number; closure: number; vB: number; vR: number; on: boolean; Ip0: number; li0: number } {
+    return { psiB: this.psiB, psiR: this.psiR, closure: this.closure, vB: this.vB, vR: this.vR, on: this.on, Ip0: this.Ip0, li0: this.li0 };
+  }
+  rollback(s: ReturnType<FluxLedger['snapshot']>): void {
+    this.psiB = s.psiB; this.psiR = s.psiR; this.closure = s.closure; this.vB = s.vB; this.vR = s.vR; this.on = s.on; this.Ip0 = s.Ip0; this.li0 = s.li0;
+  }
+
   save(rec: CheckpointRecord): void {
     Object.assign(rec, { fluxPsiB: this.psiB, fluxPsiR: this.psiR, fluxClosure: this.closure, fluxVB: this.vB, fluxVR: this.vR, fluxOn: +this.on, fluxIp0: this.Ip0, fluxLi0: this.li0 });
   }

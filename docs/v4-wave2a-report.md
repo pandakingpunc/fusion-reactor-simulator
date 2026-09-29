@@ -14,7 +14,8 @@ files (Wave-1 gate) to 3018 in 221.
 
 ## 0. Verdict
 
-**The Wave-2A exit criteria are met.** `npm run ci:local` is green (tsc, config schema up to date, 3018 tests in 221
+**The Wave-2A gate passes, with two targets not met (the pause latency of the simulation worker and the chunk budget of the sum).**
+`npm run ci:local` is green (tsc, config schema up to date, 3018 tests in 221
 files, 42 literature checks with 0 unexpected failures, 30/30 golden cases at 1e-9), and so are the build, the
 coverage gate, the strict type-check ratchet, the mutation smoke test (15/15) and the missions script (10/10).
 `release:check` fails the one expected check (the author-identity `TODO` in `CITATION.cff:15`, an owner item).
@@ -369,7 +370,7 @@ each of them.
 
 ## 8. What the gate changed
 
-Four commits on top of `f8d39cc`, none of which moves a golden number (golden 30/30 after each, no re-record):
+Four commits on top of `f8d39cc`, none of which moves a golden number (golden 30/30 after the one that touches code, no re-record):
 
 - `0d61ac5` fix(profiles): `ProfileContext.geomB` is `boundaryShape` of the configuration. The ws2c and ws4i merge reports
   carried this over: an edited `geometry.kappa` or `geometry.delta` of ITER15 or DEMO15 moved q95 and the scalings but not the
@@ -499,7 +500,7 @@ are LF in the working tree).
 
 - Add mutants for the new numerics (TR-BDF2 error control, Anderson Picard, the edge two-point chain, the Tresca layers, the
   outer iteration) to `mutation-smoke`; add `src/io/**`, `src/analysis/**`, `src/edu/**` and raise the gated thresholds (section 1).
-- `mutation`, `figures:check` and `bench:*` are outside `ci:local`; `ci:local` takes 465 s and hard-codes unlimited vitest and
+- `mutation-smoke`, `figures:check` and `bench:*` are outside `ci:local`; `ci:local` takes 465 s and hard-codes unlimited vitest and
   `--threads 4` (agents on a shared machine run its steps by hand with `--maxWorkers=3` / `--threads 3`). The lane reports saw
   load-dependent timeouts of a few heavy tests under a shared CPU (`kernel/simulation.test.ts` FSAL, `coverageConfig.test.ts`,
   `lossPower.test.ts`, the child-process suites `lib.test.ts` and `spawn.test.ts`; most got explicit timeouts at the merges); a global

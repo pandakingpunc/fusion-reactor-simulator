@@ -245,3 +245,28 @@ Node v24.19.0 · `npm run golden:update` was not run for this entry · numbers c
 - ITER15: ELMs 1020 -> 1101, sawtooth crashes 36 -> 38, GS updates 23 -> 25, f_bs 0.2235 -> 0.2300 (+2.9 %), T_ped 3.716 -> 3.739 keV. Cause: the higher loss power (P_L 117 -> 130 MW) and the later L-H transition (6.5 -> 8.5 s); the counts follow the ELM and sawtooth cycle phase.
 - DEMO15: ELMs 1072 -> 1095, GS updates 30 -> 31, f_bs 0.4221 -> 0.4283 (+1.5 %), q(0) 1.815 -> 1.645 (ELM-cycle phase, as the ws3d review noted). JET15: ELMs 149 -> 146, GS updates 15 -> 14 (14 accepted, 3 of them after a retry, 1 rejected). DIIID15: ELMs 250 -> 251, T_ped -0.3 %, q(0) 1.339 -> 1.398.
 - No golden case has an ignited frame in either fidelity (`ignited` is 0 in every frame of every case), so the golden files do not guard the ignition path; src/physics/regress/fastIonPools.test.ts, autoOff.test.ts, ignitionQuench.test.ts and src/physics/profiles/ignition.test.ts do.
+
+## 2026-09-29 01:29 UTC — ws5s: frames recorded at an L-H flip of the 0D magnetic model now carry the diagnostics of their own (post-flip) state; before, the frame stored the post-flip H_mode next to the tau_E, P_cond and P_ELM cached from the step's last rhs(), which was evaluated before postStep flipped the mode. The run itself is bitwise unchanged (same states, events, report numbers, ELM and sawtooth counts, flat-top windows); only single frames move, and therefore the frame statistics (history mean and min) of the diagnostics that depend on the confinement mode.
+
+Cause. MagneticModel.postStep sets hmode (L-H, H-L) or ntm (sawtooth-seeded NTM onset, decay) after the step, but diagnostics() returned the pre-flip lastDiag. postStep now marks the cache stale at an ELM crash and at every flip and calls refreshDiagnostics() once, before the burn logic and before a disruption or the scheduled end can change the phase. rhs() overwrites the cache at the next step and refreshDiagnostics() restores tau_E for the sawtooth timing, so nothing but the frame changes. Only L-H frames are affected here (each of the five cases below has one flip that ends on a recorded frame; the JT60SA, DEMO, ITER-DHe3 and ITER-pB11 flips end a step that is not a recorded frame, and the 1.5D cases need no refresh: their frames carry the diagnostics the step wrote together with its own H_mode).
+
+The single frames that changed (measured on the golden configurations against the same run without the refresh; tau_E [s], P_cond and P_ELM [MW]): - ITER, L-H at 9.867 s: tau_E 2.1222 -> 4.4319, P_cond 37.972 -> 12.728, P_ELM 0 -> 5.4549. - JET, L-H at 0.345 s: tau_E 0.29177 -> 0.38442, P_cond 7.5620 -> 4.0176, P_ELM 0 -> 1.7218. - SPARC, L-H at 1.440 s: tau_E 0.43058 -> 0.79728, P_cond 22.242 -> 8.4084, P_ELM 0 -> 3.6036. - DIIID, L-H at 0.112 s: tau_E 0.13378 -> 0.18600, P_cond 2.0809 -> 1.0477, P_ELM 0 -> 0.44900. - MASTU, L-H at 0.050 s: tau_E 0.055627 -> 0.11878, P_cond 1.2159 -> 0.39858, P_ELM 0 -> 0.17082.
+
+Headline moves (old -> new, relative), all frame statistics over the whole history: tau_E.mean ITER 2.71454 -> 2.71535 (+3.0e-4), JET 0.283502 -> 0.283564 (+2.2e-4), SPARC 0.571478 -> 0.571723 (+4.3e-4), DIIID 0.0870067 -> 0.0870415 (+4.0e-4), MASTU 0.062782 -> 0.062845 (+1.0e-3); tau_E.min MASTU 0.055627 -> 0.056334 (+1.3 %, the L-H frame was the minimum). P_cond.mean ITER -1.1e-4, JET -1.1e-4, SPARC -3.0e-4, DIIID -5.8e-5, MASTU -2.0e-4; P_cond.min DIIID 1.0866 -> 1.0477 (-3.6 %), MASTU 0.40341 -> 0.39858 (-1.2 %). P_ELM.mean ITER +5.6e-5, JET +1.2e-4, SPARC +1.9e-4, DIIID +5.9e-5, MASTU +9.8e-5. P_transport.mean -2.3e-5 to -1.6e-4 in all five, P_transport.min MASTU 0.57629 -> 0.56941 (-1.2 %). lawson.mean and triple.mean +5.2e-5 (JET) to +1.8e-4 (SPARC; MASTU +1.7e-4), lawson.min and triple.min MASTU +2.7 %.
+
+Nothing else moved: flatTop.*, the report scalars (Q, P_fus, E_fus, T_max, ...), the events and every other history key are bit-identical, and the other 25 cases are unchanged (JT60SA, DEMO, W7X, all nine 1.5D cases, the pulsed and concept cases). Guarded by src/physics/kernel/modeFlipFrames.test.ts (a frame's diagnostics equal a fresh evaluation from its own state at the L-H frames of DIII-D, JET and ITER, an H-L frame, and NTM onset and decay frames; they fail on the previous code).
+
+Node v24.19.0 · `npm run golden:update` · all cases
+
+- Changed (5):
+  - ITER: 6 keys moved; max rel. diff 2.98e-4
+    - moved, largest change first: history.tauE.mean, history.P_cond.mean, history.triple.mean, history.lawson.mean, history.P_transport.mean, history.P_ELM.mean
+  - JET: 6 keys moved; max rel. diff 2.18e-4
+    - moved, largest change first: history.tauE.mean, history.P_ELM.mean, history.P_cond.mean, history.lawson.mean, history.triple.mean, history.P_transport.mean
+  - SPARC: 6 keys moved; max rel. diff 4.27e-4
+    - moved, largest change first: history.tauE.mean, history.P_cond.mean, history.P_ELM.mean, history.lawson.mean, history.triple.mean, history.P_transport.mean
+  - DIIID: 7 keys moved; max rel. diff 3.59e-2
+    - moved, largest change first: history.P_cond.min, history.tauE.mean, history.triple.mean, history.lawson.mean, history.P_ELM.mean, history.P_cond.mean, history.P_transport.mean
+  - MASTU: 11 keys moved; max rel. diff 2.73e-2
+    - moved, largest change first: history.triple.min, history.lawson.min, history.tauE.min, history.P_transport.min, history.P_cond.min, history.tauE.mean, history.P_cond.mean, history.lawson.mean, history.triple.mean, history.P_transport.mean, history.P_ELM.mean
+- Unchanged (25): JT60SA, W7X, DEMO, ITER15, JET15, SPARC15, SPARC15-short, DEMO15, NIF, DIRECT, Z, GF, FRXL, ZAP, TAE, MIRROR, MUON, ITER-DHe3, ITER-pB11, SPARC15-DHe3, SPARC15-pB11, DIIID15, MASTU15, TAE-pB11, MIRROR-DHe3

@@ -21,7 +21,6 @@ import { edgeDeposition, volumeIntegral } from '../sources/deposition';
 import { impurityMode, impuritySpecies, impurityStateSize } from './config';
 import { EDGE_LAMBDA, ImpurityModel, M_MAX, NEO_REFRESH } from './model';
 
-type Mode = 'anomalous' | 'facit';
 const withImpurities = (cfg: MagneticConfig, profiles: NonNullable<MagneticConfig['profiles']>, tEnd?: number): MagneticConfig =>
   ({ ...cfg, ...(tEnd ? { t_end: tEnd } : {}), profiles: { ...(cfg.profiles ?? {}), ...profiles } });
 

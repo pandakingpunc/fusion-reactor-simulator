@@ -101,6 +101,8 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
   { id: 'MIRROR-DHe3', preset: 'MIRROR', overrides: { fuel: 'DHe3' } },
   // ws6e: the profile-resolved He ash and impurities with the FACIT neoclassical coefficients (opt-in; every other case has them off)
   { id: 'ITER15-impurity', preset: 'ITER15', tEnd: 60, overrides: { profiles: { impurityTransport: 'facit' } } },
+  // ws6e: the same with a weak anomalous transport and no set-point controller, so that the neoclassical D, K, H decide the impurity profiles (the guard of the FACIT wiring)
+  { id: 'ITER15-impurity-neo', preset: 'ITER15', tEnd: 30, overrides: { profiles: { impurityTransport: 'facit', impuritySetpoint: 'separatrix', impurityDoverDe: 0.05, impurityPinchOverPe: 0.05 } } },
 ];
 
 /** Quick cases compared by `npm test` (0D magnetic, two pulsed models, short 1.5D). */

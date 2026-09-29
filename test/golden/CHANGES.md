@@ -978,3 +978,11 @@ Cause. The opt-in profile-resolved He ash and impurities (ProfileSettings.impuri
 Node v24.19.0 · `npm run golden:update` · --only ITER15-impurity
 
 - Added (1): ITER15-impurity
+
+## 2026-09-29 17:44 UTC — ws6e review fix: new golden case ITER15-impurity-neo (ITER15, 30 s, impurityTransport 'facit' with a weak anomalous transport and no set-point controller); the 30 existing cases and ITER15-impurity are untouched by this entry
+
+Cause. The first review of the ws6e lane found that ITER15-impurity is a weak guard of the FACIT wiring: there the neoclassical D is about 0.004 m^2/s against about 0.3 m^2/s anomalous, and the set-point controller of the volume-average concentration compensates what the convection does, so the anomalous and the facit modes differ by 2 % in Z_eff. The new case switches the controller off (impuritySetpoint 'separatrix', the configured concentration is the separatrix value) and scales the anomalous D and pinch down to 5 % of the electron values (impurityDoverDe 0.05, impurityPinchOverPe 0.05), so that the neoclassical D, K, H decide the profiles and a sign, mapping, temperature or geometry error in the wiring moves the result visibly. Flat-top means of the case against the same shot with the anomalous closure alone (impurityTransport 'anomalous'): Z_eff 1.215 against 1.348, c_Be 0.58 % against 0.90 %, c_Ar 0.032 % against 0.054 %, Q 9.6 against 9.0, n_He/n_e 3.65 % against 3.76 %; the Ar profile of the last frames is hollow with FACIT (0.7e-4 on axis, 4.9e-4 at mid-radius, 1.0e-4 at the edge of n_Ar/n_e) and monotonic without it. New keys of the case only: those of ITER15-impurity (fHe, fHe0, tauHeStar, GammaHe, GammaZ, GammaSeed, cZ, cZ0, cZpeak, cSeed, cSeed0, S_W, mZ and the profiles nHe, nZ, nSeed).
+
+Node v24.19.0 · `npm run golden:update` · --only ITER15-impurity-neo
+
+- Added (1): ITER15-impurity-neo

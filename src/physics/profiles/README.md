@@ -401,6 +401,16 @@ of the q profile returning below 1 and of the conditions, not a partial-reconnec
 cold-start current profile is hollowed while the core heats and is driven, and relaxes at the resistive time); in 14 s q₀ reaches 1 at about 9 s and the shear trigger crashes every 1.0-1.3 s, the Porcelli trigger with the
 helical-flux reset every 2.4 s (two crashes, at 11.0 and 13.4 s). MAST-U 1.5D crashes every 50 ms with the shear trigger (the refractory time) and every 60-80 ms with the Porcelli trigger.
 
+**JET DTE2 split validation limit.** The baseline-scenario trend in Stancar et al., Nucl. Fusion 63 (2023) 126058, section 3.1,
+is (beam-target + beam-beam)/thermal yield about 1, or a thermal fraction about 50 %. The paper does not give a split for the
+specific record pulse #99971. The JET15 preset's 5.5 s golden has P_bt = 9.31 MW and P_fus = 14.69 MW in its flat-top mean:
+P_bt/(P_fus - P_bt) = 1.73 and the thermal fraction is 36.6 %, 27 % below that trend in relative terms. Beam-beam fusion is
+not represented. The requested 15 % agreement for #99971 is therefore unverified and the available baseline comparison misses
+15 % agreement; this is a validation shortfall, not a reason to fit a current-drive or fast-ion coefficient to the output. The
+T-rich #99972 comparison in `fastions/validation.test.ts` checks the paper's different 7-8 % thermal fraction only to within a
+factor of two. Shot-specific kinetic profiles, beam composition and a transport/loss model for fast ions are needed to assess
+the #99971 split; the present model's beam density peaks at 16 % of ions versus at most 10 % in the cited analysis.
+
 ## Plug-in interfaces
 
 `new ProfileModel(cfg, { transport?, sources?, events? })` replaces the transport model or the

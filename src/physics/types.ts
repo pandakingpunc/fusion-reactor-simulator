@@ -54,6 +54,13 @@ export interface ProfileSettings {
   rtol?: number;
   atol?: number;
   dtMax?: number;
+  /**
+   * how the nonlinear system of a transport stage is solved (profiles/solver/coupledStep.ts): 'picard' (frozen coefficients, Anderson mixing:
+   * the fast path), 'newton' (Newton–Raphson on T_e, T_i, n_e and ψ together with a coloured finite-difference block-tridiagonal
+   * Jacobian and a line search; a solve that does not converge is repeated by the Pereverzev–Corrigan stabilised Picard iteration), 'pc'
+   * (that stabilised Picard iteration alone). Default 'auto': Newton for a predictive transport model ('cgm'), Picard for 'scaling'
+   */
+  nonlinearSolver?: 'auto' | 'picard' | 'newton' | 'pc';
   /** GS ızgarası R yönü düğüm sayısı */
   eqNR: number;
   /** denge güncelleme aralığı üst sınırı [s] */

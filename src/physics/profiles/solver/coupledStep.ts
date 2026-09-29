@@ -9,7 +9,11 @@
  * bootstrap current) are iterated by Picard iteration, accelerated by Anderson mixing of (T_e, T_i, n_e), which converges in
  * a few iterations also where χ depends steeply on the gradient (the critical-gradient model) and Picard alone oscillates;
  * within an iteration the equations are solved in sequence: density, then heat (T_e and T_i together, e–i exchange implicit),
- * then current diffusion. The inputs held fixed over a step (heating powers, boundary values, the fueling source, the sources'
+ * then current diffusion. That is the fast path ('scaling' transport). A predictive model, whose χ depends on the gradient so steeply
+ * that the frozen-coefficient iteration is not a contraction where the differential diffusivity exceeds twice χ, is solved by Newton–Raphson
+ * on the four fields together (newtonStage.ts: coloured finite-difference block-tridiagonal Jacobian, line search), and a Newton solve that
+ * does not converge is repeated by the Pereverzev–Corrigan stabilised Picard iteration (HeatInputs.pcFactor); ProfileSettings.nonlinearSolver
+ * chooses. The inputs held fixed over a step (heating powers, boundary values, the fueling source, the sources'
  * prepare) are those of the old state.
  *
  * Δt control: the scaled error estimate of the step (ProfileSettings.rtol and atol on T_e, T_i, n_e and ψ; max-norm over the cells)
@@ -49,6 +53,7 @@ import type { ProfileState } from '../state';
 import { assembleHeatSources } from '../sources';
 import type { PhysicsPipeline } from './pipeline';
 import { EVENT_DT_MIN, locateEvent, stageWeights } from './localise';
+import { NewtonStage } from './newtonStage';
 import { TRBDF2_A, TRBDF2_B, TRBDF2_D, TRBDF2_EST, TRBDF2_GAMMA, acceptedFactor, errorExponent, rejectedFactor } from './trbdf2';
 
 // implicit step retry policy
@@ -70,6 +75,11 @@ export const PICARD_DEPTH = 4;
 /** defaults of ProfileSettings.rtol and atol */
 export const DEFAULT_RTOL = 1e-2;
 export const DEFAULT_ATOL = 1e-4;
+/** Newton solve of a stage (newtonStage.ts): iterations at most, and the contraction of the residual above which a kept Jacobian is renewed */
+export const NEWTON_MAX_ITER = 12;
+export const NEWTON_SLOW = 0.5;
+/** Pereverzev–Corrigan factor c of the fallback iteration (HeatInputs.pcFactor): χ_PC = c χ on every face */
+export const PC_FACTOR = 10;
 
 /** Result of one implicit attempt: accepted, largest relative change, what it threw, the scaled error estimate (1 = the tolerance) */
 export interface StepAttempt { ok: boolean; change: number; error?: unknown; err?: number }
@@ -82,6 +92,8 @@ export interface StepStats {
   localised: number;
   /** Picard iterations of all attempts */
   picardIters: number;
+  /** Newton iterations, Jacobians built, evaluations of the residual (Jacobians and line searches included), and Newton solves that failed and were repeated as Pereverzev–Corrigan Picard */
+  newtonIters: number; jacobians: number; newtonEvals: number; fallbacks: number;
 }
 
 /**
@@ -137,7 +149,7 @@ export class CoupledStepper implements Checkpointable {
   /** set when the shot was ended by a numerical failure */
   stepFailure: StepFailure | null = null;
   /** counters of the step control */
-  stats: StepStats = { accepted: 0, rejected: 0, failed: 0, localised: 0, picardIters: 0 };
+  stats: StepStats = { accepted: 0, rejected: 0, failed: 0, localised: 0, picardIters: 0, newtonIters: 0, jacobians: 0, newtonEvals: 0, fallbacks: 0 };
   /**
    * Discrete energy balance of the last attempt: (ΔW/Δt − (w P_n + w P_γ + d P_{n+1}))/P_heat with P = P_heat − P_rad − P_bound
    * at the old, the intermediate and the new state and w = √2/4: zero to the Picard tolerance (the interior fluxes and the
@@ -167,6 +179,9 @@ export class CoupledStepper implements Checkpointable {
   private mOld: number[]; private mNew: number[];
   private readonly iTe: Float64Array; private readonly iTi: Float64Array; private readonly ine: Float64Array; private readonly ipsi: Float64Array; private readonly irat: Float64Array;
   private readonly scratch: TriggerScratch;
+  // Newton solve of a stage, and the iterate that it started from (restored when it fails)
+  private readonly newton: NewtonStage;
+  private readonly guess: Float64Array;
   private readonly wbuf: [number, number, number] = [0, 0, 0];
   private views: { o: ProfileState; g: ProfileState; v: ProfileState } | null = null;
 
@@ -195,6 +210,8 @@ export class CoupledStepper implements Checkpointable {
     this.mOld = new Array<number>(this.triggers.length).fill(-1); this.mNew = new Array<number>(this.triggers.length).fill(-1);
     this.iTe = arr(); this.iTi = arr(); this.ine = arr(); this.ipsi = arr(); this.irat = arr();
     this.scratch = triggerScratch(N);
+    this.newton = new NewtonStage(ctx, physics);
+    this.guess = new Float64Array(4 * N);
   }
 
   /** SimModel.step: advances y in place from t towards tMax, returns the new time */
@@ -293,12 +310,14 @@ export class CoupledStepper implements Checkpointable {
     rec.forcedSteps = this.forcedSteps;
     rec.stepAccepted = this.stats.accepted; rec.stepRejected = this.stats.rejected; rec.stepFailed = this.stats.failed;
     rec.stepLocalised = this.stats.localised; rec.stepPicardIters = this.stats.picardIters;
+    rec.stepNewtonIters = this.stats.newtonIters; rec.stepJacobians = this.stats.jacobians; rec.stepNewtonEvals = this.stats.newtonEvals; rec.stepFallbacks = this.stats.fallbacks;
   }
   restore(rec: Readonly<CheckpointRecord>): void {
     this.forcedSteps = recNum(rec, 'forcedSteps', this.forcedSteps);
     this.stats = {
       accepted: recNum(rec, 'stepAccepted', 0), rejected: recNum(rec, 'stepRejected', 0), failed: recNum(rec, 'stepFailed', 0),
       localised: recNum(rec, 'stepLocalised', 0), picardIters: recNum(rec, 'stepPicardIters', 0),
+      newtonIters: recNum(rec, 'stepNewtonIters', 0), jacobians: recNum(rec, 'stepJacobians', 0), newtonEvals: recNum(rec, 'stepNewtonEvals', 0), fallbacks: recNum(rec, 'stepFallbacks', 0),
     };
     this.stepFailure = null;
   }
@@ -351,6 +370,7 @@ export class CoupledStepper implements Checkpointable {
     // old composition and current profiles
     composition(ctx, o.Te, o.ne, o.s);
     w.ni0.set(w.ni);
+    if (this.solverMode() === 'newton') this.newton.begin(o, dtEff, w.ni0);
     currentProfiles(ctx, o.psi, o.s.Ip);
     // boundary values (lagged P_SOL)
     updateBoundary(ctx, t, o);
@@ -370,7 +390,7 @@ export class CoupledStepper implements Checkpointable {
     const heat1: HeatInputs = this.heatInputs(dtEff, o, v, this.U0e, this.U0i, this.RTe, this.RTi);
     const dens1: DensityInputs = { dt: dtEff, n0: o.ne, D: w.D, v: w.v, S: w.Sn, nB: ctx.bc.n, X: this.Rne };
     const cur1: CurrentInputs = { dt: dtEff, psi0: o.psi, sigma: w.sigma, jniB: w.jniB, Ip: s.Ip, rate0: this.Rpsi };
-    const st1 = this.picard(v, K, heat1, dens1, cur1, tolPicard);
+    const st1 = this.solveStage(v, K, heat1, dens1, cur1, tolPicard);
     const net1 = this.endStage(v, K, heat1);
     if (!allFinite(y)) return { ok: false, change: Infinity };
     this.yG.set(y); this.niG.set(w.ni);
@@ -390,7 +410,7 @@ export class CoupledStepper implements Checkpointable {
     const heat2: HeatInputs = this.heatInputs(dtEff, o, v, this.refUe, this.refUi);
     const dens2: DensityInputs = { dt: dtEff, n0: this.refN, D: w.D, v: w.v, S: w.Sn, nB: ctx.bc.n };
     const cur2: CurrentInputs = { dt: dtEff, psi0: this.refPsi, sigma: w.sigma, jniB: w.jniB, Ip: s.Ip };
-    conv = this.picard(v, K, heat2, dens2, cur2, tolPicard) && conv;
+    conv = this.solveStage(v, K, heat2, dens2, cur2, tolPicard) && conv;
     // power across the separatrix with the inputs of the last heat solve (before the final composition replaces w.ni):
     // closes the discrete energy balance of the step
     const lb = ctx.heat.boundaryLoss(heat2, v.Te, v.Ti);
@@ -456,14 +476,46 @@ export class CoupledStepper implements Checkpointable {
   }
 
   /**
+   * How a stage is solved (ProfileSettings.nonlinearSolver): 'picard' (Picard with Anderson mixing, the fast path), 'newton'
+   * (Newton–Raphson on the coupled system, with the Pereverzev–Corrigan Picard iteration as the fallback) or 'pc' (that Picard
+   * iteration alone). 'auto', the default: Newton for a predictive transport model (χ depends on the gradient: the frozen-coefficient
+   * iteration is not a contraction where the differential diffusivity is more than twice χ), Picard otherwise.
+   */
+  private solverMode(): 'picard' | 'newton' | 'pc' {
+    const m = this.ctx.ps.nonlinearSolver ?? 'auto';
+    if (m === 'auto') return this.physics.transport.predictive ? 'newton' : 'picard';
+    return m;
+  }
+
+  /** One stage on the iterate v: Newton with the Pereverzev–Corrigan fallback, or Picard (solverMode) */
+  private solveStage(v: ProfileState, K: StepConstants, heat: HeatInputs, dens: DensityInputs, cur: CurrentInputs, tol: number): boolean {
+    const mode = this.solverMode();
+    if (mode === 'picard') return this.picard(v, K, heat, dens, cur, tol, 0);
+    if (mode === 'newton') {
+      const N = this.ctx.N, g = this.guess;
+      g.set(v.Te, 0); g.set(v.Ti, N); g.set(v.ne, 2 * N); g.set(v.psi, 3 * N);
+      const r = this.newton.solve(v, K, heat, dens, cur, { tol, maxIter: NEWTON_MAX_ITER, slow: NEWTON_SLOW });
+      this.stats.newtonIters += r.iterations; this.stats.jacobians += r.jacobians; this.stats.newtonEvals += r.evaluations;
+      if (r.converged) return true;
+      // Newton did not converge (a line search that found no descent, a singular Jacobian, too many iterations): the same stage by the
+      // stabilised Picard iteration from where the stage started
+      this.stats.fallbacks++;
+      v.Te.set(g.subarray(0, N)); v.Ti.set(g.subarray(N, 2 * N)); v.ne.set(g.subarray(2 * N, 3 * N)); v.psi.set(g.subarray(3 * N, 4 * N));
+    }
+    return this.picard(v, K, heat, dens, cur, tol, PC_FACTOR);
+  }
+
+  /**
    * Picard iteration of one stage on the iterate v (T_e, T_i, n_e), accelerated by Anderson mixing: coefficients from the
    * iterate → density → composition → sources → q profile → current sources → heat → current. Converged when the largest
-   * relative change of T_e, T_i, n_e between the iterate and its image is below tol. The last image is left in v.
+   * relative change of T_e, T_i, n_e between the iterate and its image is below tol. The last image is left in v. pcFactor > 0:
+   * the Pereverzev–Corrigan stabilisation of the heat solve (HeatInputs.pcFactor).
    */
-  private picard(v: ProfileState, K: StepConstants, heat: HeatInputs, dens: DensityInputs, cur: CurrentInputs, tol: number): boolean {
+  private picard(v: ProfileState, K: StepConstants, heat: HeatInputs, dens: DensityInputs, cur: CurrentInputs, tol: number, pcFactor: number): boolean {
     const ctx = this.ctx, physics = this.physics, w = ctx.w, N = ctx.N, s = v.s;
     const { mixer, xk, gk } = this;
     mixer.reset();
+    heat.pcFactor = pcFactor > 0 ? pcFactor : undefined;
     const sTe = Math.max(maxAbs(v.Te), 1e-3), sTi = Math.max(maxAbs(v.Ti), 1e-3), sNe = Math.max(maxAbs(v.ne), 1e15);
     let conv = false;
     for (let it = 0; it < PICARD_MAX_ITER; it++) {
@@ -502,6 +554,7 @@ export class CoupledStepper implements Checkpointable {
         v.Te[i] = Math.max(xk[i] * sTe, 0.005); v.Ti[i] = Math.max(xk[N + i] * sTi, 0.005); v.ne[i] = Math.max(xk[2 * N + i] * sNe, 1e15);
       }
     }
+    heat.pcFactor = undefined;
     return conv;
   }
 

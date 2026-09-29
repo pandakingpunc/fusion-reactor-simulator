@@ -295,6 +295,7 @@ export class ProfileModel implements SimModel {
         'GS updates accepted': this.eqUpdates, 'GS updates needing a retry': this.eqRetried, 'GS updates rejected': this.eqRejected,
         'Forced transport steps': this.forcedSteps,
         'Transport steps (accepted / rejected by the error test)': `${this.stepper.stats.accepted} / ${this.stepper.stats.rejected}`,
+        ...(this.stepper.stats.newtonIters > 0 ? { 'Newton iterations / Jacobians / Picard fallbacks': `${this.stepper.stats.newtonIters} / ${this.stepper.stats.jacobians} / ${this.stepper.stats.fallbacks}` } : {}),
       },
       extraExtras: {
         'T_e axis (final, keV)': +(d.Te0 ?? 0).toFixed(2), 'T_ped (final, keV)': +(d.Tped ?? 0).toFixed(2), 'T_sep (final, keV)': +(d.Tsep ?? 0).toFixed(3),

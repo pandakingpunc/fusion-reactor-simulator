@@ -162,3 +162,72 @@ describe('current solver as a TR-BDF2 stage', () => {
     expect(worst).toBeLessThan(1e-11);
   });
 });
+
+describe('Pereverzev–Corrigan stabilisation of the heat solve (HeatInputs.pcFactor)', () => {
+  const N = 50;
+  const g = circularGeometry(3, 1, 3, N);
+  const cell = (f: (r: number) => number) => Float64Array.from(g.rhoC, f);
+  const zero = new Float64Array(N), zeroF = new Float64Array(N + 1);
+  const ne = cell(() => 1e20);
+  const TB = 0.1;
+  /** critical-gradient conductivity: χ = 0.2 + κ (max(−∇T/g_c − 1, 0))² at the faces (steep above the threshold) */
+  const chiOf = (T: Float64Array, kappa: number, gc: number) => {
+    const chi = new Float64Array(N + 1);
+    for (let f = 1; f <= N; f++) {
+      const grad = -((f < N ? T[f] : TB) - T[f - 1]) / g.distF[f];
+      const x = Math.max(grad / gc - 1, 0);
+      chi[f] = 0.2 + kappa * x * x;
+    }
+    chi[0] = chi[1];
+    return chi;
+  };
+  const inputs = (chi: Float64Array, Tstar: Float64Array, pcFactor?: number): HeatInputs => ({
+    dt: 1, ne0: ne, ne1: ne, ni0: ne, ni1: ne, Te0: cell(() => 1), Ti0: cell(() => 1), chiE: chi, chiI: chi,
+    Qe: cell((r) => 6e21 * Math.exp(-10 * r * r)), Qi: zero, Le: zero, Li: zero, TeStar: Tstar, TiStar: Tstar,
+    nuEq: zero, GammaF: zeroF, convCoef: 0, TeB: TB, TiB: TB, nB: 1e20, pcFactor,
+  });
+
+  it('a fixed point of the iteration is a fixed point with the stabilisation: solving at T* = T returns T for any factor, on a solution that has no sink terms to linearise', () => {
+    const solver = new HeatSolver(g);
+    // the solution of the equations for a fixed χ (a plain solve, no sink terms: T* does not enter)
+    const chi = Float64Array.from({ length: N + 1 }, (_, f) => 0.4 + 2 * (f / N) ** 2);
+    const T = new Float64Array(N), Ti = new Float64Array(N);
+    solver.solve(inputs(chi, cell(() => 1)), T, Ti);
+    for (const c of [1, 10, 50]) {
+      const T2 = new Float64Array(N), Ti2 = new Float64Array(N);
+      solver.solve(inputs(chi, T, c), T2, Ti2);
+      for (let i = 0; i < N; i++) expect(Math.abs(T2[i] - T[i])).toBeLessThan(1e-10 * Math.abs(T[i]));
+    }
+    // and a different T* is pulled towards the solution: the implicit part is (1 + c) χ, the explicit part c χ ∇T*
+    const off = T.map((x) => 1.3 * x);
+    const T3 = new Float64Array(N);
+    solver.solve(inputs(chi, off, 10), T3, Ti);
+    let dOff = 0, dPc = 0;
+    for (let i = 0; i < N; i++) { dOff = Math.max(dOff, Math.abs(off[i] - T[i])); dPc = Math.max(dPc, Math.abs(T3[i] - T[i])); }
+    expect(dPc).toBeLessThan(dOff);
+  });
+
+  it('the frozen-χ iteration on a steep critical-gradient χ cycles between two states; with the stabilisation it converges to the fixed point', () => {
+    const solver = new HeatSolver(g);
+    const run = (pc: number | undefined, iters: number) => {
+      const T = cell(() => 1);
+      let last = 0;
+      for (let k = 0; k < iters; k++) {
+        const Tn = new Float64Array(N), Ti = new Float64Array(N);
+        solver.solve(inputs(chiOf(T, 20, 4), T, pc), Tn, Ti);
+        last = 0;
+        for (let i = 0; i < N; i++) last = Math.max(last, Math.abs(Tn[i] - T[i]) / Math.max(T[i], 0.05));
+        T.set(Tn);
+      }
+      return { T, last };
+    };
+    const plain = run(undefined, 80);
+    expect(plain.last).toBeGreaterThan(0.5); // a two-cycle: the change of the last iteration is of the order of the profile
+    const pc = run(10, 250);
+    expect(pc.last).toBeLessThan(1e-7);
+    // the fixed point solves the original equations (no stabilisation term in them): (3/2) n (T − T0)/Δt = the unstabilised right-hand side
+    const rE = new Float64Array(N), rI = new Float64Array(N);
+    solver.residual(inputs(chiOf(pc.T, 20, 4), pc.T), pc.T, pc.T, rE, rI);
+    for (let i = 0; i < N; i++) expect(Math.abs(1.5 * 1e20 * (pc.T[i] - 1) - rE[i]) / (1.5 * 1e20 * pc.T[i])).toBeLessThan(1e-5);
+  });
+});

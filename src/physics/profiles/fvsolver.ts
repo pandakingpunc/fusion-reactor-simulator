@@ -53,6 +53,15 @@ export interface HeatInputs {
   U0e?: Float64Array; U0i?: Float64Array;
   /** Explicit rate added to the sources per volume [keV m⁻³ s⁻¹] (the trapezoid stage of TR-BDF2: the rate of the old state) */
   Xe?: Float64Array; Xi?: Float64Array;
+  /**
+   * Pereverzev–Corrigan stabilisation (Pereverzev and Corrigan, Comput. Phys. Commun. 179 (2008) 579): an extra diffusivity c χ on
+   * every face and for both species, c = pcFactor, taken implicitly, with the conducted flux of the linearisation point (TeStar,
+   * TiStar) that it adds taken off again as an explicit source, so that a fixed point T = T* of the iteration solves the original
+   * equations. A Picard iteration that freezes χ at the previous iterate multiplies the error of the gradient by 1 − χ_d/((1 + c) χ),
+   * χ_d = d(χ ∇T)/d∇T the differential diffusivity: it diverges where χ_d > 2 χ (a critical-gradient χ near its threshold has
+   * χ_d up to 20 χ), and with the extra term it contracts where χ_d < 2 (1 + c) χ.
+   */
+  pcFactor?: number;
 }
 
 /** Convected energy per particle of the heat flux, in units of T: q_conv = (5/2) T Γ */
@@ -103,6 +112,20 @@ export class HeatSolver {
       if (i > 0) { A[k] = -DeL; A[k + 3] = -DiL; }
       if (i < N - 1) { C[k] = -DeR; C[k + 3] = -DiR; }
       else { d[k2] += DeR * h.TeB; d[k2 + 1] += DiR * h.TiB; }
+      if (h.pcFactor) {
+        // Pereverzev–Corrigan: (1 + c) χ ∇T implicit, c χ ∇T* explicit (the flux of the linearisation point taken off again)
+        const pc = h.pcFactor, Te = h.TeStar[i], Ti = h.TiStar[i];
+        const PeL = pc * DeL, PeR = pc * DeR, PiL = pc * DiL, PiR = pc * DiR;
+        B[k] += PeL + PeR; B[k + 3] += PiL + PiR;
+        if (i > 0) {
+          A[k] -= PeL; A[k + 3] -= PiL;
+          d[k2] += PeL * (Te - h.TeStar[i - 1]); d[k2 + 1] += PiL * (Ti - h.TiStar[i - 1]);
+        }
+        if (i < N - 1) {
+          C[k] -= PeR; C[k + 3] -= PiR;
+          d[k2] += PeR * (Te - h.TeStar[i + 1]); d[k2 + 1] += PiR * (Ti - h.TiStar[i + 1]);
+        } else { d[k2] += PeR * Te; d[k2 + 1] += PiR * Ti; } // Dirichlet value TB in both the implicit and the explicit part: net χ_PC T*
+      }
       // konvektif ısı akısı (5/2) T Γ — iyon ve elektron için aynı Γ (yarı-nötrallik), upwind
       if (h.convCoef > 0) {
         const GR = h.GammaF[i + 1] * h.convCoef, GL = h.GammaF[i] * h.convCoef;

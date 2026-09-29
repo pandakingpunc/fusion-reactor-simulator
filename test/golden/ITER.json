@@ -42,6 +42,7 @@
     "Te": 9.27104536242796,
     "Ti": 8.84381402476868,
     "Ti0": 19.048214822578696,
+    "V_loop": 0.08430653947291529,
     "W": 311.2213896087207,
     "W_alpha": 16.32731045663921,
     "W_beam": 8.959128047337817,
@@ -56,6 +57,9 @@
     "dWdt": -2.7747865946163595,
     "detach": 0,
     "fHe": 0.033066032465863884,
+    "f_NI": 0.17604270587109433,
+    "f_bs": 0.17604270587109433,
+    "f_cd": 0,
     "f_pwr": 0.7000000000000008,
     "fuelFracA": 0.5,
     "ignited": 0,
@@ -327,6 +331,13 @@
       "missing": 0,
       "nonFinite": 0
     },
+    "V_loop": {
+      "max": 2.732897896325615,
+      "mean": 0.0909338548136447,
+      "min": 0.05510943544458612,
+      "missing": 0,
+      "nonFinite": 0
+    },
     "W": {
       "max": 338.5329900203706,
       "mean": 305.38596122804273,
@@ -421,6 +432,27 @@
     "fHe": {
       "max": 0.033870649691998427,
       "mean": 0.031357855029884946,
+      "min": 0,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "f_NI": {
+      "max": 0.19149154132607976,
+      "mean": 0.1727418896793056,
+      "min": 0.005702864410317247,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "f_bs": {
+      "max": 0.19149154132607976,
+      "mean": 0.1727418896793056,
+      "min": 0.005702864410317247,
+      "missing": 0,
+      "nonFinite": 0
+    },
+    "f_cd": {
+      "max": 0,
+      "mean": 0,
       "min": 0,
       "missing": 0,
       "nonFinite": 0
@@ -570,15 +602,12 @@
     "duration": 399.9999999999914,
     "engineering.Avg. P_fusion (MW)": 513.7,
     "engineering.B_coil (T)": 11.33,
-    "engineering.CS flux swing (V s)": 188.9,
     "engineering.Capital cost (M$)": 4657,
     "engineering.Cryo heat load (kW)": 108.7,
     "engineering.Cryo pulse length (s)": 1055,
     "engineering.Cryoplant power (MW)": 32.6,
     "engineering.Divertor q_max (MW/m²)": 35.6,
     "engineering.EROI": 1.1,
-    "engineering.Flux margin": -0.231,
-    "engineering.Flux required (V s)": 245.5,
     "engineering.Gross P_electric (MW)": 220,
     "engineering.Inboard blanket (m)": 0.53,
     "engineering.Inboard shield+vessel (m)": 0.42,

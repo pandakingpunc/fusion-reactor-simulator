@@ -5,7 +5,7 @@
  * actual lanes, record mode), the completion message that lets a run with interventions be signed, and share links that carry the
  * scenario (checked against the model first) or the exact run.
  */
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import App from '../../App';
@@ -22,7 +22,8 @@ import { encodeShare, decodeShare } from '../persist/codec';
 import { replayRun } from '../persist/replayCore';
 import { APP_VERSION } from '../persist/version';
 
-beforeAll(installDomStubs);
+// the first test loads the lazy editor chunk (a cold transform): on a machine shared with other jobs it takes longer than the 1 s default
+beforeAll(() => { installDomStubs(); configure({ asyncUtilTimeout: 8000 }); });
 beforeEach(() => { window.location.hash = ''; });
 afterEach(() => { cleanup(); window.location.hash = ''; });
 

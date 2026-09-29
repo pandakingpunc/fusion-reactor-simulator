@@ -11,8 +11,8 @@
 import { computePopcon } from '../physics/popcon';
 import type { PopconGrid } from '../physics/popcon';
 import { lineAverageFactor } from '../physics/limits';
-import { plasmaVolume } from '../physics/geometry';
-import { tauIPB98y2, tauISS04, tauSTValovic, stellaratorHISS04 } from '../physics/transport';
+import { arealElongation, boundaryShape, plasmaVolume } from '../physics/geometry';
+import { tauHmode, tauISS04, stellaratorHISS04 } from '../physics/transport';
 import { FUEL_CHANNELS, FUEL_SPECIES, FuelType } from '../physics/reactivity';
 import type { MagneticConfig } from '../physics/types';
 import type { FromPopcon, PopconAxes, PopconStage, ToPopcon } from './popconProtocol';
@@ -64,6 +64,8 @@ export function fuelOptimumT(fuel: FuelType): number {
  */
 export function deviceTmax(cfg: MagneticConfig): number {
   const g = cfg.geometry, n = cfg.n_target;
+  const gB = boundaryShape(cfg); // the volume and the ITPA20 shape of the model (0D, POPCON): the boundary Miller shape
+  const gITPA = { R: g.R, a: g.a, kappa: arealElongation(gB), delta: gB.delta };
   const stell = cfg.method === 'stellarator';
   const tokamak = !stell && cfg.Ip_MA > 0;
   const betaT = tokamak ? (cfg.limits.betaN_limit * cfg.Ip_MA) / (100 * g.a * cfg.B0) : 0.05;
@@ -76,9 +78,9 @@ export function deviceTmax(cfg: MagneticConfig): number {
   const P = (h.P_NBI_MW + h.P_ICRH_MW + h.P_ECRH_MW) * 1e6;
   const tau = stell
     ? tauISS04(g, cfg.B0, nLine, P, cfg.stellarator.iota23, stellaratorHISS04(cfg.stellarator, cfg.H98))
-    : (cfg.scaling === 'ST_Valovic' ? tauSTValovic : tauIPB98y2)(g, cfg.Ip_MA, cfg.B0, nLine, P, M) * cfg.H98;
+    : tauHmode(cfg.scaling, cfg.scaling === 'ITPA20' || cfg.scaling === 'ITPA20-IL' ? gITPA : g, cfg.Ip_MA, cfg.B0, nLine, P, M) * cfg.H98;
   const Wprof = ((1 + aN) * (1 + aT)) / (1 + aN + aT); // ⟨n T⟩ = Wprof ⟨n⟩⟨T⟩
-  const Taux = (P * tau) / (3 * n * E_KEV * plasmaVolume(g) * Wprof);
+  const Taux = (P * tau) / (3 * n * E_KEV * plasmaVolume(gB) * Wprof);
   const want = Math.max(Math.min(T_HEADROOM * Taux, Tbeta), 0.15 * fuelOptimumT(cfg.fuel));
   if (!Number.isFinite(want)) return 40;
   return T_LADDER.find((T) => T >= want) ?? T_MAX;

@@ -2,8 +2,9 @@
  * Steady-state evaluator: the POPCON power balance (src/physics/popcon.ts) solved at ONE operating point, with the intermediate
  * quantities an optimiser needs (loss power, L-H threshold, radiation, q95, ...), which the POPCON grid does not keep.
  *
- * At the volume-averaged density <n_e> and temperature <T> (T_i = T_e, H-mode confinement H98 x IPB98(y,2) everywhere, no beam-target
- * fusion, no ohmic power, the same approximations as the POPCON map) the auxiliary power that holds the plasma in steady state is
+ * At the volume-averaged density <n_e> and temperature <T> (T_i = T_e, H-mode confinement H98 x the selected scaling everywhere, IPB98(y,2)
+ * by default; no beam-target fusion, no ohmic power, the same approximations as the POPCON map) the auxiliary power that holds the plasma
+ * in steady state is
  *   P_aux + P_alpha = P_rad + W / tau_E(P_L),   P_L = P_heat - P_rad,core = P_aux + P_alpha - P_rad,core   (dW/dt = 0)
  * solved by the same fixed-point iterations as POPCON (tau_E ~ P^-0.69 makes them contract; the He ash fraction by an outer
  * loop of four passes). The result is Q = P_fus / P_aux, the L-H margin P_L / P_LH (Martin 2008 with the Ryter 2014 low-density
@@ -16,8 +17,8 @@
  * Pure TypeScript, no DOM or Node API.
  */
 import { MagneticConfig } from '../physics/types';
-import { plasmaSurface, plasmaVolume, profileIntegral, profileIntegralSplit, q95ForMethod } from '../physics/geometry';
-import { tauIPB98y2, tauISS04, tauSTValovic, pLH_threshold, stellaratorHISS04 } from '../physics/transport';
+import { arealElongation, boundaryShape, plasmaSurface, plasmaVolume, profileIntegral, profileIntegralSplit, q95ForMethod } from '../physics/geometry';
+import { tauHmode, tauISS04, pLH_threshold, stellaratorHISS04 } from '../physics/transport';
 import { FUEL_CHANNELS, FUEL_SPECIES, pairDensity } from '../physics/reactivity';
 import { bremsstrahlung, coolingRate, meanCharge, synchrotronTotal, RHO_CORE } from '../physics/radiation';
 import { greenwaldDensity, betaToroidal, betaNormalized, lineAverageFactor } from '../physics/limits';
@@ -59,7 +60,9 @@ export interface SteadyState {
 
 /** Steady-state power balance of a tokamak, spherical tokamak or stellarator at the volume-averaged (n, T); see the file header. */
 export function steadyState(cfg: MagneticConfig, n: number, T: number): SteadyState {
-  const g = cfg.geometry, V = plasmaVolume(g), S = plasmaSurface(g);
+  // volume and surface of the boundary (LCFS) shape, and the geometry of the ITPA20 scalings, exactly as computePopcon (popcon.ts)
+  const g = cfg.geometry, gB = boundaryShape(cfg), V = plasmaVolume(gB), S = plasmaSurface(gB);
+  const gITPA = { R: g.R, a: g.a, kappa: arealElongation(gB), delta: gB.delta };
   const stell = cfg.method === 'stellarator';
   const aN = cfg.transport.alpha_n, aT = cfg.transport.alpha_T;
   const pk = (1 + aN) * (1 + aN);
@@ -73,7 +76,7 @@ export function steadyState(cfg: MagneticConfig, n: number, T: number): SteadySt
   const fLine = lineAverageFactor(aN);
   const tauOf = (ne: number, P: number) => stell
     ? tauISS04(g, cfg.B0, fLine * ne, P, cfg.stellarator.iota23, stellaratorHISS04(cfg.stellarator, cfg.H98))
-    : (cfg.scaling === 'ST_Valovic' ? tauSTValovic : tauIPB98y2)(g, cfg.Ip_MA, cfg.B0, fLine * ne, P, M) * cfg.H98;
+    : tauHmode(cfg.scaling, cfg.scaling === 'ITPA20' || cfg.scaling === 'ITPA20-IL' ? gITPA : g, cfg.Ip_MA, cfg.B0, fLine * ne, P, M) * cfg.H98;
   const sh = (r: number) => 1 - r * r;
   const ne = n;
   // profile integrals that depend on T only

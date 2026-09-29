@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computePopcon } from '../physics/popcon';
+import { boundaryShape, plasmaVolume } from '../physics/geometry';
 import { DEMO, DIIID, ITER, JET, JT60SA, MASTU, SPARC, W7X } from '../physics/presets';
 import type { MagneticConfig } from '../physics/types';
 import { FUEL_CHANNELS } from '../physics/reactivity';
@@ -11,6 +12,9 @@ const CASES: [string, MagneticConfig][] = [
   ['ITER', ITER], ['JET', JET], ['SPARC', SPARC], ['DEMO', DEMO], ['DIII-D (D-D)', DIIID], ['JT-60SA', JT60SA],
   ['MAST-U (spherical, ST_Valovic)', MASTU], ['W7-X (stellarator, ISS04)', W7X],
   ['p-B11 on the JET geometry', { ...JET, fuel: 'pB11', fuelFracA: 0.5 }], ['D-3He on the JET geometry', { ...JET, fuel: 'DHe3', fuelFracA: 0.5 }],
+  // v4.0: the ITPA20 scalings take the areal elongation and the LCFS triangularity, and V and S are those of the boundary shape (ITER, DEMO: the LCFS)
+  ['ITER, ITPA20', { ...ITER, scaling: 'ITPA20' }], ['ITER, ITPA20-IL', { ...ITER, scaling: 'ITPA20-IL' }],
+  ['DEMO with an edited kappa and delta (LCFS scaled by lcfsRef95)', { ...DEMO, geometry: { ...DEMO.geometry, kappa: 1.75, delta: 0.4 } }],
 ];
 
 const rel = (a: number, b: number) => (a === b ? 0 : Math.abs(a - b) / Math.max(Math.abs(b), 1e-300));
@@ -57,7 +61,10 @@ describe('steady-state quantities', () => {
     expect(s.nOverNG).toBeLessThan(1);
     expect(s.q95).toBeGreaterThan(2.5); // ITER Uckan formula: about 3 at the baseline
     expect(s.q95).toBeLessThan(3.6);
-    expect(s.V).toBeCloseTo(2 * Math.PI ** 2 * 6.2 * 4 * 1.7, 9);
+    // the volume of the boundary (LCFS) shape, kappa 1.85 and delta 0.49 (ITER design: 837 m^3, Shimada et al. 2007); the ellipse formula gave 832.2
+    expect(s.V).toBeCloseTo(plasmaVolume(boundaryShape(ITER)), 9);
+    expect(s.V).toBeGreaterThan(830);
+    expect(s.V).toBeLessThan(850);
     expect(s.tauE).toBeCloseTo(s.W / (s.PL - (s.Prad - s.PradCore)) , 1);
     expect(s.hmodeAccess).toBe(s.PL >= s.PLH);
     expect(s.hmodeAccess).toBe(true);

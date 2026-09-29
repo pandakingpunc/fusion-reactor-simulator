@@ -21,6 +21,10 @@ export default defineConfig({
   build: { target: 'es2022' },
   test: {
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'bench/**/*.test.ts'],
+    // 30 s per test instead of the 5 s default: about ten agents share 12 cores, and a CLI test that starts a child process
+    // or a UI test that first imports a lazy chunk (run screen, compare, validation) took longer than 5 s under that load
+    // while passing alone (Wave-2A report section 9, Wave-2B ws10r). A test that really hangs still fails, only later.
+    testTimeout: 30_000,
     // waits a few real milliseconds before each test (and turns the event loop after it) so that no worker-to-main
     // RPC call is pending while a long synchronous test runs: a call unanswered for 60 s is 'Timeout calling
     // "onTaskUpdate"', an unhandled error that fails `npm run coverage` with every test green. Root cause and

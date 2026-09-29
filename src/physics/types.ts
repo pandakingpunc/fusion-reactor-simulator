@@ -82,7 +82,7 @@ export interface ProfileSettings {
    * boundary value, the profile is what the transport makes of it)
    */
   impuritySetpoint?: 'average' | 'separatrix';
-  /** anomalous impurity diffusivity over the electron particle diffusivity D of the transport model (default 1) */
+  /** anomalous impurity diffusivity over electron D (default 1); zero disables anomalous particle flux, including its pinch, in 'anomalous' mode */
   impurityDoverDe?: number;
   /** anomalous impurity convection over the electron convection v (the turbulent pinch, independent of the charge; default 1) */
   impurityPinchOverPe?: number;

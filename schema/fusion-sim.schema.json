@@ -259,7 +259,7 @@
           "type": "number",
           "minimum": 0,
           "maximum": 1000,
-          "description": "Anomalous impurity diffusivity over the electron particle diffusivity (impurityTransport other than legacy).",
+          "description": "Anomalous impurity diffusivity over the electron particle diffusivity (impurityTransport other than legacy). Zero disables anomalous particle flux, including its pinch, in 'anomalous' mode.",
           "default": 1
         },
         "impurityPinchOverPe": {

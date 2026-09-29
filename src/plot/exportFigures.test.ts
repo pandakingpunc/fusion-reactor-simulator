@@ -13,17 +13,24 @@ import { exportFigure, FigureShot } from '../ui/report/exportFigures';
 
 const fetched: string[] = [];
 let saved: { name: string; blob: Blob }[] = [];
+let removed = 0;
+let revoked: string[] = [];
 
 beforeEach(() => {
-  fetched.length = 0; saved = [];
+  fetched.length = 0; saved = []; removed = 0; revoked = [];
+  // save() removes its link and revokes the object URL 100 ms after the click. On a real timer that callback fired
+  // after the test (and, in the last test of the file, after the environment was torn down), when the document stub
+  // was gone: "ReferenceError: document is not defined" as an unhandled error that failed `npm run coverage`.
+  // Only setTimeout is faked, and afterEach runs the pending cleanup while the stubs are still in place.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   vi.stubGlobal('fetch', async (u: URL) => { fetched.push(u.pathname.split('/').pop()!); return new Response(readFileSync(fileURLToPath(u))); });
   const a = { href: '', download: '', click: () => { saved.push({ name: a.download, blob: blobs.get(a.href)! }); } };
   const blobs = new Map<string, Blob>();
-  vi.stubGlobal('document', { createElement: () => a, body: { appendChild: () => {}, removeChild: () => {} } });
+  vi.stubGlobal('document', { createElement: () => a, body: { appendChild: () => {}, removeChild: () => { removed++; } } });
   vi.spyOn(URL, 'createObjectURL').mockImplementation((b) => { const k = `blob:${blobs.size}`; blobs.set(k, b as Blob); return k; });
-  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation((u) => { revoked.push(u); });
 });
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => { vi.runOnlyPendingTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 function shot(label: string): FigureShot {
   const diagSpecs: DiagSpec[] = [{ key: 'a', label, unit: 'MW', group: 'Power' }, { key: 'b', label: 'β_N', unit: '', group: 'MHD' }];
@@ -49,5 +56,17 @@ describe('browser figure export', () => {
     const svg = await saved[0].blob.text();
     expect(svg).toContain('≈');
     expect(svg).toMatch(/config-sha256="[0-9a-f]{64}"/);
+  });
+
+  it('removes the download link and revokes the object URL 100 ms after the click, not before', async () => {
+    await exportFigure(shot('P_alpha ρ τ'), 'traces', 'svg');
+    expect(saved.length).toBe(1);
+    expect(removed).toBe(0);
+    expect(revoked).toEqual([]);
+    vi.advanceTimersByTime(99);
+    expect(removed).toBe(0);
+    vi.advanceTimersByTime(1);
+    expect(removed).toBe(1);
+    expect(revoked).toEqual(['blob:0']);
   });
 });

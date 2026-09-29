@@ -30,6 +30,7 @@ import { greenwaldDensity, betaToroidal, betaNormalized, betaPoloidal, lineAvera
 import { disruptionReport, DisruptionCause, DISRUPTION_LABELS, DISRUPTION_FIXES } from '../disruption';
 import { checkMagnet, MAGNET_TECH, divertorHeatFlux, divertorHeatFluxStellarator, neutronWallLoad } from '../engineering';
 import { buildMagneticReport, LAWSON_DT } from './magneticReport';
+import { fuelCommand } from './densityControl';
 import { EDGE_DIAGS, edgeDiagnostics } from '../edge';
 import { RNG } from '../rng';
 import { U } from '../units';
@@ -248,6 +249,12 @@ export class MagneticModel implements SimModel {
     const main = y[IDX.na] * fs.a.Z + y[IDX.nb] * fs.b.Z + 2 * y[IDX.nHe] + Zz * y[IDX.nZ];
     return main / Math.max(1 - this.seedZ(Te) * this.seedC(), 0.5);
   }
+  /** d n_e/dt of a set of state derivatives: the linear map of ne() (<Z>(T_e) held) */
+  private neRate(d: Float64Array, Te: number): number {
+    const fs = FUEL_SPECIES[this.cfg.fuel];
+    const Zz = meanCharge(this.cfg.impurity.species, Math.max(Te, 0.1));
+    return (d[IDX.na] * fs.a.Z + d[IDX.nb] * fs.b.Z + 2 * d[IDX.nHe] + Zz * d[IDX.nZ]) / Math.max(1 - this.seedZ(Te) * this.seedC(), 0.5);
+  }
   private ni(y: Float64Array, ne = 0): number {
     return y[IDX.na] + y[IDX.nb] + y[IDX.nHe] + y[IDX.nZ] + this.seedC() * ne;
   }
@@ -302,6 +309,11 @@ export class MagneticModel implements SimModel {
     const nt = this.ctrl.n_target_1e20 * 1e20;
     const f = Math.min(1, t / Math.max(this.cfg.n_rampTime, 0.01));
     return n0 + (nt - n0) * f;
+  }
+  /** rate of change of the density set-point [m^-3 s^-1]: the slope of the ramp of nTarget, zero once it is reached */
+  private nTargetRate(t: number): number {
+    const tr = Math.max(this.cfg.n_rampTime, 0.01);
+    return t < tr ? (0.7 * this.ctrl.n_target_1e20 * 1e20) / tr : 0;
   }
   /** Auxiliary-heating factor: ramps up over rampTime; with heating.autoOff it ramps down over the same time once Q ≥ 5 */
   private auxRamp(t: number): number {
@@ -535,20 +547,12 @@ export class MagneticModel implements SimModel {
       const [ba, bb] = burnPerReaction(c.fuel, ch, y[IDX.na], y[IDX.nb]);
       burn_a += (this.Rch[j] * ba) / V; burn_b += (this.Rch[j] * bb) / V; ashRate += this.Rch[j] * ch.ash;
     });
-    // Besleme komutu: yoğunluk kontrolörü (P) + kayıp/yanma telafisi, sınırlı
-    const nT = this.nTarget(t);
     const Smax = this.ctrl.fuelRate_1e20s * 1e20 / V; // m^-3 s^-1
     const fuelEff = this.fuelingEfficiency();
-    let S_cmd = 0;
-    if (this.phase === 'normal') {
-      const kp = 6 / Math.max(tau_p, 0.05);
-      S_cmd = Math.max(0, Math.min(Smax, (kp * (nT - ne) + ne * lossP + burn_a + burn_b) / fuelEff));
-    }
     const tauDelay = this.fuelingDelay();
-    d[IDX.Sfuel] = (S_cmd - y[IDX.Sfuel]) / tauDelay;
-    const S_eff = y[IDX.Sfuel] * fuelEff; // m^-3 s^-1 (elektron eşdeğeri)
     // NBI beslemesi: sadece tür a (D). Karışım kontrolü: gaz/pellet varsa oranı hedefe çeker.
     const S_nbi = c.fueling.method === 'nbi' || c.fueling.method === 'mixed' ? P_NBI_inj / U.keV_to_J(c.heating.E_NBI_keV) / V : 0;
+    const S_eff = y[IDX.Sfuel] * fuelEff; // m^-3 s^-1 (elektron eşdeğeri)
     const wA = c.fueling.method === 'nbi' ? 1 : c.fuelFracA;
     const S_a = S_eff * wA + S_nbi;
     const S_b = S_eff * (1 - wA);
@@ -561,6 +565,20 @@ export class MagneticModel implements SimModel {
     const P_SOL = Math.max(P_heat - rad.P_rad, 0);
     const S_W = c.impurity.species === 'W' ? (c.impurity.W_source_frac * P_SOL) / (U.keV_to_J(5000) * V) : 0; // APPROXIMATION: 1 W atom per 5 MeV of P_SOL (× W_source_frac)
     d[IDX.nZ] = (cZ_target * ne) / tau_p - y[IDX.nZ] * Math.max(1 / tauZ - 2 * this.elmPartRate, 0.3 / tauZ) + S_W;
+    // Fuelling command: density controller (densityControl.ts: feed-forward of the losses of the moment, the beams and the set-point ramp,
+    // feedback on the density predicted one actuator lag ahead), limited to [0, S_max]; the actuator state Sfuel follows it with the lag
+    // of the method. The rate of change of n_e is that of the balance above less the mean particle exhaust of the ELMs (their crashes are
+    // events of postStep, the continuous loss of lossP is the rest of 1/tau_p).
+    let S_cmd = 0;
+    if (this.phase === 'normal') {
+      const den = Math.max(1 - this.seedZ(Te) * this.seedC(), 0.5);
+      const zFuel = (fs.a.Z * wA + fs.b.Z * (1 - wA)) / den; // electrons per fuel ion that the command supplies
+      S_cmd = fuelCommand({
+        nSet: this.nTarget(t), dnSet: this.nTargetRate(t), ne, dn: this.neRate(d, Te) - ne * this.elmPartRate,
+        flowIn: S_eff * zFuel, flowKnown: (fs.a.Z * S_nbi) / den, kp: 6 / Math.max(tau_p, 0.05), tauAct: tauDelay, gain: fuelEff * zFuel, Smax,
+      });
+    }
+    d[IDX.Sfuel] = (S_cmd - y[IDX.Sfuel]) / tauDelay;
     if (this.phase !== 'normal') { d[IDX.na] = -y[IDX.na] / 0.05; d[IDX.nb] = -y[IDX.nb] / 0.05; d[IDX.nHe] = -y[IDX.nHe] / 0.05; d[IDX.nZ] = 0; d[IDX.Sfuel] = -y[IDX.Sfuel] / 0.01; }
 
     // ---- sayaçlar ----

@@ -58,6 +58,8 @@ export const tr: Dict = {
   'popcon.hintSteer': 'bir noktadaki değerler için haritanın üzerinde gezinin; atışı oraya yönlendirmek için tıklayın',
   'popcon.error': 'POPCON hesaplanamadı: {msg}',
   'popcon.unavailable': 'POPCON haritası bir web worker gerektirir; bu tarayıcı sunmuyor.',
+  'popcon.edge': 'Divertör kenarı',
+  'popcon.edgeTitle': 'Haritaya kenar modelini ekler: hedefe düşen tepe ısı akısının 10 MW/m² çizgisi ile bağlı (10 eV) ve ayrılmış (2 eV) sınırları; okumaya P_sep/R, q_peak ve T_t eklenir',
   'popcon.selfHeated': 'kendini ısıtır',
   'popcon.betaLimit': 'β_N sınırının üstünde',
   'popcon.belowLH': 'L-H eşiğinin altında',
@@ -122,6 +124,9 @@ export const tr: Dict = {
   'field.empty': 'Boş — modele değer aktarılmaz',
   'field.required': 'Zorunlu — bir değer girin (boş kaldıkça çalıştırılamaz)',
 
+  'wiz.advanced': 'Gelişmiş',
+  'wiz.advancedHint': 'Öntanımlı değerlerinde güvenli olan ayarlar; bir değer yalnızca siz düzenleyince yapılandırmaya yazılır',
+  'wiz.advancedLoading': 'Gelişmiş ayarlar yükleniyor…',
   'wiz.steps': 'Kurulum adımları',
   'wiz.cfgName': 'Yapılandırma adı',
   'wiz.back': '◀ Geri',
@@ -261,4 +266,12 @@ export const tr: Dict = {
   'cmp.termination': 'Sonlanma',
   'cmp.warnCount': 'Uyarı sayısı',
   'cmp.eventCount': 'Olay sayısı',
+  'cmp.engShow': 'Mühendislik değerlerini göster ({n})',
+  'cmp.engHide': 'Mühendislik değerlerini gizle',
+
+  'note.step': 'ProfileSettings.{key} = {given} {why}: bunun yerine {used}{unit} kullanılıyor.',
+  'note.step.pos': 'pozitif bir sayı değil',
+  'note.step.nonneg': 'negatif olmayan bir sayı değil',
+  'note.step.time': 'pozitif bir süre değil',
+  'note.step.floor': 'en kısa adım olan {min} s değerinin altında',
 };

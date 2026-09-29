@@ -10,11 +10,19 @@
  */
 import type { PopconGrid } from '../../physics/popcon';
 import type { MagneticConfig } from '../../physics/types';
+import { TT_ATTACHED_EV, TT_DETACHED_EV } from '../../physics/edge/detachment';
 import { FrameColumns, lodIndices, mergeIndices } from './lod';
 import { fmtAxis } from '../format';
 import { prepareCanvas } from '../hooks/useCanvasSize';
 
 export const POPCON_PAD = { l: 50, r: 10, t: 8, b: 24 };
+
+/**
+ * Steady-state limit of the peak heat flux on a divertor target [MW/m²], the level of the q_peak contour of the edge maps: the design
+ * value of the ITER divertor (A. Loarte et al., Nucl. Fusion 47 (2007) S203, chapter 4 of the ITER Physics Basis; R. A. Pitts et al.,
+ * J. Nucl. Mater. 438 (2013) S48). The 0D and 1.5D models raise their own warning at the same level (confinement/magnetic.ts).
+ */
+export const DIVERTOR_Q_LIMIT_MWM2 = 10;
 
 /** what the axes of a drawing span: n from 0 to nMax [m⁻³], T from 0 to Tmax [keV], on a canvas of width × height CSS px */
 export interface PopconView { width: number; height: number; nMax: number; Tmax: number }
@@ -75,6 +83,8 @@ export interface PopconReadout {
   aboveBetaLimit: boolean;
   belowLH: boolean;
   aboveGreenwald: boolean;
+  /** the edge model at the cell (grids computed with `edge: true`, tokamaks): P_sep/R [MW/m], peak target heat flux [MW/m²], target T_e [eV] */
+  edge?: { PsepR_MWm: number; qPeak_MWm2: number; Tt_eV: number };
 }
 
 export function readoutAt(grid: PopconGrid, cfg: Pick<MagneticConfig, 'method' | 'limits'>, nMax: number, Tmax: number, n: number, T: number): PopconReadout | null {
@@ -89,6 +99,7 @@ export function readoutAt(grid: PopconGrid, cfg: Pick<MagneticConfig, 'method' |
     aboveBetaLimit: grid.betaN[k] > cfg.limits.betaN_limit,
     belowLH: !stell && !grid.PLH_ok[k],
     aboveGreenwald: !stell && n > grid.nG * cfg.limits.greenwald_limit,
+    ...(grid.PsepR && grid.qPeak && grid.Tt ? { edge: { PsepR_MWm: grid.PsepR[k], qPeak_MWm2: grid.qPeak[k], Tt_eV: grid.Tt[k] } } : {}),
   };
 }
 
@@ -208,6 +219,19 @@ export function drawMap(ctx: CanvasRenderingContext2D, grid: PopconGrid, view: P
     for (let s = 0; s < seg.length; s += 4) { ctx.moveTo(xp(seg[s]), yp(seg[s + 1])); ctx.lineTo(xp(seg[s + 2]), yp(seg[s + 3])); }
     ctx.stroke();
   }
+  // the edge model's limits, when the grid carries its maps: the target heat flux above what a target withstands, and where the divertor is
+  // attached (T_t above 10 eV) and detached (below 2 eV)
+  const edge = edgeLimits(grid);
+  if (edge) {
+    ctx.lineWidth = 1.3;
+    for (const lv of edge) {
+      ctx.strokeStyle = lv.color; ctx.setLineDash(lv.dash); ctx.beginPath();
+      const seg = contourSegments(grid, lv.value, lv.level);
+      for (let s = 0; s < seg.length; s += 4) { ctx.moveTo(xp(seg[s]), yp(seg[s + 1])); ctx.lineTo(xp(seg[s + 2]), yp(seg[s + 3])); }
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
   if (!stell && nG * cfg.limits.greenwald_limit < nMax) {
     const gx = xp(nG * cfg.limits.greenwald_limit);
     ctx.strokeStyle = '#ef476f'; ctx.lineWidth = 1.3; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(gx, r.y); ctx.lineTo(gx, r.y + r.h); ctx.stroke(); ctx.setLineDash([]);
@@ -228,7 +252,19 @@ export function drawMap(ctx: CanvasRenderingContext2D, grid: PopconGrid, view: P
   for (const lv of P_LEVELS) { ctx.fillStyle = lv.c; ctx.fillText(lv.lbl, r.x + r.w - 44, ly); ly += 12; }
   ctx.fillStyle = '#06d6a0'; ctx.fillText('P_aux<0', r.x + r.w - 44, ly); ly += 12;
   ctx.fillStyle = '#ef476f'; ctx.fillText('β_N>lim', r.x + r.w - 44, ly); ly += 12;
-  ctx.fillStyle = '#7f8ba3'; ctx.fillText('dark: P<P_LH', r.x + r.w - 74, ly);
+  ctx.fillStyle = '#7f8ba3'; ctx.fillText('dark: P<P_LH', r.x + r.w - 74, ly); ly += 12;
+  if (edge) for (const lv of edge) { ctx.fillStyle = lv.color; ctx.fillText(lv.label, r.x + r.w - 74, ly); ly += 12; }
+}
+
+/** the contours of the edge maps of a grid: what they show, the level, the colour and the dash; null for a grid without the edge model */
+export function edgeLimits(grid: PopconGrid): { label: string; level: number; color: string; dash: number[]; value: (i: number, j: number) => number }[] | null {
+  const { qPeak, Tt, ny } = grid;
+  if (!qPeak || !Tt) return null;
+  return [
+    { label: `q_peak=${DIVERTOR_Q_LIMIT_MWM2}`, level: DIVERTOR_Q_LIMIT_MWM2, color: '#00f5d4', dash: [5, 3], value: (i, j) => qPeak[i * ny + j] },
+    { label: `T_t=${TT_ATTACHED_EV} eV`, level: TT_ATTACHED_EV, color: '#bde0fe', dash: [2, 3], value: (i, j) => Tt[i * ny + j] },
+    { label: `T_t=${TT_DETACHED_EV} eV`, level: TT_DETACHED_EV, color: '#a2d2ff', dash: [1, 3], value: (i, j) => Tt[i * ny + j] },
+  ];
 }
 
 /**

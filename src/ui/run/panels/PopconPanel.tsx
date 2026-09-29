@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { MagneticConfig } from '../../../physics/types';
 import { UiFrame } from '../../../worker/protocol';
 import { Popcon } from '../../charts/Popcon';
@@ -22,14 +22,22 @@ interface Props {
 export function PopconPanel({ cfg, last, frames, controls, onSteer, steerable = true, createWorker }: Props) {
   const t = useT();
   const { H98, H_ISS04, cZ } = controls ?? {};
+  // the edge model's maps (limits of the divertor target) are drawn on request; a stellarator has no such divertor
+  const [edge, setEdge] = useState(false);
+  const canEdge = cfg.method !== 'stellarator';
   // the map depends on these three controls only: moving the others does not start a new job
   const mapCfg = useMemo(() => popconCfg(cfg, { H98, H_ISS04, cZ } as Record<string, number>), [cfg, H98, H_ISS04, cZ]);
   const shown = useMemo(() => frames ?? (last ? [last] : []), [frames, last]);
   return (
     <div className="panel tight">
       <div className="panel-title"><h3>{t('run.popcon')}</h3><span className="muted small">{t('run.popconSub')}</span></div>
+      {canEdge && (
+        <label className="row small" style={{ gap: 6 }} title={t('popcon.edgeTitle')}>
+          <input type="checkbox" checked={edge} onChange={(e) => setEdge(e.target.checked)} />{t('popcon.edge')}
+        </label>
+      )}
       <Popcon cfg={mapCfg} frames={shown} height={280} heatingMW={last?.d.P_aux} controls={controls}
-        onSteer={steerable ? onSteer : undefined} createWorker={createWorker} />
+        onSteer={steerable ? onSteer : undefined} createWorker={createWorker} edge={canEdge && edge} />
     </div>
   );
 }

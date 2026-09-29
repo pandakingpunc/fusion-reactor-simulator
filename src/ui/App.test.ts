@@ -2,7 +2,7 @@
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import App from '../App';
+import App, { preloadRunScreen } from '../App';
 import { MagneticConfig } from '../physics/types';
 import { PRESETS, TAE } from '../physics/presets';
 import { FakeWorker, fakeWorkerFactory } from '../worker/fakeWorker';
@@ -10,7 +10,7 @@ import { FromWorker } from '../worker/protocol';
 import { AppStoreContext, AppStore, createAppStore } from './state/store';
 import { installDomStubs } from './testing/dom';
 
-beforeAll(installDomStubs);
+beforeAll(async () => { installDomStubs(); await preloadRunScreen(); }); // the run screen is a chunk of its own: a run then starts on a screen that renders synchronously
 afterEach(cleanup);
 
 /** App with a fresh store and fake workers; worker replies are applied synchronously inside act() */

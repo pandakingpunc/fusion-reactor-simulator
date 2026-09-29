@@ -8,6 +8,7 @@ import { ReactorConfig } from '../../physics/types';
 import { ITER } from '../../physics/presets';
 import { Locale, Translate, isLocale, loadLocale, setActiveLocale, translator } from '../../i18n';
 import { AppState, SavedShot, Tab } from './types';
+import { loadWizardText } from '../wizard/wizTextLoader';
 
 export interface Store<T> {
   getState(): T;
@@ -101,7 +102,8 @@ export function createAppStore(init: Partial<AppState> = {}): AppStore {
     },
     editShot: (shot) => set({ cfg: shot.cfg, cfgName: shot.name.replace(/ #\d+$/, ''), tab: 'setup' }),
     async setLocale(locale) {
-      await loadLocale(locale);
+      // the wizard's own texts come with the dictionary (a failed load leaves them in English; the wizard asks again)
+      await Promise.all([loadLocale(locale), loadWizardText(locale).catch(() => undefined)]);
       setActiveLocale(locale);
       set({ locale });
       try { localStorage.setItem(LOCALE_KEY, locale); } catch { /* storage unavailable: keep for this session only */ }

@@ -37,15 +37,17 @@ export interface PopconProps {
   /** worker factory and stage plan (tests) */
   createWorker?: PopconWorkerFactory;
   stages?: readonly PopconStage[];
+  /** the edge model's maps: its limits are drawn on the map and its values are in the readout (tokamaks; ignored for a stellarator) */
+  edge?: boolean;
 }
 
 /** the shot has arrived at the steering point when it is within this fraction of each axis of it */
 const TARGET_REACHED = 0.03;
 
-export function Popcon({ cfg, frames, point: given, height = 260, heatingMW, controls, onSteer, createWorker, stages }: PopconProps) {
+export function Popcon({ cfg, frames, point: given, height = 260, heatingMW, controls, onSteer, createWorker, stages, edge }: PopconProps) {
   const t = useT();
   const { ref, width, dpr } = useCanvasSize<HTMLCanvasElement>();
-  const popcon = usePopcon(cfg, { createWorker, stages });
+  const popcon = usePopcon(cfg, { createWorker, stages, edge });
   const { grid, axes } = popcon;
   const view = useMemo<PopconView | null>(() => (axes ? { width, height, nMax: axes.nMax, Tmax: axes.Tmax } : null), [axes, width, height]);
 
@@ -122,6 +124,7 @@ function readoutText(ro: NonNullable<ReturnType<typeof readoutAt>>, t: ReturnTyp
     `n̄ ${fmtNum(ro.n / 1e20)}·10²⁰`, `T ${fmtNum(ro.T)} keV`, `P_aux ${fmtNum(ro.Paux_MW)} MW`,
     `Q ${Number.isFinite(ro.Q) ? fmtNum(ro.Q) : '∞'}`, `β_N ${fmtNum(ro.betaN)}`,
   ];
+  if (ro.edge) parts.push(`P_sep/R ${fmtNum(ro.edge.PsepR_MWm)} MW/m`, `q_peak ${fmtNum(ro.edge.qPeak_MWm2)} MW/m²`, `T_t ${fmtNum(ro.edge.Tt_eV)} eV`);
   if (ro.selfHeated) parts.push(t('popcon.selfHeated'));
   if (ro.aboveBetaLimit) parts.push(t('popcon.betaLimit'));
   if (ro.belowLH) parts.push(t('popcon.belowLH'));

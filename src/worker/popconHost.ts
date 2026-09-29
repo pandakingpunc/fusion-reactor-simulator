@@ -21,11 +21,20 @@ import { Schedule, defaultSchedule } from './schedule';
 const MU0 = 1.25663706212e-6;
 const E_KEV = 1.602176634e-16;
 
-/** axis maxima are taken from this ladder (keV) */
-const T_LADDER = [2, 2.5, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 60, 80, 100, 150, 200, 300];
+/** axis maxima from 3 keV up are taken from this ladder (keV); below 3 keV the axis is rounded up to a multiple of T_FINE_STEP */
+const T_LADDER = [3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 60, 80, 100, 150, 200, 300];
 const T_MAX = T_LADDER[T_LADDER.length - 1];
+/** a device whose axis stays under the first rung of the ladder (W-7X, MAST-U: 1 to 2 keV) gets a finer rounding, 0.25 keV, so that its operating region is not lost in the ladder's coarse first steps */
+const T_FINE_STEP = 0.25;
 /** the axis reaches this many times the temperature the installed heating alone holds (see deviceTmax) */
 const T_HEADROOM = 2.5;
+/** below this T_aux [keV] the device is heating-dominated (see deviceTmax) and the axis reaches this many times T_aux instead */
+const T_AUX_HEATING_DOMINATED = 1.2;
+const T_HEADROOM_HEATING_DOMINATED = 2.0;
+/** the axis is at least this share of the fuel's ignition optimum (see deviceTmax) */
+const T_OPTIMUM_FLOOR = 0.1;
+/** a map that spans less than this many keV has a uniform temperature grid (see uniformTemperature) */
+const T_UNIFORM_BELOW = 5;
 
 const optimum = new Map<FuelType, number>();
 /**
@@ -56,11 +65,14 @@ export function fuelOptimumT(fuel: FuelType): number {
  * fills the middle of the axis and the ignition optimum of D-T (about 14 keV) stays on the map for the large
  * devices. Two bounds: the beta limit at the device's own density (Troyon: β_t = β_N · I_p / (100 a B); a stellarator,
  * which has no plasma current to scale with, is taken at a volume-average beta of 5 %), which no shot can pass, and a
- * floor of 0.15 of the fuel's ignition optimum, which widens the axis for a fuel that burns only at high
- * temperature (p-11B). The result is rounded up to a 1-2-5 style ladder between 2 and 300 keV.
- * ITER: 15 keV, SPARC 20, JET 8, DEMO 20, MAST-U and W7-X 2.5 to 3. The old axis was 0 to 40 keV for every device,
+ * floor of 0.10 of the fuel's ignition optimum, which widens the axis for a fuel that burns only at high
+ * temperature (p-11B). The result is rounded up to a 1-2-5 style ladder from 3 to 300 keV, and below 3 keV to a multiple
+ * of 0.25 keV. A device whose heating alone holds less than about a keV (T_aux, W-7X and MAST-U) has no alpha heating to
+ * lift the shot (its peak T_i is 0.95 to 1.1 T_aux), so it gets 2 T_aux instead of 2.5.
+ * ITER: 20 keV, SPARC 20, JET 10, DEMO 20 (ITER15 15), MAST-U and W-7X 1.75. The old axis was 0 to 40 keV for every device,
  * and the first version of this function (the beta limit at 0.4 of the Greenwald density) gave ITER 50 and DEMO 80,
- * with the operating region in the bottom fifth of the map.
+ * with the operating region in the bottom fifth of the map; the ladder that began at 2 and 2.5 keV left W-7X and
+ * MAST-U at a third of the axis (peak T_i 0.85 keV of 2.5), which now read 49 %.
  */
 export function deviceTmax(cfg: MagneticConfig): number {
   const g = cfg.geometry, n = cfg.n_target;
@@ -81,10 +93,21 @@ export function deviceTmax(cfg: MagneticConfig): number {
     : tauHmode(cfg.scaling, cfg.scaling === 'ITPA20' || cfg.scaling === 'ITPA20-IL' ? gITPA : g, cfg.Ip_MA, cfg.B0, nLine, P, M) * cfg.H98;
   const Wprof = ((1 + aN) * (1 + aT)) / (1 + aN + aT); // ⟨n T⟩ = Wprof ⟨n⟩⟨T⟩
   const Taux = (P * tau) / (3 * n * E_KEV * plasmaVolume(gB) * Wprof);
-  const want = Math.max(Math.min(T_HEADROOM * Taux, Tbeta), 0.15 * fuelOptimumT(cfg.fuel));
+  // a device whose heating alone holds only about a keV has no alpha heating to lift the shot above T_aux (W-7X, MAST-U: the peak T_i is
+  // 0.95 to 1.1 T_aux), so its axis needs less headroom than the large devices, which the alpha heating carries to 1.1 to 2 T_aux
+  const headroom = Taux < T_AUX_HEATING_DOMINATED ? T_HEADROOM_HEATING_DOMINATED : T_HEADROOM;
+  const want = Math.max(Math.min(headroom * Taux, Tbeta), T_OPTIMUM_FLOOR * fuelOptimumT(cfg.fuel));
   if (!Number.isFinite(want)) return 40;
+  if (want <= T_LADDER[0]) return Math.max(T_FINE_STEP, Math.ceil(want / T_FINE_STEP - 1e-9) * T_FINE_STEP);
   return T_LADDER.find((T) => T >= want) ?? T_MAX;
 }
+
+/**
+ * Whether the temperature grid of a map that spans `Tmax` keV is uniform. The model's own grid is dense at low T, starting at 0.5 keV
+ * (physics/popcon.ts); on a map of a few keV (W-7X, MAST-U) that leaves the first cell to hold everything below 0.5 keV and a third of the
+ * cells in the first third of the axis, so these maps are computed on equal steps.
+ */
+export function uniformTemperature(Tmax: number): boolean { return Tmax < T_UNIFORM_BELOW; }
 
 /** extent of the axes of a grid computed for `cfg` with `Tmax`: the density cells are uniform */
 export function popconAxes(grid: PopconGrid, Tmax: number): PopconAxes {
@@ -118,7 +141,7 @@ export function createPopconHost(post: (m: FromPopcon, transfer?: Transferable[]
   const compute = opts.compute ?? computePopcon;
   const now = opts.now ?? (() => performance.now());
   const schedule = opts.schedule ?? defaultSchedule;
-  let current: { job: number; cfg: MagneticConfig; stages: readonly PopconStage[]; next: number; Tmax: number } | null = null;
+  let current: { job: number; cfg: MagneticConfig; stages: readonly PopconStage[]; edge: boolean; next: number; Tmax: number } | null = null;
   let cancelTimer: (() => void) | null = null;
 
   function stop() {
@@ -134,7 +157,7 @@ export function createPopconHost(post: (m: FromPopcon, transfer?: Transferable[]
     try {
       const t0 = now();
       if (cur.next === 0) cur.Tmax = deviceTmax(cur.cfg);
-      const grid = compute(cur.cfg, { nx: stage.nx, ny: stage.ny, Tmax: cur.Tmax });
+      const grid = compute(cur.cfg, { nx: stage.nx, ny: stage.ny, Tmax: cur.Tmax, uniformT: uniformTemperature(cur.Tmax), ...(cur.edge ? { edge: true } : {}) });
       const ms = now() - t0;
       const index = cur.next++;
       post({ type: 'grid', job, stage: index, stages: cur.stages.length, grid, axes: popconAxes(grid, cur.Tmax), ms }, gridBuffers(grid));
@@ -154,7 +177,7 @@ export function createPopconHost(post: (m: FromPopcon, transfer?: Transferable[]
           post({ type: 'error', job: msg.job, msg: 'invalid POPCON stage plan' });
           return;
         }
-        current = { job: msg.job, cfg: msg.cfg, stages: msg.stages, next: 0, Tmax: 0 };
+        current = { job: msg.job, cfg: msg.cfg, stages: msg.stages, edge: msg.edge === true, next: 0, Tmax: 0 };
         cancelTimer = schedule(() => runStage(msg.job), msg.stages[0].delayMs ?? 0);
         break;
       }

@@ -26,7 +26,7 @@ type Notice =
   | { kind: 'opened'; name: string; odd: number; share: DecodedShare | null }
   | { kind: 'failed'; reason: string }
   | { kind: 'reproducing'; pct: number }
-  | { kind: 'reproduced'; match: boolean | null }
+  | { kind: 'reproduced'; match: boolean | null; name: string }
   | { kind: 'replayFailed'; reason: string }
   | { kind: 'archive'; reason: string };
 
@@ -61,6 +61,13 @@ export default function PersistHost({ slot, router, route }: Props) {
       });
     }
   }, [shots, deps]);
+
+  // ── a notice about a shared link is about that configuration ─────────────
+  // "Opened X from a shared link" (and the reproduction that follows it) is stale once a different configuration is picked or run: the
+  // name of the configuration in the wizard is no longer the one the link brought. Editing the shared configuration keeps its name.
+  useEffect(() => {
+    setNotice((n) => (n && (n.kind === 'opened' || n.kind === 'reproduced') && n.name !== cfgName ? null : n));
+  }, [cfgName]);
 
   // ── share links ───────────────────────────────────────────────────────────
   const landed = useRef<string | null>(null);
@@ -107,7 +114,7 @@ export default function PersistHost({ slot, router, route }: Props) {
           ...(payload.scenario !== undefined ? { scenario: payload.scenario } : {}), fingerprint: result.fingerprint,
         },
       });
-      setNotice({ kind: 'reproduced', match: payload.fingerprint ? payload.fingerprint === result.fingerprint : null });
+      setNotice({ kind: 'reproduced', name, match: payload.fingerprint ? payload.fingerprint === result.fingerprint : null });
     } catch (e) {
       setNotice({ kind: 'replayFailed', reason: errorText(e) });
     }

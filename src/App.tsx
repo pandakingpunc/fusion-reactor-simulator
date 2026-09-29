@@ -6,13 +6,16 @@ import { FrameScheduler, WorkerFactory, completedShotKey } from './ui/state/sim'
 import { useApp, useAppStore, useT } from './ui/state/store';
 import { SavedShot, SimStatus, Tab } from './ui/state/types';
 import { Wizard } from './ui/wizard/Wizard';
-import { RunScreen } from './ui/run/RunScreen';
 import { ErrorBoundary } from './ui/ErrorBoundary';
+import { lazyChunk } from './ui/lazyChunk';
 import { fmtTime } from './ui/format';
 import { RouterContext, useRoute, useRouting } from './ui/persist/routing';
 import type { LearnLocation } from './ui/edu/LearnView';
 
-// Setup and Run are the first screens; the others are separate chunks, prefetched after start-up.
+// Setup is the first screen; the run screen (charts, cross-section, POPCON, 3D) and the others are separate chunks, prefetched after start-up.
+const RunScreen = lazyChunk(() => import('./ui/run/RunScreen'), (m) => m.RunScreen);
+/** fetch the run screen's chunk (tests await it, so that a run starts on a screen that renders synchronously) */
+export const preloadRunScreen = RunScreen.preload;
 const loadReport = () => import('./ui/report/Report');
 const loadCompare = () => import('./ui/compare/Compare');
 const loadValidation = () => import('./ui/pool/Validation');
@@ -81,8 +84,9 @@ export default function App({ createWorker, schedule }: Props) {
   }, [doneKey]); // state is read at the moment the key appears; archiveShot ignores repeats
 
   useEffect(() => {
+    const run = setTimeout(() => { void RunScreen.preload(); }, 200); // most visits start a run: fetch its screen first
     const id = setTimeout(() => { void loadReport(); void loadCompare(); void loadValidation(); }, 1500); // the Learn chunk is loaded when its tab is opened
-    return () => clearTimeout(id);
+    return () => { clearTimeout(run); clearTimeout(id); };
   }, []);
 
   const run = useCallback((c: ReactorConfig) => {

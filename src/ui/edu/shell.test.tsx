@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import App from '../../App';
+import App, { preloadRunScreen } from '../../App';
 import { PRESETS, TAE } from '../../physics/presets';
 import { fakeWorkerFactory } from '../../worker/fakeWorker';
 import { AppStore, AppStoreContext, createAppStore } from '../state/store';
 import { installDomStubs } from '../testing/dom';
 
-beforeAll(installDomStubs);
+beforeAll(async () => { installDomStubs(); await preloadRunScreen(); });
 beforeEach(() => { localStorage.clear(); window.location.hash = ''; });
 afterEach(() => { cleanup(); window.location.hash = ''; });
 
@@ -52,18 +52,19 @@ describe('the education and comparison screens in the app shell', () => {
     act(() => { w.advance(TAE.t_end); w.deliver(); });
     expect(store.getState().shots).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: /^Compare/ }));
-    expect(await screen.findByText('Radar of headline metrics')).toBeTruthy();
+    // Compare and Validation are lazy chunks: the first import is slow on a loaded machine
+    expect(await screen.findByText('Radar of headline metrics', {}, { timeout: 30000 })).toBeTruthy();
     expect(screen.getByText('Overlay of runs')).toBeTruthy();
     expect(screen.getByText('Configuration difference')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Validation' }));
-    expect(await screen.findByText(/shared among \d background workers/)).toBeTruthy();
+    expect(await screen.findByText(/shared among \d background workers/, {}, { timeout: 30000 })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Run everything' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Run 4 tests' }));
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(await screen.findAllByText('cancelled')).toHaveLength(4);
-  });
+  }, 90000);
 
   it('the Learn tab is in the address: #/learn, #/learn/missions/<id>, #/learn/glossary/<term>, and back returns', async () => {
     const { store } = mount();

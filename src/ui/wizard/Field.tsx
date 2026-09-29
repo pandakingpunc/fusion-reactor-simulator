@@ -1,14 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { FieldDef, fieldHint, fieldLabel, isRequired } from './schema';
 import { useT } from '../state/store';
+import { useWizText } from './wizText';
 
 interface Props { def: FieldDef; value: unknown; onChange: (v: unknown) => void }
 
 /** Tek yapılandırma alanı: sayı (ölçekli), seçim veya onay kutusu. */
 export function Field({ def, value, onChange }: Props) {
   const t = useT();
+  const wt = useWizText();
   const type = def.type ?? 'number';
-  const label = fieldLabel(def, t), hint = fieldHint(def, t);
+  const label = fieldLabel(def, t, wt), hint = fieldHint(def, t, wt);
   if (type === 'bool') {
     return (
       <label className="field">
@@ -26,7 +28,7 @@ export function Field({ def, value, onChange }: Props) {
       <label className="field">
         <span className="lbl"><span>{label}</span></span>
         <select value={String(value ?? '')} onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}>
-          {def.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          {def.options?.map((o) => <option key={o.value} value={o.value}>{wt(o.label)}</option>)}
         </select>
         {hint && <span className="hint">{hint}</span>}
       </label>
@@ -48,6 +50,7 @@ export function parseNumberInput(text: string): number | undefined | null {
 
 function NumberField({ def, value, onChange }: { def: FieldDef; value: number | undefined; onChange: (v: number | undefined) => void }) {
   const t = useT();
+  const wt = useWizText();
   const scale = def.scale ?? 1;
   const shown = value === undefined ? undefined : value / scale;
   const [text, setText] = useState(fmtEdit(shown));
@@ -66,7 +69,7 @@ function NumberField({ def, value, onChange }: { def: FieldDef; value: number | 
   // blank: a required field blocks the run (warning); where blank is a documented setting, its hint explains it
   const missing = shown === undefined && isRequired(def);
   const warn = out || missing;
-  const own = fieldHint(def, t);
+  const own = fieldHint(def, t, wt);
   const hint = out ? t('field.outOfRange', { min: def.min!, max: def.max! })
     : missing ? t('field.required')
     : shown === undefined ? own ?? t('field.empty')
@@ -74,14 +77,14 @@ function NumberField({ def, value, onChange }: { def: FieldDef; value: number | 
   return (
     <label className="field">
       <span className="lbl">
-        <span>{fieldLabel(def, t)}</span>
-        {def.unit && <span className="unit">{def.unit}</span>}
+        <span>{fieldLabel(def, t, wt)}</span>
+        {def.unit && <span className="unit">{wt(def.unit)}</span>}
       </span>
       <input type="text" inputMode="decimal" className="num" value={text} style={warn ? { borderColor: 'var(--warn)' } : undefined}
         aria-invalid={missing || undefined} aria-required={isRequired(def) || undefined}
         onChange={(e) => setText(e.target.value)} onBlur={(e) => commit(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') commit((e.target as HTMLInputElement).value); }} />
-      {def.min !== undefined && def.max !== undefined && (
+      {def.min !== undefined && def.max !== undefined && !def.noSlider && (
         <input type="range" min={def.min} max={def.max} step={def.step ?? (def.max - def.min) / 200}
           value={shown !== undefined ? Math.min(def.max, Math.max(def.min, shown)) : def.min}
           onChange={(e) => { const v = parseFloat(e.target.value); setText(fmtEdit(v)); onChange(v * scale); }} />

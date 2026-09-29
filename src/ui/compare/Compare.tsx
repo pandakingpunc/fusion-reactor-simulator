@@ -1,14 +1,17 @@
 import { useMemo, useState } from 'react';
 import { METHOD_LABELS, ShotReport } from '../../physics/types';
+import { VerifyBadge } from '../persist/VerifyBadge';
+import { describeReportKey, describeReportValue } from '../report/keys';
 import type { EduKey } from '../../edu/i18n';
 import { MessageKey } from '../../i18n';
 import { SavedShot } from '../state/types';
-import { useT } from '../state/store';
+import { useApp, useT } from '../state/store';
 import { PALETTE, fmtNum } from '../format';
 import { solverFailureTitle } from '../run/TerminationBox';
 import { Explain } from '../edu/Explain';
 import { PowerFlow } from '../edu/PowerFlow';
 import { useEduT } from '../edu/useEduT';
+import { useOpenGlossary } from '../edu/useOpenGlossary';
 import '../edu/edu.css';
 import { ConfigDiff } from './ConfigDiff';
 import { OverlayChart } from './OverlayChart';
@@ -47,6 +50,9 @@ const ROWS: { label: MessageKey | { sym: string }; get: (r: ShotReport, t: Retur
 export function Compare({ shots, onRemove, onLoad }: Props) {
   const t = useT();
   const te = useEduT();
+  const openGlossary = useOpenGlossary();
+  const locale = useApp((s) => s.locale);
+  const [engOpen, setEngOpen] = useState(false);
   const [hidden, setHidden] = useState<ReadonlySet<number>>(new Set());
   const [scale, setScale] = useState<RadarScale>('lin');
   const [channel, setChannel] = useState('');
@@ -63,6 +69,9 @@ export function Compare({ shots, onRemove, onLoad }: Props) {
   const absOk = timeAxisAllowed(shown);
   const axis: TimeAxis = absOk ? axisPref : 'norm';
   const traces = useMemo(() => (chosen ? overlayTraces(shown, chosen.key, axis) : []), [shown, chosen, axis]);
+
+  // the engineering keys of the shots (the union, in the order they first appear): a shot that lacks one shows a dash
+  const engKeys = useMemo(() => { const seen = new Set<string>(); for (const s of shots) for (const k of Object.keys(s.report.engineering)) seen.add(k); return [...seen]; }, [shots]);
 
   const radii = useMemo(() => radarValues(shown.map((s) => s.report), scale), [shown, scale]);
 
@@ -87,6 +96,7 @@ export function Compare({ shots, onRemove, onLoad }: Props) {
               {shots.map((s) => (
                 <th key={s.id}>
                   <div><span className="sw" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: color(s), marginRight: 5 }} />{s.name}</div>
+                  {s.verification && <div style={{ marginTop: 3 }}><VerifyBadge status={s.verification} /></div>}
                   <div className="row" style={{ justifyContent: 'flex-end', gap: 4, marginTop: 3 }}>
                     <button className="btn sm" onClick={() => onLoad(s)} title={t('cmp.loadTitle')}>{t('cmp.load')}</button>
                     <button className="btn sm danger" onClick={() => onRemove(s.id)} title={t('cmp.removeTitle')}>×</button>
@@ -108,7 +118,7 @@ export function Compare({ shots, onRemove, onLoad }: Props) {
               }
               return (
                 <tr key={r}>
-                  <td>{row.term ? <Explain term={row.term}><span>{label}</span></Explain> : label}{row.unit ? <span className="muted small"> [{row.unit}]</span> : ''}</td>
+                  <td>{row.term ? <Explain term={row.term} onOpenGlossary={openGlossary}><span>{label}</span></Explain> : label}{row.unit ? <span className="muted small"> [{row.unit}]</span> : ''}</td>
                   {vals.map((v, i) => (
                     <td key={shots[i].id} className={i === bestIdx ? 'ok' : ''} style={i === bestIdx ? { fontWeight: 600 } : undefined}>
                       {typeof v === 'number' ? fmtNum(v) : v}
@@ -119,6 +129,27 @@ export function Compare({ shots, onRemove, onLoad }: Props) {
             })}
             <tr><td>{t('cmp.warnCount')}</td>{shots.map((s) => <td key={s.id}>{s.report.warnings.length}</td>)}</tr>
             <tr><td>{t('cmp.eventCount')}</td>{shots.map((s) => <td key={s.id}>{s.events.length}</td>)}</tr>
+            {engKeys.length > 0 && (
+              <tr>
+                <td colSpan={shots.length + 1}>
+                  <button type="button" className="btn sm" aria-expanded={engOpen} onClick={() => setEngOpen((o) => !o)}>
+                    {engOpen ? t('cmp.engHide') : t('cmp.engShow', { n: engKeys.length })}
+                  </button>
+                </td>
+              </tr>
+            )}
+            {engOpen && engKeys.map((k) => {
+              const d = describeReportKey(k, locale);
+              return (
+                <tr key={`eng:${k}`} title={k}>
+                  <td>{d.term ? <Explain term={d.term} onOpenGlossary={openGlossary}><span>{d.label}</span></Explain> : d.label}{d.unit ? <span className="muted small"> [{d.unit}]</span> : ''}</td>
+                  {shots.map((s) => {
+                    const v = s.report.engineering[k];
+                    return <td key={s.id}>{v === undefined ? '—' : typeof v === 'number' ? fmtNum(v) : typeof v === 'boolean' ? t(v ? 'common.yes' : 'common.no') : describeReportValue(v, locale)}</td>;
+                  })}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

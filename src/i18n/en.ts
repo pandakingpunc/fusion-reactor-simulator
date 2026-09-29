@@ -62,6 +62,8 @@ export const en = {
   'popcon.error': 'POPCON could not be computed: {msg}',
   'popcon.unavailable': 'The POPCON map needs a web worker, which this browser does not offer.',
   'popcon.selfHeated': 'heats itself',
+  'popcon.edge': 'Divertor edge',
+  'popcon.edgeTitle': 'Add the edge model to the map: the 10 MW/m² line of the peak target heat flux and the attached (10 eV) and detached (2 eV) boundaries; the readout gains P_sep/R, q_peak and T_t',
   'popcon.betaLimit': 'above the β_N limit',
   'popcon.belowLH': 'below the L-H threshold',
   'popcon.aboveGreenwald': 'above the Greenwald density',
@@ -126,6 +128,9 @@ export const en = {
   'field.required': 'Required — enter a value (the run is blocked while it is empty)',
 
   'wiz.steps': 'Setup steps',
+  'wiz.advanced': 'Advanced',
+  'wiz.advancedHint': 'Settings that are safe at their defaults; a value is written to the configuration only when you edit it',
+  'wiz.advancedLoading': 'Loading the advanced settings…',
   'wiz.cfgName': 'Configuration name',
   'wiz.back': '◀ Back',
   'wiz.next': 'Next ▶',
@@ -264,6 +269,15 @@ export const en = {
   'cmp.termination': 'Termination',
   'cmp.warnCount': 'Warning count',
   'cmp.eventCount': 'Event count',
+  'cmp.engShow': 'Show the engineering values ({n})',
+  'cmp.engHide': 'Hide the engineering values',
+
+  // notes of the run: what the model changed in the configuration it was given
+  'note.step': 'ProfileSettings.{key} = {given} {why}: {used}{unit} is used.',
+  'note.step.pos': 'is not a positive number',
+  'note.step.nonneg': 'is not a non-negative number',
+  'note.step.time': 'is not a positive time',
+  'note.step.floor': 'is below the shortest step of {min} s',
 } as const;
 
 export type MessageKey = keyof typeof en;

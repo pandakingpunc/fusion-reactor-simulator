@@ -5,7 +5,7 @@ import { ITER, SPARC, W7X } from '../../physics/presets';
 import { deviceTmax, popconAxes } from '../../worker/popconHost';
 import { canvasRecorder } from '../testing/canvasRecorder';
 import { FrameColumns } from './lod';
-import { MapLayer, POPCON_PAD, PopconView, cellAt, cellColor, contourSegments, drawMap, drawOverlay, drawPopcon, fromPx, heatingContour, inPlot, niceTicks, plotRect, readoutAt, toPx, trajectoryOf } from './popconRender';
+import { DIVERTOR_Q_LIMIT_MWM2, MapLayer, POPCON_PAD, PopconView, cellAt, cellColor, contourSegments, drawMap, drawOverlay, drawPopcon, edgeLimits, fromPx, heatingContour, inPlot, niceTicks, plotRect, readoutAt, toPx, trajectoryOf } from './popconRender';
 
 let iterGrid: PopconGrid, iterView: PopconView;
 beforeAll(() => {
@@ -304,6 +304,44 @@ describe('drawMap / drawOverlay: the map and what moves over it', () => {
     expect(moves[0].args[0]).toBeCloseTo(toPx(iterView, 1e19, 2).x, 9);
     const lines = rec.calls.filter((c) => c.name === 'lineTo');
     expect(lines[0].args[1]).toBeCloseTo(toPx(iterView, 5e19, 9).y, 9);
+  });
+});
+
+describe('the edge maps', () => {
+  let edgeGrid: PopconGrid;
+  beforeAll(() => { edgeGrid = computePopcon(ITER, { nx: 16, ny: 16, Tmax: iterView.Tmax, edge: true }); });
+
+  it('a grid without the edge model has no edge limits and its readout has no edge values', () => {
+    expect(edgeLimits(iterGrid)).toBeNull();
+    expect(readoutAt(iterGrid, ITER, iterView.nMax, iterView.Tmax, iterGrid.n[5], iterGrid.T[5])!.edge).toBeUndefined();
+  });
+
+  it('reads P_sep/R, the peak target heat flux and the target temperature of the cell', () => {
+    const { nMax, Tmax } = iterView;
+    const ro = readoutAt(edgeGrid, ITER, nMax, Tmax, edgeGrid.n[8], edgeGrid.T[9])!;
+    const k = 8 * edgeGrid.ny + 9;
+    expect(ro.edge).toEqual({ PsepR_MWm: edgeGrid.PsepR![k], qPeak_MWm2: edgeGrid.qPeak![k], Tt_eV: edgeGrid.Tt![k] });
+    // the numbers of the model's own edge chain: hotter and denser cells put more power on the target
+    expect(ro.edge!.Tt_eV).toBeGreaterThan(0);
+    expect(ro.edge!.qPeak_MWm2).toBeGreaterThanOrEqual(0);
+  });
+
+  it('draws the 10 MW/m² limit and the attached and detached boundaries, with a legend entry each, and only on a grid that has them', () => {
+    const lim = edgeLimits(edgeGrid)!;
+    expect(lim.map((l) => l.level)).toEqual([DIVERTOR_Q_LIMIT_MWM2, 10, 2]);
+    expect(lim.map((l) => l.label)).toEqual(['q_peak=10', 'T_t=10 eV', 'T_t=2 eV']);
+    const rec = canvasRecorder();
+    drawMap(rec.ctx, edgeGrid, iterView, ITER);
+    const d = rec.lastDraw();
+    expect(d.filter((c) => c.name === 'fillText').map((c) => c.args[0])).toEqual(expect.arrayContaining(['q_peak=10', 'T_t=10 eV', 'T_t=2 eV']));
+    // the limit is a contour of the grid: where the q_peak map crosses 10 MW/m² there are segments, drawn in its colour
+    const seg = contourSegments(edgeGrid, lim[0].value, lim[0].level);
+    expect(seg.length).toBeGreaterThan(0);
+    expect(d.some((c) => c.name === 'stroke' && c.strokeStyle === lim[0].color)).toBe(true);
+    // the map of a grid without the edge maps is the map it was
+    const plain = canvasRecorder();
+    drawMap(plain.ctx, iterGrid, iterView, ITER);
+    expect(plain.lastDraw().some((c) => c.name === 'fillText' && String(c.args[0]).startsWith('T_t='))).toBe(false);
   });
 });
 

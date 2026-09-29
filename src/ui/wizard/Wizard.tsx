@@ -1,10 +1,17 @@
-import React, { useMemo, useState } from 'react';
+import React, { Suspense, lazy, useMemo, useState } from 'react';
 import { Method, ReactorConfig } from '../../physics/types';
 import { Field } from './Field';
-import type { CrossIssue } from './schema';
-import { METHOD_DEFAULT, METHOD_INFO, PRESETS, STEP_IDS, STEP_TITLES, StepId, crossFieldIssues, fieldLabel, fieldVisible, getPath, missingRequired, setPath, stepsFor } from './schema';
+import type { AdvancedStep, CrossIssue } from './schema';
+import { ADVANCED_STEPS, METHOD_DEFAULT, METHOD_INFO, PRESETS, STEP_IDS, STEP_TITLES, StepId, advancedApplies, advancedOverrides, crossFieldIssues, fieldLabel, fieldVisible, getPath, missingRequired, setPath, stepsFor } from './schema';
+import { useWizText } from './wizText';
 import { fmtNum } from '../format';
 import { useT } from '../state/store';
+
+// The Advanced section (systems pulse length, edge model options, 1.5D solver settings) is a chunk of its own, fetched when the section is opened
+const loadAdvanced = () => import('./AdvancedFields');
+const AdvancedFields = lazy(loadAdvanced);
+const AdvancedSummary = lazy(() => loadAdvanced().then((m) => ({ default: m.AdvancedSummary })));
+const isAdvancedStep = (id: string): id is AdvancedStep => (ADVANCED_STEPS as readonly string[]).includes(id);
 
 interface Props {
   cfg: ReactorConfig;
@@ -21,7 +28,10 @@ const MODIFIED_SUFFIX = / \((modified|değiştirildi)\)$/;
 
 export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
   const t = useT();
+  const wt = useWizText();
   const [stepIdx, setStepIdx] = useState(0);
+  // which steps have their Advanced section open (kept while the wizard is on the page)
+  const [advOpen, setAdvOpen] = useState<Readonly<Record<string, boolean>>>({});
   const stepId = STEP_IDS[stepIdx];
   const steps = useMemo(() => stepsFor(cfg.method), [cfg.method]);
   const activePreset = PRESETS.find((p) => p.cfg === cfg)?.id;
@@ -29,7 +39,7 @@ export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
   const missing = useMemo(() => missingRequired(cfg), [cfg]);
   // values that are legal one by one but not together (a ≥ R): the run is blocked as well
   const issues = useMemo(() => crossFieldIssues(cfg), [cfg]);
-  const blocked = missing.length > 0 ? t('wiz.missingBlocked', { fields: missing.map((m) => fieldLabel(m.field, t)).join(', ') })
+  const blocked = missing.length > 0 ? t('wiz.missingBlocked', { fields: missing.map((m) => fieldLabel(m.field, t, wt)).join(', ') })
     : issues.length > 0 ? t('wiz.crossBlocked', { issues: issues.map((i) => t(i.key, i.params)).join(' ') })
     : undefined;
   const goToStep = (id: string) => { const i = STEP_IDS.indexOf(id as StepId); if (i >= 0) setStepIdx(i); };
@@ -66,12 +76,12 @@ export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
           <p className="muted small">{t('wiz.methodNote')}</p>
           {groups.map(([grp, ms]) => (
             <div key={grp} style={{ marginBottom: 12 }}>
-              <h3>{grp}</h3>
+              <h3>{wt(grp)}</h3>
               <div className="method-grid">
                 {ms.map((m) => (
                   <div key={m} className={`method-card ${cfg.method === m ? 'active' : ''}`} onClick={() => pickMethod(m)}>
-                    <div className="name">{METHOD_INFO[m].name}</div>
-                    <div className="desc">{METHOD_INFO[m].desc}</div>
+                    <div className="name">{wt(METHOD_INFO[m].name)}</div>
+                    <div className="desc">{wt(METHOD_INFO[m].desc)}</div>
                   </div>
                 ))}
               </div>
@@ -81,18 +91,31 @@ export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
       );
     }
     if (id === 'run') return <RunSummary cfg={cfg} name={name} onRun={onRun} missing={missing} issues={issues} blocked={blocked} goToStep={goToStep} />;
+    const advanced = isAdvancedStep(id) && advancedApplies(id, cfg.method, cfg) ? id : null;
     const def = steps.find((s) => s.id === id);
     if (!def) return <p className="muted">{t('wiz.noSettingsMethod')}</p>;
     const fields = def.fields.filter((f) => fieldVisible(cfg.method, f.path, cfg));
     return (
       <>
-        <h2>{stepIdx + 1} · {def.title}</h2>
-        {def.note && <p className="muted small">{def.note}</p>}
+        <h2>{stepIdx + 1} · {wt(def.title)}</h2>
+        {def.note && <p className="muted small">{wt(def.note)}</p>}
         <CrossIssues issues={issues.filter((i) => i.step === id)} />
         {fields.length === 0 && !def.note && <p className="muted">{t('wiz.noSettings')}</p>}
         <div className="fields">
           {fields.map((f) => <Field key={f.path} def={f} value={getPath(cfg, f.path) ?? f.def} onChange={(v) => update(f.path, v)} />)}
         </div>
+        {advanced && (
+          <details className="advanced" open={!!advOpen[advanced]} style={{ marginTop: 14 }}>
+            <summary style={{ cursor: 'pointer' }} onClick={(e) => { e.preventDefault(); setAdvOpen((o) => ({ ...o, [advanced]: !o[advanced] })); }}
+              onPointerEnter={() => { void loadAdvanced(); }} onFocus={() => { void loadAdvanced(); }}><b>{t('wiz.advanced')}</b></summary>
+            {advOpen[advanced] && (
+              <>
+                <p className="muted small">{t('wiz.advancedHint')}</p>
+                <Suspense fallback={<div className="muted small">{t('wiz.advancedLoading')}</div>}><AdvancedFields step={advanced} cfg={cfg} update={update} /></Suspense>
+              </>
+            )}
+          </details>
+        )}
       </>
     );
   };
@@ -107,8 +130,8 @@ export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
             const inconsistent = issues.filter((i) => i.step === id);
             return (
               <div key={id} className={`step ${i === stepIdx ? 'active' : ''} ${i < stepIdx ? 'done' : ''}`} onClick={() => setStepIdx(i)}>
-                <span className="idx">{i + 1}</span><span>{STEP_TITLES[id]}</span>
-                {empty.length > 0 && <span className="badge warn" title={t('wiz.missingBlocked', { fields: empty.map((m) => fieldLabel(m.field, t)).join(', ') })}>!</span>}
+                <span className="idx">{i + 1}</span><span>{wt(STEP_TITLES[id])}</span>
+                {empty.length > 0 && <span className="badge warn" title={t('wiz.missingBlocked', { fields: empty.map((m) => fieldLabel(m.field, t, wt)).join(', ') })}>!</span>}
                 {empty.length === 0 && inconsistent.length > 0 && <span className="badge warn" title={t('wiz.crossBlocked', { issues: inconsistent.map((i) => t(i.key, i.params)).join(' ') })}>!</span>}
               </div>
             );
@@ -136,13 +159,13 @@ export function Wizard({ cfg, setCfg, name, setName, onRun }: Props) {
               <div className="row" style={{ justifyContent: 'space-between' }}>
                 <span className="name">{p.name}</span>
                 <span className="row" style={{ gap: 6 }}>
-                  <span className="muted small">{METHOD_INFO[p.cfg.method].name}</span>
+                  <span className="muted small">{wt(METHOD_INFO[p.cfg.method].name)}</span>
                   <button className="btn sm primary" title={t('wiz.runPreset')}
                     onClick={(e) => { e.stopPropagation(); pickPreset(p.id); onRun(p.cfg); }}>▶</button>
                 </span>
               </div>
-              <div className="desc">{p.desc}</div>
-              {p.validation && <div className="val">✓ {p.validation}</div>}
+              <div className="desc">{wt(p.desc)}</div>
+              {p.validation && <div className="val">✓ {wt(p.validation)}</div>}
             </div>
           ))}
         </div>
@@ -185,12 +208,13 @@ interface RunSummaryProps {
 /** Son adım: özet + ÇALIŞTIR */
 function RunSummary({ cfg, name, onRun, missing, issues, blocked, goToStep }: RunSummaryProps) {
   const t = useT();
+  const wt = useWizText();
   const steps = stepsFor(cfg.method);
   return (
     <>
       <h2>6 · {t('wiz.runTitle')}</h2>
       <p className="muted small">
-        <b>{name}</b> — {METHOD_INFO[cfg.method].name}. {t('wiz.runIntro')}
+        <b>{name}</b> — {wt(METHOD_INFO[cfg.method].name)}. {t('wiz.runIntro')}
       </p>
       {missing.length > 0 && (
         <div className="diag-box" role="alert" style={{ margin: '8px 0' }}>
@@ -198,8 +222,8 @@ function RunSummary({ cfg, name, onRun, missing, issues, blocked, goToStep }: Ru
           <ul className="small" style={{ margin: '4px 0 0', paddingLeft: 18 }}>
             {missing.map(({ step, field }) => (
               <li key={field.path}>
-                <a href="#" onClick={(e) => { e.preventDefault(); goToStep(step.id); }}>{fieldLabel(field, t)}</a>
-                <span className="muted"> · {step.title}</span>
+                <a href="#" onClick={(e) => { e.preventDefault(); goToStep(step.id); }}>{fieldLabel(field, t, wt)}</a>
+                <span className="muted"> · {wt(step.title)}</span>
               </li>
             ))}
           </ul>
@@ -214,13 +238,13 @@ function RunSummary({ cfg, name, onRun, missing, issues, blocked, goToStep }: Ru
           if (!fields.length) return null;
           return (
             <div key={s.id} className="panel tight" style={{ background: 'var(--bg2)' }}>
-              <h3>{s.title}</h3>
+              <h3>{wt(s.title)}</h3>
               <table className="kv">
                 <tbody>
                   {fields.map((f) => {
                     const v = getPath(cfg, f.path) ?? f.def;
                     const shown = typeof v === 'number' ? fmtNum(v / (f.scale ?? 1)) : typeof v === 'boolean' ? (v ? t('field.on') : t('field.off')) : v === undefined || v === '' ? '—' : String(v);
-                    return <tr key={f.path}><td>{fieldLabel(f, t)}</td><td className="num">{shown} <span className="muted small">{f.unit ?? ''}</span></td></tr>;
+                    return <tr key={f.path}><td>{fieldLabel(f, t, wt)}</td><td className="num">{shown} <span className="muted small">{f.unit ? wt(f.unit) : ''}</span></td></tr>;
                   })}
                 </tbody>
               </table>
@@ -228,6 +252,7 @@ function RunSummary({ cfg, name, onRun, missing, issues, blocked, goToStep }: Ru
           );
         })}
       </div>
+      {advancedOverrides(cfg).length > 0 && <Suspense fallback={null}><AdvancedSummary cfg={cfg} /></Suspense>}
     </>
   );
 }

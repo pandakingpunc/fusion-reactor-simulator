@@ -31,8 +31,12 @@ export const DEFAULT_POPCON_STAGES: readonly PopconStage[] = [
 ];
 
 export type ToPopcon =
-  /** start a job; it replaces the one in progress */
-  | { type: 'compute'; job: number; cfg: MagneticConfig; stages: readonly PopconStage[] }
+  /**
+   * start a job; it replaces the one in progress. `edge` (optional, default false; an old page that does not send it gets the map
+   * as before) adds the edge model's maps to every grid of the job: P_sep/R, the peak target heat flux and the target T_e
+   * (`PopconGrid.PsepR`, `qPeak`, `Tt`; tokamaks and spherical tokamaks only, a stellarator's grid has none)
+   */
+  | { type: 'compute'; job: number; cfg: MagneticConfig; stages: readonly PopconStage[]; edge?: boolean }
   /** drop the job in progress (nothing is posted for it any more) */
   | { type: 'cancel' };
 

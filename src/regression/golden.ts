@@ -32,7 +32,7 @@ import { Simulation } from '../physics/simulation';
 import { ProfileModel, supportsProfiles } from '../physics/profiles/model';
 import { flatTopAverages } from '../physics/analysis/flatTop';
 import type { FuelType } from '../physics/reactivity';
-import type { EqSnapshot, Fidelity, HistoryFrame, MagneticConfig, ReactorConfig, ShotReport } from '../physics/types';
+import type { EqSnapshot, Fidelity, HistoryFrame, MagneticConfig, ProfileSettings, ReactorConfig, ShotReport } from '../physics/types';
 
 /** 2: + meta.fuel, history, geometry, profiles, equilibrium (a format change: schema-1 values are unchanged) */
 export const GOLDEN_SCHEMA = 2;
@@ -53,7 +53,7 @@ export interface GoldenCase {
    * Settings changed from the preset, for combinations no preset uses (the wizard offers every
    * fuel for every method and 1.5D for both tokamak methods). Plain data: cases go to workers.
    */
-  overrides?: { fuel?: FuelType; fidelity?: Fidelity; n_target?: number };
+  overrides?: { fuel?: FuelType; fidelity?: Fidelity; n_target?: number; profiles?: Partial<ProfileSettings> };
 }
 
 /**
@@ -99,6 +99,11 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
   { id: 'MASTU15', preset: 'MASTU', overrides: { fidelity: '1.5D' } },
   { id: 'TAE-pB11', preset: 'TAE', overrides: { fuel: 'pB11' } },
   { id: 'MIRROR-DHe3', preset: 'MIRROR', overrides: { fuel: 'DHe3' } },
+  // the opt-in physics of WS6d, one short case each: fast-ion energy fields with the delayed heating and NBCD (Start and Cordey); ECCD (Lin-Liu et al.)
+  // with NBCD on a DIII-D plasma; the Porcelli trigger with the helical-flux reset on the MAST-U plasma that sawteeth early
+  { id: 'JET15-fast', preset: 'JET15', tEnd: 1.5, overrides: { profiles: { fastIonModel: 'profile', cdModel: 'physics' } } },
+  { id: 'DIIID15-eccd', preset: 'DIIID', tEnd: 1.5, overrides: { fidelity: '1.5D', profiles: { cdModel: 'physics', eccd: { rho: 0.35, nPar: 0.35 } } } },
+  { id: 'MASTU15-saw', preset: 'MASTU', tEnd: 0.5, overrides: { fidelity: '1.5D', profiles: { sawtoothTrigger: 'porcelli', sawtoothReconnection: 'kadomtsev' } } },
 ];
 
 /** Quick cases compared by `npm test` (0D magnetic, two pulsed models, short 1.5D). */
@@ -138,6 +143,10 @@ export function caseConfig(c: GoldenCase): ReactorConfig {
   if (o.n_target !== undefined) {
     if (!('n_target' in cfg)) throw new Error(`golden case ${c.id}: preset ${c.preset} (${cfg.method}) has no n_target setting`);
     cfg = { ...cfg, n_target: o.n_target } as ReactorConfig;
+  }
+  if (o.profiles !== undefined) {
+    if (!runsProfiles(cfg)) throw new Error(`golden case ${c.id}: profile settings need a 1.5D magnetic configuration`);
+    cfg = { ...cfg, profiles: { ...(cfg as MagneticConfig).profiles, ...o.profiles } } as ReactorConfig;
   }
   if (c.tEnd === undefined) return cfg;
   if (!('t_end' in cfg)) throw new Error(`golden case ${c.id}: preset ${c.preset} (${cfg.method}) has no t_end to shorten`);

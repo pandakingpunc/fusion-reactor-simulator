@@ -8,7 +8,6 @@ import { Simulation } from '../../simulation';
 import { JET_15D } from '../../presets';
 import type { MagneticConfig, ReactorConfig } from '../../types';
 import { composition } from '../composition';
-import type { ProfileContext } from '../context';
 import { ProfileModel } from '../model';
 import { currentProfiles } from '../qprofile';
 import { marginOfTerms, PORCELLI, porcelliMargin, porcelliTerms, type PorcelliTerms } from './porcelli';
@@ -48,7 +47,7 @@ describe('the constants and definitions of the paper', () => {
   });
 
   it('τ_A = R √3/v_A, ρ̂ = ρ_i/r̄_1 and τ_R agree with their SI definitions (Alfvén speed of the ions at n_e0, thermal Larmor radius, Spitzer resistivity)', () => {
-    const { ctx, st, g, terms } = state();
+    const { st, g, terms } = state();
     const t = terms()!;
     const fa = JET_15D.fuelFracA ?? 0.5;
     const A = fa * 2.014 + (1 - fa) * 3.016;
@@ -67,7 +66,7 @@ describe('the constants and definitions of the paper', () => {
   });
 
   it('the geometry of the q = 1 surface: r_1 the half-width, κ_1 the elongation of the surface, r̄_1 = √κ_1 r_1, ε_1 = r̄_1/R, s_1 = ρ q′/q', () => {
-    const { g, terms, sc } = state({}, 0.8, 2.5);
+    const { g, terms } = state({}, 0.8, 2.5);
     const t = terms()!;
     // q = 0.8 + 2.5 ρ̂² = 1 at ρ̂ = 0.2828
     expect(Math.abs(t.rho1 - Math.sqrt(0.08))).toBeLessThan(2e-3);
@@ -80,7 +79,6 @@ describe('the constants and definitions of the paper', () => {
     // s_1 of q = 0.8 + 2.5ρ²: 5 ρ²/q = 0.4/1.0
     expect(Math.abs(t.s1 - 0.4)).toBeLessThan(0.02);
     expect(t.sNorm).toBeCloseTo(Math.sqrt(t.s1 ** 2 + 0.01), 12);
-    void sc;
   });
 });
 

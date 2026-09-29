@@ -11,6 +11,7 @@ import { beamComponents } from './components';
 import type { ProfileModel } from '../model';
 import { volumeIntegral } from '../sources/deposition';
 import { ProfileModel as PM } from '../model';
+import { elmMargin, triggerScratch } from '../events/triggers';
 
 const rel = (a: number, b: number) => Math.abs(a - b) / Math.max(Math.abs(b), 1e-300);
 
@@ -141,14 +142,39 @@ describe('FastIonProfile: pressure, the equilibrium table and the remap at a geo
   });
 });
 
+describe('the fast pressure in the ballooning drive and in the pressure table, not in the bootstrap current', () => {
+  it('a steep fast-ion pressure at the pedestal raises alpha_ped and the ELM trigger margin; the bootstrap current and w.p stay thermal', () => {
+    const at = (edgeFast: number) => {
+      const m = new PM(profileCfg(0.2));
+      const y = m.initialState();
+      const ctx = m.ctx, st = ctx.view(y), g = ctx.tg, N = ctx.N;
+      g.rhoC.forEach((r, i) => { st.Te[i] = 0.5 + 6 * (1 - r * r); st.Ti[i] = st.Te[i]; st.ne[i] = 5e19; });
+      ctx.hmode = true;
+      const f = ctx.fast!;
+      g.rhoC.forEach((r, i) => { f.beam[0].W[i] = edgeFast * (r > 0.9 ? 1 - 2 * (r - 0.9) / 0.1 * 0.5 : 0.2 + 0.8 * (r / 0.9) ** 6); });
+      f.updatePressure();
+      const d = m.diagnostics(0, y);
+      const rat = new Float64Array(N).fill(1);
+      const margin = elmMargin(ctx, { Te: st.Te, Ti: st.Ti, ne: st.ne, psi: st.psi, niOverNe: rat, Ip: st.s.Ip }, triggerScratch(N));
+      return { alpha: d.alpha_ped, margin, p: Float64Array.from(ctx.w.p), jbs: Float64Array.from(ctx.w.jbsB) };
+    };
+    const none = at(0), some = at(3e4);
+    expect(some.alpha).toBeGreaterThan(none.alpha);
+    expect(some.margin).toBeGreaterThan(none.margin);
+    // the thermal pressure array and the bootstrap current do not see the fast ions
+    expect(Array.from(some.p)).toEqual(Array.from(none.p));
+    expect(Array.from(some.jbs)).toEqual(Array.from(none.jbs));
+  });
+});
+
 describe('the fast-ion fields in a JET15 shot (fastIonModel "profile")', () => {
   it('every accepted step closes the energy ledger to 1e-10 and delivers what the heat equation received; the content is the energy born minus the energy delivered', () => {
-    const m = new PM(profileCfg(0.8));
+    const m = new PM(profileCfg(0.7));
     const y = m.initialState();
     m.diagnostics(0, y);
     const ctx = m.ctx, fast = ctx.fast!;
     expect(fast).toBeTruthy();
-    let bornB = 0, delB = 0, bornA = 0, delA = 0, steps = 0, worst = 0, worstHeat = 0, tPrev = 0;
+    let bornB = 0, delB = 0, bornA = 0, delA = 0, steps = 0, worst = 0, worstHeat = 0, tPrev = 0, worstResid = 0;
     const check = m.coupling.check.bind(m.coupling);
     m.coupling.check = (c, t, yy, update) => {
       const dt = t - tPrev; tPrev = t;
@@ -160,6 +186,8 @@ describe('the fast-ion fields in a JET15 shot (fastIonModel "profile")', () => {
       const ha = (volumeIntegral(g, w.PaE) + volumeIntegral(g, w.PaI)) * dt;
       worstHeat = Math.max(worstHeat, rel(hb, beam.delivered), Math.abs(ha - alpha.delivered) / Math.max(alpha.birth, 1));
       bornB += beam.birth; delB += beam.delivered; bornA += alpha.birth; delA += alpha.delivered; steps++;
+      // the TR-BDF2 energy identity of the step with the delayed heating (P_heat is the delivered heating in this model)
+      if (dt > 1e-4) worstResid = Math.max(worstResid, Math.abs(m.stepper.energyResidual));
       // the contents of the shared context are the integrals of the fields; the pressure is 2/3 of the energy density
       const ct = fast.contents(g.dV);
       expect(rel(c.WfBeam, ct.beam)).toBeLessThan(1e-13);
@@ -169,10 +197,11 @@ describe('the fast-ion fields in a JET15 shot (fastIonModel "profile")', () => {
       return check(c, t, yy, update);
     };
     let t = 0;
-    while (t < 0.8 - 1e-9 && !m.terminated) { const t0 = t; t = m.step(t, y, 0.8); m.postStep(t, t - t0, y); }
+    while (t < 0.7 - 1e-9 && !m.terminated) { const t0 = t; t = m.step(t, y, 0.7); m.postStep(t, t - t0, y); }
     expect(steps).toBeGreaterThan(100);
     expect(worst).toBeLessThan(1e-10);
     expect(worstHeat).toBeLessThan(1e-9);
+    expect(worstResid).toBeLessThan(1e-3);
     // the content is what was born and not delivered (cumulative), to 1e-10 of the birth
     const c = fast.contents(ctx.tg.dV);
     expect(Math.abs(bornB - delB - c.beam)).toBeLessThan(1e-10 * bornB);
@@ -216,10 +245,10 @@ describe('the fast-ion fields in a JET15 shot (fastIonModel "profile")', () => {
   }, 120000);
 
   it('a rewind to a frame with a filled field and a replay from it is bitwise identical (the fields are in the checkpoint)', () => {
-    const cfg = profileCfg(0.6);
+    const cfg = profileCfg(0.5);
     const ref = new Simulation(cfg);
     ref.runAll();
-    const idx = ref.history.findIndex((h) => h.t > 0.2);
+    const idx = ref.history.findIndex((h) => h.t > 0.15);
     expect(idx).toBeGreaterThan(3);
     expect(ref.history[idx].d.W_beam).toBeGreaterThan(0.1);
     const sim = new Simulation(cfg);

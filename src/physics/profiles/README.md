@@ -27,7 +27,9 @@ current equilibrium and transport geometry, work arrays, plasma and controller s
 | `control/` | heating (with the ignition-test ramp-down) and density programmes, the plasma-current programme I_p(t) (`plasmaCurrent.ts`), fueling feedback, loss power P_L, τ_E scaling and the C_χ controller |
 | `solver/` | `pipeline.ts` (evaluation order), `coupledStep.ts` (the TR-BDF2 step: the stage solver, error control, event localisation, failures), `newtonStage.ts` (Newton–Raphson on a stage; the block-tridiagonal LU, the coloured Jacobian and the damped Newton iteration are `numerics/blockTridiagN.ts` and `numerics/newton.ts`), `trbdf2.ts` (method constants, error estimate, controller), `localise.ts` (dense output and event crossing), `acceptStep.ts` (update after an accepted step) |
 | `coupling/equilibrium.ts` | Grad–Shafranov coupling: initial solve (guarded, `eqguard.ts`), update policy, the update as a self-consistent solve (`coupling/outer.ts`: outer iteration of the tables on the equilibrium's own surfaces; `coupling/tables.ts`: node and table helpers); a geometry that replaces another one is built on the radial grid of the one it replaces |
-| `events/` | `EventModel` plug-ins: `LH`, `ELM`, `sawtooth`, `NTM`, `burn`, `warnings`, `disruption`; `triggers.ts` (the margins of the ELM and sawtooth thresholds the stepper localises) |
+| `events/` | `EventModel` plug-ins: `LH`, `ELM`, `sawtooth`, `NTM`, `burn`, `warnings`, `disruption`; `triggers.ts` (the margins of the ELM and sawtooth thresholds the stepper localises); `porcelli.ts` (the trigger of Porcelli, Boucher and Rosenbluth), `kadomtsev.ts` (the helical-flux-conserving ψ reset) |
+| `fastions/` | the fast-ion energy fields of `fastIonModel: 'profile'`: `pool.ts` (fields, exact update, energy ledger, pressure, remap), `orbit.ts` (the orbit-width kernel), `source.ts` (`FastIonSource`), `beamTarget.ts`, `slowingDown.ts` (the steady slowing-down distribution and its moments) |
+| `cd/` | `cdModel: 'physics'`: `nbcd.ts` (neutral-beam current drive, Start and Cordey), `eccd.ts` (the efficiency of Lin-Liu, Chan and Prater), `eccdSource.ts` (the ECRH layer and its current, the launcher) |
 | `diagnostics.ts` | time traces (`PROFILE_DIAGS` are the ones the UI shows), profiles, power totals |
 | `checkpoint.ts` | `Checkpointable` and the checkpoint store (rewind) |
 
@@ -354,6 +356,51 @@ on a shot they can both run (`lossPower.test.ts`, `ignition.test.ts`, `fastIons.
   content that jumped to W_ss at once was 4.6 times the injected energy in a JET15 shot with a 500 keV beam and ended
   it in a spurious Troyon-limit disruption.
 
+## Fast ions, current drive and sawteeth (opt-in physics of WS6d)
+
+Everything here is off by default: the golden files of the presets do not move.
+
+**Fast-ion energy fields** (`ProfileSettings.fastIonModel: 'profile'`, `fastions/`). One field w(ρ) [J m⁻³] per beam energy component (`beamComponents`: 1, 1/2, 1/3 of
+E_b for a positive-ion beam) and one for the charged fusion products, in place of the two scalar pools. Each follows the pool equation of every cell,
+dw/dt = S − w/τ_W, with S the birth power of the source smoothed over the orbit width (`orbit.ts`: a Gaussian of rms 0.5 q ρ_L/a × `fastOrbitScale` in the
+poloidal plane, seen from the axis as a Bessel kernel, energy conserving, no first-orbit loss) and τ_W the Stix energy time of the local plasma. The update is
+the exact one for constant S and τ over the step, w′ = w + (S τ − w)(1 − e^{−Δt/τ}), and the heating that the heat equation takes over the same step is the
+average of the delivery, h̄ = a S + b w (`PoolField.coefficients`), linear in the source of the Picard iterate, so that the energy that leaves a field is
+exactly the energy the plasma receives: `FastIonProfile.lastStep` closes, birth − delivered = change of the content, to round-off at every accepted step
+(`fastions/pool.test.ts`, 1e-10 asserted). The heating is delayed by the slowing-down time and deposited where the ions slow down. The fast pressure
+(2/3) Σ w enters β, the pressure table of the Grad–Shafranov update (smoothed over 1.5 grid spacings of the solver: a beam that deposits on the axis has
+structure the fixed-boundary solver does not resolve) and the ballooning drive (α_ped, the ELM trigger, the stability profiles); not the bootstrap current
+(the thermal pressure gradient) nor the NTM drive. The beam-target rate follows the fields (n_f = w τ_th/(E τ_W)); the deposition chord is smoothed by the
+beam width only (0.05 instead of the legacy 0.08, which stood for the orbit width too). At an equilibrium adoption the energy of a cell is kept
+(`FastIonProfile.remap`: w ΔV is conserved, the thermal profiles are densities and jump with V′); the fields are in the checkpoint; a disruption clears them.
+The moments of the steady distribution (`slowingDown.ts`: n, W, P_i, P_e, the parallel flow of the Gaffey distribution with the pitch-angle scattering on the
+ions, Ẑ = Z_eff/(A_f ionSum)) are verified against brute-force quadrature of the distribution itself to 1e-8 (the lane target is 1e-4).
+
+**Current drive** (`cdModel: 'physics'`, `cd/`). *NBCD* (`nbcd.ts`): the current of the fast ions of each energy component is the parallel flow of the
+Gaffey distribution, J_f = e Z_b S τ_s v_b ξ_b I(y_c, Ẑ) (ξ_b the birth pitch R_tan⟨1/R⟩ along the chord, `NbiChord.deposit`'s pitch output), and the net current
+is J_NB = [1 − (Z_b/Z_eff)(1 − G(Z_eff, ε))] J_f with the trapped-electron correction G = (1.55 + 0.85/Z)√ε − (0.20 + 1.55/Z) ε of Start and Cordey, Phys.
+Fluids 23 (1980) 1477 (the fit of Mikkelsen and Singer). With the 'profile' fast-ion model S is the rate w/(E τ_W) at which a field gives its ions to the plasma:
+the current builds up and decays with the ions. The legacy γ scaling of `sources/nbi.ts` is not applied. ITER (33 MW, 1 MeV, n̄ = 1e20, T_e0 18 keV) gives γ_NB = 0.39 × 10²⁰ A W⁻¹ m⁻²
+(literature 0.2–0.4), 0.50 at T_e0 = 25 keV; a JET-size 29 MW beam at 110 keV drives 0.8–1.3 MA at n̄ = 0.6e20 with `nbiRtan` = 0.9–0.55 (the current scales with the
+pitch: the presets' tangency radius is one value for all machines). *ECCD* (`eccd.ts`, `eccdSource.ts`): the linear response of Lin-Liu, Chan and Prater, Phys.
+Plasmas 10 (2003) 4064 (equations 10-43 and appendix A: relativistic Fisch high-velocity collision model, response function F(u) H(λ) with the trapped-particle
+function of the circular model equilibrium, integral over the resonance curve), ⟨j∥⟩ = 2π ζ* T_e Q/(32.74 n_20), for the launcher `ProfileSettings.eccd`
+(harmonic, n∥ with the sign of the driven current, θ_p of the absorption, aim and width of the layer, optionally the frequency, from which y = ℓ ω_c/ω follows at
+every cell; without it y is the one whose resonance curve starts at u∥ = u_e). The power is deposited in the source's own Gaussian layer (full single-pass
+absorption, no ray tracing). The curves of Fig. 1 of the paper are reproduced to about 0.02 in ζ (`cd/eccd.test.ts`). The preprint prints √(2ε(1 + ε)) under the second root
+of A.13; the closed form of the integral has 1 − ε (checked against the average over θ_p), which is used. New diagnostics I_nbcd, I_eccd [MA] (only in this mode); f_cd is
+their sum over I_p.
+
+**Sawteeth** (`sawtoothTrigger: 'porcelli'`, `sawtoothReconnection: 'kadomtsev'`, `events/`). The trigger is the three conditions (13)-(15) of Porcelli, Boucher and
+Rosenbluth, Plasma Phys. Control. Fusion 38 (1996) 2163 in the form and with the definitions of the NTCC module of Bateman and Nguyen (header of `porcelli.ts`); it is a function of the profiles of
+the state, the configuration and the fast-ion state of the last accepted step (never the work arrays: the stepper evaluates the margin inside an attempt), and it is the margin
+the stepper localises the crash with. (13) is evaluated only where fast ions exist at q = 1. The reconnection (`kadomtsev.ts`) conserves the helical flux ψ − Φ/2π: the surfaces of equal helical flux on the two
+sides of q = 1 join with their volumes added, q > 1 in the mixed region with q → 1 on the axis, ψ continuous at the mixing radius (the slope jumps there: a current
+sheet). Temperatures and density are flattened as before (conserving particles and the electron and ion energy). Full reconnection leaves q₀ ≈ 1.00: the period is that
+of the q profile returning below 1 and of the conditions, not a partial-reconnection q₀ (Porcelli's incomplete reconnection is not modelled). JET15 has no q = 1 surface in its 5.5 s (q₀ ≥ 1.23: q₀ rises to 4.5 in the first second, the
+cold-start current profile is hollowed while the core heats and is driven, and relaxes at the resistive time); in 14 s q₀ reaches 1 at about 9 s and the shear trigger crashes every 1.0-1.3 s, the Porcelli trigger with the
+helical-flux reset every 2.4 s (two crashes, at 11.0 and 13.4 s). MAST-U 1.5D crashes every 50 ms with the shear trigger (the refractory time) and every 60-80 ms with the Porcelli trigger.
+
 ## Plug-in interfaces
 
 `new ProfileModel(cfg, { transport?, sources?, events? })` replaces the transport model or the
@@ -483,7 +530,9 @@ model take part as soon as they implement the hooks; other parts are listed in
   too small by 5e-4 and 1.2e-2 at ψ_N = 0.96).
 - The charged fusion products and the NBI ions heat instantaneously and locally (the 0D model delays the heating with
   the same pools); only their pressure follows the pool dynamics above, with no fast-ion transport or loss. The pool
-  is scalar: its τ_W is the source-weighted mean over the cells, not a profile.
+  is scalar: its τ_W is the source-weighted mean over the cells, not a profile. (`fastIonModel: 'profile'` delays the heating and smooths the
+  source over the orbit width; still no fast-ion transport, loss, anisotropy or instabilities: the beam ion density of JET15 is 16 % of the ions on the axis against the 6-10 % of the
+  TRANSP analysis of Štancar et al., Nucl. Fusion 63 (2023) 126058, and the beam-target power of the T-rich case 1.8-2 times theirs.)
 - `'cgm'` is uncalibrated; its outermost face uses the gradient between the last two cells, not
   the one to the separatrix value. The ITER15 ramp-up takes about 3 to 4 s per 10 s of discharge (JET-size machines are
   slower: the steps are shorter). Its stages are solved by Newton, which is about 1.3 to 1.5 times the cost of Picard with Anderson
@@ -517,6 +566,9 @@ model take part as soon as they implement the hooks; other parts are listed in
 | `sources/sources.test.ts` | NBI chord cache vs direct deposition, beam-target table vs the integral |
 | `sources/fusion.test.ts` | reaction rates, burn-up, ash, beam-target rates and charged-product heating per channel against independent evaluations, for every fuel |
 | `lossPower.test.ts` | core radiation, the loss power P_L, the scaling-mode τ_E and C_χ target at P_L (exact, every step), the smoothed dW/dt with the ELM losses (with a replay from an ELM frame), the L–H threshold with the low-density branch, one stored energy |
+| `fastions/*.test.ts` | the slowing-down moments against brute-force quadrature, the orbit kernel (conservation, identity, no axis cusp, the Bessel function), the field update and its ledger (1e-10 per step against the heat equation), the pressure table, the remap, the checkpoint and a bitwise rewind, the default of the scalar pools |
+| `cd/*.test.ts` | the shielding factor and the fast-ion current (against the moment of the distribution), the birth pitch, NBCD in a model, the surface averages and the response function of Lin-Liu et al. (A.5-A.13, 31-34), ζ* against an independent straight-field evaluation, Taguchi's Z_eff dependence and Fig. 1 of the paper, the ECCD source (deposition, direction, linearity, figure of merit) |
+| `events/kadomtsev.test.ts`, `events/porcelli.test.ts` | the helical-flux reset against the analytic q profile (pairing of surfaces, continuity, q > 1); the terms and definitions of the Porcelli trigger against SI values, the critical shear, the purity of the margin, a running model (crash times, q after the crash, bitwise replay) |
 | `ignition.test.ts` | ignition and the ignition test (`heating.autoOff`) on an ITER15 shot, with replays from before and inside the ramp |
 | `fastIons.test.ts` | fast-ion pressure in β, β_N,th, the steady content per cell; the pools: exact relaxation, W ≤ ∫P dt after every step, JET15 with 300 and 500 keV beams to their scheduled end, decay after the beam is off, replay from a start-up frame, disruption |
 | `checkpoint.test.ts` | the checkpoint contract: key collisions, numeric records, restore from a record with missing keys |

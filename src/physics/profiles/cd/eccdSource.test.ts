@@ -3,6 +3,7 @@
  * given frequency, and the figure of merit ζ = 32.7 n_20 R I/(T_keV P) of the current it drives.
  */
 import { describe, expect, it } from 'vitest';
+import { validateConfig } from '../../config/schema';
 import { DIIID } from '../../presets';
 import type { MagneticConfig } from '../../types';
 import { ProfileModel } from '../model';
@@ -110,5 +111,22 @@ describe('the ECCD source', () => {
     const far = evaluated(diiid({ eccd: { rho: 0.4, freq_GHz: 40, nPar: 0.3 } }));
     expect(far.I(far.m.ctx.cdParts!.eccd)).toBe(0);
     expect(Math.abs(near.I(near.m.ctx.cdParts!.eccd))).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('the configuration of the physics models (config schema)', () => {
+  const issues = (profiles: object) => validateConfig({ ...DIIID, fidelity: '1.5D', profiles }).issues.map((i) => `${i.path}: ${i.code}`);
+
+  it('accepts the launcher, the current-drive, sawtooth and fast-ion options', () => {
+    expect(issues({ cdModel: 'physics', eccd: { harmonic: 2, freq_GHz: 110, nPar: -0.3, thetaP_deg: 20, rho: 0.4, width: 0.05 }, sawtoothTrigger: 'porcelli', sawtoothReconnection: 'kadomtsev', fastIonModel: 'profile', fastOrbitScale: 0.5 })).toEqual([]);
+  });
+
+  it('refuses a harmonic outside 1-3, a parallel index of magnitude 1 or more, an unknown model and an aim outside the plasma', () => {
+    expect(issues({ eccd: { harmonic: 4 } })).toEqual(['profiles.eccd.harmonic: range']);
+    expect(issues({ eccd: { nPar: 1.2 } })).toEqual(['profiles.eccd.nPar: range']);
+    expect(issues({ eccd: { rho: 1 } })).toEqual(['profiles.eccd.rho: range']);
+    expect(issues({ cdModel: 'exact' })).toEqual(['profiles.cdModel: enum']);
+    expect(issues({ sawtoothTrigger: 'kadomtsev' })).toEqual(['profiles.sawtoothTrigger: enum']);
+    expect(issues({ sawtoothReconnection: 'porcelli' })).toEqual(['profiles.sawtoothReconnection: enum']);
   });
 });

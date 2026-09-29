@@ -709,6 +709,17 @@ export class MagneticModel implements SimModel {
 
     if (this.phase === 'normal') {
       // ---- L-H transition (Martin threshold, with P_L = P_heat − P_rad,core − dW/dt; hysteresis 0.7) ----
+      // Near the threshold the outcome is NOT monotonic in the density, and that is the physics of the inputs, not a bug (ws2d; DIII-D at
+      // 2 MA with 1 MW of beam and no other heating: H-mode fraction 0 at 0.6e20, 0.63 at 0.9e20, 0.68 at 0.3e20 in v4.0-2A). P_L holds the
+      // ohmic power (Martin 2008: P_loss = P_OHM + P_aux − dW/dt), and I_p²η(T_e) grows with the density at fixed current: the plasma cools
+      // (T_e 1.4 keV at 0.45e20, 0.57 keV at 0.7e20) and P_oh goes from 0.75 to 2.7 MW. With no heating the ratio P_L/P_LH therefore RISES
+      // with the density (0.74 at 0.3e20, 0.91 at 1.0e20), while the heated part of P_L against P_LH ∝ n̄^0.717 falls (8 MW: 4.6 to 2.2);
+      // with 1 MW the two add up to a U-shaped ratio that stays within 0.6 % of 1 from 0.5 to 0.8e20 (a coincidence of the exponents: the
+      // ohmic balance rises about as n̄^0.7). A run there is decided by a margin of half a percent and by the timing of the discrete steps
+      // (a 3 s and a 6 s run of the same shot can differ), and above it the plasma dithers: W rises in H-mode, dW/dt in P_L lowers the loss
+      // power below 0.7 P_LH and it falls back (15 L-H-L cycles in 6 s at 0.9e20, the near-threshold dithering of real plasmas). The
+      // Ryter low-density branch acts only in the ramp (n̄ starts at 0.3 of the set-point, below n̄_min = 3.0e19 for DIII-D) and delays the
+      // first transition. With a margin (0 MW or 8 MW) the outcome is monotonic in the density (regress/lhMarginal.test.ts).
       if (!this.isStell) {
         const P_L = dg.P_loss;
         if (!this.hmode && P_L > dg.P_LH && t > 0.05) {

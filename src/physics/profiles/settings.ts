@@ -14,6 +14,7 @@
  */
 import type { ProfileSettings } from '../types';
 import { DEFAULT_PROFILE_SETTINGS } from './defaults';
+import { KBM_COEFFICIENT, PB_DENSITY_EXPONENT, PB_GRADIENT } from './pedestal/eped1';
 
 /** shortest Δt the step control proposes [s]; a step limit below it is raised to it (the controller keeps Δt between the two) */
 export const STEP_DT_MIN = 1e-6;
@@ -44,10 +45,10 @@ export function checkProfileSettings(ps: ProfileSettings): { ps: ProfileSettings
   }
   if (ps.pedestalModel === 'eped1') {
     const positive = (v: unknown) => v === undefined || (isNumber(v) && v > 0);
-    if (!positive(ps.pedPbGradient)) replace('pedPbGradient', DEFAULT_PROFILE_SETTINGS.pedPbGradient!, 'is not a positive number');
-    if (!positive(ps.pedKbmCoefficient)) replace('pedKbmCoefficient', DEFAULT_PROFILE_SETTINGS.pedKbmCoefficient!, 'is not a positive number');
+    if (!positive(ps.pedPbGradient)) replace('pedPbGradient', PB_GRADIENT, 'is not a positive number');
+    if (!positive(ps.pedKbmCoefficient)) replace('pedKbmCoefficient', KBM_COEFFICIENT, 'is not a positive number');
     if (ps.pedDensityExponent !== undefined && !(isNumber(ps.pedDensityExponent) && ps.pedDensityExponent >= 0)) {
-      replace('pedDensityExponent', DEFAULT_PROFILE_SETTINGS.pedDensityExponent!, 'is not a non-negative number');
+      replace('pedDensityExponent', PB_DENSITY_EXPONENT, 'is not a non-negative number');
     }
   }
   return { ps: out, notes };

@@ -253,8 +253,9 @@ function shot(cfg: MagneticConfig) {
 
 describe('the pedestal model is opt-in: the default settings leave the pedestal alone', () => {
   it('no pedestal model, the width and the barrier of the settings, and no ped_ diagnostics', () => {
-    expect(DEFAULT_PROFILE_SETTINGS.pedestalModel).toBe('fixed');
-    expect(DEFAULT_PROFILE_SETTINGS.elmLoss).toBe('fixed');
+    // absent from the defaults (the UI reads them and the main chunk must not grow): an unset setting is the fixed pedestal and the fixed ELM size
+    expect(DEFAULT_PROFILE_SETTINGS.pedestalModel).toBeUndefined();
+    expect(DEFAULT_PROFILE_SETTINGS.elmLoss).toBeUndefined();
     const { ctx, d0 } = shot(jet({}, 0.2));
     expect(ctx.ped).toBeNull();
     expect(ctx.pedWidth).toBe(ctx.ps.pedestalWidth);
@@ -579,7 +580,7 @@ describe('settings of the pedestal model that are outside their domain are repla
   it.each([[0], [-2], [NaN], [Infinity]])('pedPbGradient and pedKbmCoefficient = %s', (bad) => {
     for (const key of ['pedPbGradient', 'pedKbmCoefficient'] as const) {
       const r = checkProfileSettings({ ...base, [key]: bad });
-      expect(r.ps[key]).toBe(DEFAULT_PROFILE_SETTINGS[key]);
+      expect(r.ps[key]).toBe(key === 'pedPbGradient' ? PB_GRADIENT : KBM_COEFFICIENT);
       expect(r.notes).toHaveLength(1);
       expect(r.notes[0].message).toContain(`ProfileSettings.${key}`);
     }
@@ -587,7 +588,7 @@ describe('settings of the pedestal model that are outside their domain are repla
 
   it.each([[-0.1], [NaN], [Infinity]])('pedDensityExponent = %s', (bad) => {
     const r = checkProfileSettings({ ...base, pedDensityExponent: bad });
-    expect(r.ps.pedDensityExponent).toBe(DEFAULT_PROFILE_SETTINGS.pedDensityExponent);
+    expect(r.ps.pedDensityExponent).toBe(PB_DENSITY_EXPONENT);
     expect(r.notes).toHaveLength(1);
   });
 
@@ -595,6 +596,14 @@ describe('settings of the pedestal model that are outside their domain are repla
     const { m } = shot(jet({ ...EPED, pedPbGradient: 0 }, 0.2));
     expect(m.ctx.ps.pedPbGradient).toBe(PB_GRADIENT);
     expect(m.ctx.ped!.options.pbGradient).toBe(PB_GRADIENT);
+  });
+
+  it('an unset number is the constant of eped1.ts: the shot of the defaults has the published pedestal', () => {
+    const { m } = shot(jet(EPED, 0.2));
+    expect(m.ctx.ps.pedPbGradient).toBeUndefined();
+    expect(m.ctx.ped!.options).toEqual({ pbGradient: undefined, kbmCoefficient: undefined, densityExponent: undefined });
+    // at the reference density the pedestal of those options is the one of the published constants
+    expect(solveEped1(m.ctx.ped!.options).width).toBeCloseTo(0.076 * 0.076 * PB_GRADIENT, 12);
   });
 });
 

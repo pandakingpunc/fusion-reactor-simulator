@@ -3,6 +3,7 @@ import { SimEvent } from '../../physics/types';
 import { UiFrame } from '../../worker/protocol';
 import { fmtAxis, fmtNum, fmtTime } from '../format';
 import { useT } from '../state/store';
+import { FrameColumns, eventFrameIndices, lodIndices, thinEvents } from './lod';
 
 export interface Series { key: string; label: string; unit: string; color: string; log?: boolean }
 
@@ -28,6 +29,8 @@ const EVENT_COLOR: Record<string, string> = {
   disruption: '#ef476f', quench: '#ef476f', ignition: '#06d6a0', burn_start: '#06d6a0', burn_end: '#ffd166', warning: '#ffd166', stagnation: '#4cc9f0', end: '#7f8ba3', info: '#7f8ba3',
 };
 const PAD = { l: 58, r: 12, t: 8, b: 22 };
+const MAJOR_EVENTS = new Set(['disruption', 'quench', 'ignition', 'LH', 'HL', 'NTM_onset', 'burn_start']);
+const isMajorEvent = (kind: string) => MAJOR_EVENTS.has(kind);
 
 export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height = 220, title, live, resetKey, cursorT, onSeek }: Props) {
   const t = useT();
@@ -52,6 +55,9 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
 
   const tNow = frames.length ? frames[frames.length - 1].t : 0;
   const visible = useMemo(() => series.filter((s) => !hidden.has(s.key)), [series, hidden]);
+  // the frames as typed columns, extended as the run grows (lod.ts): a redraw reads arrays, not one object per frame
+  const colsRef = useRef<FrameColumns | null>(null);
+  const cols = useMemo(() => (colsRef.current ??= new FrameColumns()).sync(frames), [frames]);
 
   // görünür x aralığı: manuel zoom > canlı takip > tam atış
   const [x0, x1] = useMemo<[number, number]>(() => {
@@ -63,21 +69,16 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
   // y aralığı (görünür pencere)
   const [y0, y1] = useMemo<[number, number]>(() => {
     let lo = Infinity, hi = -Infinity;
-    for (const f of frames) {
-      if (f.t < x0 || f.t > x1) continue;
-      for (const s of visible) {
-        const v = f.d[s.key];
-        if (v === undefined || !isFinite(v)) continue;
-        if (logY && v <= 0) continue;
-        if (v < lo) lo = v; if (v > hi) hi = v;
-      }
+    for (const s of visible) {
+      const r = cols.range(s.key, x0, x1, logY);
+      if (r) { if (r.lo < lo) lo = r.lo; if (r.hi > hi) hi = r.hi; }
     }
     if (!isFinite(lo)) return logY ? [1e-3, 1] : [0, 1];
     if (logY) { lo = Math.max(lo, hi * 1e-6); return [lo / 2, hi * 2]; }
     if (hi === lo) { hi = lo + Math.abs(lo) * 0.1 + 1e-9; }
     const m = (hi - lo) * 0.08;
     return [lo >= 0 && lo - m < 0 ? 0 : lo - m, hi + m];
-  }, [frames, visible, x0, x1, logY]);
+  }, [cols, visible, x0, x1, logY]);
 
   const plotW = width - PAD.l - PAD.r, plotH = height - PAD.t - PAD.b;
   const xToPx = useCallback((t: number) => PAD.l + ((t - x0) / (x1 - x0)) * plotW, [x0, x1, plotW]);
@@ -104,24 +105,23 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
     if (title) { ctx.fillStyle = '#d6dce8'; ctx.font = '11px Inter, sans-serif'; ctx.fillText(title, PAD.l + 4, PAD.t + 11); }
     // olaylar
     ctx.save(); ctx.beginPath(); ctx.rect(PAD.l, PAD.t, plotW, plotH); ctx.clip();
-    for (const ev of events) {
-      if (ev.t < x0 || ev.t > x1) continue;
+    for (const ev of thinEvents(events, x0, x1, plotW, isMajorEvent)) {
       const px = xToPx(ev.t);
-      const major = ev.kind === 'disruption' || ev.kind === 'quench' || ev.kind === 'ignition' || ev.kind === 'LH' || ev.kind === 'HL' || ev.kind === 'NTM_onset' || ev.kind === 'burn_start';
+      const major = isMajorEvent(ev.kind);
       ctx.strokeStyle = EVENT_COLOR[ev.kind] ?? '#7f8ba3'; ctx.globalAlpha = major ? 0.9 : 0.35; ctx.lineWidth = major ? 1.5 : 1;
       ctx.setLineDash(major ? [] : [2, 3]);
       ctx.beginPath(); ctx.moveTo(px, PAD.t); ctx.lineTo(px, PAD.t + plotH); ctx.stroke();
     }
     ctx.setLineDash([]); ctx.globalAlpha = 1;
-    // seriler (piksel başına ≤2 nokta olacak şekilde seyrelt)
-    const inWin = frames.filter((f) => f.t >= x0 && f.t <= x1);
-    const stride = Math.max(1, Math.floor(inWin.length / (plotW * 2)));
+    // series: min/max level of detail per pixel column, event frames kept (lod.ts), so a spike is never thinned away
+    const evFrames = eventFrameIndices(cols, events, x0, x1, plotW);
     for (const s of visible) {
       ctx.strokeStyle = s.color; ctx.lineWidth = 1.5; ctx.beginPath(); let pen = false;
-      for (let i = 0; i < inWin.length; i += stride) {
-        const v = inWin[i].d[s.key];
-        if (v === undefined || !isFinite(v) || (logY && v <= 0)) { pen = false; continue; }
-        const px = xToPx(inWin[i].t), py = yToPx(v);
+      const tv = cols.t, vv = cols.column(s.key);
+      for (const i of lodIndices(cols, s.key, x0, x1, plotW, evFrames, logY)) {
+        const v = vv[i];
+        if (!isFinite(v) || (logY && v <= 0)) { pen = false; continue; }
+        const px = xToPx(tv[i]), py = yToPx(v);
         if (!pen) { ctx.moveTo(px, py); pen = true; } else ctx.lineTo(px, py);
       }
       ctx.stroke();
@@ -142,7 +142,7 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
       }
     }
     ctx.restore();
-  }, [frames, visible, events, width, height, x0, x1, y0, y1, logY, xToPx, yToPx, pxToX, plotW, plotH, hover, cursorT, timeUnit, title]);
+  }, [frames, cols, visible, events, width, height, x0, x1, y0, y1, logY, xToPx, yToPx, pxToX, plotW, plotH, hover, cursorT, timeUnit, title]);
 
   // etkileşim
   // Wheel zoom. React registers wheel listeners as passive, where preventDefault() is ignored and the

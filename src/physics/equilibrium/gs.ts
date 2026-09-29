@@ -99,6 +99,36 @@ export interface GSWarning {
 /** default of EquilibriumOptions.currentScaleWarn (every accepted table solve of the 1.5D golden cases but one has |c − 1| ≤ 0.07) */
 const CURRENT_SCALE_WARN = 0.1;
 
+/** default number of nodes of the output flux-surface tables (the axis and 100 surfaces) */
+export const DEFAULT_N_SURF = 101;
+
+/**
+ * Output flux-surface levels ψ_N of an equilibrium table with n nodes: the n − 1 surfaces after the
+ * axis, the last one the LCFS (ψ_N = 1). With t = k/(n − 1) and s = t²
+ *
+ *   ψ_N(t) = s + s² − s³ ,   dψ_N/ds = (1 − s)(1 + 3s) ≥ 0.
+ *
+ * Near the axis ψ_N ≈ t², so the surfaces are uniform in ρ_tor as with ψ_N = t². Towards the edge
+ * the slope vanishes and 1 − ψ_N ≈ 2(1 − s)² clusters them: the last interior surface is at
+ * 1 − ψ_N = 3e−3 for n = 51 and 7.8e−4 for n = 101 (ψ_N = t² gives 0.04 and 0.02). The clustering is what
+ * the edge needs. q, ⟨|∇ψ|²⟩ and dV/dψ_N are not smooth in ψ_N at the LCFS: |∇ψ| on the last surface is
+ * small where the boundary is strongly shaped, so they follow a boundary layer of width about 1e−3 in
+ * ψ_N (MASTU15, κ = 2.5, δ = 0.5: q = 12.6, 36.4, 49.3, 51.4, 51.6 at 1 − ψ_N = 0.1, 1e−2, 1e−3, 1e−4, 0).
+ * On ψ_N = t² tables the last interval spans 0.04 of ψ_N, which puts ρ_tor of the outer nodes, a cumulative
+ * integral of q, too small (MASTU15 1.2e−2 at ψ_N = 0.96 against a 401-surface table) and the metrics
+ * of the outer transport cells up to 14.7 % (MASTU15 g1, g2, q; ITER15 1.2 %) off a converged reference; on
+ * this map 51 surfaces give 0.2 % and 101 surfaces 0.07 % (surfaces.test.ts).
+ */
+export function surfaceLevels(n: number): Float64Array {
+  if (!(Number.isInteger(n) && n >= 4)) badInput(`the number of surfaces must be an integer ≥ 4 (got ${n})`);
+  const L = new Float64Array(n - 1);
+  for (let k = 1; k < n; k++) {
+    const s = (k / (n - 1)) ** 2;
+    L[k - 1] = k === n - 1 ? 1 : s + s * s - s * s * s;
+  }
+  return L;
+}
+
 function badInput(msg: string): never { throw new GSFailure('bad-input', msg); }
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
@@ -579,8 +609,16 @@ export interface EquilibriumOptions {
   acceleration?: 'anderson' | 'none';
   /** Anderson depth m (default 4) */
   andersonDepth?: number;
-  /** number of output flux surfaces and poloidal resolution */
+  /**
+   * number of nodes of the output flux-surface tables (axis included; default DEFAULT_N_SURF = 101), placed
+   * at surfaceLevels(nSurf), and the number of rays that trace each surface (default 128)
+   */
   nSurf?: number;
+  /**
+   * explicit ψ_N of the output surfaces after the axis (strictly increasing, in (0, 1], the last equal to 1);
+   * instead of nSurf. The tables then have psiLevels.length + 1 nodes.
+   */
+  psiLevels?: ArrayLike<number>;
   nTheta?: number;
   /** previous solution on the same grid (warm start) */
   psiInit?: Float64Array;
@@ -778,6 +816,12 @@ function validateOptions(o: EquilibriumOptions, nGrid: number): void {
   if (o.andersonDepth !== undefined && !(Number.isInteger(o.andersonDepth) && o.andersonDepth >= 0 && o.andersonDepth <= 20)) badInput(`andersonDepth must be an integer in [0, 20] (got ${o.andersonDepth})`);
   if (o.nSurf !== undefined && !(Number.isInteger(o.nSurf) && o.nSurf >= 4)) badInput(`nSurf must be an integer ≥ 4 (got ${o.nSurf})`);
   if (o.nTheta !== undefined && !(Number.isInteger(o.nTheta) && o.nTheta >= 8)) badInput(`nTheta must be an integer ≥ 8 (got ${o.nTheta})`);
+  if (o.psiLevels !== undefined) {
+    const L = o.psiLevels, m = L.length;
+    if (m < 3) badInput(`psiLevels needs at least 3 surfaces (got ${m})`);
+    for (let i = 0; i < m; i++) if (!(L[i] > 0 && L[i] <= 1) || (i > 0 && !(L[i] > L[i - 1]))) badInput('psiLevels must be strictly increasing values in (0, 1]');
+    if (L[m - 1] !== 1) badInput(`the last of psiLevels must be 1, the boundary (got ${L[m - 1]})`);
+  }
   if (o.currentScaleWarn !== undefined && !(finite(o.currentScaleWarn) && o.currentScaleWarn >= 0)) badInput(`currentScaleWarn must be ≥ 0 (got ${o.currentScaleWarn})`);
   if (o.psiInit !== undefined) {
     if (o.psiInit.length !== nGrid) badInput(`psiInit has ${o.psiInit.length} values, the grid ${nGrid}`);
@@ -826,7 +870,7 @@ export class GSSolver {
     this.Rin = Rin;
   }
 
-  /** Output surface levels: ψ_N = (k/(n−1))², k = 1…n−1 (the axis is added separately) */
+  /** Coarse levels of the Picard iteration's trace: ψ_N = (k/(n−1))², k = 1…n−1 (the axis is added separately) */
   private levels(n: number): Float64Array {
     const L = new Float64Array(n - 1);
     for (let k = 1; k < n; k++) L[k - 1] = (k / (n - 1)) ** 2;
@@ -1003,8 +1047,8 @@ export class GSSolver {
     const dpsi = ax.psi;
     if (!(Number.isFinite(dpsi) && dpsi > 0)) throw new GSFailure('diverged', 'ψ on the magnetic axis ≤ 0 in the final state', iterations, residual);
     const field: PsiField = { bi, psiAxis: dpsi, psiB: 0, Rax: ax.R, Zax: ax.Z };
-    const nS = o.nSurf ?? 51;
-    const lev = this.levels(nS);
+    const lev = o.psiLevels ? Float64Array.from(o.psiLevels) : surfaceLevels(o.nSurf ?? DEFAULT_N_SURF);
+    const nS = lev.length + 1;
     const tr = traceSurfaces(field, grid.boundary, lev, o.nTheta ?? 128, 64);
     const Fb = R0 * o.B0;
     const n = nS; // axis + levels

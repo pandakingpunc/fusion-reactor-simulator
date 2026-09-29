@@ -42,6 +42,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "coverage": "vitest run --coverage",
+    "coverage:levels": "node scripts/coverage-levels.mjs",
     "mutation-smoke": "node scripts/mutation-smoke.mjs",
     "typecheck:strict": "node scripts/typecheck-strict.mjs",
     "validate": "tsx src/cli/validate.cli.ts",

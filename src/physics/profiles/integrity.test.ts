@@ -689,5 +689,5 @@ describe('checkpoints and replays', () => {
       sim.rewindTo(idx);
       expect(sim.model.diagnostics(sim.t, sim.y)).toEqual(want);
     }
-  }, 60000);
+  }, 180_000); // 120 s of ITER15 with ELMs: over 60 s when ten processes share the machine
 });

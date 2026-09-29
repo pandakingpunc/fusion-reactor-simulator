@@ -187,12 +187,16 @@ function cleanup() {
   } catch (e) { console.error(`cleanup of ${work} failed: ${e.message}`); }
 }
 
-function vitest(files) {
+/** timeout of a mutant's run [ms]: a mutant of a solver can make a run hang or crawl (a step size that collapses), which counts as detected */
+let mutantTimeout = 600_000;
+
+function vitest(files, timeout = 600_000) {
   const cli = join(link, 'vitest', 'vitest.mjs');
   const t0 = Date.now();
   const r = spawnSync(process.execPath, [cli, 'run', ...files, `--maxWorkers=${opts.threads}`, '--reporter=dot'],
-    { cwd: work, encoding: 'utf8', timeout: 600_000, env: { ...process.env, FORCE_COLOR: '0' } });
-  return { ok: r.status === 0, secs: (Date.now() - t0) / 1000, out: `${r.stdout ?? ''}${r.stderr ?? ''}`, error: r.error };
+    { cwd: work, encoding: 'utf8', timeout, killSignal: 'SIGKILL', env: { ...process.env, FORCE_COLOR: '0' } });
+  const timedOut = r.error?.code === 'ETIMEDOUT';
+  return { ok: r.status === 0, secs: (Date.now() - t0) / 1000, out: `${r.stdout ?? ''}${r.stderr ?? ''}`, error: timedOut ? undefined : r.error, timedOut };
 }
 
 let exitCode = 0;
@@ -208,7 +212,10 @@ try {
     console.error(`baseline FAILED (${base.secs.toFixed(1)} s) — fix the tests before measuring mutants:\n${base.out.slice(-3000)}`);
     exitCode = 2;
   } else {
-    console.log(`baseline passes (${allTests.length} test files, ${base.secs.toFixed(1)} s)\n`);
+    // a mutant that runs longer than five times the baseline (at least a minute, at most ten) is a mutant that hangs or crawls: killed by timeout
+    mutantTimeout = Math.min(600_000, Math.max(60_000, 5_000 * base.secs));
+    console.log(`baseline passes (${allTests.length} test files, ${base.secs.toFixed(1)} s; a mutant is killed by timeout after ${(mutantTimeout / 1000).toFixed(0)} s)
+`);
     const results = [];
     for (const m of selected) {
       const path = join(work, m.file);
@@ -223,10 +230,10 @@ try {
       }
       writeFileSync(path, orig.replace(m.find, m.replace));
       let r;
-      try { r = vitest(m.tests); } finally { writeFileSync(path, orig); }
-      const status = r.error ? `ERROR (${r.error.message})` : r.ok ? 'SURVIVED' : 'killed';
+      try { r = vitest(m.tests, mutantTimeout); } finally { writeFileSync(path, orig); }
+      const status = r.error ? `ERROR (${r.error.message})` : r.timedOut ? 'killed' : r.ok ? 'SURVIVED' : 'killed';
       results.push({ ...m, status, secs: r.secs });
-      console.log(`  ${m.id.padEnd(4)} ${status.padEnd(9)} ${r.secs.toFixed(1).padStart(5)} s  ${m.what}`);
+      console.log(`  ${m.id.padEnd(4)} ${status.padEnd(9)} ${r.secs.toFixed(1).padStart(5)} s${r.timedOut ? ' (timeout)' : ''}  ${m.what}`);
     }
     const survivors = results.filter((r) => r.status === 'SURVIVED');
     const killed = results.filter((r) => r.status === 'killed').length;

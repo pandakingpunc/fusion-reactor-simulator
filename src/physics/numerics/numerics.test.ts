@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BandedLU, luFactor, luSolve, solveBlockTridiag2, solveDense, solveTridiag } from './linalg';
+import { BandedLU, SingularMatrixError, luFactor, luSolve, solveBlockTridiag2, solveDense, solveTridiag } from './linalg';
 import { gaussLegendre, integrateGL, profileNodes } from './quadrature';
 import { Bicubic, CubicSpline, Pchip, lerpTable } from './interp';
 import { brent } from './roots';
@@ -83,6 +83,50 @@ describe('linalg', () => {
     L.factor();
     const x = L.solve(b), ref = solveDense(dense, b, n);
     for (let k = 0; k < n; k++) expect(x[k]).toBeCloseTo(ref[k], 12);
+  });
+
+  // A singular system is reported as a SingularMatrixError (callers such as the 1.5D transport step tell it from a
+  // programming error by its type); a wrong call stays a plain Error.
+  it('every solver reports a singular system as a SingularMatrixError, with its message', () => {
+    const f = (v: number[]) => Float64Array.from(v);
+    // Thomas: a zero first pivot, and one that only appears in the elimination (beta_1 = 1 − 1·1 = 0)
+    expect(() => solveTridiag(f([0, 1, 1]), f([0, 1, 1]), f([1, 1, 0]), f([1, 1, 1]), new Float64Array(3))).toThrow(SingularMatrixError);
+    const elim = () => solveTridiag(f([0, 1, 1]), f([1, 1, 1]), f([1, 1, 0]), f([1, 1, 1]), new Float64Array(3));
+    expect(elim).toThrow(SingularMatrixError);
+    expect(elim).toThrow(/solveTridiag: sıfır pivot/);
+    // 2×2 block Thomas: a zero block and a non-finite one
+    const n = 2;
+    const solveBlocks = (B: Float64Array) => solveBlockTridiag2(new Float64Array(4 * n), B, new Float64Array(4 * n), new Float64Array(2 * n), new Float64Array(2 * n), n);
+    const eye = () => f([2, 0, 0, 2, 2, 0, 0, 2]);
+    expect(() => solveBlocks(new Float64Array(4 * n))).toThrow(SingularMatrixError);
+    const nan = eye(); nan[0] = NaN;
+    expect(() => solveBlocks(nan)).toThrow(SingularMatrixError);
+    expect(() => solveBlocks(nan)).toThrow(/solveBlockTridiag2: tekil blok/);
+    expect(() => solveBlocks(eye())).not.toThrow();
+    // dense LU (directly and through solveDense) on [[1, 2], [2, 4]]
+    expect(() => luFactor(f([1, 2, 2, 4]), 2)).toThrow(SingularMatrixError);
+    expect(() => solveDense(f([1, 2, 2, 4]), f([1, 2]), 2)).toThrow(/luFactor: tekil matris/);
+    // banded LU: a zero pivot in row 1, and an infinite one
+    const L = new BandedLU(3, 1, 1);
+    L.set(0, 0, 1); L.set(1, 1, 0); L.set(2, 2, 1);
+    expect(() => L.factor()).toThrow(SingularMatrixError);
+    expect(() => L.factor()).toThrow('BandedLU: sıfır pivot (satır 1)');
+    const M = new BandedLU(2, 0, 0);
+    M.set(0, 0, Infinity); M.set(1, 1, 1);
+    expect(() => M.factor()).toThrow(SingularMatrixError);
+  });
+
+  it('a wrong call is not a singular system: out-of-band writes and a solve before factor() stay plain errors', () => {
+    const L = new BandedLU(3, 1, 1);
+    for (const f of [() => L.set(0, 2, 1), () => L.add(2, 0, 1), () => L.solve(new Float64Array(3))]) {
+      let err: unknown;
+      try { f(); } catch (e) { err = e; }
+      expect(err).toBeInstanceOf(Error);
+      expect(err).not.toBeInstanceOf(SingularMatrixError);
+      expect((err as Error).constructor).toBe(Error);
+    }
+    expect(new SingularMatrixError('x')).toBeInstanceOf(Error);
+    expect(new SingularMatrixError('x').name).toBe('SingularMatrixError');
   });
 });
 

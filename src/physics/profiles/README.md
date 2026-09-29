@@ -54,7 +54,7 @@ diagnostics, the equilibrium, pending events, issued warnings) and restores them
 caller that catches the error and steps on continues as if the step had not been tried. What a
 plug-in keeps in its own fields is its own business. A module that meets a numerical problem it cannot repair (a singular system
 of its own, a non-finite closure) throws a `NumericalFailure` (`failures.ts`) to have the attempt
-retried; the singular-pivot errors of the heat, density and current solves are converted to
+retried; the `SingularMatrixError` of the heat, density and current solves (`numerics/linalg.ts`) is converted to
 `LinearAlgebraFailure` in `fvsolver.ts`.
 Then `acceptStep` integrates the global quantities (P_SOL, τ_E and C_χ, inventories, counters, NTM
 widths), calls the `accepted` hooks of the transport model and the sources, writes the

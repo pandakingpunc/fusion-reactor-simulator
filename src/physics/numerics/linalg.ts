@@ -11,6 +11,16 @@
  */
 
 /**
+ * A linear system that is singular in working precision: an exactly zero (or non-finite) pivot or block.
+ * A class of its own so that a caller can tell the numerics refusing a system, which a smaller step or a
+ * different iterate may cure, from a programming error (a wrong argument, a call out of order), which stays a
+ * plain Error or TypeError. The messages are unchanged.
+ */
+export class SingularMatrixError extends Error {
+  override readonly name = 'SingularMatrixError';
+}
+
+/**
  * Üçlü-köşegen sistem: a[i] x[i−1] + b[i] x[i] + c[i] x[i+1] = d[i]  (a[0], c[n−1] kullanılmaz).
  * Köşegen baskın matrislerde pivotsuz kararlıdır (difüzyon operatörleri böyledir).
  * cp/dp: isteğe bağlı çalışma dizileri (sıcak döngüde tahsisatı önler).
@@ -20,12 +30,12 @@ export function solveTridiag(
   x: Float64Array, n = b.length, cp: Float64Array = new Float64Array(n), dp: Float64Array = new Float64Array(n),
 ): Float64Array {
   let beta = b[0];
-  if (beta === 0) throw new Error('solveTridiag: sıfır pivot');
+  if (beta === 0) throw new SingularMatrixError('solveTridiag: sıfır pivot');
   cp[0] = c[0] / beta;
   dp[0] = d[0] / beta;
   for (let i = 1; i < n; i++) {
     beta = b[i] - a[i] * cp[i - 1];
-    if (beta === 0) throw new Error('solveTridiag: sıfır pivot');
+    if (beta === 0) throw new SingularMatrixError('solveTridiag: sıfır pivot');
     cp[i] = i < n - 1 ? c[i] / beta : 0;
     dp[i] = (d[i] - a[i] * dp[i - 1]) / beta;
   }
@@ -58,7 +68,7 @@ export function solveBlockTridiag2(
       r1 -= a10 * dp[p2] + a11 * dp[p2 + 1];
     }
     const det = m00 * m11 - m01 * m10;
-    if (det === 0 || !isFinite(det)) throw new Error('solveBlockTridiag2: tekil blok');
+    if (det === 0 || !isFinite(det)) throw new SingularMatrixError('solveBlockTridiag2: tekil blok');
     const i00 = m11 / det, i01 = -m01 / det, i10 = -m10 / det, i11 = m00 / det;
     if (i < n - 1) {
       const c00 = C[k], c01 = C[k + 1], c10 = C[k + 2], c11 = C[k + 3];
@@ -85,7 +95,7 @@ export function luFactor(M: Float64Array, n: number, piv: Int32Array = new Int32
   for (let k = 0; k < n; k++) {
     let p = k, best = Math.abs(M[k * n + k]);
     for (let i = k + 1; i < n; i++) { const v = Math.abs(M[i * n + k]); if (v > best) { best = v; p = i; } }
-    if (best === 0) throw new Error('luFactor: tekil matris');
+    if (best === 0) throw new SingularMatrixError('luFactor: tekil matris');
     if (p !== k) {
       for (let j = 0; j < n; j++) { const t = M[k * n + j]; M[k * n + j] = M[p * n + j]; M[p * n + j] = t; }
       const t = piv[k]; piv[k] = piv[p]; piv[p] = t;
@@ -200,7 +210,7 @@ export class BandedLU {
     const ue = this.ue!, le = this.le!;
     for (let k = 0; k < n; k++) {
       const pk = band[k * w + ml];
-      if (pk === 0 || !isFinite(pk)) throw new Error(`BandedLU: sıfır pivot (satır ${k})`);
+      if (pk === 0 || !isFinite(pk)) throw new SingularMatrixError(`BandedLU: sıfır pivot (satır ${k})`);
       const iMax = le[k], jMax = ue[k];
       for (let i = k + 1; i <= iMax; i++) {
         const idx = i * w + (k - i + ml);

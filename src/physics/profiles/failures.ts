@@ -11,6 +11,7 @@
  * system of its own) throws a NumericalFailure to have the attempt retried.
  */
 import { GSFailure } from '../equilibrium/gs';
+import { SingularMatrixError } from '../numerics/linalg';
 
 /** A failure of the numerics, not of the code: the implicit attempt that raised it may be retried at a smaller Δt. */
 export abstract class NumericalFailure extends Error {}
@@ -37,11 +38,11 @@ export function isNumericalFailure(e: unknown): boolean {
 
 /**
  * The error a linear-algebra call threw, as a LinearAlgebraFailure. src/physics/numerics/linalg.ts
- * reports a singular system with a plain Error; anything else it may throw (a TypeError from a
- * wrong argument) is not that and is returned unchanged.
+ * reports a singular system with a SingularMatrixError; anything else it may throw (a TypeError
+ * from a wrong argument, a call out of order) is not that and is returned unchanged.
  */
 export function asLinearAlgebraFailure(system: string, e: unknown): unknown {
-  return e instanceof Error && e.constructor === Error ? new LinearAlgebraFailure(system, e) : e;
+  return e instanceof SingularMatrixError ? new LinearAlgebraFailure(system, e) : e;
 }
 
 /** The implicit transport step could not produce an acceptable state, even at the smallest Δt. */

@@ -527,6 +527,50 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 - Golden re-recorded for the nine 1.5D cases on the merged base (ITER15 Q_sci_avg -1.0 %, the others within 0.4 %; q95 of
   the last equilibrium +2 to +4 % and its l_i -4 to -7 % for the large machines; all 21 other cases bit-identical);
   `test/golden/CHANGES.md` has the headline moves and their causes.
+- 1.5D: the radial grid of the transport solvers is edge-packed by default (`ProfileSettings.gridPacking` 4: a tanh step in the
+  cell density, edge cells 5 times narrower, 10 cells across the pedestal at nRho 50 instead of 3); every solver, stencil, lookup,
+  alphaMHD, rhoOfQ, the NTM, sawtooth, NBI and bootstrap helpers, q95 and T_ped use per-cell and per-face spacing; gridPacking 0 is the
+  uniform grid of v3. T_ped is the temperature at rho_ped interpolated between the two cell centres, and the ELM alpha check includes
+  the separatrix face, on the packed grid only. The geometry of a Grad-Shafranov update is built on the grid of the geometry it replaces
+  (a whole `RadialGrid` is copied, three bare arrays are completed with their spacings). `bench:convergence` takes `--packing P`,
+  `--rtols` and `--dts`, and reports the cells across the pedestal, the ELM count and the step-control counters.
+- 1.5D: the transport step is TR-BDF2 (Bank et al. 1985; Hosea and Shampine 1996), second order and L-stable, with the embedded error
+  estimate filtered by the iteration matrix and an integral step-size controller, replacing the backward-Euler step and its 8 % rule.
+  New `ProfileSettings` `rtol` (1e-2), `atol` (1e-4, fraction of the profile maximum) and `dtMax` (0.5 s). The Picard iteration of a stage
+  is accelerated by Anderson mixing, which stops the critical-gradient model from oscillating. The 1.5D model is 2 to 4 times as costly as
+  before (ITER15 400 s about 42 s of CPU time instead of 10 s); rtol 1e-3 adds a half.
+- 1.5D: the ELM and the sawtooth crash end the step at the crossing of their threshold (Brent on the dense output of the step) instead of
+  firing at the end of the step that crossed; the ITER15 ELM count is 1325 at every time-step limit and tolerance (was 1101 to 1131 and
+  followed the step). An ELM fires at the recovery time tau_E/8 after the last one; after a crash the step restarts at 0.5 ms. Plug-in
+  event models may provide an `EventTrigger`.
+- 1.5D: a predictive transport model ('cgm') is solved by Newton-Raphson on (T_e, T_i, n_e, psi) with a coloured finite-difference
+  block-tridiagonal Jacobian (new `numerics/blockTridiagN.ts`, `numerics/newton.ts`) and a line search; a solve that does not converge is
+  repeated by the Pereverzev-Corrigan stabilised Picard iteration (Comput. Phys. Commun. 179 (2008) 579). `ProfileSettings.nonlinearSolver`
+  ('auto' by default, 'picard', 'newton', 'pc'). Picard with Anderson mixing stays the fast path of the 'scaling' model, bit for bit.
+  ITER15 'cgm' runs its first 10 s in about 3 s with 1.7 % of the attempts rejected by the error test; Newton costs 1.3 to 1.5 times
+  Picard and has a third of its failed attempts.
+- 1.5D: the current diffusion is in the Hinton-Hazeltine form F^2 d/drho(V' g2 psi'/F) with a moving-coordinate term
+  (`CurrentInputs.PhiBdotRel`, passed as 0 by the fixed-boundary model). The form of v3 had the F' term of the poloidal current with the
+  wrong sign: on the analytic Solov'ev equilibrium <j.B> is reproduced to 5e-5 (1.2 % before). Tested against the skin-time response of a
+  uniform cylinder to a step of I_p (Bessel series, 2e-3 of I_p, second order in dt).
+- 1.5D: the initial poloidal flux is scaled so that the equilibrium's current profile carries exactly I_p (the Grad-Shafranov table's own
+  enclosed current at the last surface is 1.0006 to 1.0012 I_p): the outermost cell of the edge-packed grid no longer starts with a
+  negative current density at t = 0 (ITER15, JET15, SPARC15, DEMO15, DIIID15, with either grid); the initial q is 0.1 % higher.
+- 1.5D: the plasma current is a control key, `Ip_MA` (the boundary condition of the current diffusion for the next step):
+  `Simulation.applyControl`, the actuator log, the rewind of set-points and the scenario engine reach it (`SCENARIO_CONTROLS` has its label
+  and sanity limit); a programme I_p(t) (`ProfileSettings.IpWaveform`, `ProfileModules.plasmaCurrent`) replaces the control and is evaluated
+  at the stage times. Without a change the shot is unchanged. The run controls get a multiplicative I_p slider.
+- 1.5D: `rtol`, `atol` and `dtMax` of `ProfileSettings` outside their domain (rtol <= 0 or not a number, atol < 0 or not a number, dtMax <= 0
+  or not a number) are replaced by the default and reported by a warning at t = 0, instead of stalling the shot (a step limit of 0 never
+  advanced the run; a NaN tolerance rejected every step); a step limit below 1 microsecond is raised to it. The default and every valid
+  setting give the same shot as before.
+- Configuration schema: `profiles.gridPacking`, `rtol`, `atol`, `dtMax`, `nonlinearSolver` and `IpWaveform` are described, validated (ranges
+  that are exactly the domain the step control runs with) and in `schema/fusion-sim.schema.json`; the schema language gets a `series` node
+  (a list of [x, y] points with x increasing) for the programme, and the share and import validator of the UI knows the new settings.
+- 1.5D convergence (`bench:convergence`, ITER15 400 s flat-top means, before the merge with the equilibrium work): between nRho 50 and 100
+  Q, f_bs, l_i and T_ped change by 0.02 / 0.29 / 0.04 / 0.19 %; between the tolerances 1e-2 and 1e-3 or 1e-4 by at most 0.5 %; between the
+  time-step limits 0.5 s and 0.01 s by at most 0.5 %; the ELM count is 1326 / 1326 / 1331 over the limits and 1326 / 1327 / 1327 over the
+  tolerances.
 
 ### Fixed
 - `npm run bench:convergence`: the time-step series (dtMax) failed with "this model has no internal time step

@@ -25,7 +25,7 @@ parameter scans are built in.
 
 | Area | Change |
 |---|---|
-| **1.5D transport** | T_e, T_i, n_e, ψ on ρ̂ = √(Φ/Φ_b); implicit finite volume (backward Euler + Picard), 2×2 block-tridiagonal T_e/T_i, Scharfetter–Gummel density flux, current diffusion (I_p Neumann condition) |
+| **1.5D transport** | T_e, T_i, n_e, ψ on ρ̂ = √(Φ/Φ_b); implicit finite volume on an edge-packed radial grid, TR-BDF2 (second order, L-stable) with error control and event localisation, Anderson-accelerated Picard or Newton–Raphson (block-tridiagonal Jacobian) per stage, 2×2 block-tridiagonal T_e/T_i, Scharfetter–Gummel density flux, current diffusion in the Hinton–Hazeltine form (I_p as the boundary condition) |
 | **Grad–Shafranov equilibrium** | Fixed boundary (Miller), Shortley–Weller finite differences, banded LU (factorised once), Picard; flux-surface tracing, exact trapped-particle fraction, q, ℓ_i, β_p, Shafranov shift; quasi-static coupling to transport |
 | **Neoclassical** | Sauter bootstrap current and conductivity, Chang–Hinton ion floor |
 | **Sources** | 3-component NBI beam attenuation + beam–target fusion, Gaussian ECRH/ICRH deposition, NBCD/ECCD |
@@ -123,7 +123,7 @@ Details: [technical report](docs/technical-report.md) §7.
 | Radiation | Bremsstrahlung (relativistic), Albajar synchrotron, Mavrin line radiation | Albajar (2001); Mavrin (2018) |
 | Edge | Two-point SOL model, Eich λ_q | Stangeby (2000); Eich (2013) |
 | Limits / disruptions | Greenwald, Troyon β_N, q95; TQ/CQ, halo, runaway electrons | Greenwald (1988); Hender (2007) |
-| Time integration | 0D: Dormand–Prince RK5(4); 1.5D: implicit backward Euler + Picard | Hairer–Nørsett–Wanner |
+| Time integration | 0D: Dormand–Prince RK5(4); 1.5D: TR-BDF2 with error control, Anderson-accelerated Picard / Newton–Raphson | Hairer–Nørsett–Wanner |
 
 Constants are CODATA 2018 and all internal calculations use SI units; simplifications are marked
 with an `APPROXIMATION` tag in the code.

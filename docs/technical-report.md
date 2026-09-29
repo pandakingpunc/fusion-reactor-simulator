@@ -217,10 +217,10 @@ yeniden eşlenir. ITER 400 s atışında 23 güncelleme yapılır (≈ 50 ms/gü
 
 | Bileşen | Yöntem | Not |
 |---|---|---|
-| 1.5D ısı | geri Euler (θ = 1, L-kararlı) + Picard | T_e/T_i 2×2 blok üçlü-köşegen, eşitlenme örtük |
+| 1.5D ısı | TR-BDF2 (2. mertebe, L-kararlı; v3'te geri Euler) + Anderson hızlandırmalı Picard veya Newton–Raphson | T_e/T_i 2×2 blok üçlü-köşegen, eşitlenme örtük; kenara sıkıştırılmış ρ̂ ızgarası |
 | 1.5D yoğunluk | geri Euler, Scharfetter–Gummel akısı B(x) = x/(eˣ − 1) | konveksiyon–difüzyon için pozitiflik |
-| 1.5D akım | geri Euler, Neumann (I_p) | döngü gerilimi V_loop = 2π ∂ψ_b/∂t |
-| Zaman adımı | uyarlanır: profil değişimi ≤ %8 hedefi, reddedilen adım yarılanır | ELM sonrası Δt ≤ max(0.01 τ_E, 0.5 ms) |
+| 1.5D akım | TR-BDF2, Hinton–Hazeltine biçimi, sınır koşulu I_p | döngü gerilimi V_loop = 2π ∂ψ_b/∂t |
+| Zaman adımı | uyarlanır: gömülü hata tahmini (rtol 10⁻², atol 10⁻⁴) ve integral adım denetleyicisi, Δt ≤ 0.5 s (v3'te profil değişimi ≤ %8 kuralı) | ELM ve testere dişi çöküşü eşik geçişine Brent ile yerelleştirilir; çöküşten sonra Δt = 0.5 ms |
 | GS | Shortley–Weller FD + bantlı LU + Picard | Bölüm 4 |
 | 0D ODE | Dormand–Prince RK5(4), gömülü hata tahmini | Hairer–Nørsett–Wanner |
 | İnterpolasyon | kübik spline, PCHIP, bikübik (Hermite) | `numerics/interp.ts` |

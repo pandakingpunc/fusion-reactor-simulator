@@ -8,7 +8,7 @@ import { replayInWorker, ReplayFn } from './replay';
 import { ReplayError, replayRun } from './replayCore';
 import { buildRunRecord, fingerprintOf, parseRunRecord, RUN_RECORD_FORMAT, RunRecord, RunRecordError, serializeRunRecord } from './runRecord';
 import { inlineWorkerFactory } from './testdata/inlineWorker';
-import { importedShot, shotToNewRun } from './shots';
+import { importedShot } from './shots';
 import { classify, diffPaths, verifyRecord } from './verify';
 import { APP_VERSION } from './version';
 

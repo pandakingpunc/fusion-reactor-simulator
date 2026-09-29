@@ -156,7 +156,8 @@ export class Simulation {
     // stable sort: a log from Simulation.actuatorLog is already in step order
     this.pending = (opts.actuatorLog ?? []).map((e) => ({ t: e.t, step: e.step, patch: { ...e.patch } })).sort((a, b) => a.step - b.step);
     // validated in any case; one that does nothing is no scenario (no checkpoint state, the fingerprint of a run without one)
-    const scen = opts.scenario ? new Scenario(opts.scenario, this.model.getControls()) : null;
+    // (tEnd: a rampStep grid finer than t_end / MAX_RAMP_GRID would make the run endless and is refused)
+    const scen = opts.scenario ? new Scenario(opts.scenario, this.model.getControls(), { tEnd: this.model.tEnd }) : null;
     this.scen = scen && !isEmptyScenario(scen.spec) ? scen : null;
     // the waveforms in force at t = 0 are the controls of the first frame and the first step
     if (this.scen) this.model.applyControl(this.scen.waveformsAt(0));

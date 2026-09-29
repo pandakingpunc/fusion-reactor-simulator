@@ -28,6 +28,12 @@
  *    ramp when that is too coarse. A time within 1e-12 (the kernel's T_EPS) of a corner counts as the
  *    corner, so an integrator step that lands a rounding error short of it or past it still sees exactly
  *    the corner value.
+ *  - rampStep is bounded below, because every grid point is a step of the run: at least MIN_RAMP_STEP
+ *    (an absolute floor, in the model's time unit, so that the grid stays representable) and, once the
+ *    end time of the model is known (ScenarioContext.tEnd, which Simulation passes), at least
+ *    tEnd / MAX_RAMP_GRID (at most that many grid points per waveform segment over the whole run). A
+ *    scenario that asks for a finer grid is invalid (ScenarioError, path 'rampStep'): a share link cannot
+ *    make a run endless.
  *
  * Triggers
  *  - Evaluated on the diagnostics of the recorded frames, once per frame, at the first step boundary after
@@ -196,6 +202,14 @@ export interface ScenarioContext {
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
+/**
+ * Smallest rampStep [time unit] of any scenario. Every grid point is a step of the run, and a grid finer than
+ * the floating-point spacing of the times it runs over would not advance at all.
+ */
+export const MIN_RAMP_STEP = 1e-6;
+/** With the end time of the model known: at most this many rampStep grid points per waveform segment over the run (rampStep >= tEnd / MAX_RAMP_GRID). */
+export const MAX_RAMP_GRID = 1e4;
+
 }
 
 const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -204,6 +218,8 @@ const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Num
  * Checks a scenario (any parsed JSON) and returns its normalised form: points sorted by time, default
  * values dropped, empty parts removed. The normalised form is what is stored, fingerprinted and
  * serialised. All problems are listed (with paths), not just the first.
+  /** end time of the model's run [time unit]; when given, a rampStep below tEnd / MAX_RAMP_GRID is an issue */
+  tEnd?: number;
  */
 export function validateScenario(input: unknown, ctx: ScenarioContext = {}): { ok: true; spec: ScenarioSpec } | { ok: false; issues: ScenarioIssue[] } {
   const issues: ScenarioIssue[] = [];
@@ -265,6 +281,14 @@ export function validateScenario(input: unknown, ctx: ScenarioContext = {}): { o
       for (const key of [...keys].sort()) {
         const path = `waveforms.${key}`;
         const w = input.waveforms[key];
+  if (rampStep !== undefined) {
+    const floor = isFiniteNumber(ctx.tEnd) && ctx.tEnd > 0 ? Math.max(MIN_RAMP_STEP, ctx.tEnd / MAX_RAMP_GRID) : MIN_RAMP_STEP;
+    if (rampStep < floor) {
+      bad('rampStep', floor === MIN_RAMP_STEP
+        ? `must be >= ${MIN_RAMP_STEP} (every grid point is a step of the run)`
+        : `must be >= ${fmt(floor)} = t_end / ${MAX_RAMP_GRID} (at most ${MAX_RAMP_GRID} grid points over the run)`);
+    }
+  }
         const keyOk = checkKey(key, path, 'control');
         if (!isRecord(w)) { bad(path, 'must be {kind, points}'); continue; }
         noUnknown(w, ['kind', 'points'], path);
@@ -442,6 +466,11 @@ function waveformValue(w: BoundWaveform, t: number): number | undefined {
 
 function compare(op: TriggerOp, a: number, b: number): boolean {
   switch (op) {
+/** A double greater than x, at most a few units in the last place above it (x finite and >= 0 here: times): x·2^-52 is at least one ulp of x. */
+function nextDoubleUp(x: number): number {
+  return x + Math.max(x * Number.EPSILON, Number.MIN_VALUE);
+}
+
     case '>': return a > b;
     case '>=': return a >= b;
     case '<': return a < b;
@@ -472,7 +501,8 @@ export class Scenario {
    * @param input   the scenario (validated again; ScenarioError when it is invalid)
    * @param initial the configured control values of the model (getControls() before the run): the control keys
    *                a scenario may name, and the value of a `null` point
-   * @param ctx     more to check against (the diagnostic keys of a frame)
+   * @param ctx     more to check against: the diagnostic keys of a frame and the end time of the model's run
+   *                (`tEnd`: a rampStep finer than tEnd / MAX_RAMP_GRID is refused, see the file header)
    */
   constructor(input: unknown, initial: Readonly<Record<string, number>>, ctx: Omit<ScenarioContext, 'controls'> = {}) {
     this.spec = parseScenario(input, { ...ctx, controls: Object.keys(initial) });
@@ -545,7 +575,11 @@ export class Scenario {
         const i = lastAtMost(w.t, lim);
         if (i < 0 || i >= w.t.length - 1 || w.v[i] === w.v[i + 1]) continue;
         let c = w.t[i] + (Math.floor((lim - w.t[i]) / this.rampStep) + 1) * this.rampStep;
-        while (c <= lim) c += this.rampStep;
+        // rounding can leave the computed grid point at or before lim: take the next one. No loop: a step
+        // below the spacing of the doubles at c would never move it (the scenario validation keeps rampStep
+        // far above that, this is the last line of defence), so past one addition take the next double up.
+        if (!(c > lim)) c += this.rampStep;
+        if (!(c > lim)) c = nextDoubleUp(lim);
         if (c < next) next = c;
       }
     }

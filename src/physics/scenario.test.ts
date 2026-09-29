@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  dropTemplate, gasPuffTemplate, interlockTemplate, isEmptyScenario, mergeScenarios, parseScenario, rampTemplate, Scenario,
+  dropTemplate, gasPuffTemplate, interlockTemplate, isEmptyScenario, MIN_RAMP_STEP, mergeScenarios, parseScenario, rampTemplate, Scenario,
   SCENARIO_SCHEMA, scenarioFromJSON, scenarioToJSON, validateScenario, type ScenarioSpec,
 } from './scenario';
 import { ScenarioError } from './kernel/errors';
@@ -90,6 +90,33 @@ describe('validateScenario and the JSON form', () => {
     expect(validateScenario({ schema: 1, waveforms: { Ip_MA: { kind: 'step', points: [[5, -1]] } } }).ok).toBe(true);
     // custom limits replace the table
     expect(issuePaths({ schema: 1, waveforms: { Ip_MA: { kind: 'step', points: [[5, -1]] } } }, { controlInfo: { Ip_MA: { label: 'I_p', unit: 'MA', min: 0 } } })).toEqual(['waveforms.Ip_MA.points[0][1]']);
+  });
+
+  it('bounds rampStep from below: an absolute floor, and with the end time of the model a grid of at most 1e4 points (a share link cannot make a run endless)', () => {
+    const w = { P_NBI_MW: { kind: 'pwl' as const, points: [[0, 10], [1, 20]] as [number, number][] } };
+    // absolute floor (the model is not known): 1e-20 and 1e-16 hung nextBreakpoint() before the floor
+    for (const rampStep of [1e-20, 1e-16, 1e-9, 9.9e-7]) {
+      expect(issuePaths({ schema: 1, rampStep, waveforms: w }), `rampStep ${rampStep}`).toEqual(['rampStep']);
+    }
+    expect(() => scenarioFromJSON('{"schema":1,"rampStep":1e-20,"waveforms":{"P_NBI_MW":{"kind":"pwl","points":[[0,10],[1,20]]}}}')).toThrow(/rampStep: must be >= 0\.000001/);
+    expect(validateScenario({ schema: 1, rampStep: MIN_RAMP_STEP, waveforms: w }).ok).toBe(true);
+    // relative floor with the end time of the run
+    expect(validateScenario({ schema: 1, rampStep: 0.04, waveforms: w }, { tEnd: 400 }).ok).toBe(true);
+    expect(issuePaths({ schema: 1, rampStep: 0.0399, waveforms: w }, { tEnd: 400 })).toEqual(['rampStep']);
+    const r = validateScenario({ schema: 1, rampStep: 1e-3, waveforms: w }, { tEnd: 400 });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.issues[0].message).toBe('must be >= 0.04 = t_end / 10000 (at most 10000 grid points over the run)');
+    // a very short run (t_end / 1e4 below the absolute floor) is bound by the absolute floor only
+    expect(validateScenario({ schema: 1, rampStep: 1e-6, waveforms: w }, { tEnd: 1e-3 }).ok).toBe(true);
+    expect(issuePaths({ schema: 1, rampStep: 9e-7, waveforms: w }, { tEnd: 1e-3 })).toEqual(['rampStep']);
+    // no end time, or a meaningless one: the absolute floor
+    for (const tEnd of [undefined, 0, -5, NaN, Infinity]) expect(validateScenario({ schema: 1, rampStep: 1e-6, waveforms: w }, { tEnd }).ok, `tEnd ${tEnd}`).toBe(true);
+    expect(() => new Scenario({ schema: 1, rampStep: 1e-9, waveforms: w }, CONTROLS)).toThrow(ScenarioError);
+    expect(() => new Scenario({ schema: 1, rampStep: 0.01, waveforms: w }, CONTROLS, { tEnd: 400 })).toThrow(/rampStep: must be >= 0\.04/);
+    expect(() => new Scenario({ schema: 1, rampStep: 0.04, waveforms: w }, CONTROLS, { tEnd: 400 })).not.toThrow();
+    // scenarioToJSON and mergeScenarios validate too
+    expect(() => scenarioToJSON({ schema: 1, rampStep: 1e-20, waveforms: w } as ScenarioSpec)).toThrow(ScenarioError);
+    expect(() => mergeScenarios({ schema: 1, rampStep: 1e-20 } as ScenarioSpec, rampTemplate('P_NBI_MW', 1, 2, 0))).toThrow(ScenarioError);
   });
 
   it('checks the keys against the model: unknown controls (I_p before WS6c exposes it) and unknown diagnostics', () => {
@@ -187,6 +214,20 @@ describe('waveforms: exact values at the corners', () => {
     expect(seen).toEqual([0, 1, 10, 20, 22.5, 25, 27.5, 30, 50]);
     // one rounding error short of a grid point does not return that grid point again
     expect(g.nextBreakpoint(25 - 1e-13)).toBe(27.5);
+  });
+
+  it('nextBreakpoint always advances, also where the spacing of the doubles is coarser than rampStep (it used to loop forever there)', () => {
+    // at t ~ 1e11 the doubles are 1.5e-5 apart: adding rampStep = 1e-6 to a grid point changes nothing
+    const g = new Scenario({ schema: 1, rampStep: MIN_RAMP_STEP, waveforms: { P_NBI_MW: { kind: 'pwl', points: [[0, 0], [1e12, 1]] } } }, CONTROLS);
+    for (const t of [1e11, 1e11 + 3.14, 2 ** 36, 5e11 / 7]) {
+      const n = g.nextBreakpoint(t);
+      expect(n, `after ${t}`).toBeGreaterThan(t + 1e-12);
+      expect(n - t, `after ${t}`).toBeLessThan(1e-3);
+    }
+    // a walk along the grid terminates and moves forward at every call
+    let t = 0.5;
+    for (let i = 0; i < 100; i++) { const n = g.nextBreakpoint(t); expect(n).toBeGreaterThan(t); t = n; }
+    expect(t).toBeCloseTo(0.5 + 100e-6, 9);
   });
 
   it('a taken-over key is no longer driven and stops nowhere new; the other keys keep going', () => {

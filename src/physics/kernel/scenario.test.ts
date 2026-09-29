@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { Simulation, type SimulationOptions } from '../simulation';
-import { dropTemplate, interlockTemplate, mergeScenarios, parseScenario, rampTemplate, type ScenarioSpec } from '../scenario';
+import { dropTemplate, interlockTemplate, mergeScenarios, parseScenario, rampTemplate, scenarioFromJSON, type ScenarioSpec } from '../scenario';
 import type { DiagSpec, HistoryFrame, ReactorConfig, ShotReport, SimEvent, SimModel, TerminationInfo } from '../types';
 import { canonicalString } from './canonical';
 import { ScenarioError } from './errors';
@@ -324,6 +324,26 @@ describe('errors', () => {
     // every frame key is a valid diagnostic; the model's controls are all valid keys
     const sim = new Simulation(presetCfg('ITER'), { scenario: interlockTemplate('betaN_th', '>', 100, { P_ECRH_MW: 1 }) });
     expect(sim.scenario!.triggers).toHaveLength(1);
+  });
+
+  it('a rampStep finer than t_end / 1e4 (or than 1e-6) is refused at construction and does not hang the run; the finest grid allowed completes', () => {
+    const ITER400 = presetCfg('ITER', 400);
+    const ramp = (rampStep: number): ScenarioSpec => ({ ...rampTemplate('P_NBI_MW', 10, 50, 0), rampStep });
+    // ITER: t_end 400 s, so the finest grid is 40 ms; 1e-9 used to make a run of 4e11 steps, 1e-20 an endless loop in the first step
+    for (const rampStep of [1e-20, 1e-9, 0.01, 0.0399]) {
+      expect(() => new Simulation(ITER400, { scenario: ramp(rampStep) }), `rampStep ${rampStep}`).toThrow(ScenarioError);
+    }
+    expect(() => new Simulation(ITER400, { scenario: ramp(1e-9) })).toThrow(/rampStep: must be >= 0\.04 = t_end \/ 10000/);
+    expect(() => new Simulation(ITER400, { scenario: ramp(0.04) })).not.toThrow();
+    // a share link with the same content is refused where it is parsed
+    expect(() => scenarioFromJSON('{"schema":1,"rampStep":1e-20,"waveforms":{"P_NBI_MW":{"kind":"pwl","points":[[10,null],[50,0]]}}}')).toThrow(ScenarioError);
+    // the toy model (t_end 10): the finest grid is 1e-3, and a ramp over the whole run then takes about 1e4 steps
+    expect(() => new Simulation(TOY_CFG, toy({ ...rampTemplate('drive', 0, 10, 3), rampStep: 0.9e-3 }))).toThrow(/rampStep: must be >= 0\.001 = t_end/);
+    const sim = new Simulation(TOY_CFG, toy({ ...rampTemplate('drive', 0, 10, 3), rampStep: 1e-3 }));
+    sim.runAll();
+    expect(sim.done).toBe(true);
+    expect(sim.nSteps).toBeGreaterThan(9990);
+    expect(sim.nSteps).toBeLessThan(10100);
   });
 });
 

@@ -970,3 +970,13 @@ Node v24.19.0 · `npm run golden:update` · all cases
   - MASTU15: 2423 keys moved; max rel. diff 1.73e+0
     - moved, largest change first: profiles.last.prof.shear[4], profiles.mid.prof.shear[8], profiles.last.prof.shear[8], profiles.mid.prof.shear[12], profiles.mid.prof.shear[4], profiles.last.prof.shear[12], profiles.last.prof.shear[7], profiles.last.prof.shear[9], profiles.mid.prof.shear[7], profiles.mid.prof.shear[9], profiles.last.prof.shear[13], profiles.mid.prof.shear[13], … (+2411 more)
 - Unchanged (21): ITER, JET, SPARC, DIIID, JT60SA, MASTU, W7X, DEMO, NIF, DIRECT, Z, GF, FRXL, ZAP, TAE, MIRROR, MUON, ITER-DHe3, ITER-pB11, TAE-pB11, MIRROR-DHe3
+
+## 2026-09-29 16:44 UTC — WS6a: new golden case ITER15-EPED (EPED1-type pedestal and Loarte ELM energy loss switched on); no existing case moves
+
+ITER15-EPED is the ITER15 preset shortened to 30 s with ProfileSettings.pedestalModel = 'eped1' and elmLoss = 'loarte' (profiles/pedestal/): the pedestal width from the KBM constraint 0.076 sqrt(beta_p,ped), the pedestal-top pressure limit from the peeling-ballooning height anchored to the DIII-D fit of Groebner et al. (GA-A26243), an adaptive transport barrier that holds the pedestal at that limit, an ELM when the pressure reaches it, and the ELM energy f(nu*_ped) W_ped of Loarte et al. (2003). L-H at about 8 s, ELMs from about 12 s. It guards the two opt-in modules (the default path is guarded by the other 30 cases, all unchanged by this lane: golden compare before and after the lane passes at 1e-9 on all 30).
+
+Added with --only ITER15-EPED; the other files are untouched.
+
+Node v24.19.0 · `npm run golden:update` · --only ITER15-EPED
+
+- Added (1): ITER15-EPED

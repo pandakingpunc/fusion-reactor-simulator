@@ -32,7 +32,7 @@ import { Simulation } from '../physics/simulation';
 import { ProfileModel, supportsProfiles } from '../physics/profiles/model';
 import { flatTopAverages } from '../physics/analysis/flatTop';
 import type { FuelType } from '../physics/reactivity';
-import type { EqSnapshot, Fidelity, HistoryFrame, MagneticConfig, ReactorConfig, ShotReport } from '../physics/types';
+import type { EqSnapshot, Fidelity, HistoryFrame, MagneticConfig, ProfileSettings, ReactorConfig, ShotReport } from '../physics/types';
 
 /** 2: + meta.fuel, history, geometry, profiles, equilibrium (a format change: schema-1 values are unchanged) */
 export const GOLDEN_SCHEMA = 2;
@@ -52,8 +52,9 @@ export interface GoldenCase {
   /**
    * Settings changed from the preset, for combinations no preset uses (the wizard offers every
    * fuel for every method and 1.5D for both tokamak methods). Plain data: cases go to workers.
+   * `profiles` are 1.5D profile settings on top of the preset's (an opt-in physics module switched on).
    */
-  overrides?: { fuel?: FuelType; fidelity?: Fidelity; n_target?: number };
+  overrides?: { fuel?: FuelType; fidelity?: Fidelity; n_target?: number; profiles?: Partial<ProfileSettings> };
 }
 
 /**
@@ -99,6 +100,8 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
   { id: 'MASTU15', preset: 'MASTU', overrides: { fidelity: '1.5D' } },
   { id: 'TAE-pB11', preset: 'TAE', overrides: { fuel: 'pB11' } },
   { id: 'MIRROR-DHe3', preset: 'MIRROR', overrides: { fuel: 'DHe3' } },
+  // WS6a: the EPED1-type pedestal and the Loarte ELM energy loss switched on (opt-in modules of profiles/pedestal/); 30 s: L-H at 8 s, ELMs from 12 s
+  { id: 'ITER15-EPED', preset: 'ITER15', tEnd: 30, overrides: { profiles: { pedestalModel: 'eped1', elmLoss: 'loarte' } } },
 ];
 
 /** Quick cases compared by `npm test` (0D magnetic, two pulsed models, short 1.5D). */
@@ -138,6 +141,10 @@ export function caseConfig(c: GoldenCase): ReactorConfig {
   if (o.n_target !== undefined) {
     if (!('n_target' in cfg)) throw new Error(`golden case ${c.id}: preset ${c.preset} (${cfg.method}) has no n_target setting`);
     cfg = { ...cfg, n_target: o.n_target } as ReactorConfig;
+  }
+  if (o.profiles !== undefined) {
+    if (!runsProfiles(cfg)) throw new Error(`golden case ${c.id}: profile settings need a 1.5D magnetic case (${cfg.method} runs no profile model)`);
+    cfg = { ...cfg, profiles: { ...(cfg as MagneticConfig).profiles, ...o.profiles } } as ReactorConfig;
   }
   if (c.tEnd === undefined) return cfg;
   if (!('t_end' in cfg)) throw new Error(`golden case ${c.id}: preset ${c.preset} (${cfg.method}) has no t_end to shorten`);

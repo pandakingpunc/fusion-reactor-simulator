@@ -10,6 +10,7 @@ import { H98_SIGMA, defaultPriors } from '../analysis/priors';
 import { METRIC_KEYS } from '../analysis/metrics';
 import { buildPriors, formatEnsemble, parseLevels, parseParam, parseProbability, presetConfig } from '../analysis/cliSupport';
 import { ParsedArgs, defineCli } from './args';
+import { loadScenarioFile } from './scenarioFlag';
 
 export const UQ_CLI = defineCli({
   name: 'npx tsx src/cli/uq.cli.ts',
@@ -30,6 +31,7 @@ export const UQ_CLI = defineCli({
     'h98-prior': { type: 'string', default: 'ipb98y2', choices: Object.keys(H98_SIGMA), help: 'width of the H98 prior: IPB98(y,2) RMSE 14 %, or the ITPA20-IL prediction uncertainty 15.8 %' },
     stochastic: { type: 'bool', help: 'also vary the ELM/jitter random seed of each shot (default: every shot keeps the preset seed)' },
     't-end': { type: 'number', min: 1e-6, metavar: 'S', help: 'override the shot duration [s] (a shorter shot is cheaper but the flat top moves)' },
+    scenario: { type: 'string', metavar: 'FILE', help: 'scenario JSON file (schema 1: waveforms of the controls, triggers on the diagnostics) that every shot runs with; checked against the preset before any shot runs; its hash and form are in the JSON result and part of its input hash (an empty scenario is ignored)' },
     'flat-top': { type: 'string', default: 'time', choices: ['frame', 'time'], help: 'weighting of the flat-top means: time (the published definition since v4.0, unbiased by the extra frames at ELMs) or frame (the mean over the frames of v3.0.0)' },
     'q-target': { type: 'number', default: 10, min: 0, help: 'Q of the headline probability P(Q >= target)' },
     prob: { type: 'list', metavar: 'METRIC>=X,…', help: `extra probabilities; metrics: ${METRIC_KEYS.join(', ')}` },
@@ -57,9 +59,10 @@ export function uqSpecFromArgs(args: UqArgs): EnsembleSpec {
   const mode: 'default' | 'none' = (args.priors as 'default' | 'none' | undefined) ?? (magnetic ? 'default' : 'none');
   const h98 = args['h98-prior'] as keyof typeof H98_SIGMA;
   const priors = buildPriors(cfg, mode, (args.param ?? []).map(parseParam), h98);
+  const scenario = args.scenario !== undefined ? loadScenarioFile(args.scenario, cfg, { tEnd: args['t-end'] }) : undefined;
   return resolveSpec({
     preset: args.preset, base: cfg, priors, n: args.n, sampler: args.sampler as EnsembleSpec['sampler'], seed: args.seed,
-    analysis: args.analysis as EnsembleSpec['analysis'], runSeed: args.stochastic ? 'perRow' : 'fixed', tEnd: args['t-end'], flatTop: args['flat-top'] as EnsembleSpec['flatTop'],
+    analysis: args.analysis as EnsembleSpec['analysis'], runSeed: args.stochastic ? 'perRow' : 'fixed', tEnd: args['t-end'], ...(scenario && !scenario.empty ? { scenario: scenario.spec } : {}), flatTop: args['flat-top'] as EnsembleSpec['flatTop'],
     qTarget: args['q-target'], probabilities: (args.prob ?? []).map(parseProbability), quantileLevels: args.levels ? parseLevels(args.levels) : undefined,
     bootstrap: args.bootstrap, confidence: args.confidence, maxRuns: args['max-runs'],
   });
@@ -97,5 +100,5 @@ export interface UqOutput {
 /** The reports (JSON, CSV, text) of the outcomes of a prepared ensemble. */
 export function uqReport(prep: UqPrepared, outcomes: readonly SimOutcome[]): UqOutput {
   const result = summarizeEnsemble(prep.plan, outcomes);
-  return { json: toJson(result), csv: toCsv(prep.plan, outcomes), text: formatEnsemble(result), valid: result.runs.valid };
+  return { json: toJson(result), csv: toCsv(prep.plan, outcomes, result.scenario ? { scenarioSha256: result.scenario.sha256 } : {}), text: formatEnsemble(result), valid: result.runs.valid };
 }

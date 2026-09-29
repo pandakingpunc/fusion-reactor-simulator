@@ -75,6 +75,8 @@ describe('assessSystems', () => {
     expect(s.cryo.P_cryo_MW).toBeLessThan(45);
     expect(s.nuclearHeating_W).toBeGreaterThan(1e3);
     expect(s.build.inboardTotal_m).toBeCloseTo(1.3, 12);
+    // the plasma-side TF case of the radial build is the third layer of the stress model
+    expect(s.build.inboard[s.build.inboard.length - 1].thickness_m).toBeCloseTo(s.tf.plasmaCase_m, 12);
     expect(s.coldMass_kg).toBeGreaterThan(s.tf.totalMass_kg);
     expect(s.warnings).toEqual([]);
   });

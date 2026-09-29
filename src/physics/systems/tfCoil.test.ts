@@ -79,6 +79,49 @@ describe('plane-stress layer solver (Kovari 2016 eqs. 36-39)', () => {
   });
 });
 
+describe('reference values of the PROCESS unit tests (UKAEA/PROCESS, tests/unit/models/tfcoil)', () => {
+  // test_plane_stress case 'test1' (data of the EU DEMO 2018 baseline): nose case, winding pack (E 43.1 GPa, nu 0.309, J 18.1 MA/m^2)
+  // and plasma-side case; expected arrays of tf_plane_stress_expected_data.json, sampled at three radii per layer (radial index 0, 50, 99
+  // of 100 points from r0 in steps of (r1 - r0) / 100)
+  const rad = [2.9939411851091102, 3.5414797139565706, 4.0876202904571599, 4.1476202904571595];
+  const layers: StressLayer[] = [
+    { r0: rad[0], r1: rad[1], E: 205e9, nu: 0.3, J: 0 },
+    { r0: rad[1], r1: rad[2], E: 43126670035.025253, nu: 0.30904421667064924, J: 18097185.781970859 },
+    { r0: rad[2], r1: rad[3], E: 205e9, nu: 0.3, J: 0 },
+  ];
+  const samples: { k: number; j: number; r: number; sigR: number; sigT: number; u: number }[] = [
+    { k: 0, j: 0, r: 2.9939411851091102, sigR: 0.0, sigT: -349942877.4275314, u: -0.005110772649589637 },
+    { k: 0, j: 50, r: 3.2677104495328404, sigR: -28090121.6628299, sigT: -321852755.7647013, u: -0.004996021941450596 },
+    { k: 0, j: 99, r: 3.536004328668096, sigR: -49533728.99325363, sigT: -300409148.4342775, u: -0.004925378561924566 },
+    { k: 1, j: 0, r: 3.5414797139565706, sigR: -49921300.804571584, sigT: -75393985.39087032, u: -0.0049243011957627175 },
+    { k: 1, j: 50, r: 3.8145500022068655, sigR: -36951869.45718825, sigT: -68765016.19304176, u: -0.005072182504330391 },
+    { k: 1, j: 99, r: 4.082158884692154, sigR: 2623936.7909615375, sigT: -52790276.293530844, u: -0.005073625411970845 },
+    { k: 2, j: 0, r: 4.08762029045716, sigR: 3689597.239691208, sigT: -253219448.39249134, u: -0.0050711680826814156 },
+    { k: 2, j: 50, r: 4.117620290457159, sigR: 1824637.8320254136, sigT: -251354488.98482555, u: -0.005059689237411577 },
+    { k: 2, j: 99, r: 4.147020290457159, sigR: 36105.13837954948, sigT: -249565956.29117972, u: -0.0050487805032648865 },
+  ];
+
+  it('the three-layer solution reproduces the PROCESS plane_stress reference stress and displacement to 1e-8', () => {
+    const sol = tfStressLayers(layers);
+    for (const s of samples) {
+      const r = layers[s.k].r0 + ((layers[s.k].r1 - layers[s.k].r0) / 100) * s.j;
+      expect(r).toBeCloseTo(s.r, 12);
+      const at = sol.at(s.k, r);
+      expect(Math.abs(at.sigR - s.sigR)).toBeLessThan(1e-8 * 350e6);
+      expect(Math.abs(at.sigT - s.sigT)).toBeLessThan(1e-8 * 350e6);
+      expect(Math.abs(at.u - s.u)).toBeLessThan(1e-8 * 0.0051);
+    }
+  });
+
+  it('the vertical force reproduces the PROCESS tf_field_and_force reference (sliding-joint centrepost cases of test_tf_field_and_force)', () => {
+    // vforce_tot = vforce / f_vforce_inboard of the two parametrised cases; R = 1.7 m, B0 = 3 T, 25.5 MA in 12 coils, resistive winding pack
+    const a = verticalForceUpperHalf(3, 1.7000000000000002, 25500000, 12, 1e-9, 0.14708850000000001, 4.0914285714285716);
+    const b = verticalForceUpperHalf(3, 1.7000000000000002, 25500000, 12, 1e-9, 0.14708850000000001, 4.1094285714285714);
+    expect(a / (12380916.66459452 / 0.59539634897566385)).toBeCloseTo(1, 8);
+    expect(b / (12268469.138442248 / 0.58932254522566518)).toBeCloseTo(1, 8);
+  });
+});
+
 describe('stress invariants', () => {
   it('Tresca and von Mises of principal stresses', () => {
     expect(trescaStress(0, -300, 200)).toBe(500);
@@ -182,6 +225,16 @@ describe('ITER-like TF coil against the literature', () => {
     expect(r.case.sigZ_MPa).toBeGreaterThan(0);
     expect(r.case.tresca_MPa).toBeCloseTo(-r.case.sigT_MPa + r.case.sigZ_MPa, 6);
     expect(r.case.r).toBeCloseTo(r.r_c, 9); // highest stress at the innermost radius of the case
+  });
+
+  it('the plasma-side case is 5 % of the leg (PROCESS f_dr_tf_plasma_case), carries hoop stress and never governs a well-supported nose', () => {
+    expect(r.plasmaCase_m).toBeCloseTo(0.05 * 0.9, 12);
+    expect(r.front.sigT_MPa).toBeLessThan(0);
+    expect(r.front.r).toBeGreaterThanOrEqual(r.r_o);
+    expect(r.tresca_MPa).toBe(Math.max(r.case.tresca_MPa, r.wp.tresca_MPa, r.front.tresca_MPa));
+    // its steel adds to the area that carries the vertical tension
+    const a = Math.PI * (r.r_i ** 2 - r.r_c ** 2) + 0.55 * Math.PI * (r.r_o ** 2 - r.r_i ** 2) + Math.PI * ((r.r_o + r.plasmaCase_m) ** 2 - r.r_o ** 2);
+    expect(r.A_steel_m2).toBeCloseTo(a / 18, 12);
   });
 
   it('the stored energy of the TF set is within 15 % of the 41 GJ of ITER', () => {

@@ -64,7 +64,7 @@ export function assessSystems(inp: SystemsInput): SystemsAssessment {
   if (inp.isStellarator && opts.nCoils === undefined) opts.nCoils = 50; // W7-X has 50 non-planar modular coils
   const tf = tfCoil({ R: inp.g.R, a: inp.g.a, kappa: inp.g.kappa, B0: c.B0, tech, gap_m: c.magnet.gap_m, coilThickness_m: c.magnet.coilThickness_m, limit_MPa: spec.stress_MPa, ...opts });
   if (inp.isStellarator) tf.notes.push('stellarator: the inboard-leg model is used as an estimate for the modular coils');
-  const build = radialBuild({ a: inp.g.a, gap_m: c.magnet.gap_m, blanketType: c.blanket.type, blanketInboard_m: sys?.blanket?.inboardDepth_m });
+  const build = radialBuild({ a: inp.g.a, gap_m: c.magnet.gap_m, blanketType: c.blanket.type, blanketInboard_m: sys?.blanket?.inboardDepth_m, tfPlasmaCase_m: tf.plasmaCase_m });
 
   const hasBlanket = c.blanket.type !== 'none';
   const tbrOpts: TBROptions = { meanDepth_m: hasBlanket ? build.blanketMean_m : undefined, breederFraction: sys?.blanket?.breederFraction };

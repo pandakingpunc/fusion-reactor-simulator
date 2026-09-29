@@ -5,18 +5,22 @@
  *  - M. Kovari, F. Fox, C. Harrington, R. Kembleton, P. Knight, H. Lux, J. Morris, "PROCESS": A systems code for
  *    fusion power plants - Part 2: Engineering, Fusion Eng. Des. 104 (2016) 9-20, sect. 2.4, eqs. (31)-(44)
  *    (Part 1, physics: Kovari et al., Fusion Eng. Des. 89 (2014) 3054, is the companion paper), and
- *  - the PROCESS implementation (J. Morris, CCFE, 2014; `plane_stress`, `tf_field_and_force`, `stresscl`), which
- *    documents the same two-layer plane-stress solution and the vertical tension model.
+ *  - the PROCESS implementation (J. Morris, CCFE, 2014; `plane_stress`, `tf_field_and_force`, `stresscl`), which solves the
+ *    same plane-stress problem for two or more layers and the vertical tension of the coil; both routines are reproduced
+ *    here to 1e-9 against the reference values of the PROCESS unit tests (see tfCoil.test.ts).
  *
  * Model (all at the inboard-leg midplane, axisymmetric, the coils supported as a vault):
- *  1. Two concentric layers: the steel case nose (inner radius r_c to r_i, no current) and the winding pack (r_i to r_o,
- *     smeared homogeneous material carrying the uniform current density J). The peak field B_peak = mu0 I_TF / (2 pi r_o)
+ *  1. Three concentric layers: the steel case nose (inner radius r_c to r_i, no current), the winding pack (r_i to r_o,
+ *     smeared homogeneous material carrying the uniform current density J) and the thin plasma-side case (r_o to r_o + 5 % of the
+ *     leg thickness, PROCESS `f_dr_tf_plasma_case` = 0.05; Kovari 2016 neglects it, the PROCESS code includes it and the layer
+ *     solver reproduces its `plane_stress` reference arrays for that three-layer case). The peak field B_peak = mu0 I_TF / (2 pi r_o)
  *     is at the outer edge of the winding pack; inside it B(r) = mu0 J (r^2 - r_i^2) / (2 r) (Ampere's law, eq. 33) and the
  *     radial Lorentz body force per volume is f = -J B (inward, eq. 31).
  *  2. Plane stress with radial displacement u(r): u'' + u'/r - u/r^2 = alpha r + beta / r (eqs. 36-38), solved in each
  *     layer by u = C1 r + C2 / r + alpha r^3 / 8 + beta r ln(r) / 2 (eq. 39), alpha = mu0 J^2 (1 - nu^2) / (2 E),
- *     beta = -alpha r_i^2. The four constants follow from sigma_r = 0 at r_c and r_o, and continuity of sigma_r and u at
- *     r_i (the four boundary conditions of Kovari 2016, solved by Gaussian elimination).
+ *     beta = -alpha r_i^2 (with the current of the inner layers in general). The two constants of each layer follow from
+ *     sigma_r = 0 at the inner and outer surface and continuity of sigma_r and u at the interfaces (four conditions for the two
+ *     layers of Kovari 2016), solved by Gaussian elimination.
  *  3. The vertical (axial) stress is the inboard share of the vertical tension divided by the steel area of the case,
  *     conduit and radial plates (eq. 42 and the text below it); the conductor is neglected axially (twisted strands).
  *  4. Tresca (maximum shear) criterion sigma_T = max(|s_r - s_t|, |s_t - s_z|, |s_z - s_r|) (the PROCESS documentation of
@@ -27,7 +31,8 @@
  * Simplifications (APPROXIMATION, all flagged in the result's `notes`): the winding pack is a full annulus (as in PROCESS
  * the side case and the toroidal wedge shape are not resolved); the CS and PF field and the out-of-plane forces are
  * neglected (as in PROCESS); the plasma-side case is counted in the plasma-to-coil gap, i.e. `gap_m` reaches the outer
- * surface of the winding pack, where the peak field is (this is the convention of the earlier thin-ring estimate too).
+ * surface of the winding pack, where the peak field is (this is the convention of the earlier thin-ring estimate too), and
+ * `coilThickness_m` is the depth from there to the inner surface of the nose.
  *
  * The stress of a single thick ring under body force satisfies the exact equilibrium integral
  * int sigma_theta dr = int r f dr; `tfStressLayers` is exported so that tests can check it and the Lame limits.
@@ -90,6 +95,9 @@ export const TF_TECH: Record<MagnetTech, TFTechSpec> = {
     turnCurrent_A: 40e3, rho_wp: 7800, source: 'HTS cable with a large steel fraction (SPARC-like compact coil)',
   },
 };
+
+/** thickness of the plasma-side case as a share of the leg thickness (PROCESS `f_dr_tf_plasma_case` default) */
+export const PLASMA_CASE_FRACTION = 0.05;
 
 /** Optional per-run TF coil inputs; every field defaults to the technology value in `TF_TECH`. */
 export interface TFCoilOptions {
@@ -169,10 +177,13 @@ export interface TFCoilResult {
   T_inboard_N: number;
   /** steel area of one inboard leg (case, conduit, plates) [m^2] */
   A_steel_m2: number;
-  /** stresses at the point of maximum Tresca stress of the case and of the winding-pack steel */
+  /** stresses at the point of maximum Tresca stress of the nose case, of the winding-pack steel and of the plasma-side case */
   case: TFStressState;
   wp: TFStressState;
-  /** Tresca stress governing the design: the larger of the two [MPa], with the von Mises stress of the same point */
+  front: TFStressState;
+  /** thickness of the plasma-side case [m] (inside the plasma-to-coil gap) */
+  plasmaCase_m: number;
+  /** Tresca stress governing the design: the largest of the three [MPa], with the von Mises stress of the same point */
   tresca_MPa: number;
   vonMises_MPa: number;
   limit_MPa: number;
@@ -371,44 +382,45 @@ export function tfCoil(inp: TFCoilInput): TFCoilResult {
   const W_D = Math.max(R_outLeg + dr_wp - r_c, 0.1);
   const L = dCoilLength(H_leg, H_max, W_D);
 
-  // stress: layer 0 = case nose, layer 1 = winding pack (if the nose is absent only the winding pack)
+  // stress: nose case (if any), winding pack, plasma-side case
   const E_wp = smearedTransverseModulus(spec.E_struct, spec.E_soft, fStruct);
+  const pc = PLASMA_CASE_FRACTION * t;
   const layers: StressLayer[] = [];
-  const kWP = fNose > 1e-9 ? 1 : 0;
-  if (kWP === 1) layers.push({ r0: r_c, r1: r_i, E: spec.E_struct, nu: spec.nu_struct, J: 0 });
-  layers.push({ r0: kWP === 1 ? r_i : r_c, r1: r_o, E: E_wp, nu: spec.nu_struct, J });
+  const kinds: ('case' | 'wp' | 'front')[] = [];
+  if (fNose > 1e-9) { layers.push({ r0: r_c, r1: r_i, E: spec.E_struct, nu: spec.nu_struct, J: 0 }); kinds.push('case'); }
+  layers.push({ r0: fNose > 1e-9 ? r_i : r_c, r1: r_o, E: E_wp, nu: spec.nu_struct, J }); kinds.push('wp');
+  layers.push({ r0: r_o, r1: r_o + pc, E: spec.E_struct, nu: spec.nu_struct, J: 0 }); kinds.push('front');
   const sol = tfStressLayers(layers);
 
   // vertical tension
   const Fz = verticalForceUpperHalf(inp.B0, inp.R, I_total, N, r_i, r_o, R_outLeg);
   const Tz = fVert * Fz;
-  const A_steel = (Math.PI * (r_i * r_i - r_c * r_c) + fStruct * A_wp_all) / N;
+  const A_steel = (Math.PI * (r_i * r_i - r_c * r_c) + fStruct * A_wp_all + Math.PI * ((r_o + pc) ** 2 - r_o * r_o)) / N;
   const sigZ = Tz / A_steel;
   const fac = spec.E_struct / E_wp;
 
   const nPts = 24;
   const profile: StressPoint[] = [];
-  let caseSt: TFStressState | null = null, wpSt: TFStressState | null = null;
-  const consider = (k: number, isWP: boolean) => {
-    const l = layers[k];
+  const best: Partial<Record<'case' | 'wp' | 'front', TFStressState>> = {};
+  layers.forEach((l, k) => {
+    const kind = kinds[k];
     for (let j = 0; j <= nPts; j++) {
       const r = l.r0 + ((l.r1 - l.r0) * j) / nPts;
-      const s = sol.at(k, r);
-      profile.push({ r, sigR: s.sigR, sigT: s.sigT });
-      const sr = isWP ? s.sigR * fac : s.sigR, st = isWP ? s.sigT * fac : s.sigT;
+      const st0 = sol.at(k, r);
+      profile.push({ r, sigR: st0.sigR, sigT: st0.sigT });
+      // the winding pack is smeared: the stress in its steel is the smeared stress times E_steel / E_effective
+      const sr = kind === 'wp' ? st0.sigR * fac : st0.sigR, st = kind === 'wp' ? st0.sigT * fac : st0.sigT;
       const tr = trescaStress(sr, st, sigZ);
-      const holder = isWP ? wpSt : caseSt;
-      if (!holder || tr > holder.tresca_MPa * 1e6) {
-        const state: TFStressState = { r, sigR_MPa: sr / 1e6, sigT_MPa: st / 1e6, sigZ_MPa: sigZ / 1e6, tresca_MPa: tr / 1e6, vonMises_MPa: vonMisesStress(sr, st, sigZ) / 1e6 };
-        if (isWP) wpSt = state; else caseSt = state;
+      const cur = best[kind];
+      if (!cur || tr > cur.tresca_MPa * 1e6) {
+        best[kind] = { r, sigR_MPa: sr / 1e6, sigT_MPa: st / 1e6, sigZ_MPa: sigZ / 1e6, tresca_MPa: tr / 1e6, vonMises_MPa: vonMisesStress(sr, st, sigZ) / 1e6 };
       }
     }
-  };
-  if (kWP === 1) consider(0, false);
-  consider(layers.length - 1, true);
-  const wpState = wpSt as unknown as TFStressState;
-  const caseState = (caseSt as unknown as TFStressState | null) ?? wpState;
-  const governing = caseState.tresca_MPa >= wpState.tresca_MPa ? caseState : wpState;
+  });
+  const wpState = best.wp as TFStressState;
+  const frontState = best.front as TFStressState;
+  const caseState = best.case ?? wpState;
+  const governing = [caseState, wpState, frontState].reduce((m, x) => (x.tresca_MPa > m.tresca_MPa ? x : m));
 
   // stored energy of the ideal toroidal cavity between the legs, W = (pi h R^2 B0^2 / mu0) ln(R_out / R_in) for the mean cavity
   // height h of the D shape (between the straight-leg height and the maximum height of the coil)
@@ -430,7 +442,7 @@ export function tfCoil(inp: TFCoilInput): TFCoilResult {
     tech: inp.tech, nCoils: N, r_c, r_i, r_o, R_outLeg, legHeight_m: H_leg, coilHeight_m: H_max, I_total_A: I_total, B_peak_T: B_peak, pMag_MPa: pMag / 1e6,
     J_wp_Am2: J, turnsPerCoil: Iturn > 0 ? I_total / (N * Iturn) : 0,
     F_centering_Npm: (0.5 * B_peak * I_total) / N, F_vertical_N: Fz, T_inboard_N: Tz, A_steel_m2: A_steel,
-    case: caseState, wp: wpState, tresca_MPa: governing.tresca_MPa, vonMises_MPa: governing.vonMises_MPa,
+    case: caseState, wp: wpState, front: frontState, plasmaCase_m: pc, tresca_MPa: governing.tresca_MPa, vonMises_MPa: governing.vonMises_MPa,
     limit_MPa: inp.limit_MPa, margin: 1 - governing.tresca_MPa / inp.limit_MPa, overstress: governing.tresca_MPa > inp.limit_MPa,
     E_wp_Pa: E_wp, W_J: W, coilLength_m: L, coilMass_kg: coilMass, totalMass_kg: coilMass * N, A_wp_m2: A_wp_coil,
     coldSurface_m2: 2 * (dr_wp + dx_wp) * L * N, profile, notes,

@@ -30,7 +30,7 @@ export const UQ_CLI = defineCli({
     'h98-prior': { type: 'string', default: 'ipb98y2', choices: Object.keys(H98_SIGMA), help: 'width of the H98 prior: IPB98(y,2) RMSE 14 %, or the ITPA20-IL prediction uncertainty 15.8 %' },
     stochastic: { type: 'bool', help: 'also vary the ELM/jitter random seed of each shot (default: every shot keeps the preset seed)' },
     't-end': { type: 'number', min: 1e-6, metavar: 'S', help: 'override the shot duration [s] (a shorter shot is cheaper but the flat top moves)' },
-    'flat-top': { type: 'string', default: 'frame', choices: ['frame', 'time'], help: 'weighting of the flat-top means: frame (the published definition) or time (unbiased by the extra frames at ELMs)' },
+    'flat-top': { type: 'string', default: 'time', choices: ['frame', 'time'], help: 'weighting of the flat-top means: time (the published definition since v4.0, unbiased by the extra frames at ELMs) or frame (the mean over the frames of v3.0.0)' },
     'q-target': { type: 'number', default: 10, min: 0, help: 'Q of the headline probability P(Q >= target)' },
     prob: { type: 'list', metavar: 'METRIC>=X,…', help: `extra probabilities; metrics: ${METRIC_KEYS.join(', ')}` },
     levels: { type: 'list', metavar: 'P,…', help: 'quantile levels (default 0.05,0.16,0.5,0.84,0.95)' },

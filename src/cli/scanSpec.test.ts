@@ -13,12 +13,12 @@ describe('scan flags and specification', () => {
     expect(text).toMatch(/Usage: npx tsx src\/cli\/scan\.cli\.ts/);
     expect(text).toMatch(/EDUCATIONAL/);
     expect(() => parse(...SHORT)).toThrow(/--param is required/);
-    expect(parse(...SHORT, '--param', 'H98=1:2:3')).toMatchObject({ sampler: 'sobol', seed: 1, 'max-runs': 10000, 'flat-top': 'frame' });
+    expect(parse(...SHORT, '--param', 'H98=1:2:3')).toMatchObject({ sampler: 'sobol', seed: 1, 'max-runs': 10000, 'flat-top': 'time' });
   });
 
   it('a grid: axes with N; the options reach the specification', () => {
-    const s = scanSpecFromArgs(parse(...SHORT, '--param', 'H98=0.8:1.2:3,n_target=log:4e19:1e20:2', '--run-seed', '77', '--flat-top', 'time'));
-    expect(s).toMatchObject({ preset: 'JET', mode: 'grid', seed: 1, runSeed: 77, tEnd: 1, flatTop: 'time', maxRuns: 10000 });
+    const s = scanSpecFromArgs(parse(...SHORT, '--param', 'H98=0.8:1.2:3,n_target=log:4e19:1e20:2', '--run-seed', '77', '--flat-top', 'frame'));
+    expect(s).toMatchObject({ preset: 'JET', mode: 'grid', seed: 1, runSeed: 77, tEnd: 1, flatTop: 'frame', maxRuns: 10000 });
     expect(s.axes).toEqual([{ path: 'H98', lo: 0.8, hi: 1.2, points: 3 }, { path: 'n_target', lo: 4e19, hi: 1e20, points: 2, log: true }]);
   });
 

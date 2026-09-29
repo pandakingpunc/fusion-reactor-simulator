@@ -1,8 +1,8 @@
 /**
  * Scalar outputs of one simulated shot, for the UQ ensembles: what a study reports quantiles, probabilities and
  * sensitivity indices of. They are computed from the run's history, events and report with the project's flat-top
- * definition (flatTopMean: mean over the last 30 % of the frames, the same as the shot report, the validation table and
- * the golden harness), so they agree with the numbers everywhere else.
+ * definition (flatTopMean: the time-weighted mean over the last 30 % of the shot, the default since v4.0, the same as the shot report,
+ * the validation table and the golden harness), so they agree with the numbers everywhere else.
  *
  *  performance metrics (meaningful for a shot that ran to its scheduled end):
  *    Q_flat          flat-top mean of the scientific gain Q = P_fus / P_in
@@ -72,7 +72,7 @@ function maxOf(hist: readonly Pick<HistoryFrame, 'd'>[], key: string): number {
 const fin = (x: unknown): number => (typeof x === 'number' && Number.isFinite(x) ? x : NaN);
 
 export interface MetricsOptions {
-  /** flat-top weighting: 'frame' (default, the definition of the golden numbers, the shot report and the validation table) or 'time' (unbiased by the extra frames at ELMs and sawtooth crashes) */
+  /** flat-top weighting: 'time' (default: the definition of the golden numbers, the shot report and the validation table since v4.0, unbiased by the extra frames at ELMs and sawtooth crashes) or 'frame' (the mean over the frames of v3.0.0) */
   weighting?: FlatTopWeighting;
 }
 
@@ -84,7 +84,7 @@ export function runMetrics(history: readonly HistoryFrame[], events: readonly Si
   // a disrupted shot: only the frames up to the onset (see the header)
   const frames = onset ? history.filter((f) => f.t <= onset.t) : history;
   const hist = frames.length ? frames : history;
-  const flat = (key: string) => (hist.length ? flatTopMean(hist, key, { weighting: opts.weighting ?? 'frame' }) : NaN);
+  const flat = (key: string) => (hist.length ? flatTopMean(hist, key, { weighting: opts.weighting ?? 'time' }) : NaN);
   const qMax = disrupted ? maxOf(hist, 'Q') : fin(report.Q_sci_max);
   return {
     values: {

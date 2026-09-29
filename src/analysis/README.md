@@ -63,8 +63,8 @@ preset, e.g. `--param profiles.pedestalWidth=lognormal:0.06:0.3` (the pedestal w
 
 **Determinism.** The same options give byte-identical JSON, whatever `--threads` is: the design comes from the seeded sampler, each
 shot is deterministic (the preset's own ELM seed, or with `--stochastic` a seed derived per design row), results are collected in
-task order, and the JSON has no timing, host or date. `inputHash` identifies the inputs. `--flat-top time` switches the flat-top
-means to the time-weighted definition (default: the frame-weighted one of the golden numbers, the shot report and the validation table).
+task order, and the JSON has no timing, host or date. `inputHash` identifies the inputs. `--flat-top frame` switches the flat-top
+means to the frame-weighted definition of v3.0.0 (default: the time-weighted one of the golden numbers, the shot report and the validation table since v4.0).
 
 ## Optimisation (`optimize`)
 

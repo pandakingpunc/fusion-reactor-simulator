@@ -28,11 +28,11 @@ describe('runMetrics on constructed histories', () => {
     const m = runMetrics(h, [], fakeReport(true, 'Scheduled end'));
     expect(m.endReason).toBe('Scheduled end');
     const v = m.values;
-    // the flat top is the last 30 % of the frames (indices 7, 8, 9)
-    expect(v.Q_flat).toBe(8);
-    expect(v.Pfus_flat_MW).toBe(16);
-    expect(v.nG_flat).toBeCloseTo(0.8, 14);
-    expect(v.betaN_flat).toBeCloseTo(2.2, 14);
+    // the flat top is the last 30 % of the shot in time, t = 6.3 to 9 (the trapezoidal mean of a linear diagnostic is its value at the middle, t = 7.65)
+    expect(v.Q_flat).toBeCloseTo(7.65, 12);
+    expect(v.Pfus_flat_MW).toBeCloseTo(15.3, 12);
+    expect(v.nG_flat).toBeCloseTo(0.765, 14);
+    expect(v.betaN_flat).toBeCloseTo(2.235, 14);
     expect(v.tauE_flat_s).toBe(1);
     expect(v.Q_flat).toBe(flatTopMean(h, 'Q')); // the project's definition
     expect(v.Q_max).toBe(99); // the report's value for a shot that did not disrupt
@@ -48,8 +48,8 @@ describe('runMetrics on constructed histories', () => {
   it('a disrupted shot: metrics over the frames up to the onset only, completed = 0 even if the report says natural', () => {
     const h = fakeHistory(10);
     const m = runMetrics(h, [disruptionAt(5)], fakeReport(false, 'Density-limit disruption'));
-    // frames 0 ... 5 (6 frames): the flat top is the last 30 %: from index floor(6 * 0.7) = 4, i.e. frames 4 and 5
-    expect(m.values.Q_flat).toBe(4.5);
+    // frames 0 ... 5 (t = 0 ... 5): the flat top is the last 30 % of that time, t = 3.5 to 5; the trapezoidal mean of Q = t there is 4.25
+    expect(m.values.Q_flat).toBeCloseTo(4.25, 12);
     expect(m.values.nG_max).toBeCloseTo(0.5, 14);
     expect(m.values.Q_max).toBe(5); // recomputed over the frames up to the onset, not the report's 99
     expect(m.values.Pfus_max_MW).toBe(10);
@@ -77,14 +77,15 @@ describe('runMetrics on constructed histories', () => {
 });
 
 describe('flat-top weighting', () => {
-  it('frame (default) and time weighting differ when the frames are unevenly spaced in time, and time weighting is the unbiased one', () => {
+  it('time (default) and frame weighting differ when the frames are unevenly spaced in time, and time weighting is the unbiased one', () => {
     // 20 frames, the last 6 clustered in the final 1 % of the time: the frame mean is dominated by the cluster
     const times = [...Array.from({ length: 14 }, (_, i) => i * 7), ...Array.from({ length: 6 }, (_, i) => 99 + i * 0.2)];
     const h: HistoryFrame[] = times.map((t) => ({ t, y: [], internal: {}, d: { Q: t < 90 ? 10 : 1, P_fus: 1, nG_frac: 1, tauE: 1, betaN: 1 } }));
     const rep = fakeReport(true, 'Scheduled end');
-    const frame = runMetrics(h, [], rep).values.Q_flat;
-    expect(runMetrics(h, [], rep, { weighting: 'frame' }).values.Q_flat).toBe(frame);
-    const time = runMetrics(h, [], rep, { weighting: 'time' }).values.Q_flat;
+    const time = runMetrics(h, [], rep).values.Q_flat;
+    expect(runMetrics(h, [], rep, { weighting: 'time' }).values.Q_flat).toBe(time);
+    const frame = runMetrics(h, [], rep, { weighting: 'frame' }).values.Q_flat;
+    expect(frame).toBe(flatTopMean(h, 'Q', { weighting: 'frame' }));
     expect(frame).toBeLessThan(time); // most of the frame-weighted window is the low-Q cluster
     expect(time).toBeGreaterThan(5);
     expect(time).toBe(flatTopMean(h, 'Q', { weighting: 'time' }));

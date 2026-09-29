@@ -28,7 +28,7 @@ describe('uq flags', () => {
 
   it('the defaults', () => {
     const a = parse(...SHORT);
-    expect(a).toMatchObject({ n: 64, analysis: 'propagate', sampler: 'sobol', seed: 1, 'h98-prior': 'ipb98y2', 'flat-top': 'frame', 'q-target': 10, bootstrap: 200, confidence: 0.95, 'max-runs': 100000, stochastic: false, quiet: false });
+    expect(a).toMatchObject({ n: 64, analysis: 'propagate', sampler: 'sobol', seed: 1, 'h98-prior': 'ipb98y2', 'flat-top': 'time', 'q-target': 10, bootstrap: 200, confidence: 0.95, 'max-runs': 100000, stochastic: false, quiet: false });
     expect(a.param).toBeUndefined();
     expect(a.priors).toBeUndefined();
   });
@@ -113,11 +113,11 @@ describe('uq reports', { timeout: 60_000 }, () => {
     expect(out.text).toMatch(/Sobol' indices \(16 runs/);
   });
 
-  it('--flat-top time is recorded and changes the input hash', () => {
-    const a = uqPrepare(parse(...SHORT, '--n', '4')), b = uqPrepare(parse(...SHORT, '--n', '4', '--flat-top', 'time'));
-    expect(a.spec.flatTop).toBe('frame');
-    expect(b.spec.flatTop).toBe('time');
-    expect(b.plan.tasks()[0].weighting).toBe('time');
+  it('--flat-top frame is recorded and changes the input hash', () => {
+    const a = uqPrepare(parse(...SHORT, '--n', '4')), b = uqPrepare(parse(...SHORT, '--n', '4', '--flat-top', 'frame'));
+    expect(a.spec.flatTop).toBe('time');
+    expect(b.spec.flatTop).toBe('frame');
+    expect(b.plan.tasks()[0].weighting).toBe('frame');
   });
 
   it('a run in which no shot works has zero valid shots', async () => {

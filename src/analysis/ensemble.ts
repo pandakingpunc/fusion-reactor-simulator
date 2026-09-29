@@ -65,7 +65,7 @@ export interface EnsembleSpec {
   runSeed: RunSeedMode;
   /** override of the shot duration [s] */
   tEnd?: number;
-  /** flat-top weighting of the metrics: 'frame' (default, the project's published definition) or 'time' */
+  /** flat-top weighting of the metrics: 'time' (default, the project's published definition since v4.0) or 'frame' (the mean over the frames of v3.0.0) */
   flatTop: FlatTopWeighting;
   /** Q target of the headline probability (default 10) */
   qTarget: number;
@@ -86,7 +86,7 @@ export const DEFAULT_QUANTILES: readonly number[] = [0.05, 0.16, 0.5, 0.84, 0.95
 export function resolveSpec(s: Partial<EnsembleSpec> & Pick<EnsembleSpec, 'base' | 'priors'>): EnsembleSpec {
   return {
     preset: s.preset, base: s.base, priors: s.priors, n: s.n ?? 64, sampler: s.sampler ?? 'sobol', seed: s.seed ?? 1,
-    analysis: s.analysis ?? 'propagate', runSeed: s.runSeed ?? 'fixed', tEnd: s.tEnd, flatTop: s.flatTop ?? 'frame', qTarget: s.qTarget ?? 10,
+    analysis: s.analysis ?? 'propagate', runSeed: s.runSeed ?? 'fixed', tEnd: s.tEnd, flatTop: s.flatTop ?? 'time', qTarget: s.qTarget ?? 10,
     probabilities: s.probabilities ?? [], quantileLevels: s.quantileLevels ?? [...DEFAULT_QUANTILES], bootstrap: s.bootstrap ?? 200,
     confidence: s.confidence ?? 0.95, maxRuns: s.maxRuns ?? 100_000,
   };
@@ -96,7 +96,7 @@ export function resolveSpec(s: Partial<EnsembleSpec> & Pick<EnsembleSpec, 'base'
 export interface SimTask {
   id: string;
   cfg: ReactorConfig;
-  /** flat-top weighting of the metrics (default 'frame') */
+  /** flat-top weighting of the metrics (default 'time') */
   weighting?: FlatTopWeighting;
 }
 

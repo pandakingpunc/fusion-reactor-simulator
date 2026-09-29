@@ -22,7 +22,7 @@ export const SCAN_CLI = defineCli({
     seed: { type: 'int', default: 1, min: 0, max: 4294967295, help: 'sampled scan: seed of the design' },
     'run-seed': { type: 'int', min: 0, max: 4294967295, help: 'use this random seed in every shot (default: the preset seed)' },
     't-end': { type: 'number', min: 1e-6, metavar: 'S', help: 'override the shot duration [s]' },
-    'flat-top': { type: 'string', default: 'frame', choices: ['frame', 'time'], help: 'weighting of the flat-top means: frame (the published definition) or time (unbiased by the extra frames at ELMs)' },
+    'flat-top': { type: 'string', default: 'time', choices: ['frame', 'time'], help: 'weighting of the flat-top means: time (the published definition since v4.0, unbiased by the extra frames at ELMs) or frame (the mean over the frames of v3.0.0)' },
     threads: { type: 'int', min: 1, help: 'worker threads (default: cores - 1)' },
     timeout: { type: 'number', min: 1, metavar: 'S', help: 'fail a shot that runs longer than S seconds' },
     'max-runs': { type: 'int', default: 10000, min: 1, help: 'refuse scans with more shots' },

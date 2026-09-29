@@ -31,7 +31,7 @@ const fake = (plan: EnsemblePlan, f: (x: number[], row: number) => SimOutcome): 
 describe('specification and design', () => {
   it('resolveSpec fills in the defaults', () => {
     const s = resolveSpec({ base: JET, priors: PRIORS });
-    expect(s).toMatchObject({ n: 64, sampler: 'sobol', seed: 1, analysis: 'propagate', runSeed: 'fixed', flatTop: 'frame', qTarget: 10, bootstrap: 200, confidence: 0.95, maxRuns: 100000 });
+    expect(s).toMatchObject({ n: 64, sampler: 'sobol', seed: 1, analysis: 'propagate', runSeed: 'fixed', flatTop: 'time', qTarget: 10, bootstrap: 200, confidence: 0.95, maxRuns: 100000 });
     expect(s.quantileLevels).toEqual([0.05, 0.16, 0.5, 0.84, 0.95]);
     expect(s.probabilities).toEqual([]);
   });
@@ -72,8 +72,8 @@ describe('specification and design', () => {
     const tasks = p.tasks();
     expect(tasks).toHaveLength(16);
     expect(tasks[3].id).toBe('r3');
-    expect(tasks.every((t) => t.weighting === 'frame')).toBe(true);
-    expect(planEnsemble(spec({ n: 4, flatTop: 'time' })).tasks()[0].weighting).toBe('time');
+    expect(tasks.every((t) => t.weighting === 'time')).toBe(true);
+    expect(planEnsemble(spec({ n: 4, flatTop: 'frame' })).tasks()[0].weighting).toBe('frame');
     expect(tasks[3].cfg).toEqual(p.config(3));
     expect(() => p.config(16)).toThrow(/outside the design/);
     expect(() => p.config(-1)).toThrow(/outside the design/);
@@ -83,9 +83,9 @@ describe('specification and design', () => {
     const priors: PriorSet = { params: [{ path: 'profiles.pedestalWidth', dist: { type: 'uniform', lo: 0.03, hi: 0.09 } }] };
     const p = planEnsemble(resolveSpec({ base: ITER_15D, priors, n: 8, tEnd: 1 }));
     const c = p.config(3) as MagneticConfig;
-    expect(c.profiles).toEqual({ lcfsKappa: 1.85, lcfsDelta: 0.49, pedestalWidth: p.values[3] });
+    expect(c.profiles).toEqual({ lcfsKappa: 1.85, lcfsDelta: 0.49, lcfsRef95: { kappa: 1.7, delta: 0.33 }, pedestalWidth: p.values[3] });
     expect(c.profiles!.pedestalWidth).toBeGreaterThanOrEqual(0.03);
-    expect(ITER_15D.profiles).toEqual({ lcfsKappa: 1.85, lcfsDelta: 0.49 });
+    expect(ITER_15D.profiles).toEqual({ lcfsKappa: 1.85, lcfsDelta: 0.49, lcfsRef95: { kappa: 1.7, delta: 0.33 } });
     expect(() => planEnsemble(resolveSpec({ base: JET, priors, n: 8 }))).toThrow(/not a number of the tokamak configuration/);
   });
 
@@ -127,7 +127,7 @@ describe('specification and design', () => {
     const h = ensembleHash(spec());
     expect(h).toMatch(/^[0-9a-f]{64}$/);
     expect(ensembleHash(spec())).toBe(h);
-    for (const over of [{ seed: 4 }, { n: 64 }, { sampler: 'lhs' as const }, { tEnd: 2 }, { qTarget: 5 }, { runSeed: 'perRow' as const }, { analysis: 'sensitivity' as const }, { flatTop: 'time' as const }]) {
+    for (const over of [{ seed: 4 }, { n: 64 }, { sampler: 'lhs' as const }, { tEnd: 2 }, { qTarget: 5 }, { runSeed: 'perRow' as const }, { analysis: 'sensitivity' as const }, { flatTop: 'frame' as const }]) {
       expect(ensembleHash(spec(over)), JSON.stringify(over)).not.toBe(h);
     }
   });
@@ -221,7 +221,7 @@ describe('summary of the outcomes', () => {
     expect(res.caveat).toBe(CAVEAT);
     expect(res.caveat).toMatch(/^EDUCATIONAL/);
     expect(res.inputHash).toBe(ensembleHash(plan.spec));
-    expect(res.system).toEqual({ preset: 'JET', method: 'tokamak', fidelity: '0D', t_end_s: 1, runSeed: 'fixed', flatTop: 'frame' });
+    expect(res.system).toEqual({ preset: 'JET', method: 'tokamak', fidelity: '0D', t_end_s: 1, runSeed: 'fixed', flatTop: 'time' });
     expect(res.design).toMatchObject({ analysis: 'propagate', sampler: 'lhs', seed: 3, n: 40, runs: 40, confidence: 0.95, bootstrap: 50 });
     expect(res.parameters.map((p) => p.path)).toEqual(['H98', 'n_target', 'impurity.concentration']);
     expect(res.parameters[0].nominal).toBe(JET.H98);

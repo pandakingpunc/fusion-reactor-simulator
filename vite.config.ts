@@ -26,6 +26,10 @@ export default defineConfig({
     // "onTaskUpdate"', an unhandled error that fails `npm run coverage` with every test green. Root cause and
     // reproduction in the header of the setup file.
     setupFiles: ['src/vitest.setup.ts'],
+    // A global ceiling of 30 s per test (vitest's default is 5 s). The 1.5D model with TR-BDF2 error control is 2 to 3 times
+    // slower than the fixed-step scheme it replaced, and ten agents on one 12-core machine stretch a run further: tests
+    // that need more than 30 s carry their own explicit timeout (kernel/simulation, lossPower, lib, the CLI suites).
+    testTimeout: 30_000,
     // `npm run coverage` (vitest run --coverage). Code that runs only in child processes or worker
     // threads (the CLI entry points *.cli.ts, *.worker.ts) is not seen by V8 coverage of the test
     // process, so it is excluded: counted, it read as 0 % however well the end-to-end tests

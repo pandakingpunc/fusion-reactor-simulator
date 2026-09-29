@@ -194,7 +194,7 @@ describe('RunPool', () => {
     const pool = new RunPool(f.create, 1);
     const slow = pool.run(fast(1), { timeoutMs: 1000 });
     const next = pool.run(fast(2), { timeoutMs: 1000 });
-    const caught = slow.catch((e: Error) => e);
+    const caught = slow.then(() => new Error('resolved'), (e: Error) => e);
     vi.advanceTimersByTime(1001);
     expect((await caught).message).toContain('longer than 1000 ms');
     expect(f.workers[0].terminated).toBe(true);

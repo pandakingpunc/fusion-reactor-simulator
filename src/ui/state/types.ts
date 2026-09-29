@@ -6,7 +6,7 @@ import { ReactorConfig, ShotReport, SimEvent } from '../../physics/types';
 import { SimMeta, UiFrame } from '../../worker/protocol';
 import { Locale } from '../../i18n';
 
-export type Tab = 'setup' | 'run' | 'report' | 'compare' | 'validate';
+export type Tab = 'setup' | 'run' | 'report' | 'compare' | 'validate' | 'learn';
 
 /** Rapor ekranı + karşılaştırma için saklanan tamamlanmış atış */
 export interface SavedShot {

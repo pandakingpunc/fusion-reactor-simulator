@@ -44,6 +44,8 @@ export interface Mission {
   id: MissionId;
   level: 1 | 2 | 3;
   kind: 'run' | 'popcon';
+  /** the machine the mission starts from (a proper name, not translated) */
+  machine: string;
   base: ReactorConfig;
   levers: Lever[];
   goals: Goal[];
@@ -156,7 +158,7 @@ const num = (id: LeverId, path: string, min: number, max: number, step: number, 
 
 export const MISSIONS: Mission[] = [
   {
-    id: 'hmode', level: 1, kind: 'run', base: HMODE_BASE,
+    id: 'hmode', level: 1, kind: 'run', machine: 'DIII-D', base: HMODE_BASE,
     levers: [
       num('pNBI', 'heating.P_NBI_MW', 0, 12, 0.1, 'MW'),
       num('pECRH', 'heating.P_ECRH_MW', 0, 6, 0.1, 'MW'),
@@ -169,7 +171,7 @@ export const MISSIONS: Mission[] = [
     terms: ['hMode', 'pLH', 'nbi', 'tauE'],
   },
   {
-    id: 'density', level: 1, kind: 'run', base: DENSITY_BASE,
+    id: 'density', level: 1, kind: 'run', machine: 'DIII-D', base: DENSITY_BASE,
     levers: [
       num('density', 'n_target', 0.1, 1.4, 0.05, '1e20 m⁻³', { scale: 1e20 }),
       num('pNBI', 'heating.P_NBI_MW', 2, 20, 0.5, 'MW'),
@@ -182,7 +184,7 @@ export const MISSIONS: Mission[] = [
     terms: ['greenwald', 'disruption', 'ip'],
   },
   {
-    id: 'beta', level: 2, kind: 'run', base: BETA_BASE,
+    id: 'beta', level: 2, kind: 'run', machine: 'DIII-D', base: BETA_BASE,
     levers: [
       num('pNBI', 'heating.P_NBI_MW', 5, 40, 0.5, 'MW'),
       num('Ip', 'Ip_MA', 0.8, 3.5, 0.05, 'MA'),
@@ -195,7 +197,7 @@ export const MISSIONS: Mission[] = [
     terms: ['betaN', 'troyon', 'nbi'],
   },
   {
-    id: 'kink', level: 2, kind: 'run', base: KINK_BASE,
+    id: 'kink', level: 2, kind: 'run', machine: 'DIII-D', base: KINK_BASE,
     levers: [
       num('Ip', 'Ip_MA', 1, 7, 0.1, 'MA'),
       num('B0', 'B0', 1.5, 4, 0.05, 'T'),
@@ -208,7 +210,7 @@ export const MISSIONS: Mission[] = [
     terms: ['q95', 'disruption', 'ip'],
   },
   {
-    id: 'sparcQ', level: 2, kind: 'run', base: SPARC_BASE,
+    id: 'sparcQ', level: 2, kind: 'run', machine: 'SPARC', base: SPARC_BASE,
     levers: [
       num('density', 'n_target', 1, 6, 0.1, '1e20 m⁻³', { scale: 1e20 }),
       num('pICRH', 'heating.P_ICRH_MW', 5, 40, 1, 'MW'),
@@ -221,7 +223,7 @@ export const MISSIONS: Mission[] = [
     terms: ['qSci', 'hMode', 'pLH', 'icrh'],
   },
   {
-    id: 'ignition', level: 3, kind: 'popcon', base: IGNITION_BASE,
+    id: 'ignition', level: 3, kind: 'popcon', machine: 'EU DEMO', base: IGNITION_BASE,
     levers: [
       num('H98', 'H98', 0.8, 1.8, 0.05, ''),
       num('pointN', 'point.n', 0.1, 1.2, 0.01, '1e20 m⁻³'),
@@ -235,7 +237,7 @@ export const MISSIONS: Mission[] = [
     startPoint: { n: 0.5, T: 8 },
   },
   {
-    id: 'elm', level: 3, kind: 'run', base: ELM_BASE,
+    id: 'elm', level: 3, kind: 'run', machine: 'SPARC (1.5D)', base: ELM_BASE,
     levers: [
       num('elmSize', 'profiles.elmFraction', 0.02, 0.8, 0.01, ''),
       num('elmMargin', 'profiles.alphaCritFactor', 0.3, 1.5, 0.05, ''),
@@ -251,7 +253,7 @@ export const MISSIONS: Mission[] = [
     terms: ['elm', 'pedestal', 'hMode', 'qSci'],
   },
   {
-    id: 'fuel', level: 1, kind: 'run', base: FUEL_BASE,
+    id: 'fuel', level: 1, kind: 'run', machine: 'JET', base: FUEL_BASE,
     levers: [
       { id: 'fuel', path: 'fuel', type: 'choice', options: ['DD', 'DT'] },
       num('fuelMix', 'fuelFracA', 0, 1, 0.05, ''),
@@ -263,7 +265,7 @@ export const MISSIONS: Mission[] = [
     terms: ['fuelMix', 'nbi', 'qSci'],
   },
   {
-    id: 'nif', level: 2, kind: 'run', base: NIF_BASE,
+    id: 'nif', level: 2, kind: 'run', machine: 'NIF', base: NIF_BASE,
     levers: [
       num('asymmetry', 'asymmetry_rms', 0.5, 20, 0.5, '%'),
       num('adiabat', 'adiabat', 1.2, 4, 0.1, ''),
@@ -276,7 +278,7 @@ export const MISSIONS: Mission[] = [
     terms: ['icfGain', 'asymmetry', 'adiabat', 'hohlraum'],
   },
   {
-    id: 'tungsten', level: 3, kind: 'run', base: TUNGSTEN_BASE,
+    id: 'tungsten', level: 3, kind: 'run', machine: 'SPARC', base: TUNGSTEN_BASE,
     levers: [
       num('wConc', 'impurity.concentration', 1e-6, 1e-3, 0.05, '', { log: true }),
       num('density', 'n_target', 1, 6, 0.1, '1e20 m⁻³', { scale: 1e20 }),

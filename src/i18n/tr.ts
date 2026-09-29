@@ -12,6 +12,7 @@ export const tr: Dict = {
   'app.tab.report': 'Rapor',
   'app.tab.compare': 'Karşılaştır',
   'app.tab.validate': 'Doğrulama',
+  'app.tab.learn': 'Öğren',
   'app.st.idle': 'Hazır değil',
   'app.st.loading': 'Yükleniyor…',
   'app.st.ready': 'Hazır',

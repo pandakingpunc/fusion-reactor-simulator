@@ -40,7 +40,7 @@ const ROUTE_OF: Record<Tab, TabRouteName> = { setup: 'wizard', run: 'run', repor
 /** The route of an application tab (the Learn tab's own route is its start page, #/learn). */
 export function routeOfTab(tab: Tab): Route {
   const name = ROUTE_OF[tab];
-  return name === 'learn' ? { name } : { name };
+  return name === 'learn' ? { name } : { name }; // Route is a union on `name`: the compiler wants the two branches apart
 }
 /** The tab a route shows, or null for the routes that are not a tab (share, embed, unknown). */
 export function tabOfRoute(r: Route): Tab | null {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { DIIID, NIF, SPARC } from '../../physics/presets';
 import { SavedShot } from '../state/types';
@@ -53,6 +53,19 @@ describe('Compare 2.0', () => {
     // a glossary popover on a quantity
     fireEvent.click(within(table).getAllByRole('button', { name: 'Explain Scientific gain' })[0]);
     expect(screen.getByRole('dialog', { name: 'Scientific gain' })).toBeTruthy();
+  });
+
+  it('names a solver failure as the Report does (translated), and prints any other end reason as it is', async () => {
+    const failed: SavedShot = { ...sparc2, id: 9, name: 'stalled', report: { ...sparc2.report, termination: { ...sparc2.report.termination, natural: false, disruption: false, reason: 'Numerical failure' } } };
+    const { store } = mount([sparc, failed]);
+    const table = screen.getAllByRole('table')[0];
+    const row = within(table).getByText('Termination').closest('tr')!;
+    expect(within(row as HTMLElement).getByText('Numerical failure')).toBeTruthy(); // the Report's title of that failure, not a stray constant
+    expect(within(row as HTMLElement).getByText(sparc.report.termination.reason)).toBeTruthy();
+    await act(async () => { await store.actions.setLocale('tr'); });
+    expect(within(row as HTMLElement).getByText('Sayısal hata')).toBeTruthy();
+    expect(within(row as HTMLElement).queryByText('Numerical failure')).toBeNull();
+    await act(async () => { await store.actions.setLocale('en'); });
   });
 
   it('draws one radar polygon per shown shot and toggles a shot with its checkbox', () => {

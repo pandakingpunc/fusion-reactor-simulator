@@ -5,6 +5,7 @@ import { MessageKey } from '../../i18n';
 import { SavedShot } from '../state/types';
 import { useT } from '../state/store';
 import { PALETTE, fmtNum } from '../format';
+import { solverFailureTitle } from '../run/TerminationBox';
 import { Explain } from '../edu/Explain';
 import { PowerFlow } from '../edu/PowerFlow';
 import { useEduT } from '../edu/useEduT';
@@ -18,7 +19,7 @@ import { TimeAxis, commonChannels, overlayTraces, timeAxisAllowed } from './over
 interface Props { shots: SavedShot[]; onRemove: (id: number) => void; onLoad: (s: SavedShot) => void }
 
 /** A row label is either an i18n key or an untranslated physics symbol; `term` is the glossary entry it explains. */
-const ROWS: { label: MessageKey | { sym: string }; get: (r: ShotReport) => number | string; unit?: string; best?: 'max' | 'min'; term?: string }[] = [
+const ROWS: { label: MessageKey | { sym: string }; get: (r: ShotReport, t: ReturnType<typeof useT>) => number | string; unit?: string; best?: 'max' | 'min'; term?: string }[] = [
   { label: 'cmp.method', get: (r) => METHOD_LABELS[r.method] },
   { label: 'cmp.duration', get: (r) => `${fmtNum(r.duration)} ${r.timeUnit}` },
   { label: { sym: 'T_max' }, get: (r) => r.Tmax_keV, unit: 'keV', best: 'max' },
@@ -34,7 +35,8 @@ const ROWS: { label: MessageKey | { sym: string }; get: (r: ShotReport) => numbe
   { label: 'cmp.triple', get: (r) => r.tripleProduct_max, unit: 'keV·s·m⁻³', best: 'max', term: 'triple' },
   { label: 'rep.lawson', get: (r) => r.lawson_ratio, best: 'max', term: 'lawson' },
   { label: 'rep.nYield', get: (r) => r.neutronYield, best: 'max' },
-  { label: 'cmp.termination', get: (r) => r.termination.reason },
+  // a solver failure is named as the Report names it (the reason of the report is an English constant)
+  { label: 'cmp.termination', get: (r, t) => { const failure = solverFailureTitle(r.termination); return failure ? t(failure) : r.termination.reason; } },
   { label: 'rep.score', get: (r) => r.score, best: 'max' },
 ];
 
@@ -96,7 +98,7 @@ export function Compare({ shots, onRemove, onLoad }: Props) {
           <tbody>
             {ROWS.map((row, r) => {
               const label = typeof row.label === 'string' ? t(row.label) : row.label.sym;
-              const vals = shots.map((s) => row.get(s.report));
+              const vals = shots.map((s) => row.get(s.report, t));
               let bestIdx = -1;
               if (row.best) {
                 const nums = vals.map((v) => (typeof v === 'number' && isFinite(v) ? v : row.best === 'max' ? -Infinity : Infinity));

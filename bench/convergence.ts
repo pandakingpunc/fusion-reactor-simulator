@@ -6,14 +6,18 @@
  * upper limits of the adaptive time step (default 0.5/0.05/0.01 s; the model's own cap is 0.5 s), one
  * parameter at a time, and reports the flat-top Q, bootstrap fraction f_bs, internal inductance ℓ_i(3)
  * and pedestal temperature T_ped with a Richardson estimate of the error of the finest run
- * (bench/richardson.ts). Prints a Markdown table; --out writes the full results as JSON.
- * Not part of ci:local (minutes of CPU time).
+ * (bench/richardson.ts). The radial cells are packed towards the edge (ProfileSettings.gridPacking, the
+ * model default; --packing 0 is the uniform grid of v3, --packing P another strength): the table shows
+ * how many cells lie across the pedestal at each N. Prints a Markdown table; --out writes the full
+ * results as JSON. Not part of ci:local (minutes of CPU time).
  */
 import { writeFileSync } from 'node:fs';
 import { cpus } from 'node:os';
 import { defineCli, exitUsage, parseArgsOrExit } from '../src/cli/args';
 import { PoolAbortError, PoolConfigError, defaultThreads, runPool } from '../src/cli/pool';
 import { ITER_15D } from '../src/physics/presets';
+import { DEFAULT_PROFILE_SETTINGS } from '../src/physics/profiles/defaults';
+import { buildGrid, gridSpec } from '../src/physics/profiles/geometry1d';
 import type { MagneticConfig } from '../src/physics/types';
 import type { ConvResult, ConvTask } from './convergence.worker';
 import { type Richardson, richardson } from './richardson';
@@ -33,6 +37,7 @@ const CLI = defineCli({
     dts: { type: 'list', default: ['0.5', '0.05', '0.01'], metavar: 'S,S,S', help: 'three time-step limits [s], coarse to fine' },
     'base-grid': { type: 'int', default: 50, min: 5, metavar: 'N', help: 'nRho of the time-step series' },
     't-end': { type: 'number', min: 1, metavar: 'S', help: 'shorten the discharge (default: the preset, 400 s); for smoke tests' },
+    packing: { type: 'number', min: 0, metavar: 'P', help: 'edge packing of the radial cells (ProfileSettings.gridPacking; 0: uniform grid; default: the model default)' },
     threads: { type: 'int', min: 1, help: 'worker threads (default: min(6, cores − 1))' },
     out: { type: 'string', metavar: 'FILE', help: 'write the results as JSON' },
   },
@@ -49,7 +54,7 @@ interface Series {
   values: [number, number, number];
   /** Richardson step size of each run: 1/nRho or dtMax */
   h: [number, number, number];
-  runs: { value: number; ok: boolean; error?: string; ms?: number; steps?: number; metrics: Record<string, number> }[];
+  runs: { value: number; ok: boolean; error?: string; ms?: number; steps?: number; cellsAcrossPedestal?: number; metrics: Record<string, number> }[];
   richardson: Record<string, Richardson>;
 }
 
@@ -59,7 +64,11 @@ async function main() {
   const dts = triple('dts', args.dts, Number).sort((a, b) => b - a) as [number, number, number];
   if (new Set(grids).size < 3 || new Set(dts).size < 3) exitUsage(CLI.name, '--grids and --dts need three different values');
   const base: MagneticConfig = { ...ITER_15D, ...(args['t-end'] ? { t_end: args['t-end'] } : {}) };
-  const cfg = (nRho: number): MagneticConfig => ({ ...base, profiles: { ...base.profiles, nRho } });
+  const packing = args.packing;
+  const cfg = (nRho: number): MagneticConfig => ({ ...base, profiles: { ...base.profiles, nRho, ...(packing !== undefined ? { gridPacking: packing } : {}) } });
+  const ps = { ...DEFAULT_PROFILE_SETTINGS, ...base.profiles, ...(packing !== undefined ? { gridPacking: packing } : {}) };
+  /** cells whose centre lies in the pedestal, ρ ≥ 1 − pedestalWidth */
+  const across = (n: number) => { const g = buildGrid(n, gridSpec(ps)); let c = 0; for (let i = 0; i < n; i++) if (g.rhoC[i] >= 1 - ps.pedestalWidth) c++; return c; };
   const tasks: ConvTask[] = [
     ...grids.map((n) => ({ id: `nRho=${n}`, cfg: cfg(n) })),
     ...dts.map((dt) => ({ id: `dtMax=${dt}`, cfg: cfg(args['base-grid']), dtMax: dt })),
@@ -80,7 +89,7 @@ async function main() {
     const runs = values.map((v) => {
       const r = byId.get(`${parameter}=${v}`)!;
       const metrics = Object.fromEntries(METRICS.map((m) => [m.key, r.avg?.[m.key] ?? NaN]));
-      return { value: v, ok: r.ok, ...(r.error ? { error: r.error } : {}), ms: r.ms, steps: r.steps, metrics };
+      return { value: v, ok: r.ok, ...(r.error ? { error: r.error } : {}), ms: r.ms, steps: r.steps, ...(parameter === 'nRho' ? { cellsAcrossPedestal: across(v) } : {}), metrics };
     });
     const rich = Object.fromEntries(METRICS.map((m) => [m.key, richardson(h, runs.map((r) => r.metrics[m.key]) as [number, number, number])]));
     return { parameter, values, h, runs, richardson: rich };
@@ -90,13 +99,15 @@ async function main() {
     preset: 'ITER15',
     t_end_s: base.t_end,
     baseGrid: args['base-grid'],
+    gridPacking: ps.gridPacking ?? 0,
+    pedestalWidth: ps.pedestalWidth,
     node: process.version,
     cpu: cpus()[0]?.model ?? 'unknown',
     date: new Date().toISOString(),
     wall_s: (performance.now() - t0) / 1000,
     series: [series('nRho', grids), series('dtMax', dts)],
   };
-  console.log(markdown(out.series, out.t_end_s, out.baseGrid));
+  console.log(markdown(out.series, out.t_end_s, out.baseGrid, out.gridPacking));
   if (args.out) {
     writeFileSync(args.out, JSON.stringify(out, (_k, v) => (typeof v === 'number' && !Number.isFinite(v) ? null : v), 2) + '\n');
     console.error(`results written to ${args.out}`);
@@ -107,8 +118,8 @@ async function main() {
 const f4 = (v: number) => (Number.isFinite(v) ? String(Number(v.toPrecision(4))) : 'n/a');
 const pct = (v: number) => (Number.isFinite(v) ? `${(100 * v).toPrecision(2)} %` : 'n/a');
 
-function markdown(all: Series[], tEnd: number, baseGrid: number): string {
-  const L: string[] = [`### ITER15 numerical convergence (flat-top averages, ${tEnd} s discharge)`, ''];
+function markdown(all: Series[], tEnd: number, baseGrid: number, packing: number): string {
+  const L: string[] = [`### ITER15 numerical convergence (flat-top averages, ${tEnd} s discharge, gridPacking ${packing}${packing > 0 ? '' : ': uniform grid'})`, ''];
   for (const s of all) {
     const name = s.parameter === 'nRho' ? 'radial cells nRho' : `time-step limit dtMax [s] (nRho = ${baseGrid})`;
     L.push(`**${name}**`, '');
@@ -119,6 +130,7 @@ function markdown(all: Series[], tEnd: number, baseGrid: number): string {
       const note = r.kind === 'monotone' ? '' : ` (${r.kind})`;
       L.push(`| ${m.label}${m.unit ? ` [${m.unit}]` : ''} | ${s.runs.map((x) => f4(x.metrics[m.key])).join(' | ')} | ${f4(r.p)}${note} | ${f4(r.extrapolated)} | ${f4(r.error)} | ${pct(r.gci)} |`);
     }
+    if (s.runs.some((x) => x.cellsAcrossPedestal !== undefined)) L.push(`| cells across the pedestal | ${s.runs.map((x) => x.cellsAcrossPedestal ?? 'n/a').join(' | ')} | | | | |`);
     L.push(`| wall time [s] | ${s.runs.map((x) => (x.ms !== undefined ? (x.ms / 1000).toFixed(1) : 'failed')).join(' | ')} | | | | |`);
     L.push(`| steps | ${s.runs.map((x) => x.steps ?? 'n/a').join(' | ')} | | | | |`, '');
     for (const x of s.runs) if (!x.ok) L.push(`> ${s.parameter}=${x.value} failed: ${x.error}`, '');

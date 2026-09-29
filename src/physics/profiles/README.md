@@ -16,7 +16,7 @@ current equilibrium and transport geometry, work arrays, plasma and controller s
 | `state.ts` | layout of the state vector `y = [T_e \| T_i \| n_e \| ψ \| scalars]`; `ctx.view(y)` gives named views (`st.Te`, `st.s.Ip`, …) |
 | `work.ts` | work arrays `ctx.w` (cell arrays of N, face arrays of N + 1), allocated once |
 | `context.ts` | `ProfileContext`, `StepConstants` (held fixed over a step), `onGeometry` cache hooks |
-| `geometry1d.ts` | transport geometry on ρ̂ = √(Φ/Φ_b) from equilibrium tables (`EquilibriumTables`) |
+| `geometry1d.ts` | the radial grid (uniform, or packed towards the edge: `GridSpec`, `buildGrid`, `cellIndex`, `faceValue`, …) and the transport geometry on it, ρ̂ = √(Φ/Φ_b), from equilibrium tables (`EquilibriumTables`) |
 | `fvsolver.ts` | implicit finite-volume solvers (heat, density, current), `boundaryLoss` (P_bound) |
 | `composition.ts` | quasi-neutral composition; He ash, impurity and fuel-mix inventories |
 | `qprofile.ts` | ψ → ψ′, q, enclosed current, ⟨j·B⟩; q95 |
@@ -69,6 +69,42 @@ Energy bookkeeping: over an accepted step `dWdt = P_heat − P_rad − P_bound` 
 this closure: put its power density into a work array, add it in `assembleHeatSources` and in
 `powerTotals` (`diagnostics.ts`). The stored energy has one definition, `ctx.storedEnergy`
 (W = Σ 3/2 (n_e T_e + n_i T_i) ΔV).
+
+## Radial grid
+
+The N cells lie between the faces ρ_f (ρ_0 = 0 the axis, ρ_N = 1 the separatrix); a cell centre is the
+midpoint of its two faces, and the fluxes live on the faces. `ProfileSettings.gridPacking` p sets the
+distribution of the faces: p = 0 is the uniform grid of v3, p > 0 (default 4) packs the cells towards the
+edge with a tanh step in the cell density, ∝ 1 + p S(ρ), S = ½(1 + tanh((ρ − ρ_T)/w)), ρ_T = 1 − 1.25 w_ped,
+w = 0.75 w_ped (w_ped = `pedestalWidth`): the edge cells are 1 + p = 5 times narrower than the core cells,
+neighbouring cells differ in width by at most 25 %, and at N = 50 there are 10 cells across a pedestal of
+width 0.06 (3 on the uniform grid). Every N gives the image of a uniform grid under the same smooth map
+(`packedFaces`), so a refinement study converges in a fixed metric (`npm run bench:convergence`).
+The packing follows `pedestalWidth`; a pedestal narrower than 0.04 gets fewer than 8 cells at N = 50, use
+a larger `gridPacking` or `nRho` there.
+
+`TransportGeometry` carries the grid, and **no module may use one spacing Δρ any more**:
+
+| Field | Meaning |
+| --- | --- |
+| `dRhoC[i]` | width of cell i (the volume-weighted quantities, `RHO_CORE` share, NTM `∂q/∂ρ` over a cell) |
+| `distF[f]` | distance between the two nodes that flank face f: centres f − 1 and f, the last centre and the separatrix for f = N (half a cell); the gradient across a face is ΔT/`distF` |
+| `wR[f]` | weight of the right-hand cell in the linear interpolation of a cell value to face f; `faceValue(g, a, f)` |
+| `spanF[f]`, `spanC[i]` | stencils of central differences over the faces, and over the centres (one-sided at the axis and towards the separatrix) |
+| `cellIndex`, `centerInterval`, `nearestFace`, `interpCells` | lookups and interpolation in ρ; never `Math.floor(ρ / dRho)` |
+| `uniform`, `dRho` | the legacy uniform grid and its width 1/N (for a packed grid `dRho` is only the mean spacing) |
+
+The uniform path (`uniform`, p = 0) evaluates the expressions of the code before the grid became a parameter,
+with arrays filled with the same doubles: p = 0 reproduces v3 bit for bit (`grid.test.ts` pins two shots; the
+sha256 of every frame of the nine 1.5D golden cases was identical). Where the packed grid does something
+else it is stated and gated on `g.uniform`: the α check of the ELM trigger (`alphaMHD`) includes the separatrix
+face (its half cell is a face of the pedestal, and with cells 0.005 wide the steepest gradient of the barrier sits
+there), and T_ped is the temperature at ρ_ped interpolated between the two centres around it (the uniform grid
+takes the cell that contains ρ_ped, 0.02 wide in the steep barrier gradient).
+
+ITER15 flat-top numbers against the grid (400 s; `npm run bench:convergence`, table in the v4 changelog): with p = 4
+N = 50 and N = 100 differ by less than 1 % in Q, f_bs, ℓ_i and T_ped; the uniform grid by 1.6 % in Q, 1.7 % in ℓ_i
+and 3.4 % in T_ped.
 
 ## Definitions shared with the 0D model
 
@@ -176,7 +212,9 @@ model take part as soon as they implement the hooks; other parts are listed in
 - **Work arrays**: add names to `CELL_ARRAYS` / `FACE_ARRAYS` in `work.ts`; avoid allocating
   inside the Picard loop.
 - **Geometry**: anything derived from the transport geometry is rebuilt through `ctx.onGeometry`
-  or `geometryChanged`; an equilibrium swap mid-shot is followed by `evaluateWorkArrays`.
+  or `geometryChanged`; an equilibrium swap mid-shot is followed by `evaluateWorkArrays`. Every geometry is
+  built with `ctx.grid` (`geometryFromEquilibrium(eq, N, geomB, ctx.grid)`), and a difference or a cell lookup
+  over ρ uses the grid arrays (`distF`, `dRhoC`, `spanC`, `cellIndex`, …), not `dRho`.
 - **Determinism**: randomness only through `ctx.rng` (checkpointed); no wall clock, no iteration
   over unordered containers in the physics; fixed evaluation and summation order.
 - **Diagnostics**: new keys go through `writeDiagnostics` (and `stateDiagnostics` for frames no step
@@ -231,6 +269,7 @@ model take part as soon as they implement the hooks; other parts are listed in
 | `checkpoint.test.ts` | the checkpoint contract: key collisions, numeric records, restore from a record with missing keys |
 | `transport/transport.test.ts` | 'cgm' smoke test (ITER15 ramp-up; runs through `runAllYielding`) |
 | `integrity.test.ts` | equilibrium swaps (fresh work arrays), GS failures, the current-scale gate and retry timing, step failures (numerical failures retried, programming errors propagate with the state put back, also from the update after the accepted step), reported τ_E, initial equilibrium, replays from quench frames |
+| `grid.test.ts` | the radial grid: the uniform path double for double, the packed grid (cells across the pedestal, smoothness, one map for every N), lookups; diffusion operator with a manufactured solution (observed order 2.0 on the packed grid), conservation of energy, particles and enclosed current, `alphaMHD` with the separatrix face; pins of two uniform-grid shots |
 | `profiles.test.ts` | solver verification (analytic), neoclassical, MHD helpers, integration runs |
 
 Tests that run for more than a few seconds of wall time use `runAllYielding` (`src/testing/yielding.ts`): it advances in

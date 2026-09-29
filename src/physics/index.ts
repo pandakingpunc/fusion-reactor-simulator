@@ -45,7 +45,7 @@ export type { SimulationOptions } from './simulation';
  * @public
  */
 export type {
-  ReactorConfig, MagneticConfig, ICFConfig, MTFConfig, FRCConfig, MirrorConfig, MuonConfig, ProfileSettings,
+  ReactorConfig, MagneticConfig, ICFConfig, MTFConfig, FRCConfig, MirrorConfig, MuonConfig, ProfileSettings, EdgeOptions,
   Method, Fidelity, MagnetTech, BlanketType, FuelingMethod,
   HistoryFrame, SimEvent, EventKind, ShotReport, ScoreEntry, TerminationInfo, DiagSpec, EqSnapshot,
   ActuatorEntry, SimCheckpoint, SimModel,

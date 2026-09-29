@@ -10,15 +10,21 @@ import { Simulation } from '../../simulation';
 import { coolingRate, meanCharge } from '../../radiation';
 import { composition } from '../composition';
 import { FUEL_SPECIES } from '../../reactivity';
-import type { MagneticConfig } from '../../types';
+import type { MagneticConfig, SimEvent } from '../../types';
 import { runAllYielding } from '../../../testing/yielding';
 import { flatTopAverages } from '../../analysis/flatTop';
 import { advanceRandomly, expectSameRun, normalizeRng, referenceRun, rewindAt, runChunked, tick } from '../../kernel/testkit';
 import { ProfileModel } from '../model';
+import { faceValue } from '../geometry1d';
+import { rhoOfQ } from '../mhd';
+import { DisruptionEvents } from '../events/disruption';
+import { ElmEvents } from '../events/elm';
+import { SawtoothEvents } from '../events/sawtooth';
 import { StateLayout, N_SCALARS } from '../state';
 import { DensitySolver } from '../fvsolver';
 import { edgeDeposition, volumeIntegral } from '../sources/deposition';
 import { impurityMode, impuritySpecies, impurityStateSize } from './config';
+import { facitCoefficients } from './facit';
 import { EDGE_LAMBDA, ImpurityModel, M_MAX, NEO_REFRESH } from './model';
 
 const withImpurities = (cfg: MagneticConfig, profiles: NonNullable<MagneticConfig['profiles']>, tEnd?: number): MagneticConfig =>
@@ -412,6 +418,161 @@ describe('composition: quasi-neutrality, Z_eff and what it feeds', () => {
       // the total is the sum of its parts (bremsstrahlung with the main-ion Z_eff of the diluted fuel, synchrotron)
       expect(b.ctx.w.Prad[i] / (b.ctx.w.Pbr[i] + b.ctx.w.Pline[i] + b.ctx.w.Psync[i])).toBeCloseTo(1, 12);
     }
+  });
+});
+
+describe('the neoclassical convection is what FACIT says about the state (wiring guard, no anomalous transport)', () => {
+  // With no anomalous transport (D_z = 1e-6 D_e: the solver has no flux at D <= 0, so not 0; v_z = 0) the zero-flux exponent of a face is
+  //   Pe = <|grad rho|> v dist / (g1 D) = (K dln n_i + H dln T_i) / D = (Z/Z_i) dln n_i + (H/D) dln T_i     (K = (Z/Z_i) D in every part),
+  // between the two cell centres of the face: the mapping (g1/<|grad rho|>) d/drho of the derivative cancels, a wrong one does not. The expected value
+  // is built here from facitCoefficients and the state (T_e, T_i, n_a + n_b, Z_eff, q, the radii of the surface), not from transport.ts.
+  const RATIO_D = 1e-6;
+  const nSp = (h: ReturnType<typeof harness>) => h.imp.species.length;
+
+  function setup() {
+    const h = harness({ impurityTransport: 'facit', impuritySetpoint: 'separatrix', impurityDoverDe: RATIO_D, impurityPinchOverPe: 0, impurityExtraSpecies: 'W', impurityExtraConcentration: 1e-6 });
+    h.ctx.lastDiag.tauE = 2.0;
+    const before = Array.from({ length: nSp(h) }, (_, k) => Float64Array.from(h.imp.block(h.st.s, k)));
+    h.imp.accepted(h.ctx, 0, 0.01, h.st, h.st); // the first step builds the table from the densities of the state it met (`before`)
+    return { ...h, before };
+  }
+
+  /** FACIT at the inner face f for species k, with the impurity density of the state the table was built from */
+  function facitAt(h: ReturnType<typeof setup>, k: number, f: number) {
+    const { ctx, g, st } = h, w = ctx.w, fs = FUEL_SPECIES[ctx.cfg.fuel], sp = h.imp.species[k];
+    const a = st.s.fA, b = 1 - a;
+    const Te = faceValue(g, st.Te, f), Ti = faceValue(g, st.Ti, f);
+    return facitCoefficients({
+      Zimp: Math.max(meanCharge(sp.species, Math.max(Te, 0.1)), 1), Aimp: sp.A,
+      Zi: (a * fs.a.Z ** 2 + b * fs.b.Z ** 2) / (a * fs.a.Z + b * fs.b.Z), Ai: a * fs.a.A + b * fs.b.A,
+      Ti_eV: Ti * 1e3, Ni: faceValue(g, w.na, f) + faceValue(g, w.nb, f), Nimp: faceValue(g, h.before[k], f), Zeff: faceValue(g, w.Zeff, f),
+      TeOverTi: Te / Ti, eps: (g.RoutF[f] - g.RinF[f]) / (g.RoutF[f] + g.RinF[f]), q: w.qF[f], R0: g.R0, B0: g.B0,
+    });
+  }
+
+  it('the face coefficients of every species reproduce Pe = (K dln n_i + H dln T_i)/D of FACIT evaluated on the state, He, Be, Ar and W', () => {
+    const h = setup(), { ctx, g, st, imp } = h, w = ctx.w;
+    for (let k = 0; k < nSp(h); k++) {
+      let worst = 0;
+      for (let f = 1; f < h.N; f++) {
+        const r = facitAt(h, k, f);
+        const dlnN = Math.log((w.na[f] + w.nb[f]) / (w.na[f - 1] + w.nb[f - 1])), dlnT = Math.log(st.Ti[f] / st.Ti[f - 1]);
+        const want = (r.K * dlnN + r.H * dlnT) / (r.D + RATIO_D * w.D[f]);
+        const got = (g.gradRhoF[f] * imp.vface[k][f] * g.distF[f]) / (g.g1F[f] * imp.Dface[k][f]);
+        worst = Math.max(worst, Math.abs(got - want) / (1 + Math.abs(want)));
+        // the diffusivity is the neoclassical one plus the (tiny) anomalous part
+        expect(imp.Dface[k][f] / (r.D + RATIO_D * w.D[f]), `D, species ${k}, face ${f}`).toBeCloseTo(1, 12);
+      }
+      expect(worst, `species ${imp.species[k].species}`).toBeLessThan(1e-9);
+    }
+  });
+
+  it('the peaked main-ion density drives every species inward with Z/Z_i times its diffusion, and the ion temperature gradient screens them out: outward, so the net peaking is weaker (He, Be, Ar, W)', () => {
+    const h = setup(), { g, st, imp, ctx } = h, w = ctx.w;
+    for (let k = 0; k < nSp(h); k++) {
+      const sp = imp.species[k].species;
+      let peakDensity = 0, total = 0, screening = 0;
+      for (let f = 1; f < h.N; f++) {
+        const r = facitAt(h, k, f);
+        const dlnN = Math.log((w.na[f] + w.nb[f]) / (w.na[f - 1] + w.nb[f - 1])), dlnT = Math.log(st.Ti[f] / st.Ti[f - 1]);
+        const Zbar = Math.max(meanCharge(sp, Math.max(faceValue(g, st.Te, f), 0.1)), 1);
+        expect(r.K / r.D, `K = Z D / Z_i (Z_i = 1 for D-T), ${sp}, face ${f}`).toBeCloseTo(Zbar, 8);
+        // a heavy impurity in the collisional core: H/K -> -1/2 (Hirshman and Sigmar 1981; Wenzel and Sigmar 1990)
+        if (sp === 'W' && f >= 5 && f <= 30) { expect(r.H / r.K, `W, face ${f}`).toBeGreaterThan(-0.6); expect(r.H / r.K, `W, face ${f}`).toBeLessThan(-0.4); }
+        peakDensity += (r.K * dlnN) / (r.D + RATIO_D * w.D[f]);
+        screening += (r.H * dlnT) / (r.D + RATIO_D * w.D[f]);
+        total += (g.gradRhoF[f] * imp.vface[k][f] * g.distF[f]) / (g.g1F[f] * imp.Dface[k][f]);
+      }
+      // sums of the zero-flux exponents Pe over the faces: ln n_z(edge) - ln n_z(axis) of the profile that the coefficients alone would make. n_i falls outward,
+      // so the density-driven part is negative (n_z rises to the axis); T_i falls outward and H < 0 almost everywhere, so the screening part is positive
+      expect(peakDensity, `${sp}: density-driven exponent`).toBeLessThan(0);
+      expect(screening, `${sp}: screening exponent`).toBeGreaterThan(0);
+      expect(total / (peakDensity + screening), `${sp}: the coefficients of the module give their sum`).toBeCloseTo(1, 6);
+      expect(total, `${sp}: weaker than the density-driven one`).toBeGreaterThan(peakDensity);
+      if (sp === 'He' || sp === 'Be') expect(total, `${sp}: the light species stay inward`).toBeLessThan(0);
+      // the heavy species are screened out of the steep T_i gradient of this start-up state altogether (Ar +4.9, W +13.3)
+      if (sp === 'Ar' || sp === 'W') expect(total, `${sp}: screened out`).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('the MHD event models reach every species (call sites of elm.ts, sawtooth.ts and disruption.ts)', () => {
+  /** A state with peaked profiles of helium, Be, Ar and Ne, from a few steps of the analytic pinch; the events are the real ones */
+  function crashHarness() {
+    const cfg = { ...ITER_15D, events: { ...ITER_15D.events, ntm: false } };
+    const h = harness({ impurityTransport: 'anomalous', impurityExtraSpecies: 'Ne', impurityExtraConcentration: 1e-3 }, cfg);
+    h.analytic(1.0); h.ctx.lastDiag.tauE = 2.0;
+    const shape = Float64Array.from(h.g.rhoC, (r) => (1 - r * r) ** 2), norm = volumeIntegral(h.g, shape);
+    for (let i = 0; i < h.N; i++) h.ctx.w.ash[i] = (1.77e20 * shape[i]) / norm;
+    for (let n = 0; n < 40; n++) h.imp.accepted(h.ctx, n * 0.5, 0.5, h.st, h.st);
+    return h;
+  }
+  const blocks = (h: ReturnType<typeof crashHarness>) => Array.from({ length: h.imp.nSp }, (_, k) => Float64Array.from(h.imp.block(h.st.s, k)));
+
+  it('an ELM (ElmEvents.afterStep) takes from every species the fraction of its excess over its own separatrix value that it takes from n_e, and the mirrors of the scalars follow', () => {
+    const h = crashHarness(), { ctx, g, st, imp } = h;
+    ctx.hmode = true;
+    const ne0 = Float64Array.from(st.ne), b0 = blocks(h), ev: SimEvent[] = [];
+    new ElmEvents().afterStep(ctx, 5, st, { alpha_ped: 2, tauE: 2 }, ev);
+    expect(ev.map((e) => e.kind)).toEqual(['ELM']);
+    const rhoPed = 1 - ctx.ps.pedestalWidth;
+    let hit = 0;
+    for (let i = 0; i < h.N; i++) {
+      const fn = 1 - (st.ne[i] - ctx.bc.n) / (ne0[i] - ctx.bc.n); // the fraction of the electron excess the crash took at this cell
+      if (g.rhoC[i] < rhoPed - 0.15) { // outside the crash region nothing moves
+        expect(st.ne[i]).toBe(ne0[i]);
+        for (let k = 0; k < imp.nSp; k++) expect(imp.block(st.s, k)[i]).toBe(b0[k][i]);
+        continue;
+      }
+      if (fn > 1e-3) hit++;
+      for (let k = 0; k < imp.nSp; k++) {
+        const nB = imp.edgeConcentration(k) * ctx.bc.n, was = b0[k][i], now = imp.block(st.s, k)[i];
+        expect(was, `species ${k}, cell ${i}: above its separatrix value`).toBeGreaterThan(nB);
+        expect((was - now) / (was - nB), `species ${k}, cell ${i}`).toBeCloseTo(fn, 10);
+      }
+    }
+    expect(hit).toBeGreaterThan(3);
+    expect(hit).toBeLessThan(h.N / 2);
+    // the scalars are the inventories of the profiles (not the legacy `x (1 - 0.1 f_W)` of the scalar model)
+    expect(st.s.NHe).toBe(volumeIntegral(g, imp.block(st.s, 0)));
+    expect(st.s.cZ / (volumeIntegral(g, imp.block(st.s, 1)) / volumeIntegral(g, st.ne))).toBeCloseTo(1, 12);
+    expect(imp.heliumBalance(st).inTransit).toBeGreaterThan(0); // the helium the ELM expelled waits to be exhausted by the next advance
+  });
+
+  it('a sawtooth crash (SawtoothEvents.afterStep) flattens every species inside rho_1 like n_e, over the same region, conserving the particles', () => {
+    const h = crashHarness(), { ctx, g, st, imp, N } = h;
+    for (let f = 0; f <= N; f++) ctx.w.qF[f] = 0.8 + 2.0 * g.rhoF[f] ** 2; // q = 1 at rho = 0.32, q0 = 0.8: a sheared core
+    const r1 = rhoOfQ(g, ctx.w.qF, 1);
+    expect(r1).toBeGreaterThan(0.25);
+    const ne0 = Float64Array.from(st.ne), b0 = blocks(h), ev: SimEvent[] = [];
+    new SawtoothEvents().afterStep(ctx, 5, st, {}, ev);
+    expect(ev.map((e) => e.kind)).toEqual(['sawtooth']);
+    const moved = (a: ArrayLike<number>, b: ArrayLike<number>) => Array.from(a, (x, i) => Math.abs(x - b[i]) > 1e-12 * Math.abs(x));
+    const region = moved(ne0, st.ne);
+    expect(region.filter(Boolean).length).toBeGreaterThan(3);
+    for (let k = 0; k < imp.nSp; k++) {
+      const b = imp.block(st.s, k), inside = Array.from(b).filter((_, i) => g.rhoC[i] < r1), was = b0[k].filter((_, i) => g.rhoC[i] < r1);
+      expect(Math.max(...was) / Math.min(...was), `species ${k} was peaked`).toBeGreaterThan(1.02);
+      expect(Math.max(...inside) / Math.min(...inside), `species ${k} is flat inside rho_1`).toBeCloseTo(1, 12);
+      expect(volumeIntegral(g, b) / volumeIntegral(g, b0[k]), `species ${k}: particles`).toBeCloseTo(1, 12);
+      expect(moved(b0[k], b), `species ${k}: the mixing region of n_e`).toEqual(region);
+    }
+  });
+
+  it('a quench step (DisruptionEvents.quenchStep) takes every species out with the electrons, by the same factor in every cell, and books the loss', () => {
+    const h = crashHarness(), { ctx, g, st, imp } = h;
+    ctx.phase = 'thermal_quench';
+    ctx.disruption = { cause: 'density_limit', t: 4, W: 3e8, Ip: 15e6, text: 'test' };
+    const ne0 = Float64Array.from(st.ne), b0 = blocks(h), out0 = Float64Array.from(imp.Nout);
+    const t1 = new DisruptionEvents().quenchStep(ctx, 5, h.y, 6);
+    const f = Math.exp(-(t1 - 5) / 0.05);
+    expect(f).toBeLessThan(0.995); // one step of the quench: a fraction of a per cent of the electrons
+    for (let i = 0; i < h.N; i++) {
+      expect(st.ne[i] / ne0[i]).toBeCloseTo(f, 12);
+      for (let k = 0; k < imp.nSp; k++) expect(imp.block(st.s, k)[i] / b0[k][i], `species ${k}, cell ${i}`).toBeCloseTo(f, 12);
+    }
+    for (let k = 0; k < imp.nSp; k++) expect((imp.Nout[k] - out0[k]) / (volumeIntegral(g, b0[k]) * (1 - f)), `species ${k}: loss booked`).toBeCloseTo(1, 9); // (the running total Nout is about 1e2 times the step's loss)
+    expect(st.s.NHe).toBe(volumeIntegral(g, imp.block(st.s, 0)));
   });
 });
 

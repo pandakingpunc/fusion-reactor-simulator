@@ -11,7 +11,7 @@
  * (written by a newer one), a value outside the wizard's range, a required number left blank. NaN, ±Infinity
  * and a blank field are numbers of the right type: a half-edited draft configuration shares like any other.
  */
-import { ActuatorEntry, EdgeOptions, Method, METHOD_LABELS, ReactorConfig } from '../../physics/types';
+import { ActuatorEntry, EdgeOptions, Method, METHOD_LABELS, ReactorConfig, SystemsConfig } from '../../physics/types';
 import { DEFAULT_PROFILE_SETTINGS } from '../../physics/profiles/defaults';
 import { fieldVisible, getPath, METHOD_DEFAULT, missingRequired, PRESETS, stepsFor } from '../wizard/schema';
 
@@ -69,6 +69,17 @@ const EDGE_OPTION_TYPES: Record<keyof EdgeOptions, LeafType> = {
   strikeRadiusFraction: 'number',
 };
 
+/**
+ * The options of the systems-lite engineering models (systems.*, an optional block of the magnetic configurations that no preset carries and the
+ * wizard does not offer): settings of this version, not fields of a newer one. Exhaustive over SystemsConfig, so a new option is a compile error here.
+ */
+const SYSTEMS_OPTION_TYPES: { [K in keyof SystemsConfig]-?: NonNullable<SystemsConfig[K]> extends number ? LeafType : { [J in keyof NonNullable<SystemsConfig[K]>]-?: LeafType } } = {
+  pulseLength_s: 'number',
+  tf: { nCoils: 'number', noseFraction: 'number', structureFraction: 'number', turnCurrent_A: 'number', verticalInboardFraction: 'number' },
+  cs: { currentDensity_MAm2: 'number', B_max_T: 'number', swingFraction: 'number', pfFlux_Vs: 'number', li: 'number' },
+  blanket: { inboardDepth_m: 'number', breederFraction: 'number' },
+};
+
 function walk(v: unknown, path: string, leaves: Map<string, LeafType>, sections?: string[]): void {
   if (v === undefined || v === null) return;
   if (typeof v === 'object' && !Array.isArray(v)) {
@@ -89,6 +100,12 @@ function templateFor(method: Method): Template {
   if (method === 'tokamak' || method === 'spherical_tokamak') {
     walk(DEFAULT_PROFILE_SETTINGS, 'profiles', leaves);
     for (const [k, type] of Object.entries(EDGE_OPTION_TYPES)) leaves.set(`divertor.edge.${k}`, type);
+  }
+  if (method === 'tokamak' || method === 'spherical_tokamak' || method === 'stellarator') {
+    for (const [k, v] of Object.entries(SYSTEMS_OPTION_TYPES)) {
+      if (typeof v === 'string') leaves.set(`systems.${k}`, v);
+      else for (const [j, type] of Object.entries(v)) leaves.set(`systems.${k}.${j}`, type);
+    }
   }
   const enums = new Map<string, Set<string>>();
   const ranges = new Map<string, [number, number]>();

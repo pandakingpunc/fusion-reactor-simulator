@@ -229,6 +229,31 @@ describe('share codec: decoding refuses what is not a configuration', () => {
     expect(checkConfig(c).errors.join('; ')).toMatch(/profiles\.edgeModel: 'threePoint' is not one of/);
   });
 
+  it('the systems-lite options (systems.*) are known settings of every magnetic method (no warning) and typed', () => {
+    for (const id of ['ITER', 'SPARC15', 'W7X']) {
+      const c = structuredClone(PRESETS.find((p) => p.id === id)!.cfg) as unknown as { systems?: Record<string, unknown> };
+      c.systems = {
+        pulseLength_s: 400, tf: { nCoils: 16, noseFraction: 0.4, structureFraction: 0.6, turnCurrent_A: 60000, verticalInboardFraction: 0.5 },
+        cs: { currentDensity_MAm2: 13.6, B_max_T: 12, swingFraction: 0.9, pfFlux_Vs: 30, li: 0.9 }, blanket: { inboardDepth_m: 0.5, breederFraction: 0.5 },
+      };
+      const ok = checkConfig(c);
+      expect(ok.errors, id).toEqual([]);
+      expect(ok.warnings.filter((w) => /systems/.test(w)), id).toEqual([]);
+      c.systems.pulseLength_s = '400 s';
+      expect(checkConfig(c).errors.join('; '), id).toMatch(/systems\.pulseLength_s: expected a number/);
+      c.systems.pulseLength_s = 400;
+      (c.systems.tf as Record<string, unknown>).nCoils = true;
+      expect(checkConfig(c).errors.join('; '), id).toMatch(/systems\.tf\.nCoils: expected a number/);
+      (c.systems.tf as Record<string, unknown>).nCoils = 16;
+      (c.systems.cs as Record<string, unknown>).fromTheFuture = 1;
+      expect(checkConfig(c).warnings.join('; '), id).toMatch(/systems\.cs\.fromTheFuture: unknown field/);
+    }
+    // a configuration of a method without a magnet keeps the block unknown
+    const nif = structuredClone(PRESETS.find((p) => p.id === 'NIF')!.cfg) as unknown as { systems?: unknown };
+    nif.systems = { pulseLength_s: 400 };
+    expect(checkConfig(nif).warnings.join('; ')).toMatch(/systems\.pulseLength_s: unknown field/);
+  });
+
   it('a hostile scenario is refused; an odd but usable configuration is accepted with warnings', async () => {
     const good = JSON.parse(JSON.stringify(PRESETS[0].cfg)) as Record<string, unknown>;
     let deep: unknown = 1;

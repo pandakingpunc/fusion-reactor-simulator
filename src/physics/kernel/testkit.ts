@@ -3,7 +3,7 @@
  * schedules, bitwise run comparison with a readable first difference. Not used by the app.
  */
 import { expect } from 'vitest';
-import { Simulation } from '../simulation';
+import { Simulation, type SimulationOptions } from '../simulation';
 import { PRESETS } from '../presets';
 import { RNG } from '../rng';
 import type { HistoryFrame, ReactorConfig, SimEvent } from '../types';
@@ -40,12 +40,12 @@ export function digestOf(r: Run): string {
 }
 
 const refCache = new Map<string, Required<Run>>();
-/** runAll() of a configuration (cached per test file). */
-export function referenceRun(cfg: ReactorConfig): Required<Run> {
-  const key = canonicalString(cfg);
+/** runAll() of a configuration (cached per test file; the options that define a run are part of the key). */
+export function referenceRun(cfg: ReactorConfig, opts: SimulationOptions = {}): Required<Run> {
+  const key = canonicalString({ cfg, scenario: opts.scenario ?? null, breakpoints: opts.breakpoints ?? null, log: opts.actuatorLog ?? null });
   let r = refCache.get(key);
   if (!r) {
-    const sim = new Simulation(cfg);
+    const sim = new Simulation(cfg, opts);
     sim.runAll();
     r = { history: sim.history, events: sim.events, digest: runDigest(sim.history, sim.events) };
     refCache.set(key, r);
@@ -73,16 +73,16 @@ export function advanceRandomly(sim: Simulation, seed: number): Simulation {
 }
 
 /** A fresh run to the end with a seeded random chunk schedule. */
-export function runChunked(cfg: ReactorConfig, seed: number): Simulation {
-  return advanceRandomly(new Simulation(cfg), seed);
+export function runChunked(cfg: ReactorConfig, seed: number, opts: SimulationOptions = {}): Simulation {
+  return advanceRandomly(new Simulation(cfg, opts), seed);
 }
 
 /**
  * A run advanced (random chunks) to min(p + 0.2, 1)·t_end, then rewound to the first frame at or
  * after p·t_end: it has a future that was thrown away.
  */
-export function rewindAt(cfg: ReactorConfig, p: number, seed: number): Simulation {
-  const sim = new Simulation(cfg);
+export function rewindAt(cfg: ReactorConfig, p: number, seed: number, opts: SimulationOptions = {}): Simulation {
+  const sim = new Simulation(cfg, opts);
   const T = sim.model.tEnd;
   const rng = new RNG(seed);
   while (!sim.done && sim.t < Math.min(p + 0.2, 1) * T) sim.advance(randomChunk(rng, T));

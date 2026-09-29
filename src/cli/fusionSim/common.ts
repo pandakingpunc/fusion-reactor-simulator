@@ -11,6 +11,8 @@ import { CONCEPT_DOI, gitInfo, packageVersion, runtimeInfo } from '../provenance
 import { requirePreset } from '../../physics/config/registry';
 import { ConfigValidationError, validateConfig } from '../../physics/config/schema';
 import { applyAssignments, mergeConfig } from '../../physics/config/paths';
+import { SimulationError } from '../../physics/kernel/errors';
+import { EquilibriumInitFailure, NumericalFailure } from '../../physics/profiles/failures';
 import { canonicalString } from '../../physics/kernel/canonical';
 import { runFingerprint } from '../../physics/kernel/fingerprint';
 import { sha256Hex } from '../../physics/kernel/sha256';
@@ -56,6 +58,15 @@ export class CliFailure extends Error {
     super(message);
     this.name = 'CliFailure';
   }
+}
+
+/**
+ * A failure of the model itself (a deliberate kernel error, a numerical failure, an initial equilibrium that cannot be
+ * computed for the requested boundary) as a one-line CliFailure; null for anything else, which is a bug and keeps its stack.
+ */
+export function runFailureOf(e: unknown): CliFailure | null {
+  if (e instanceof SimulationError || e instanceof NumericalFailure || e instanceof EquilibriumInitFailure) return new CliFailure(`the run failed: ${e.message}`);
+  return null;
 }
 
 /** Optional pieces of the CLI that other workstreams supply; absent ones make their command say so. */

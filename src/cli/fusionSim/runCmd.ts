@@ -4,7 +4,6 @@
  * IMAS-like JSON or a text summary.
  */
 import { runShot } from '../../physics/config/run';
-import { SimulationError } from '../../physics/kernel/errors';
 import { sourceFromSimulation, type RunMeta } from '../../io/table';
 import { writeCsv } from '../../io/csv';
 import { writeRunNdjson } from '../../io/ndjson';
@@ -12,7 +11,7 @@ import { writeRunNetcdf } from '../../io/netcdf3';
 import { writeImasJson } from '../../io/imas';
 import { defineCli, parseArgs } from '../args';
 import {
-  CONFIG_EPILOG, CONFIG_FLAGS, CliContext, CliFailure, CliInputError, emit, extensionOf, provenanceBlock, resolveConfig, takeRepeated,
+  CONFIG_EPILOG, CONFIG_FLAGS, CliContext, CliInputError, emit, extensionOf, provenanceBlock, resolveConfig, runFailureOf, takeRepeated,
 } from './common';
 
 const FORMATS = ['json', 'csv', 'ndjson', 'netcdf', 'imas', 'text'] as const;
@@ -77,8 +76,7 @@ export async function runCommand(argv: readonly string[], ctx: CliContext): Prom
   try {
     result = runShot(cfg, { validate: false });
   } catch (e) {
-    if (e instanceof SimulationError) throw new CliFailure(`the run failed: ${e.message}`);
-    throw e;
+    throw runFailureOf(e) ?? e;
   }
   const prov = provenanceBlock(ctx, cfg, preset);
   const meta: RunMeta = {

@@ -6,10 +6,9 @@ import { PRESETS } from '../../physics/presets';
 import { requirePreset } from '../../physics/config/registry';
 import { CONFIG_SCHEMA_ID, configJsonSchema, formatIssue, validateConfig } from '../../physics/config/schema';
 import { runShot } from '../../physics/config/run';
-import { SimulationError } from '../../physics/kernel/errors';
 import { defineCli, parseArgs } from '../args';
 import {
-  CONFIG_EPILOG, CONFIG_FLAGS, CliContext, CliFailure, CliInputError, emit, parseJsonFile, resolveConfig, takeRepeated,
+  CONFIG_EPILOG, CONFIG_FLAGS, CliContext, CliFailure, CliInputError, emit, parseJsonFile, resolveConfig, runFailureOf, takeRepeated,
 } from './common';
 
 // ── presets ─────────────────────────────────────────────────────────────────────────────────────────
@@ -118,8 +117,7 @@ export async function eqdskCommand(argv: readonly string[], ctx: CliContext): Pr
     const { sim } = runShot(cfg, { validate: false });
     text = write(sim, { ...(args.time !== undefined ? { time: args.time } : {}) });
   } catch (e) {
-    if (e instanceof SimulationError) throw new CliFailure(`the run failed: ${e.message}`);
-    throw e;
+    throw runFailureOf(e) ?? e;
   }
   emit(ctx.io, args.out, text);
   return 0;

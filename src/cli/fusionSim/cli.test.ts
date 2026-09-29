@@ -269,6 +269,11 @@ describe('run: outputs', () => {
     expect(p.columns.Q).toEqual(ref.history.map((f) => f.d.Q));
     const thin = parseCsv((await cli(['run', ...SHORT, '--format', 'csv', '--every', '50', '--series', 'Q'])).out);
     expect(thin.columns.t).toEqual(ref.history.filter((_, i) => i % 50 === 0).map((f) => f.t));
+    // a stride that does not divide the frame count: the last frame (t = t_end) is still there, as in ndjson
+    const odd = parseCsv((await cli(['run', ...SHORT, '--format', 'csv', '--every', '7', '--series', 'Q'])).out);
+    expect(odd.columns.t[odd.columns.t.length - 1]).toBe(ref.history[ref.history.length - 1].t);
+    const nd = (parseNdjson((await cli(['run', ...SHORT, '--format', 'ndjson', '--every', '7', '--series', 'Q'])).out) as any[]).filter((x) => x.type === 'frame');
+    expect(odd.columns.t).toHaveLength(nd.length);
   });
   it('ndjson: meta, frames, events, report; profiles on request', async () => {
     const r = await cli(['run', ...SHORT, '--format', 'ndjson']);
@@ -492,6 +497,16 @@ describe('failures that are not the input of the user', () => {
     const r = await cli(['run', '--preset', 'JET', '--set', 'method=nope', '--no-validate']);
     expect(r.code).toBe(1);
     expect(r.err).toMatch(/the run failed: unknown confinement method/);
+  });
+  it('a schema-valid 1.5D configuration whose initial equilibrium cannot be computed is a failure with one line, not an internal error', async () => {
+    const args = ['--preset', 'ITER15', '--set', 'geometry.a=6.19', '--t-end', '1'];
+    for (const argv of [['run', ...args, '--format', 'text'], ['export-eqdsk', ...args, '--out', 'x']]) {
+      const r = await cli(argv, { deps: { writeEqdsk: () => 'never' } });
+      expect(r.code).toBe(1);
+      expect(r.err).toMatch(/^fusion-sim (run|export-eqdsk): the run failed: initial Grad.Shafranov equilibrium failed: .*need a > 0/);
+      expect(r.err).not.toMatch(/internal error|\n\s+at /);
+      expect(r.err.trim().split('\n')).toHaveLength(1);
+    }
   });
   it('an unexpected error is reported as an internal error with its stack, exit 1', async () => {
     const r = await cli(['run', '--preset', 'JET', '--set', 'geometry=null', '--no-validate']);

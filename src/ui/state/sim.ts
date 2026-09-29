@@ -68,7 +68,8 @@ export function reduceSim(s: SimState, m: FromWorker): SimState {
       if (!current(s, m)) return s;
       return {
         ...s, status: 'paused', t: m.t, controls: m.controls, report: null, error: null,
-        frames: s.frames.slice(0, m.index + 1), events: s.events.filter((ev) => ev.t <= m.t + 1e-12),
+        frames: s.frames.slice(0, m.index + 1), // by count: the terminal frame of a failed 1.5D step has the time of the frame before it
+        events: s.events.slice(0, m.nEvents),
       };
     case 'done':
       if (!current(s, m)) return s;

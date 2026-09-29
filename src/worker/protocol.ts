@@ -9,7 +9,9 @@
  *    which keeps the full history;
  *  - every live message carries the run `id` and the timeline `branchId`, so the UI can drop
  *    frames that belong to a previous run or to a branch abandoned by a rewind;
- *  - `progress` messages for background full runs.
+ *  - `progress` messages for background full runs;
+ *  - `rewound` carries `nEvents`, the kernel's event count at the frame: the page truncates its event list
+ *    by count, not by time (a failed step's terminal frame has the time of the frame before it).
  */
 import { DiagSpec, HistoryFrame, Method, ReactorConfig, ShotReport, SimEvent } from '../physics/types';
 
@@ -53,7 +55,7 @@ export type ToWorker =
 export type FromWorker =
   | { type: 'ready'; protocolVersion: number; id: number; meta: SimMeta; frame: UiFrame }
   | { type: 'frames'; id: number; branchId: number; frames: UiFrame[]; events: SimEvent[]; t: number; done: boolean; dt: number; nSteps: number; controls: Record<string, number>; wallMs: number }
-  | { type: 'rewound'; id: number; branchId: number; index: number; t: number; controls: Record<string, number> }
+  | { type: 'rewound'; id: number; branchId: number; index: number; t: number; nEvents: number; controls: Record<string, number> }
   | { type: 'done'; id: number; branchId: number; report: ShotReport }
   /** background full run (`runAll` with progress): simulated time reached so far */
   | { type: 'progress'; id: number; t: number; tEnd: number; frames: number }

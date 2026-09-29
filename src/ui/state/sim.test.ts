@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MIRROR, TAE } from '../../physics/presets';
+import { JET_15D, MIRROR, TAE } from '../../physics/presets';
+import { LinearAlgebraFailure } from '../../physics/profiles/failures';
+import { CoupledStepper } from '../../physics/profiles/solver/coupledStep';
+import { SimEvent } from '../../physics/types';
 import { FakeWorker, fakeWorkerFactory, manualScheduler } from '../../worker/fakeWorker';
 import { FromWorker, PROTOCOL_VERSION } from '../../worker/protocol';
 import { SimController, completedShotKey, initialSimState, reduceSim, scheduleFrame } from './sim';
@@ -212,6 +215,56 @@ describe('completedShotKey', () => {
     const after = reduceSim(s, { type: 'done', id: 1, branchId: 0, report: {} as never });
     expect(after).toBe(s);
   });
+});
+
+describe('rewind and the event list', () => {
+  const ev = (t: number, msg: string): SimEvent => ({ t, kind: 'info', msg });
+  const rewound = (nEvents: number, t: number, index: number): FromWorker => ({ type: 'rewound', id: 1, branchId: 0, index, t, nEvents, controls: {} });
+  const state = () => ({
+    ...initialSimState, runId: 1, branchId: 0, status: 'done' as const,
+    frames: [{ t: 0, d: {} }, { t: 1, d: {} }, { t: 2, d: {} }, { t: 2, d: {} }], // the terminal frame of a failed step repeats the time of the frame before it
+    events: [ev(1, 'a'), ev(2, 'end at the start of the failed step')],
+  });
+
+  it('truncates the events by the kernel count, not by time', () => {
+    const s = reduceSim(state(), rewound(1, 2, 2));
+    expect(s.frames).toHaveLength(3);
+    // by time (the old rule) the 'end' event at t = 2 would have survived a rewind to the frame at t = 2
+    expect(s.events.map((e) => e.msg)).toEqual(['a']);
+  });
+
+  it('keeps every event the kernel still has, and tolerates a count beyond the list', () => {
+    expect(reduceSim(state(), rewound(2, 2, 3)).events).toHaveLength(2);
+    expect(reduceSim(state(), rewound(99, 2, 3)).events).toHaveLength(2);
+    expect(reduceSim(state(), rewound(0, 0, 0)).events).toEqual([]);
+  });
+
+  it('a 1.5D shot that ends in a numerical failure loses its end event when rewound to the frame before the failed step', () => {
+    const h = setup();
+    h.ctrl.load({ ...JET_15D, t_end: 1 });
+    h.roundTrip();
+    h.tick();
+    h.w.advance(0.2);
+    // the implicit transport step fails at every step size: the shot ends without advancing time
+    const stub = vi.spyOn(CoupledStepper.prototype, 'implicitStep').mockImplementation(() => { throw new LinearAlgebraFailure('heat', new Error('singular')); });
+    try { h.w.advance(0.2); } finally { stub.mockRestore(); }
+    h.w.deliver();
+    h.tick();
+    const failed = h.s();
+    expect(failed.status).toBe('done');
+    expect(failed.report?.termination.reason).toBe('Numerical failure');
+    const n = failed.frames.length;
+    expect(failed.frames[n - 1].t).toBe(failed.frames[n - 2].t); // the frame time does not increase
+    expect(failed.events.at(-1)).toMatchObject({ kind: 'end', t: failed.frames[n - 2].t });
+
+    h.ctrl.rewind(n - 2);
+    h.roundTrip();
+    h.tick();
+    expect(h.s().status).toBe('paused');
+    expect(h.s().frames).toHaveLength(n - 1);
+    expect(h.s().events.some((e) => e.kind === 'end')).toBe(false);
+    expect(h.s().events).toHaveLength(failed.events.length - 1);
+  }, 120_000);
 });
 
 describe('scheduleFrame', () => {

@@ -3,12 +3,18 @@
  * the CLI preset runner, the figure generator and the regression harness.
  *
  * The flat top is the last 30 % of the discharge. Two weightings are available:
- *   'frame' (default): arithmetic mean over the frames from index ⌊0.7·N⌋ to N−1. This is the
- *            historical definition; every published number (validation table, figures, report)
- *            uses it, and it is reproduced here bit for bit.
- *   'time':  trapezoidal time average over t ∈ [t₀ + 0.7·(t_N − t₀), t_N], with the value at the
- *            window start interpolated linearly. Unlike 'frame' it is not biased by the extra
- *            frames recorded at ELMs and sawtooth crashes. Not used by default.
+ *   'time' (default since v4.0): trapezoidal time average over t ∈ [t₀ + 0.7·(t_N − t₀), t_N], with
+ *            the value at the window start interpolated linearly. Every frame counts for the time it
+ *            spans, so the extra frames recorded at ELMs, sawtooth crashes and mode flips (their number
+ *            depends on the event rate, which the very quantities averaged here change) do not bias it.
+ *            This is the definition of the shot report, the golden flat-top, the validation table and
+ *            the figures.
+ *   'frame': arithmetic mean over the frames from index ⌊0.7·N⌋ to N−1. This was the definition up to
+ *            v3.0.0 and is reproduced here bit for bit; it weights a time span by its number of frames
+ *            (an ELM cycle contributes 2 frames, a quiet interval of the same length 1), so it is biased
+ *            towards the ELM-crash states. Measured on the 30 golden cases at v4.0 the difference is at most
+ *            0.1 % for the headline Q, P_fus of the ELM tokamaks (ITER Q +0.04 %, DEMO Q −0.1 %) and 2 % in the
+ *            pulsed and marginal cases (GF, FRXL P_fus −2 %, ITER-pB11 Q +2 %).
  *
  * Sample policy:
  *   'finite' (default): missing and non-finite samples are ignored; NaN if nothing is left.
@@ -26,7 +32,7 @@ export type FlatTopSamples = 'finite' | 'all';
 export interface FlatTopOptions {
   /** window start as a fraction of the history, default {@link FLAT_TOP_START} */
   start?: number;
-  /** default 'frame' */
+  /** default 'time' (was 'frame' up to v3.0.0) */
   weighting?: FlatTopWeighting;
   /** default 'finite' */
   samples?: FlatTopSamples;
@@ -43,7 +49,7 @@ export function flatTopStartIndex(nFrames: number, start = FLAT_TOP_START): numb
 export function flatTopMean(hist: Frames, key: string, opts: FlatTopOptions = {}): number {
   const start = opts.start ?? FLAT_TOP_START;
   const all = (opts.samples ?? 'finite') === 'all';
-  if ((opts.weighting ?? 'frame') === 'time') {
+  if ((opts.weighting ?? 'time') === 'time') {
     const v = timeMean(hist, key, start, all);
     if (v !== undefined) return v;
     // zero-length window (single frame or constant t): fall back to the frame mean

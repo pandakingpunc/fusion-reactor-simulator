@@ -211,6 +211,18 @@ describe('share codec: decoding refuses what is not a configuration', () => {
     expect(checkConfig(iter).errors.join('; ')).toMatch(/profiles\.lcfsRef95\.kappa: expected a number/);
   });
 
+  it('the systems section (design data of the systems-lite report) is optional: ITER, DEMO and SPARC carry it, the others have none', () => {
+    for (const id of ['ITER', 'DEMO', 'SPARC', 'JET', 'DIIID', 'JT60SA', 'MASTU', 'ITER15', 'DEMO15', 'SPARC15']) {
+      const c = structuredClone(PRESETS.find((p) => p.id === id)!.cfg) as unknown as { systems?: unknown };
+      const carries = c.systems !== undefined;
+      expect(carries, id).toBe(['ITER', 'DEMO', 'SPARC', 'ITER15', 'DEMO15', 'SPARC15'].includes(id));
+      expect(checkConfig(c).errors, id).toEqual([]);
+      expect(checkConfig(c).warnings.filter((w) => /systems/.test(w)), id).toEqual([]);
+      delete c.systems;
+      expect(checkConfig(c).errors, `${id} without a systems section`).toEqual([]);
+    }
+  });
+
   it('the edge model options are known settings (no warning), typed and, where the wizard offers a choice, restricted', () => {
     const c = structuredClone(PRESETS.find((p) => p.id === 'ITER15')!.cfg) as unknown as { divertor: Record<string, unknown>; profiles: Record<string, unknown> };
     c.profiles.edgeModel = 'twoPoint';

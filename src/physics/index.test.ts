@@ -91,7 +91,9 @@ describe('the public barrel', () => {
     expect(() => new api.Simulation(cfg, { scenario: unknownControl })).toThrow(api.ScenarioError);
   });
   it('a program can run the systems-lite models on a configuration through the barrel alone', () => {
-    const input = { cfg: api.ITER, g: api.ITER.geometry, isStellarator: false, P_fus_MW: 500, P_neutron_MW: 400 };
+    // the ITER preset carries the design data of the plant (systems.pulseLength_s 500 s, the solenoid); without them the defaults apply
+    const input = { cfg: { ...api.ITER, systems: undefined }, g: api.ITER.geometry, isStellarator: false, P_fus_MW: 500, P_neutron_MW: 400 };
+    expect(api.assessSystems({ ...input, cfg: api.ITER }).pulseLength_s).toBe(500);
     const a = api.assessSystems(input);
     expect(a.tf.tresca_MPa).toBeGreaterThan(300);
     expect(a.tf.tresca_MPa).toBeLessThan(660); // the ITER inboard leg is inside the Nb3Sn limit

@@ -970,3 +970,11 @@ Node v24.19.0 · `npm run golden:update` · all cases
   - MASTU15: 2423 keys moved; max rel. diff 1.73e+0
     - moved, largest change first: profiles.last.prof.shear[4], profiles.mid.prof.shear[8], profiles.last.prof.shear[8], profiles.mid.prof.shear[12], profiles.mid.prof.shear[4], profiles.last.prof.shear[12], profiles.last.prof.shear[7], profiles.last.prof.shear[9], profiles.mid.prof.shear[7], profiles.mid.prof.shear[9], profiles.last.prof.shear[13], profiles.mid.prof.shear[13], … (+2411 more)
 - Unchanged (21): ITER, JET, SPARC, DIIID, JT60SA, MASTU, W7X, DEMO, NIF, DIRECT, Z, GF, FRXL, ZAP, TAE, MIRROR, MUON, ITER-DHe3, ITER-pB11, TAE-pB11, MIRROR-DHe3
+
+## 2026-09-29 16:00 UTC — ws6e: new golden case ITER15-impurity (ITER15, 60 s, impurityTransport 'facit'); the 30 existing cases are untouched
+
+Cause. The opt-in profile-resolved He ash and impurities (ProfileSettings.impurityTransport 'anomalous' | 'facit', src/physics/profiles/impurity/) get one regression-guarded case: ITER15 with the module on for 60 s (n_He(rho), Be and Ar profiles on the particle solver with the neoclassical D, K, H of FACIT, a set-point controller for the volume-average concentrations, local He ash source, ELM and sawtooth crashes, Z_eff(rho) in the conductivity and the bootstrap current). New keys of the case only (fHe, fHe0, tauHeStar, GammaHe, GammaZ, GammaSeed, cZ, cZ0, cZpeak, cSeed, cSeed0, S_W, mZ and the profiles nHe, nZ, nSeed). Flat-top means of the case: n_He/n_e 3.84 % (tau_He*/tau_E 4.65), Z_eff 1.71, c_Be 2.00 %, c_Ar 0.121 %, Q 12.8; 152 ELMs. Default off (impurityTransport absent or 'legacy') is bit-identical: the state layout, the composition and every checkpoint key of the 30 existing cases are those of before (npm run golden compares all of them).
+
+Node v24.19.0 · `npm run golden:update` · --only ITER15-impurity
+
+- Added (1): ITER15-impurity

@@ -686,6 +686,25 @@ export interface EqProfiles {
   Phi: Float64Array; // toroidal flux [Wb]
 }
 
+/**
+ * Profiles of a plasma state as functions of ψ_N ∈ [0, 1] (0 on the axis, 1 on the boundary), in the solver's
+ * convention (ψ [Wb/rad], maximal on the axis, ψ_b = 0): what an Equilibrium's tables are built from, and what
+ * GSSolver.assemble takes for a state that was not solved here (an imported equilibrium).
+ */
+export interface StateProfiles {
+  /** pressure p(ψ_N) [Pa] */
+  p(psiN: number): number;
+  /** dp/dψ [Pa/(Wb/rad)] (> 0 for a peaked profile: p and ψ are both maximal on the axis) */
+  pp(psiN: number): number;
+  /** FF' = F dF/dψ [T² m²/(Wb/rad)] */
+  ffp(psiN: number): number;
+  /** F = R B_φ [T m] (> 0) */
+  F(psiN: number): number;
+}
+
+/** The options of an Equilibrium's tables (a subset of EquilibriumOptions) */
+export type TableOptions = Pick<EquilibriumOptions, 'Ip' | 'B0' | 'psiLevels' | 'nSurf' | 'nTheta'>;
+
 export interface Equilibrium {
   grid: GSGrid;
   psi: Float64Array; // NR·NZ (exterior nodes extrapolated)
@@ -1049,7 +1068,7 @@ export class GSSolver {
       for (let u = 0; u < nIn; u++) psi[inIdx[u]] = xv[u];
     }
     const ffpTable = prof.kind === 'table' ? new CubicSpline(tabXs, tabA.map((a, i) => cScale * a + tabB[i])) : null;
-    const eq = this.postProcess(gx, o, beta0, tail, ffpTable, ppN, Math.min(it, maxIter), converged, resid);
+    const eq = this.postProcess(gx, o, (dpsi) => this.solvedProfiles(gx, o, beta0, tail, ffpTable, ppN, dpsi), true, Math.min(it, maxIter), converged, resid);
     const warn = (code: GSWarningCode, message: string) => eq.warnings.push({ code, message });
     if (!converged) warn('not-converged', `residual ${resid.toExponential(2)} > tol ${tol} after ${eq.iterations} iterations`);
     if (prof.kind === 'shape') {
@@ -1068,28 +1087,50 @@ export class GSSolver {
     return eq;
   }
 
-  private postProcess(psi: Float64Array, o: EquilibriumOptions, beta0: number, tail: ShapeTail | null, ffpTable: CubicSpline | null,
-    ppN: ((x: number) => number) | null, iterations: number, converged: boolean, residual: number): Equilibrium {
+  /**
+   * Equilibrium of a state that was not solved here: ψ on this grid (NR·NZ values; ψ_b = 0, ψ > 0 inside and maximal on
+   * the axis — e.g. an imported equilibrium resampled onto the grid) and its profiles as functions of ψ_N. The tables —
+   * flux-surface metrics, q, ρ_tor, β, l_i, the force balance — are traced from ψ; the profiles enter as p, p', FF' and F
+   * (`profiles(Δψ)` is called with the axis flux). iterations = 0 and converged = true; `residual` is the fixed-point
+   * residual max|G(ψ) − ψ|/Δψ of one Picard step under this grid's operator, i.e. how well ψ satisfies
+   * Δ*ψ = −μ0 R j_φ(ψ) for these profiles at this resolution. The exterior nodes of ψ are kept when `keepExterior`
+   * (a field known outside the boundary), otherwise refilled from the interior as after a solve.
+   */
+  assemble(psi: ArrayLike<number>, profiles: (psiAxis: number) => StateProfiles, o: TableOptions & { keepExterior?: boolean }): Equilibrium {
+    const grid = this.grid, N = grid.NR * grid.NZ;
+    if (!(finite(o.Ip) && o.Ip > 0)) badInput(`I_p must be a positive finite current (got ${o.Ip})`);
+    if (!(finite(o.B0) && o.B0 > 0)) badInput(`B0 must be a positive finite field (got ${o.B0})`);
+    if (psi.length !== N) badInput(`ψ has ${psi.length} values, the grid ${N}`);
+    const p = Float64Array.from(psi);
+    for (let k = 0; k < N; k++) if (grid.kind[k] !== 0 && !Number.isFinite(p[k])) badInput('ψ contains non-finite values');
+    const eq = this.postProcess(p, o, profiles, !o.keepExterior, 0, true, NaN);
+    const fns = profiles(eq.psiAxis), dpsi = eq.psiAxis;
+    const jphi = new Float64Array(N), inIdx = grid.interior, Rn = grid.interiorR;
+    for (let u = 0; u < grid.nInside; u++) {
+      const k = inIdx[u];
+      let x = (dpsi - p[k]) / dpsi;
+      if (!(x < 1)) continue;
+      if (x < 0) x = 0;
+      jphi[k] = Rn[u] * fns.pp(x) + fns.ffp(x) / (MU0 * Rn[u]);
+    }
+    const g = grid.solveLinear((R, _Z, k) => -MU0 * R * jphi[k]);
+    let dmax = 0;
+    for (let u = 0; u < grid.nInside; u++) { const k = inIdx[u]; dmax = Math.max(dmax, Math.abs(g[k] - p[k])); }
+    eq.residual = dmax / dpsi;
+    return eq;
+  }
+
+  /**
+   * The profiles p, p', FF' and F of a solved state (the converged ψ, on the axis value Δψ = dpsi) — what the tables of
+   * the returned Equilibrium are made from. Shape mode: the profile shape with λ recomputed from the returned ψ; table
+   * mode: the given pressure table and the FF' of the last iteration (currentScale applied). F² = F_b² + 2Δψ ∫_x^1 FF' ds
+   * from the vacuum value F_b = R0 B0 at the boundary.
+   */
+  private solvedProfiles(psi: Float64Array, o: EquilibriumOptions, beta0: number, tail: ShapeTail | null, ffpTable: CubicSpline | null,
+    ppN: ((x: number) => number) | null, dpsi: number): StateProfiles {
     const grid = this.grid;
     const R0 = this.geom.R;
-    grid.extend(psi);
-    const bi = grid.bicubic(psi);
-    const ax = findAxis(grid, psi, bi);
-    const dpsi = ax.psi;
-    if (!(Number.isFinite(dpsi) && dpsi > 0)) throw new GSFailure('diverged', 'ψ on the magnetic axis ≤ 0 in the final state', iterations, residual);
-    const field: PsiField = { bi, psiAxis: dpsi, psiB: 0, Rax: ax.R, Zax: ax.Z };
-    const lev = o.psiLevels ? Float64Array.from(o.psiLevels) : surfaceLevels(o.nSurf ?? DEFAULT_N_SURF);
-    const nS = lev.length + 1;
-    const tr = traceSurfaces(field, grid.boundary, lev, o.nTheta ?? 128, 64);
     const Fb = R0 * o.B0;
-    const n = nS; // axis + levels
-    const P: EqProfiles = {
-      psiN: new Float64Array(n), rhoTor: new Float64Array(n), q: new Float64Array(n), F: new Float64Array(n), p: new Float64Array(n),
-      FFp: new Float64Array(n), pp: new Float64Array(n), V: new Float64Array(n), dVdpsiN: new Float64Array(n), area: new Float64Array(n),
-      Ienc: new Float64Array(n), avgR2inv: new Float64Array(n), avgRinv: new Float64Array(n), avgGrad2R2: new Float64Array(n), avgGrad2: new Float64Array(n),
-      avgGrad: new Float64Array(n), avgB2: new Float64Array(n), Bmax: new Float64Array(n), Bmin: new Float64Array(n), ft: new Float64Array(n),
-      Rin: new Float64Array(n), Rout: new Float64Array(n), kappa: new Float64Array(n), delta: new Float64Array(n), Phi: new Float64Array(n),
-    };
     // pressure and FF' profiles (in ψ_N); tailFF(x) = ∫_x^1 FF' dψ_N
     let pOf: (x: number) => number, ffpOf: (x: number) => number, ppOf: (x: number) => number, tailFF: (x: number) => number;
     if (tail) {
@@ -1120,6 +1161,36 @@ export class GSSolver {
     }
     // F(ψ_N): F² = F_b² + 2∫_{ψ_b}^{ψ} FF' dψ = F_b² + 2Δψ ∫_x^1 FF'(s) ds
     const Fof = (x: number) => Math.sqrt(Math.max(Fb * Fb + 2 * dpsi * tailFF(x), 1e-6 * Fb * Fb));
+    return { p: pOf, pp: ppOf, ffp: ffpOf, F: Fof };
+  }
+
+  /**
+   * Equilibrium of a state: ψ on the grid and the profiles as functions of ψ_N. Everything of the returned tables is
+   * derived from ψ by tracing the flux surfaces; the profiles enter only as p, p', FF', F. `extend` refills the exterior
+   * nodes from the interior (the solver's own state); an imported ψ keeps its own exterior values.
+   */
+  private postProcess(psi: Float64Array, o: TableOptions, profiles: (psiAxis: number) => StateProfiles, extend: boolean,
+    iterations: number, converged: boolean, residual: number): Equilibrium {
+    const grid = this.grid;
+    const R0 = this.geom.R;
+    if (extend) grid.extend(psi);
+    const bi = grid.bicubic(psi);
+    const ax = findAxis(grid, psi, bi);
+    const dpsi = ax.psi;
+    if (!(Number.isFinite(dpsi) && dpsi > 0)) throw new GSFailure('diverged', 'ψ on the magnetic axis ≤ 0 in the final state', iterations, residual);
+    const field: PsiField = { bi, psiAxis: dpsi, psiB: 0, Rax: ax.R, Zax: ax.Z };
+    const lev = o.psiLevels ? Float64Array.from(o.psiLevels) : surfaceLevels(o.nSurf ?? DEFAULT_N_SURF);
+    const nS = lev.length + 1;
+    const tr = traceSurfaces(field, grid.boundary, lev, o.nTheta ?? 128, 64);
+    const n = nS; // axis + levels
+    const P: EqProfiles = {
+      psiN: new Float64Array(n), rhoTor: new Float64Array(n), q: new Float64Array(n), F: new Float64Array(n), p: new Float64Array(n),
+      FFp: new Float64Array(n), pp: new Float64Array(n), V: new Float64Array(n), dVdpsiN: new Float64Array(n), area: new Float64Array(n),
+      Ienc: new Float64Array(n), avgR2inv: new Float64Array(n), avgRinv: new Float64Array(n), avgGrad2R2: new Float64Array(n), avgGrad2: new Float64Array(n),
+      avgGrad: new Float64Array(n), avgB2: new Float64Array(n), Bmax: new Float64Array(n), Bmin: new Float64Array(n), ft: new Float64Array(n),
+      Rin: new Float64Array(n), Rout: new Float64Array(n), kappa: new Float64Array(n), delta: new Float64Array(n), Phi: new Float64Array(n),
+    };
+    const { p: pOf, pp: ppOf, ffp: ffpOf, F: Fof } = profiles(dpsi);
     // axis values
     const Fax = Fof(0);
     P.psiN[0] = 0; P.F[0] = Fax; P.p[0] = pOf(0); P.FFp[0] = ffpOf(0); P.pp[0] = ppOf(0);

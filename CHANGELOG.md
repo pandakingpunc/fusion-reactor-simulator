@@ -571,6 +571,14 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   Q, f_bs, l_i and T_ped change by 0.02 / 0.29 / 0.04 / 0.19 %; between the tolerances 1e-2 and 1e-3 or 1e-4 by at most 0.5 %; between the
   time-step limits 0.5 s and 0.01 s by at most 0.5 %; the ELM count is 1326 / 1326 / 1331 over the limits and 1326 / 1327 / 1327 over the
   tolerances.
+- 1.5D initial current: with the edge-clustered surface table of the equilibrium the q-based initial psi missed the table's own enclosed
+  current by up to 1e-3 I_p at rho 0.9 and 3e-4 I_p at the edge of the packed grid, so the outermost cell held 2.4 (ITER15) to 3.7
+  (SPARC15) times its neighbour's current (and the uniform grid of SPARC15 had a negative cell); the enclosed current of the initial state
+  now follows the table from rho 0.9 to 0.97 (`matchEdgeCurrent`), inside 0.9 nothing changes.
+- Golden re-recorded for the nine 1.5D cases on the merged base (flat-top Q ITER15 10.40 -> 10.70, JET15 0.4389 -> 0.4428, SPARC15
+  6.318 -> 6.290, DEMO15 23.49 -> 23.50; T_ped 4 to 11 % lower with the packed pedestal grid, l_i up to 1.5 % higher; q(0) and the
+  sawtooth count, which follow the core current, move most; every Grad-Shafranov update accepted; MASTU15 ends as scheduled; all 21
+  other cases bit-identical); `test/golden/CHANGES.md` has the headline moves and their causes.
 
 ### Fixed
 - `npm run bench:convergence`: the time-step series (dtMax) failed with "this model has no internal time step

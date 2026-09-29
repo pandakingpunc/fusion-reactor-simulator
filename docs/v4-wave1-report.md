@@ -544,7 +544,7 @@ ledger reason. Items marked (R) come from a lane's request list, (F) from a revi
   E_NBI = 500 keV disrupts at the Troyon limit at 0.78 s in 1.5D (beta_N 3.50 = thermal 1.28 + 1.70 MJ of fast
   ions) while 0D runs to the end (2.70). Physics-owner decision; JET15 start-up beta_N peaks at 2.32 (0D 1.73).
 - **6a pedestal:** ITER15 T_ped 3.74 keV against the 4.5 +/- 0.5 keV EPED-type reference (accepted 2-7) and
-  grid dependent; the pedestal width and the ELM size are still the fixed 0.06 / 0.08 factors.
+  grid dependent; the pedestal width, the ETB factor and the ELM size are still fixed inputs (`pedestalWidth` 0.06, `etbFactor` 0.08, `elmFraction` 0.35 in `profiles/defaults.ts`).
 - **6b transport:** the 1.5D tau_E is set by the PI controller in 'scaling' mode (circular against the
   scaling laws); wire `'ITPA20'` and `'ITPA20-IL'` into `MagneticConfig.scaling` (types owner): the paper's
   delta is the average LCFS triangularity (ITER 0.48) but the presets carry the 95 % value (0.33), which lowers

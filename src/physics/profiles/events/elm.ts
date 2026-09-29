@@ -16,7 +16,7 @@ import { READY_MARGIN, elmMargin } from './triggers';
 
 /**
  * The step proposed after a crash [s]: the error control grows it from there (the profiles change by tens of per cent within tens of
- * milliseconds after a crash; a step of 0.01 τ_E, the rule of the backward-Euler stepper, was rejected four times out of five)
+ * milliseconds after a crash; a step of 0.01 τ_E, the rule of the backward-Euler stepper, is rejected several times at every crash)
  */
 export const CRASH_RESTART_DT = 5e-4;
 

@@ -2,7 +2,6 @@
  * The wizard's Scenario step: the note and the editor, for the model of the configuration being edited (read through a probe of the
  * simulation worker). The scenario lives in the application state; the wizard only hosts this component.
  */
-import React from 'react';
 import type { WorkerFactory } from '../state/sim';
 import { useApp, useAppStore } from '../state/store';
 import ScenarioEditor from './ScenarioEditor';

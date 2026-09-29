@@ -6,7 +6,7 @@
  * Recording asks the simulation worker for the actuator log of the run as it stands (`getLog`; the answer arrives in the run state as
  * `logAnswer`) and builds the scenario with scenarioFromActuatorLog against the configured values of the model's controls.
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { SimApi } from '../useSim';
 import { useAppStore } from '../state/store';
 import './scenario.css';

@@ -1,5 +1,4 @@
 /** The trigger editor of the scenario: a condition on a diagnostic of the frames, a dwell time, and the control values it writes. */
-import React from 'react';
 import type { ScenarioIssue, TriggerOp, TriggerSpec } from '../../physics/scenario';
 import { NumberBox } from './NumberBox';
 import { controlInfo, issuesAt, laneKeys, type EditorContext } from './model';

@@ -1,5 +1,5 @@
 /** The scenario editor's templates: drop a control, ramp a control, a gas puff, an interlock. Each one is a few parameters and an "Add" button. */
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ScenarioError } from '../../physics/kernel/errors';
 import type { TriggerOp } from '../../physics/scenario';
 import { NumberBox } from './NumberBox';

@@ -5,14 +5,13 @@
  * actual lanes, record mode), the completion message that lets a run with interventions be signed, and share links that carry the
  * scenario (checked against the model first) or the exact run.
  */
-import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import App from '../../App';
 import { PRESETS, TAE } from '../../physics/presets';
 import { Simulation } from '../../physics/simulation';
-import { dropTemplate, type ScenarioSpec } from '../../physics/scenario';
+import { dropTemplate } from '../../physics/scenario';
 import { FakeWorker, fakeWorkerFactory } from '../../worker/fakeWorker';
 import { AppStore, AppStoreContext, createAppStore } from '../state/store';
 import { installDomStubs } from '../testing/dom';

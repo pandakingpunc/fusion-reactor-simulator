@@ -1,5 +1,4 @@
 /** The scenario of the run about to start, in the wizard's last step: its name and what it contains (nothing when there is none). */
-import React from 'react';
 import { useApp } from '../state/store';
 import { STEP_TITLES } from '../wizard/schema';
 import { summarize } from './model';

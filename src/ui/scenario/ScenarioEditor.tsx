@@ -7,7 +7,7 @@
  * `ctx` (the controls, diagnostics and end time of the model) is null while the model is being read; then nothing can be added and the
  * text form is checked for its structure only.
  */
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ScenarioError } from '../../physics/kernel/errors';
 import type { ScenarioSpec, WaveformKind } from '../../physics/scenario';
 import { fmtNum } from '../format';

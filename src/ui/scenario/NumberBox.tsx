@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { parseNumberInput } from '../wizard/Field';
 
 /** A number as typed text: the draft is committed on blur or Enter (typing "0.0" on the way to "0.02" must not clamp anything). */

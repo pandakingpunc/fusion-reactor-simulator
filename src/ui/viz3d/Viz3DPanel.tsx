@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import { useT } from '../state/store';
 import type { Viz3DSource } from './input';
 

@@ -230,6 +230,28 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   so the Lengyel c_z for detachment is an upper bound (ITER neon several times the ~6 % of the SOLPS-ITER database);
   lambda_q is the Eich H-mode regression (0.6 mm for ITER against 2 mm of the SOLPS-ITER baseline); q_det is an ASDEX
   Upgrade scaling used beyond its P_sep/R range; one flux tube, T_i = T_e, no drifts, ELM-averaged.
+- Deterministic scenario engine (`src/physics/scenario.ts`, `SimulationOptions.scenario`): per-control piecewise-linear
+  or step waveforms and conditional triggers `{ diag, op, value } -> set` (once or repeating, with a hold time, a start
+  time, a hysteresis band and a release patch), as plain JSON (schema 1) with path-level validation (unknown or hostile
+  keys rejected, controls and diagnostics checked against the model; `ScenarioError`), one canonical text per scenario
+  (`scenarioToJSON` / `scenarioFromJSON`, for share links) and templates (drop, ramp, gas puff, interlock, merge).
+  Waveform corners (and an optional `rampStep` grid) are step boundaries, so a control value at a corner is exact;
+  triggers are evaluated on the recorded frames at step boundaries, so a scenario run is chunk invariant and rewinds
+  exactly. The scenario state is part of every frame checkpoint and the scenario is part of `runFingerprint()` (its free
+  name is not); a run without a scenario is bitwise unchanged and keeps its fingerprint. Scenario changes are not in
+  the actuator log (they are a function of scenario, configuration and frames); a live `applyControl()` takes its
+  keys over from the waveforms. I_p and the shape keys become scenario-drivable when they are exposed as controls
+  (`SCENARIO_CONTROLS` lists the labels and limits).
+- Scenario `rampStep` is bounded below (at least 1e-6 in the model's time unit and at least `t_end / 10000`): a finer
+  grid is a `ScenarioError` at path `rampStep`, so a scenario from a share link cannot make a run endless (1e-20 used to
+  hang the step limit, 1e-9 on a 400 s run meant about 4e11 steps). The trigger options `hold` and `after` are
+  independent gates: a trigger fires at the first frame with t >= after whose condition has held for `hold`.
+- The library barrel exports the scenario engine (`validateScenario`, `parseScenario`, `scenarioFromJSON`,
+  `scenarioToJSON`, the drop / ramp / gas-puff / interlock templates, `mergeScenarios`, `MIN_RAMP_STEP`,
+  `MAX_RAMP_GRID`, `ScenarioError` and the spec types as `@public`; the `Scenario` class as `@experimental`), and
+  `fusion-sim run --scenario FILE` runs a shot under a scenario file: every problem of the file is listed with its path
+  (exit 2), the JSON output carries the normalised scenario and `provenance.scenarioSha256`, and the run fingerprint of
+  every format covers the scenario.
 
 ### Changed
 - The Report's JSON button writes `<name>_run.json` (the run file above) instead of
@@ -410,6 +432,12 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   follow it. In a ramp-up without ELMs the smoothed dW/dt lags by tau_E, so P_SOL and the derived loads of a short
   window are lower than the step-wise value of before (SPARC15-short -14 %). Golden re-recorded.
 
+- Documented, no model change: the 0D ELM particle-exhaust rate (`elmPartRate`) is re-derived after every ELM H-mode
+  step, which makes the kernel's FSAL stage reuse refuse in most steps of ELM H-mode presets (JET 1238 of 1501 steps,
+  0.9 % of the right-hand-side evaluations saved, ITER 1.6 %, SPARC 2.0 %, DEMO 3.1 %, against 14 % for models without
+  such state); making it a state variable or piecewise constant between crashes would fix that but moves every ELM
+  preset (see `confinement/magnetic.ts` and the FSAL paragraph of `simulation.ts`).
+
 ### Fixed
 - `npm run bench:convergence`: the time-step series (dtMax) failed with "this model has no internal time step
   to limit" since the split of `profiles/model.ts` moved the step proposal to `ctx.dt`; the limiter is now
@@ -441,6 +469,13 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 - 0D: frames recorded at type-I ELM crashes carried the diagnostics of the pre-crash state (T_e,
   P_fus, P_rad ... 2-4.5 % off their own state); they are now consistent with their state. The
   state, internal state, checkpoints and events of the run are unchanged.
+- 0D: a frame recorded at an L-H, H-L or NTM flip carried the pre-flip tau_E, P_cond and P_ELM next to the post-flip
+  H_mode (DIII-D 3 s, when it was found: tau_E 0.1345 s against 0.1875 s from the frame's own state). The frame now
+  describes its own state (`MagneticModel.postStep` refreshes the frame diagnostics at a flip). The run itself is
+  bitwise unchanged; golden moves only in history mean and min statistics of four 0D cases on the merged base (JET,
+  SPARC, DIII-D, MASTU: up to 6e-4 on means, 2.6 % on the MASTU Lawson and triple-product minima); a flip that ends a
+  step inside an output interval has no frame of its own (ITER, JT60SA, DEMO). The 1.5D model needed no change (its
+  flip shows one frame later, pinned by a test).
 - Test harness: `npm run coverage` no longer exits 1 with all tests green ("[vitest-worker]: Timeout
   calling onTaskUpdate"): the setup file waits a few real milliseconds before every test so that no
   worker RPC call is pending while a long synchronous test runs. Root cause: the runner sends a task

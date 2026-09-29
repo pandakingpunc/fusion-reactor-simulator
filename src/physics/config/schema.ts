@@ -48,6 +48,8 @@ const ABLATORS = keysOf<ICFConfig['ablator']>({ CH: 0, HDC: 0, Be: 0 });
 const SCALINGS = keysOf<MagneticConfig['scaling']>({ IPB98y2: 0, ITPA20: 0, 'ITPA20-IL': 0, ST_Valovic: 0 });
 const TRANSPORT_MODELS = keysOf<ProfileSettings['transportModel']>({ scaling: 0, cgm: 0 });
 const EDGE_MODELS = keysOf<NonNullable<ProfileSettings['edgeModel']>>({ legacy: 0, twoPoint: 0 });
+const PEDESTAL_MODELS = keysOf<NonNullable<ProfileSettings['pedestalModel']>>({ fixed: 0, eped1: 0 });
+const ELM_LOSS_MODELS = keysOf<NonNullable<ProfileSettings['elmLoss']>>({ fixed: 0, loarte: 0 });
 const NONLINEAR_SOLVERS = keysOf<NonNullable<ProfileSettings['nonlinearSolver']>>({ auto: 0, picard: 0, newton: 0, pc: 0 });
 const EDGE_LOSS_FITS = keysOf<NonNullable<EdgeOptions['lossFit']>>({ stangeby1: 0, stangeby2: 0, body2025: 0 });
 const EDGE_RADIATIONS = keysOf<NonNullable<EdgeOptions['radiation']>>({ prescribed: 0, lengyel: 0 });
@@ -133,6 +135,11 @@ const profileSettings = partial<ProfileSettings>({
   etbFactor: num({ exMin: 0, max: 1, def: PS.etbFactor, doc: 'Edge transport barrier: chi_ETB / chi_turb at the pedestal.' }),
   alphaCritFactor: num({ exMin: 0, max: 10, def: PS.alphaCritFactor, doc: 'ELM trigger threshold as a multiple of the critical ballooning alpha.' }),
   elmFraction: num({ exMin: 0, exMax: 1, def: PS.elmFraction, doc: 'ELM crash depth, Delta W / W_ped.' }),
+  pedestalModel: opt(oneOf(PEDESTAL_MODELS, "Pedestal of the 1.5D model. 'fixed': the width pedestalWidth, the barrier depth etbFactor and the ballooning limit alphaCritFactor. 'eped1': an EPED1-type pedestal (Snyder et al. 2009): the width follows the KBM constraint Delta = 0.076 sqrt(beta_p,ped), the height is limited by the peeling-ballooning constraint (anchored to the DIII-D ITER-demonstration discharges), the barrier depth adapts to hold the pedestal-top pressure at that limit and an ELM fires when it is exceeded; pedestalWidth is then only the width before the first evaluation, etbFactor the barrier depth at the limit, and the radial grid is packed for the EPED width.", 'fixed')),
+  pedPbGradient: opt(num({ exMin: 0, max: 100, def: PS.pedPbGradient, doc: "Peeling-ballooning pressure gradient d(beta_p)/d(psi_N) of the 'eped1' pedestal (dimensionless): with the KBM width it sets beta_p,ped = (0.076 C)^2 and the width 0.076^2 C." })),
+  pedKbmCoefficient: opt(num({ exMin: 0, max: 10, def: PS.pedKbmCoefficient, doc: "Coefficient of the KBM width of the 'eped1' pedestal, Delta = c sqrt(beta_p,ped) in psi_N (0.076: Snyder et al. 2009; EPED1.6 finds 0.07 to 0.1)." })),
+  pedDensityExponent: opt(num({ min: 0, max: 5, def: PS.pedDensityExponent, doc: "Exponent of the pedestal density over the Greenwald density (relative to 0.5) in the pedestal poloidal beta of the 'eped1' pedestal: the EPED1.6 scan for ITER gives beta_N,ped proportional to n_ped^0.64. 0: the height does not depend on the density." })),
+  elmLoss: opt(oneOf(ELM_LOSS_MODELS, "Energy an ELM removes. 'fixed': elmFraction of the pedestal region times U(0.8, 1.2). 'loarte': the fraction f(nu*_ped) of W_ped = 3/2 n_ped (T_e,ped + T_i,ped) V that Loarte et al. (2003) correlate with the pedestal collisionality, times U(0.8, 1.2).", 'fixed')),
   sawtoothShear: num({ exMin: 0, max: 10, def: PS.sawtoothShear, doc: 'Shear s1 at q = 1 that triggers a sawtooth crash.' }),
   ecrhRho: num({ min: 0, max: 1, unit: 'rho_tor', def: PS.ecrhRho, doc: 'ECRH deposition centre.' }),
   ecrhWidth: num({ exMin: 0, max: 1, unit: 'rho_tor', def: PS.ecrhWidth, doc: 'ECRH deposition width.' }),

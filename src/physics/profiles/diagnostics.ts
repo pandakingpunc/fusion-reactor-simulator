@@ -178,7 +178,9 @@ export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: Globa
   const nG = greenwaldDensity(Math.max(Ip_MA, 0.01), g.a);
   // L–H threshold: Martin 2008 with the line-averaged density and the Ryter 2014 low-density branch, as in 0D
   const P_LH = pLH_threshold(X.nbar, g.B0, g.surface, ctx.M, Math.max(Ip_MA, 0.01), g.a, g.R0);
-  const rhoPed = 1 - ctx.ps.pedestalWidth;
+  // the EPED1-type pedestal (pedestal/PedestalModel.ts): width, limit and pressure ratio of this state, before the width is used below
+  ctx.ped?.update(ctx, st, w.p);
+  const rhoPed = 1 - ctx.pedWidth;
   // T_ped: the electron temperature at ρ_ped. The legacy uniform grid takes the cell that contains it (a cell 0.02 wide, in the steep
   // gradient of the barrier); the packed grid interpolates linearly between the two centres around ρ_ped
   const Tped = g.uniform ? v.Te[cellIndex(g, rhoPed)] : interpCells(g, v.Te, rhoPed);
@@ -208,6 +210,7 @@ export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: Globa
     q_div: qdiv, n_wall: nw, P_heat: X.P_heat / 1e6, P_charged: X.P_chg / 1e6, P_neutron: X.P_neut / 1e6,
     Efus_MJ: s.Efus / 1e6, Ein_MJ: s.Ein / 1e6, Nn: s.Nn, P_loss: X.P_loss / 1e6, dWdt: X.dWdt / 1e6, dWdt_s: ctx.dWdtS / 1e6, P_bound: X.P_bound / 1e6,
     ...edgeChannels1D(ctx, q95v, Ip),
+    ...(ctx.ped ? ctx.ped.diagnostics(ctx, st, q95v) : {}),
   };
   // profiles
   const mer = w.mercF, bal = w.ballF;

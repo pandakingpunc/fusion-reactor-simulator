@@ -1,5 +1,6 @@
 /** 1.5D profil modeli varsayılan ayarları (UI sihirbazı da kullanır — modelin tamamını içe aktarmadan) */
 import { ProfileSettings } from '../types';
+import { KBM_COEFFICIENT, PB_DENSITY_EXPONENT, PB_GRADIENT } from './pedestal/eped1';
 
 export const DEFAULT_PROFILE_SETTINGS: ProfileSettings = {
   nRho: 50,
@@ -19,6 +20,11 @@ export const DEFAULT_PROFILE_SETTINGS: ProfileSettings = {
   etbFactor: 0.08,
   alphaCritFactor: 1,
   elmFraction: 0.35,
+  pedestalModel: 'fixed',
+  pedPbGradient: PB_GRADIENT,
+  pedKbmCoefficient: KBM_COEFFICIENT,
+  pedDensityExponent: PB_DENSITY_EXPONENT,
+  elmLoss: 'fixed',
   sawtoothShear: 0.2,
   ecrhRho: 0.3,
   ecrhWidth: 0.08,

@@ -18,6 +18,7 @@ import { checkProfileSettings, type SettingNote } from './settings';
 import { CurrentProgramme, currentWaveform, IP_PROGRAMME_FLOOR } from './control/plasmaCurrent';
 import { gridSpec, type GridSpec, type TransportGeometry } from './geometry1d';
 import { CurrentSolver, DensitySolver, HeatSolver } from './fvsolver';
+import { PedestalModel } from './pedestal/PedestalModel';
 import { volumeIntegral } from './sources/deposition';
 import type { BootstrapCoeffs } from './neoclassical';
 import { ProfileState, StateLayout } from './state';
@@ -119,6 +120,8 @@ export class ProfileContext {
   readonly ctrl: Actuators;
   /** plasma-current programme I_p(t) [A] (control/plasmaCurrent.ts); null: I_p is the control `Ip_MA` (the configured current until it is changed) */
   ipProgramme: CurrentProgramme | null;
+  /** EPED1-type pedestal (pedestal/PedestalModel.ts, `ProfileSettings.pedestalModel = 'eped1'`); null with the fixed pedestal, the default */
+  readonly ped: PedestalModel | null;
 
   // ---------------------------------------------------------------- equilibrium and geometry
   geo!: EqGeometry;
@@ -197,6 +200,7 @@ export class ProfileContext {
     this.cfg = cfg;
     const resolved = resolveProfileSettings(cfg);
     this.ps = resolved.ps;
+    this.ped = this.ps.pedestalModel === 'eped1' ? new PedestalModel(this.ps) : null;
     // a setting that was replaced is said once, at the start of the shot (the first step's events)
     for (const n of resolved.notes) this.warnOnce(`settings.${n.key}`, 0, `${n.message}.`);
     this.N = Math.max(16, Math.round(this.ps.nRho));
@@ -227,6 +231,9 @@ export class ProfileContext {
 
   /** Views of a state vector */
   view(y: Float64Array): ProfileState { return this.layout.view(y); }
+
+  /** Full width of the pedestal in ρ̂ [the barrier width, and 1 − width is the pedestal top]: `pedestalWidth`, or that of the EPED1-type pedestal */
+  get pedWidth(): number { return this.ped ? this.ped.width : this.ps.pedestalWidth; }
 
   /**
    * The plasma current that a step ending at time t takes as its boundary condition [A], at least 0.05 MA: the programme at t, or without one

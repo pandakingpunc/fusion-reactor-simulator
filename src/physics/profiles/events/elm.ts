@@ -5,12 +5,18 @@
  * the pedestal energy is expelled from the pedestal and an inner neighbour region of ~0.15 in ρ
  * (Loarte et al., Plasma Phys. Control. Fusion 45 (2003) 1549), with half that fraction of the
  * particles; the He ash and impurity content are flushed by 0.1 fW.
+ *
+ * Optional models (WS6a, `ProfileSettings.pedestalModel`, `elmLoss`; the defaults are the behaviour described above): with the EPED1-type pedestal
+ * the trigger is the pedestal-top pressure exceeding the peeling–ballooning limit (pedestal/PedestalModel.ts) instead of α_ped > α_crit, and the
+ * pedestal top sits at 1 − Δ (Δ the KBM width mapped to ρ̂); with `elmLoss: 'loarte'` the crash removes ΔW_ELM = f(ν*_ped) W_ped
+ * (Loarte et al. 2003, pedestal/loarte.ts) instead of the fixed fraction, with the same U(0.8, 1.2) scatter.
  */
 import type { SimEvent } from '../../types';
 import type { ProfileContext } from '../context';
 import type { ProfileState } from '../state';
 import { recNum, type CheckpointAux, type CheckpointRecord } from '../checkpoint';
 import { elmCrash } from '../mhd';
+import { elmDepthForEnergy, loarteElmLoss } from '../pedestal/elmSize';
 import type { EventModel, EventTrigger } from './EventModel';
 import { READY_MARGIN, elmMargin } from './triggers';
 
@@ -42,9 +48,12 @@ export class ElmEvents implements EventModel {
   afterStep(ctx: ProfileContext, t: number, st: ProfileState, d: Readonly<Record<string, number>>, ev: SimEvent[]): void {
     const c = ctx.cfg, ps = ctx.ps, s = st.s;
     const tRef = ElmEvents.recovery(d.tauE);
-    if (!(ctx.hmode && c.events.elms && d.alpha_ped > 1 && t - this.lastElm > tRef)) return;
-    const rhoPed = 1 - ps.pedestalWidth;
-    const fW = ps.elmFraction * (0.8 + 0.4 * ctx.rng.next());
+    const over = ctx.ped ? d.ped_ratio > 1 : d.alpha_ped > 1;
+    if (!(ctx.hmode && c.events.elms && over && t - this.lastElm > tRef)) return;
+    const rhoPed = 1 - ctx.pedWidth;
+    const scatter = 0.8 + 0.4 * ctx.rng.next();
+    let fW = ps.elmFraction * scatter;
+    if (ps.elmLoss === 'loarte') fW = elmDepthForEnergy(ctx, st, rhoPed, scatter * loarteElmLoss(ctx, st, rhoPed, d.q95).energy, 0.15);
     const before = ctx.crashHook ? ctx.crashSnapshot(st) : null;
     const dW = elmCrash(ctx.tg, st.Te, st.Ti, st.ne, ctx.w.ni, ctx.bc.Te, ctx.bc.Ti, ctx.bc.n, rhoPed, fW, 0.5 * fW, 0.15);
     if (before) ctx.crashHook!('ELM', t, before, ctx.crashSnapshot(st));
@@ -55,7 +64,8 @@ export class ElmEvents implements EventModel {
     this.elmTimes.push(t); if (this.elmTimes.length > 20) this.elmTimes.shift();
     ctx.dt = Math.min(ctx.dt, CRASH_RESTART_DT);
     ctx.diagStale = true;
-    ev.push({ t, kind: 'ELM', msg: `Type-I ELM (α_ped/α_crit = ${d.alpha_ped.toFixed(2)}): ΔW = ${(dW / 1e6).toFixed(2)} MJ`, value: dW / 1e6 });
+    const cause = ctx.ped ? `p_ped/p_lim = ${d.ped_ratio.toFixed(2)}` : `α_ped/α_crit = ${d.alpha_ped.toFixed(2)}`;
+    ev.push({ t, kind: 'ELM', msg: `Type-I ELM (${cause}): ΔW = ${(dW / 1e6).toFixed(2)} MJ`, value: dW / 1e6 });
   }
 
   /** mean ELM frequency over the last ELMs [Hz] (0 with fewer than three) */

@@ -23,12 +23,16 @@ export function triggerProfiles(ctx: ProfileContext, st: TriggerState, sc: Trigg
   qFromDpsi(ctx.tg, sc.dpsiF, sc.qF, sc.qC);
 }
 
-/** ELM: α_ped/α_crit − 1 of the state in H-mode with ELMs enabled (events/elm.ts; diagnostics.ts writes the same ratio as α_ped) */
+/**
+ * ELM: α_ped/α_crit − 1 of the state in H-mode with ELMs enabled (events/elm.ts; diagnostics.ts writes the same ratio as α_ped); with the
+ * EPED1-type pedestal p_top/p_lim − 1, the pedestal-top pressure over the peeling–ballooning limit (pedestal/PedestalModel.ts)
+ */
 export function elmMargin(ctx: ProfileContext, st: TriggerState, sc: TriggerScratch): number {
   if (!(ctx.hmode && ctx.cfg.events.elms)) return -1;
+  if (ctx.ped) return ctx.ped.margin(ctx, st, sc);
   triggerProfiles(ctx, st, sc);
   const N = ctx.N, bc = ctx.bc;
-  const rhoPed = 1 - ctx.ps.pedestalWidth;
+  const rhoPed = 1 - ctx.pedWidth;
   const pSep = (bc.n * bc.Te + bc.n * st.niOverNe[N - 1] * bc.Ti) * KEV;
   const aMax = alphaMHD(ctx.tg, sc.p, sc.qF, rhoPed - 0.02, undefined, pSep);
   return aMax / alphaCritical(ctx.geomB.kappa, ctx.geomB.delta, ctx.ps.alphaCritFactor) - 1;

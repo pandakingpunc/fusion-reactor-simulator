@@ -109,6 +109,8 @@ interface StepSnapshot {
   /** replaced, never mutated, by a step */
   bc: ProfileContext['bc']; lastK: ProfileContext['lastK']; lastDiag: ProfileContext['lastDiag']; lastProf: ProfileContext['lastProf'];
   geo: ProfileContext['geo']; pending: number; warned: ReadonlySet<string>; forcedSteps: number;
+  /** the EPED1-type pedestal's state (pedestal/PedestalModel.ts), null with the fixed pedestal */
+  ped: Record<string, number> | null;
 }
 
 function snapshotStep(ctx: ProfileContext, forcedSteps: number): StepSnapshot {
@@ -117,13 +119,15 @@ function snapshotStep(ctx: ProfileContext, forcedSteps: number): StepSnapshot {
     alphaRatio: ctx.alphaRatio, WfAlpha: ctx.WfAlpha, WfBeam: ctx.WfBeam, Pbound: ctx.Pbound,
     bc: ctx.bc, lastK: ctx.lastK, lastDiag: ctx.lastDiag, lastProf: ctx.lastProf,
     geo: ctx.geo, pending: ctx.pending.length, warned: new Set(ctx.warned), forcedSteps,
+    ped: ctx.ped ? (() => { const rec: Record<string, number> = {}; ctx.ped!.save(rec); return rec; })() : null,
   };
 }
 
 /** Puts the context back; returns the number of forced steps of the snapshot */
 function restoreStep(ctx: ProfileContext, s: StepSnapshot): number {
-  const { geo, pending, warned, forcedSteps, ...scalars } = s;
+  const { geo, pending, warned, forcedSteps, ped, ...scalars } = s;
   Object.assign(ctx, scalars);
+  if (ped) ctx.ped!.restore(ped);
   if (ctx.geo !== geo) ctx.adoptGeometry(geo);
   ctx.pending.length = pending;
   ctx.warned = new Set(warned);

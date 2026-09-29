@@ -101,6 +101,27 @@ export interface ProfileSettings {
   /** ELM tetik eşiği çarpanı (α_crit) ve çöküş kesri ΔW/W_ped */
   alphaCritFactor: number;
   elmFraction: number;
+  /**
+   * pedestal model (profiles/pedestal/, WS6a). 'fixed' (default): the width `pedestalWidth`, the barrier depth `etbFactor` and the
+   * ballooning limit α_crit (`alphaCritFactor`) of the settings above. 'eped1': an EPED1-type pedestal (Snyder et al., Phys. Plasmas 16
+   * (2009) 056118): the width follows the KBM constraint Δ = 0.076 β_p,ped^{1/2}, the height is limited by the peeling–ballooning
+   * constraint, the barrier depth adapts to hold the pedestal-top pressure at that limit and the ELM fires when it is exceeded.
+   * `pedestalWidth` is then only the width until the first evaluation (the radial grid is packed for the EPED width, 0.045 in ρ̂), `etbFactor` is the barrier
+   * depth at the limit (it deepens up to 4 times below it) and the α_ped/α_crit test is not applied
+   */
+  pedestalModel?: 'fixed' | 'eped1';
+  /** dimensionless peeling–ballooning pressure gradient dβ_p/dψ_N of the 'eped1' pedestal (default: the DIII-D ITER-demonstration discharges, 7.08) */
+  pedPbGradient?: number;
+  /** KBM coefficient of the width Δ = c β_p,ped^{1/2} of the 'eped1' pedestal (default 0.076) */
+  pedKbmCoefficient?: number;
+  /** exponent of the pedestal density n_ped/n_G in the pedestal beta of the 'eped1' pedestal (default 0.64, EPED1.6 for ITER; 0: the height does not depend on the density) */
+  pedDensityExponent?: number;
+  /**
+   * ELM energy loss: 'fixed' (default): the fraction `elmFraction` × U(0.8, 1.2) of the pedestal-region energy. 'loarte': ΔW_ELM = f W_ped U(0.8, 1.2) with
+   * f the fit to the pedestal-collisionality correlation of Loarte et al., Plasma Phys. Control. Fusion 45 (2003) 1549 (profiles/pedestal/loarte.ts)
+   * and W_ped = (3/2) n_e,ped (T_e,ped + T_i,ped) V
+   */
+  elmLoss?: 'fixed' | 'loarte';
   /** testere dişi tetik kayması s₁ */
   sawtoothShear: number;
   /** ECRH birikim merkezi / genişliği, ICRH genişliği (ρ_tor) */

@@ -8,7 +8,7 @@ import { CONFIG_SCHEMA_ID, configJsonSchema, formatIssue, validateConfig } from 
 import { runShot } from '../../physics/config/run';
 import { defineCli, parseArgs } from '../args';
 import {
-  CONFIG_EPILOG, CONFIG_FLAGS, CliContext, CliFailure, CliInputError, emit, parseJsonFile, resolveConfig, runFailureOf, takeRepeated,
+  CONFIG_EPILOG, CONFIG_FLAGS, CliContext, CliInputError, emit, parseJsonFile, resolveConfig, runFailureOf, takeRepeated,
 } from './common';
 
 // ── presets ─────────────────────────────────────────────────────────────────────────────────────────

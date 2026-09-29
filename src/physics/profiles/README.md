@@ -180,19 +180,21 @@ accuracy of the Jacobian (a few 10⁻³ of a row on the stages tested, where the
 stage are 4.8·10⁻³, 1.5·10⁻³, 1.2·10⁻⁶, 6.6·10⁻¹⁰, 6·10⁻¹³ (`newtonStage.test.ts`).
 
 **Pereverzev–Corrigan fallback** (Pereverzev and Corrigan, Comput. Phys. Commun. 179 (2008) 579). A Newton solve that does not converge (a line
-search that finds no descent, a singular Jacobian, more than 12 iterations: 1.5 % of the stages of ITER15 `cgm` over 40 s: 9 of 510 in the first 5 s, none up to 25 s, then 2 to 3 % once the H-mode with its sawteeth and ELMs is on)
-is repeated from where the stage started by the Picard iteration with the heat solve stabilised: the conduction gets an extra diffusivity
-c χ (c = 10) taken implicitly and c χ ∇T\* (T\* the iterate) taken off again explicitly (`HeatInputs.pcFactor`), so that a fixed point solves the
-original equations. The frozen-χ iteration multiplies the error of the gradient by 1 − χ_d/((1 + c) χ), χ_d = d(χ∇T)/d∇T, and diverges where
-χ_d > 2 χ; with the term it contracts where χ_d < 2 (1 + c) χ (a test: on a steep critical-gradient χ the plain iteration cycles between two
-states and the stabilised one converges). `'pc'` uses it alone: on ITER15 `cgm` it costs less than Picard with Anderson mixing.
+search that finds no descent, a singular Jacobian, more than 12 iterations: 9 of the 1956 stages of the first 10 s of ITER15 `cgm`, 111 of 7462 over 40 s,
+where the H-mode with its sawteeth and ELMs is on) is repeated from where the stage started by the Picard iteration with the heat solve stabilised:
+the conduction gets an extra diffusivity c χ (c = 10) taken implicitly and c χ ∇T\* (T\* the iterate) taken off again explicitly (`HeatInputs.pcFactor`),
+so that a fixed point solves the original equations. The frozen-χ iteration multiplies the error of the gradient by 1 − χ_d/((1 + c) χ),
+χ_d = d(χ∇T)/d∇T, and diverges where χ_d > 2 χ; with the term it contracts where χ_d < 2 (1 + c) χ (a test: on a steep critical-gradient χ the plain
+iteration cycles between two states and the stabilised one converges). `'pc'` uses it alone: on ITER15 `cgm` it costs about half of Picard with Anderson
+mixing, with twice as many attempts repeated.
 
-What it costs, ITER15 `cgm`, CPU seconds on a shared machine (steps taken, attempts repeated by the error test or failed): 10 s of the
-ramp-up: Picard 3.0 (1099; 17 + 4), PC-Picard 2.3 (997; 35 + 5), Newton 3.5 (950; 16 + 3); 40 s (through the L–H transition and sawteeth): Picard 7.6
-(3788; 371 + 118), PC-Picard 5.4 (3461; 624 + 114), Newton 13.2 (3051; 476 + 15). Newton takes about 3 iterations per stage, the
-Jacobians (12 evaluations of the physics each, 0.8 per stage) are two thirds of its cost. It is the most robust of the three (a
-eighth of the failed attempts of Picard) and 1.2 to 1.8 times as costly; the state at a given time differs between the solvers by the
-L–H and sawtooth timing that a small change of the trajectory moves (Q at 40 s 0.18 / 0.22 / 0.19), not by the solution of a stage.
+What it costs, ITER15 `cgm`, CPU seconds on an idle machine (steps taken; attempts repeated by the error test + failed): the first 10 s (the ramp-up):
+Picard 3.0 (1030; 14 + 4), PC-Picard 1.8 (996; 29 + 4), Newton 3.9 (958; 17 + 3, 2.0 % of the attempts; 1.7 % rejected by the error test); 40 s
+(through the L–H transition and the sawteeth): Picard 10.4 (3924; 362 + 125), PC-Picard 5.9 (3426; 560 + 114), Newton 15.3 (3224; 465 + 42). Newton
+takes about 3 iterations per stage, the Jacobians (12 evaluations of the physics each, 0.6 per stage) are two thirds of its cost. It is the most robust
+of the three (a third of the failed attempts of Picard) and 1.3 to 1.5 times as costly as Picard; the state at a given time differs between the
+solvers by the L–H and sawtooth timing that a small change of the trajectory moves (Q at 40 s 0.18 / 0.26 / 0.20 for Newton / Picard / PC), not
+by the solution of a stage (at 10 s the three agree: Q = 0.391, W = 55.0 MJ).
 
 **What the error estimate does not see.** The quantities that are updated once per accepted step and held fixed within it (C_χ and its
 integral term, P_SOL and the boundary values, the fueling command, the source deposition, the inventories, the fast-ion pools) are first
@@ -210,20 +212,29 @@ long. `rtol` 1e-3 adds a half, 1e-4 doubles it again; the flat-top means do not 
 
 ## Convergence
 
-`npm run bench:convergence` (ITER15, 400 s, flat-top means; `bench/convergence.ts`, Richardson error estimates of `bench/richardson.ts`). One
-parameter at a time, the others at their defaults (nRho 50, gridPacking 4, rtol 1e-2, dtMax 0.5 s):
+`npm run bench:convergence` (ITER15, 400 s, flat-top means; `bench/convergence.ts`, Richardson error estimates of `bench/richardson.ts`), run at the end of
+the Newton and current-diffusion stage. One parameter at a time, the others at their defaults (nRho 50, gridPacking 4, rtol 1e-2, dtMax 0.5 s):
 
-| | Q | f_bs | ℓ_i(3) | T_ped [keV] | steps | ELMs |
-| --- | --- | --- | --- | --- | --- | --- |
-| nRho 25 / 50 / 100 | 10.32 / 10.56 / 10.62 | 0.2317 / 0.2286 / 0.2301 | 0.7186 / 0.7431 / 0.7426 | 3.603 / 3.401 / 3.412 | 23222 / 30241 / 40543 | 1300 / 1325 / 1331 |
-| rtol 1e-2 / 1e-3 / 1e-4 | 10.56 / 10.60 / 10.59 | 0.2286 / 0.2294 / 0.2289 | 0.7431 / 0.7399 / 0.7422 | 3.401 / 3.408 / 3.404 | 30241 / 48516 / 56827 | 1325 / 1326 / 1326 |
-| dtMax 0.5 / 0.05 / 0.01 s | 10.56 / 10.55 / 10.59 | 0.2286 / 0.2290 / 0.2294 | 0.7431 / 0.7414 / 0.7400 | 3.401 / 3.404 / 3.413 | 30241 / 31015 / 50854 | 1325 / 1325 / 1330 |
+| | Q | f_bs | ℓ_i(3) | T_ped [keV] | steps | ELMs | attempts rejected + failed |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| nRho 25 / 50 / 100 | 10.41 / 10.65 / 10.65 | 0.2333 / 0.2300 / 0.2307 | 0.7142 / 0.7391 / 0.7388 | 3.590 / 3.421 / 3.427 | 23054 / 30379 / 40503 | 1300 / 1326 / 1332 | 3998 + 10 / 4247 + 2 / 6866 + 5 |
+| rtol 1e-2 / 1e-3 / 1e-4 | 10.65 / 10.68 / 10.68 | 0.2300 / 0.2309 / 0.2312 | 0.7391 / 0.7353 / 0.7353 | 3.421 / 3.439 / 3.426 | 30379 / 48485 / 56876 | 1326 / 1327 / 1327 | 4247 + 2 / 7174 + 3 / 5786 + 2 |
+| dtMax 0.5 / 0.05 / 0.01 s | 10.65 / 10.66 / 10.69 | 0.2300 / 0.2307 / 0.2309 | 0.7391 / 0.7359 / 0.7361 | 3.421 / 3.433 / 3.437 | 30379 / 31028 / 50865 | 1326 / 1326 / 1331 | 4247 + 2 / 4123 + 1 / 2525 + 0 |
 
-Between nRho 50 and 100 the changes are 0.6 % (Q), 0.7 % (f_bs), 0.1 % (ℓ_i) and 0.3 % (T_ped); between the tolerances 1e-2 and 1e-4 0.3 %,
-0.1 %, 0.1 % and 0.1 %; between the Δt limits 0.5 s and 0.01 s 0.3 %, 0.4 %, 0.4 % and 0.4 %. The ELM count, which followed the step of the
-backward-Euler stepper (1101 to 1131 with the time-step limit and the grid), varies by 0.4 % over the tolerances and the limits and 2 % over the
-grid. The scatter of the flat-top means between neighbouring runs (0.1 to 0.4 %) is that of the sawtooth and ELM sequences, which the Richardson
-fit reads as oscillatory convergence (the GCI of the finest runs is about 1 % for Q, f_bs, ℓ_i and T_ped in the tolerance and the Δt series).
+The targets of the stage, all met at the defaults:
+
+- Q, f_bs, ℓ_i and T_ped change by less than 1 % between nRho 50 and 100 (0.02, 0.29, 0.04 and 0.19 %) and between the tolerances 1e-2, 1e-3 and 1e-4
+  (at most 0.34, 0.51, 0.51 and 0.53 % from 1e-2 to either), and between the Δt limits 0.5 s and 0.01 s (0.35, 0.41, 0.40, 0.48 %). Between nRho 25 and 50
+  the changes are 2.3, 1.4, 3.4 and 4.7 %: 25 cells are 5 across the pedestal.
+- The ELM count, which followed the step of the backward-Euler stepper (1101 to 1131), varies by 0.4 % over the Δt limits (1326 / 1326 / 1331), 0.1 % over the
+  tolerances and 2.4 % over the grid.
+- `'cgm'` ITER15 to 10 s takes 3.1 s (Newton, the default of the predictive model), with 1.7 % of the attempts rejected by the error test (2.0 % with the
+  failed ones); above.
+
+The scatter of the flat-top means between neighbouring runs (0.1 to 0.5 %) is that of the sawtooth and ELM sequences, which the Richardson fit reads as
+oscillatory convergence (the GCI of the finest runs is 1 to 15 % for these four means, the observed orders of the smooth ones 0.4 to 4): the differences
+above are the statement, not the extrapolation. The means moved by the current-diffusion form between the previous stage's table and this one (Q 10.56 → 10.65,
+ℓ_i 0.743 → 0.739, f_bs 0.2286 → 0.2300, T_ped 3.401 → 3.421 keV at the defaults) but not their convergence.
 
 ## Current diffusion and the plasma-current programme
 
@@ -438,7 +449,7 @@ model take part as soon as they implement the hooks; other parts are listed in
   is scalar: its τ_W is the source-weighted mean over the cells, not a profile.
 - `'cgm'` is uncalibrated; its outermost face uses the gradient between the last two cells, not
   the one to the separatrix value. The ITER15 ramp-up takes about 3 to 4 s per 10 s of discharge (JET-size machines are
-  slower: the steps are shorter). Its stages are solved by Newton, which is about 1.2 to 1.8 times the cost of Picard with Anderson
+  slower: the steps are shorter). Its stages are solved by Newton, which is about 1.3 to 1.5 times the cost of Picard with Anderson
   mixing: the Jacobian is 12 evaluations of the whole physics, and reusing it from step to step would need it in the checkpoint.
 - P_SOL (two-point T_sep) follows the lagged global balance P_heat − P_rad − dW/dt, not P_bound, on
   purpose: the instantaneous flux would couple T_sep and the edge gradient step by step. The raw dW/dt of the last step still
@@ -458,7 +469,7 @@ model take part as soon as they implement the hooks; other parts are listed in
 | `fvsolver.test.ts` | the solvers' right-hand sides against their solutions, the reference state and explicit rate of a stage, the error-estimate filter, the Pereverzev–Corrigan term (a fixed point stays fixed; the frozen-χ iteration on a steep χ cycles and the stabilised one converges) |
 | `../numerics/blockTridiagN.test.ts`, `../numerics/newton.test.ts` | the block-tridiagonal solver for block sizes 1 to 5 against dense LU (pivoting inside blocks, several right-hand sides, singular blocks), the coloured Jacobian against the column-by-column one and a linear map, the damped Newton iteration (quadratic convergence, the chord variant, the line search, the bounds, a Jacobian passed in, the failure reasons) |
 | `solver/newtonStage.test.ts` | the residual of a stage is a function of the state alone, its coloured Jacobian is the Jacobian, its root is the Picard fixed point, quadratic convergence on a smooth stage, the choice of the solver, the fallback (a shot with every Newton solve failing is the PC-Picard shot bit for bit), chunk invariance and exact rewind of a Newton shot |
-| `currentDiffusion.test.ts` | the skin-time response of a uniform cylinder to a step of I_p against the Bessel series and its second order in Δt, the Φ̇_b term (a frozen flux is carried with the moving grid), the Hinton–Hazeltine form with a non-constant F, the plasma-current programme (waveform, a shot whose boundary current follows it) |
+| `currentDiffusion.test.ts` | the skin-time response of a uniform cylinder to a step of I_p against the Bessel series and its second order in Δt, the Φ̇_b term (a frozen flux is carried with the moving grid), the Hinton–Hazeltine form with a non-constant F, the plasma-current programme (waveform, a shot whose boundary current follows it) and the control `Ip_MA` (a change at a step boundary, the log replay, the rewind, no control when a programme drives the current) |
 | `solver/coupledStep.test.ts` | the TR-BDF2 step on whole shots: error control against a tight reference, `dtMax`, rejections and their counters, the energy identity, ELM counts against the step limit, the checkpoint of the counters |
 | `modules.test.ts` | state layout, work arrays, module wiring, checkpoint keys, the three plug-in interfaces (hooks and their call counts, particle source, state over accepted steps and rewinds) |
 | `events/events.test.ts` | every event model through `afterStep`, with checkpoints |

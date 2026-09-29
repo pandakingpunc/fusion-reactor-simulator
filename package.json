@@ -24,7 +24,6 @@
       "require": "./build/lib/io.cjs"
     },
     "./schema": "./schema/fusion-sim.schema.json",
-    "./schema/scenario": "./schema/scenario.schema.json",
     "./package.json": "./package.json"
   },
   "files": [

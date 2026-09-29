@@ -1,5 +1,5 @@
 /**
- * Simülasyon worker'ının mesaj işleyicisi (protokol v2), `self`'ten bağımsız:
+ * Simülasyon worker'ının mesaj işleyicisi (protokol v3), `self`'ten bağımsız:
  * sim.worker.ts bunu gerçek worker'a bağlar, testler doğrudan çağırır.
  * Oynatma döngüsü ~30 Hz; her tikte duvar-saati × hız kadar simülasyon zamanı ilerletilir.
  *
@@ -12,11 +12,13 @@
  * A single 1.5D step that includes a Grad-Shafranov update still takes tens of milliseconds and cannot be split here.
  */
 import { Simulation } from '../physics/simulation';
-import { NonFiniteStateError, SimulationError } from '../physics/kernel/errors';
+import { NonFiniteStateError, ScenarioError, SimulationError } from '../physics/kernel/errors';
+import type { ScenarioSpec } from '../physics/scenario';
 import { EquilibriumInitFailure } from '../physics/profiles/failures';
-import { HistoryFrame, ShotReport, SimEvent, SimModel } from '../physics/types';
-import { FromWorker, PROTOCOL_VERSION, SimMeta, ToWorker, simSecondsPerWallSecond, toUiFrame } from './protocol';
+import { HistoryFrame, ReactorConfig, ShotReport, SimEvent, SimModel } from '../physics/types';
+import { ControlRows, FromWorker, PROTOCOL_VERSION, RunProvenanceMsg, SimMeta, ToWorker, isSupportedProtocol, simSecondsPerWallSecond, toUiFrame } from './protocol';
 import { defaultSchedule } from './schedule';
+import { APP_VERSION } from '../ui/persist/version';
 
 export { defaultSchedule };
 
@@ -53,13 +55,30 @@ export function makeMeta(model: SimModel): SimMeta {
 }
 
 function checkVersion(v: number): void {
-  if (v !== PROTOCOL_VERSION) throw new Error(`Worker protocol mismatch: page speaks v${v}, worker speaks v${PROTOCOL_VERSION}. Reload the page.`);
+  if (!isSupportedProtocol(v)) throw new Error(`Worker protocol mismatch: page speaks v${v}, worker speaks v${PROTOCOL_VERSION}. Reload the page.`);
 }
 
 const CHECK_CONFIG = 'Check the configuration for empty or out-of-range values.';
 
 /** a run that cannot go on for a reason the user can fix; reported without a stack trace */
 class RunError extends Error {}
+
+/** A ScenarioError as the user reads it: every problem with its path (the error's own message names the first three). */
+export function scenarioErrorText(err: ScenarioError): string {
+  const shown = err.issues.slice(0, 12).map((i) => `  ${i.path ? `${i.path}: ` : ''}${i.message}`);
+  const more = err.issues.length > shown.length ? [`  ... and ${err.issues.length - shown.length} more`] : [];
+  return `Invalid scenario (${err.issues.length} problem${err.issues.length === 1 ? '' : 's'}):\n${[...shown, ...more].join('\n')}`;
+}
+
+/** The provenance of a run as it stands: its live interventions, breakpoints, scenario and fingerprint. */
+export function provenanceOf(sim: Simulation): RunProvenanceMsg {
+  return { actuatorLog: sim.actuatorLog, breakpoints: sim.breakpoints, scenario: sim.scenario, fingerprint: sim.fingerprint(APP_VERSION), appVersion: APP_VERSION };
+}
+
+/** A Simulation of the configuration, with the scenario when there is one (ScenarioError when it does not fit). */
+function newSimulation(cfg: ReactorConfig, scenario: ScenarioSpec | undefined): Simulation {
+  return new Simulation(cfg, scenario ? { scenario } : {});
+}
 
 /** time and state vector are finite (diagnostics may legitimately be NaN or ±Infinity, e.g. Q with no heating) */
 function finiteFrame(f: HistoryFrame): boolean {
@@ -97,6 +116,8 @@ export function createSimHost(post: (m: FromWorker) => void, opts: SimHostOption
   /** id of the loaded run and the current timeline branch; echoed on every live message */
   let runId = 0;
   let branchId = 0;
+  /** the run has a scenario or has received a live intervention: its `frames` messages carry the control values of their frames */
+  let ctlOn = false;
 
   function stopLoop() {
     playing = false;
@@ -107,9 +128,16 @@ export function createSimHost(post: (m: FromWorker) => void, opts: SimHostOption
     if (stop) stopLoop();
     // RunError, the kernel's typed errors (kernel/errors.ts) and the 1.5D model's refusal of an impossible boundary
     // (EquilibriumInitFailure, e.g. a > R) are raised on purpose: their message is the whole story
-    const msg = err instanceof RunError || err instanceof SimulationError || err instanceof EquilibriumInitFailure ? err.message
+    const msg = err instanceof ScenarioError ? scenarioErrorText(err) : err instanceof RunError || err instanceof SimulationError || err instanceof EquilibriumInitFailure ? err.message
       : err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err);
     post({ type: 'error', msg, id, branchId: branch });
+  }
+
+  /** the control values in force at each frame (the checkpoint of the frame holds them), as rows over the model's control keys */
+  function controlRows(frames: readonly HistoryFrame[]): ControlRows {
+    const now_ = sim!.model.getControls();
+    const keys = Object.keys(now_);
+    return { keys, rows: frames.map((f) => keys.map((k) => f.sim?.controls[k] ?? now_[k])) };
   }
 
   /** post a `frames` message and start the tick clock over */
@@ -118,7 +146,13 @@ export function createSimHost(post: (m: FromWorker) => void, opts: SimHostOption
     post({
       type: 'frames', id: runId, branchId, frames: frames.map(toUiFrame), events, t, done,
       dt: sim!.dt, nSteps: sim!.nSteps, controls: sim!.model.getControls(), wallMs,
+      ...(ctlOn && frames.length ? { ctl: controlRows(frames) } : {}),
     });
+  }
+
+  /** the end of the current branch: its report and what defines the run (so that a run with interventions can be signed) */
+  function postDone() {
+    post({ type: 'done', id: runId, branchId, report: sim!.report(), provenance: provenanceOf(sim!) });
   }
 
   /** post what the playback slices have computed since the last message (the run's history and the page's must not differ) */
@@ -186,7 +220,7 @@ export function createSimHost(post: (m: FromWorker) => void, opts: SimHostOption
     if (budgetMs === Infinity || sim.done || now() - lastLivePost >= TICK_MS) flushPending(true);
     if (sim.done) {
       stopLoop();
-      post({ type: 'done', id: runId, branchId, report: sim.report() });
+      postDone();
     }
     return { wallMs, advanced };
   }
@@ -224,7 +258,7 @@ export function createSimHost(post: (m: FromWorker) => void, opts: SimHostOption
 
   function runAll(msg: Extract<ToWorker, { type: 'runAll' }>): void {
     checkVersion(msg.protocolVersion);
-    const s = new Simulation(msg.cfg);
+    const s = newSimulation(msg.cfg, msg.scenario);
     let report: ShotReport;
     if (msg.progress) {
       // Same chunking as Simulation.runAll(), with throttled progress messages in between.
@@ -244,6 +278,12 @@ export function createSimHost(post: (m: FromWorker) => void, opts: SimHostOption
     });
   }
 
+  /** the model of a configuration without a run (the scenario editor's view of what can be driven) */
+  function probe(msg: Extract<ToWorker, { type: 'probe' }>): void {
+    checkVersion(msg.protocolVersion);
+    post({ type: 'probed', protocolVersion: PROTOCOL_VERSION, id: msg.id, meta: makeMeta(newSimulation(msg.cfg, msg.scenario).model) });
+  }
+
   function handle(msg: ToWorker): void {
     try {
       switch (msg.type) {
@@ -251,17 +291,18 @@ export function createSimHost(post: (m: FromWorker) => void, opts: SimHostOption
           stopLoop();
           runId = msg.id;
           branchId = 0;
-          sim = null; meta = null;
+          sim = null; meta = null; ctlOn = false;
           pending = { frames: [], events: [], wallMs: 0 };
           checkVersion(msg.protocolVersion);
           if (msg.speed !== undefined) speed = msg.speed;
-          const next = new Simulation(msg.cfg);
+          const next = newSimulation(msg.cfg, msg.scenario);
           checkStart(next);
           sim = next;
+          ctlOn = next.scenario !== null;
           meta = makeMeta(sim.model);
           post({ type: 'ready', protocolVersion: PROTOCOL_VERSION, id: runId, meta, frame: toUiFrame(sim.history[0]) });
           // model kurulumda bitmiş olabilir (ör. mıknatıs quench → atış iptal)
-          if (sim.done) post({ type: 'done', id: runId, branchId, report: sim.report() });
+          if (sim.done) postDone();
           else if (msg.autoPlay) startLoop();
           break;
         }
@@ -289,19 +330,25 @@ export function createSimHost(post: (m: FromWorker) => void, opts: SimHostOption
           // so the report is the one of the uninterrupted run.
           if (sim.done) {
             sim.advance(0);
-            post({ type: 'done', id: runId, branchId, report: sim.report() });
+            postDone();
           }
           break;
         }
         case 'control':
-          if (sim) sim.applyControl(msg.patch);
+          if (sim) { sim.applyControl(msg.patch); ctlOn = true; }
+          break;
+        case 'getLog':
+          if (sim) post({ type: 'log', id: runId, branchId, token: msg.token, provenance: provenanceOf(sim) });
+          break;
+        case 'probe':
+          probe(msg);
           break;
         case 'runAll':
           runAll(msg);
           break;
       }
     } catch (err) {
-      if (msg.type === 'runAll') postError(err, msg.id, undefined, false);
+      if (msg.type === 'runAll' || msg.type === 'probe') postError(err, msg.id, undefined, false);
       else postError(err, msg.type === 'init' ? msg.id : runId, branchId);
     }
   }

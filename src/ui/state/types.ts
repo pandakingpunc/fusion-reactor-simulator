@@ -3,7 +3,8 @@
  * (Moved out of App.tsx so that screens no longer import from the root component.)
  */
 import { ReactorConfig, ShotReport, SimEvent } from '../../physics/types';
-import { SimMeta, UiFrame } from '../../worker/protocol';
+import type { ScenarioSpec } from '../../physics/scenario';
+import { ControlRows, RunProvenanceMsg, SimMeta, UiFrame } from '../../worker/protocol';
 import { Locale } from '../../i18n';
 import type { RunProvenance, VerifyStatus } from '../persist/types';
 
@@ -53,6 +54,12 @@ export interface SimState {
   autoPlay: boolean;
   /** live interventions sent for this run (control()); a run with any cannot be exported with a fingerprint unless its actuator log is known */
   interventions: number;
+  /** the scenario the run was loaded with (null: none) */
+  scenario: ScenarioSpec | null;
+  /** what defines the run besides its configuration (actuator log, breakpoints, scenario, fingerprint), reported by the worker when the current branch completes */
+  provenance: RunProvenanceMsg | null;
+  /** the control values of each frame (`frames[i]` has `trace.rows[i]`), once the run has a scenario or a live intervention; null before */
+  trace: ControlRows | null;
 }
 
 export interface RunAllResult { report: ShotReport; meta: SimMeta; frames?: UiFrame[]; events?: SimEvent[] }

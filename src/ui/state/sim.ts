@@ -7,7 +7,9 @@
  * dropped by the reducer, so a late frame can never reappear after a rewind or a restart.
  */
 import { ReactorConfig } from '../../physics/types';
-import { FromWorker, PROTOCOL_VERSION, ToWorker } from '../../worker/protocol';
+import type { ScenarioSpec } from '../../physics/scenario';
+import { FromWorker, PROTOCOL_VERSION, RunProvenanceMsg, SimMeta, ToWorker, isSupportedProtocol } from '../../worker/protocol';
+import type { RunProvenance } from '../persist/types';
 import { createStore, Store } from './store';
 import { RunAllProgress, RunAllResult, SimState } from './types';
 
@@ -25,6 +27,7 @@ export type FrameScheduler = (flush: () => void) => void;
 export const initialSimState: SimState = {
   status: 'idle', cfg: null, meta: null, frames: [], events: [], t: 0, dt: 0, nSteps: 0, controls: {},
   report: null, error: null, speed: 1, wallMs: 0, runId: 0, branchId: 0, autoPlay: false, interventions: 0,
+  scenario: null, provenance: null, trace: null,
 };
 
 /** upper bound on how long incoming messages may wait when animation frames are throttled */
@@ -48,12 +51,15 @@ export function reduceSim(s: SimState, m: FromWorker): SimState {
   switch (m.type) {
     case 'ready':
       if (m.id !== s.runId) return s;
-      if (m.protocolVersion !== PROTOCOL_VERSION) {
+      if (!isSupportedProtocol(m.protocolVersion)) {
         return { ...s, status: 'error', error: `Worker protocol mismatch: worker v${m.protocolVersion}, page v${PROTOCOL_VERSION}. Reload the page.` };
       }
+      // a scenario needs a worker that speaks v3 (an older one would run without it)
+      if (s.scenario && m.protocolVersion < 3) return { ...s, status: 'error', error: 'This worker cannot run a scenario (protocol v2). Reload the page.' };
       return {
         ...s, status: s.autoPlay ? 'running' : 'ready', meta: m.meta, frames: [m.frame], events: [],
-        t: m.frame.t, dt: 0, nSteps: 0, controls: m.meta.controls, report: null, error: null,
+        t: m.frame.t, dt: 0, nSteps: 0, controls: m.meta.controls, report: null, error: null, provenance: null,
+        trace: s.scenario ? { keys: Object.keys(m.meta.controls), rows: [Object.values(m.meta.controls)] } : null,
       };
     case 'frames':
       if (!current(s, m) || s.status === 'error') return s;
@@ -62,24 +68,45 @@ export function reduceSim(s: SimState, m: FromWorker): SimState {
         frames: m.frames.length ? s.frames.concat(m.frames) : s.frames,
         events: m.events.length ? s.events.concat(m.events) : s.events,
         t: m.t, dt: m.dt, nSteps: m.nSteps, controls: m.controls, wallMs: m.wallMs,
+        trace: m.ctl ? appendTrace(s, m.ctl) : s.trace,
         status: m.done ? 'done' : s.status === 'ready' || s.status === 'paused' ? s.status : 'running',
       };
     case 'rewound':
       if (!current(s, m)) return s;
       return {
-        ...s, status: 'paused', t: m.t, controls: m.controls, report: null, error: null,
+        ...s, status: 'paused', t: m.t, controls: m.controls, report: null, error: null, provenance: null,
         frames: s.frames.slice(0, m.index + 1), // by count: the terminal frame of a failed 1.5D step has the time of the frame before it
         events: s.events.slice(0, m.nEvents),
+        trace: s.trace ? { keys: s.trace.keys, rows: s.trace.rows.slice(0, m.index + 1) } : null,
       };
     case 'done':
       if (!current(s, m)) return s;
-      return { ...s, status: 'done', report: m.report };
+      return { ...s, status: 'done', report: m.report, provenance: m.provenance ?? null };
     case 'error':
       if ((m.id !== undefined && m.id !== s.runId) || (m.branchId !== undefined && m.branchId !== s.branchId)) return s;
       return { ...s, status: 'error', error: m.msg };
     default:
       return s;
   }
+}
+
+/** The control rows of the frames so far plus those of a `frames` message (earlier frames without rows had the controls of the load: nothing had changed them yet). */
+function appendTrace(s: SimState, ctl: { keys: string[]; rows: number[][] }): SimState['trace'] {
+  const keys = s.trace?.keys ?? ctl.keys;
+  const rows = s.trace?.rows.slice() ?? [];
+  const base = s.meta ? keys.map((k) => s.meta!.controls[k]) : ctl.rows[0];
+  while (rows.length < s.frames.length) rows.push(base);
+  return { keys, rows: rows.concat(ctl.rows) };
+}
+
+/** What a completed run carries besides its results: its interventions and, as the worker reports them, the inputs that make it reproducible (fingerprint). */
+export function runProvenance(s: SimState): RunProvenance {
+  const p = s.provenance;
+  if (!p) return { interventions: s.interventions };
+  return {
+    interventions: p.actuatorLog.length, actuatorLog: p.actuatorLog, ...(p.breakpoints.length ? { breakpoints: p.breakpoints } : {}),
+    ...(p.scenario ? { scenario: p.scenario } : {}), fingerprint: p.fingerprint,
+  };
 }
 
 /** Archive key of a completed run branch, or null while the run is not complete. */
@@ -94,6 +121,8 @@ export class SimController {
   private scheduled = false;
   private lastRunId = 0;
   private lastRunAllId = 0;
+  private lastToken = 0;
+  private logWaiters = new Map<number, { resolve: (p: RunProvenanceMsg) => void; reject: (e: Error) => void }>();
 
   constructor(private readonly createWorker: WorkerFactory, private readonly schedule: FrameScheduler = scheduleFrame) {}
 
@@ -101,7 +130,7 @@ export class SimController {
   attach(): void {
     if (this.worker) return;
     const w = this.createWorker();
-    w.onmessage = (e) => this.receive(e.data);
+    w.onmessage = (e) => (e.data.type === 'log' ? this.answerLog(e.data) : this.receive(e.data));
     w.onerror = (e) => this.receive({ type: 'error', msg: e.message || 'Simulation worker failed' });
     this.worker = w;
   }
@@ -111,6 +140,15 @@ export class SimController {
     this.worker?.terminate();
     this.worker = null;
     this.queue = [];
+    for (const w of this.logWaiters.values()) w.reject(new Error('The simulation worker was closed.'));
+    this.logWaiters.clear();
+  }
+
+  private answerLog(m: Extract<FromWorker, { type: 'log' }>): void {
+    const w = this.logWaiters.get(m.token);
+    if (!w) return;
+    this.logWaiters.delete(m.token);
+    if (m.id === this.state.runId) w.resolve(m.provenance); else w.reject(new Error('The run has changed.'));
   }
 
   private receive(m: FromWorker): void {
@@ -133,12 +171,12 @@ export class SimController {
   private get state(): SimState { return this.store.getState(); }
   private patch(p: Partial<SimState>): void { this.store.setState({ ...this.state, ...p }); }
 
-  /** load a configuration; with autoPlay the run starts as soon as the worker is ready */
-  readonly load = (cfg: ReactorConfig, autoPlay = false): void => {
+  /** load a configuration, driven by a scenario when there is one; with autoPlay the run starts as soon as the worker is ready */
+  readonly load = (cfg: ReactorConfig, autoPlay = false, scenario: ScenarioSpec | null = null): void => {
     const id = ++this.lastRunId;
     const { speed } = this.state;
-    this.store.setState({ ...initialSimState, speed, cfg, status: 'loading', runId: id, autoPlay });
-    this.send({ type: 'init', protocolVersion: PROTOCOL_VERSION, id, cfg, autoPlay, speed });
+    this.store.setState({ ...initialSimState, speed, cfg, status: 'loading', runId: id, autoPlay, scenario });
+    this.send({ type: 'init', protocolVersion: PROTOCOL_VERSION, id, cfg, autoPlay, speed, ...(scenario ? { scenario } : {}) });
   };
 
   readonly play = (): void => {
@@ -182,12 +220,34 @@ export class SimController {
   };
 
   readonly restart = (): void => {
-    const { cfg } = this.state;
-    if (cfg) this.load(cfg);
+    const { cfg, scenario } = this.state;
+    if (cfg) this.load(cfg, false, scenario);
   };
 
+  /** The provenance of the live run as it stands (its interventions so far, scenario, fingerprint): what `record` turns into a scenario. */
+  readonly captureLog = (): Promise<RunProvenanceMsg> => new Promise((resolve, reject) => {
+    if (!this.worker || !this.state.meta) { reject(new Error('There is no run.')); return; }
+    const token = ++this.lastToken;
+    this.logWaiters.set(token, { resolve, reject });
+    this.send({ type: 'getLog', token });
+  });
+
+  /** The model of a configuration without a run (its controls, diagnostics and end time), in a worker of its own. */
+  readonly probe = (cfg: ReactorConfig, scenario: ScenarioSpec | null = null): Promise<SimMeta> =>
+    new Promise((resolve, reject) => {
+      const w = this.createWorker();
+      const id = ++this.lastRunAllId;
+      const fail = (msg: string) => { w.terminate(); reject(new Error(msg)); };
+      w.onmessage = (e) => {
+        const m = e.data;
+        if (m.type === 'probed' && m.id === id) { w.terminate(); resolve(m.meta); } else if (m.type === 'error' && m.id === id) fail(m.msg);
+      };
+      w.onerror = (ev) => fail(ev.message || 'Simulation worker failed');
+      w.postMessage({ type: 'probe', protocolVersion: PROTOCOL_VERSION, id, cfg, ...(scenario ? { scenario } : {}) });
+    });
+
   /** Independent full run in a separate worker (does not touch the live run). */
-  readonly runAll = (cfg: ReactorConfig, keepFrames = false, onProgress?: (p: RunAllProgress) => void): Promise<RunAllResult> =>
+  readonly runAll = (cfg: ReactorConfig, keepFrames = false, onProgress?: (p: RunAllProgress) => void, scenario: ScenarioSpec | null = null): Promise<RunAllResult> =>
     new Promise((resolve, reject) => {
       const w = this.createWorker();
       const id = ++this.lastRunAllId;
@@ -196,12 +256,12 @@ export class SimController {
         const m = e.data;
         if (m.type === 'progress' && m.id === id) onProgress?.({ t: m.t, tEnd: m.tEnd, frames: m.frames });
         else if (m.type === 'runAllDone' && m.id === id) {
-          if (m.protocolVersion !== PROTOCOL_VERSION) return fail(`Worker protocol mismatch: worker v${m.protocolVersion}, page v${PROTOCOL_VERSION}`);
+          if (!isSupportedProtocol(m.protocolVersion)) return fail(`Worker protocol mismatch: worker v${m.protocolVersion}, page v${PROTOCOL_VERSION}`);
           w.terminate();
           resolve({ report: m.report, meta: m.meta, frames: m.frames, events: m.events });
         } else if (m.type === 'error') fail(m.msg);
       };
       w.onerror = (ev) => fail(ev.message || 'Simulation worker failed');
-      w.postMessage({ type: 'runAll', protocolVersion: PROTOCOL_VERSION, id, cfg, keepFrames, progress: !!onProgress });
+      w.postMessage({ type: 'runAll', protocolVersion: PROTOCOL_VERSION, id, cfg, keepFrames, progress: !!onProgress, ...(scenario ? { scenario } : {}) });
     });
 }

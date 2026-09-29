@@ -1,0 +1,20 @@
+{
+  // Type-check and declaration emit of the library (the public barrel src/physics/index.ts and the writers
+  // src/io/formats.ts) in an environment with neither the DOM nor Node: only the ECMAScript library and no
+  // ambient types. A use of window, document, console, performance, Buffer, process or a `node:` module in
+  // the core is a compile error here. `node scripts/build-lib.mjs` runs this for the declarations.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": [],
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "dist/lib/types",
+    "rootDir": "src",
+    "isolatedModules": true,
+    "jsx": "preserve"
+  },
+  "include": ["src/physics/index.ts", "src/io/formats.ts"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
+}

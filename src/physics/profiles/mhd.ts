@@ -15,7 +15,7 @@
  *  - Kararlılık: Mercier (büyük en-boy oranı) D_M = s²/4 − α_M(1 − q²), ideal balonlama
  *    s–α birinci kararlılık sınırı α_c ≈ 0.6 s (Connor, Hastie & Taylor, PRL 40 (1978) 396).
  */
-import { TransportGeometry } from './geometry1d';
+import { TransportGeometry, cellIndex, nearestFace } from './geometry1d';
 
 const MU0 = 1.25663706212e-6;
 const KEV = 1.602176634e-16;
@@ -36,12 +36,12 @@ export function rhoOfQ(g: TransportGeometry, qF: Float64Array, qval: number, out
   if (outermost) {
     for (let f = N; f >= 1; f--) if ((qF[f] - qval) * (qF[f - 1] - qval) <= 0 && qF[f] !== qF[f - 1]) {
       const t = (qval - qF[f - 1]) / (qF[f] - qF[f - 1]);
-      return g.rhoF[f - 1] + t * g.dRho;
+      return g.rhoF[f - 1] + t * g.dRhoC[f - 1];
     }
   } else {
     for (let f = 1; f <= N; f++) if ((qF[f] - qval) * (qF[f - 1] - qval) <= 0 && qF[f] !== qF[f - 1]) {
       const t = (qval - qF[f - 1]) / (qF[f] - qF[f - 1]);
-      return g.rhoF[f - 1] + t * g.dRho;
+      return g.rhoF[f - 1] + t * g.dRhoC[f - 1];
     }
   }
   return -1;
@@ -50,8 +50,8 @@ export function rhoOfQ(g: TransportGeometry, qF: Float64Array, qval: number, out
 /** Manyetik kayma s = ρ q'/q verilen ρ'de (yüzey ızgarası) */
 export function shearAt(g: TransportGeometry, qF: Float64Array, rho: number): number {
   const N = g.N;
-  const f = Math.min(N - 1, Math.max(1, Math.round(rho / g.dRho)));
-  const dq = (qF[f + 1] - qF[f - 1]) / (2 * g.dRho);
+  const f = nearestFace(g, rho);
+  const dq = (qF[f + 1] - qF[f - 1]) / g.spanF[f];
   return (rho * dq) / Math.max(qF[f], 1e-6);
 }
 
@@ -83,8 +83,7 @@ export function kadomtsevMixingRadius(g: TransportGeometry, qF: Float64Array): n
  * after n: Σ n_after T_after ΔV = Σ n_before T_before ΔV).
  */
 export function flattenConserving(g: TransportGeometry, X: Float64Array, w: Float64Array | null, rho1: number, rhoMix: number, wBefore: Float64Array | null = w): void {
-  const N = g.N;
-  const iMix = Math.min(N - 1, Math.floor(rhoMix / g.dRho));
+  const iMix = cellIndex(g, rhoMix);
   if (iMix < 1) return;
   const Xmix = X[iMix];
   let target = 0, base = 0, coef = 0;
@@ -112,14 +111,21 @@ export function alphaCritical(kappa: number, delta: number, factor = 1): number 
 }
 
 /**
- * Normalize basınç gradyanı α(ρ) = 2μ0 R q² |∂p/∂ρ| ⟨|∇ρ̂|⟩ / B0² (yüzeylerde), p [Pa].
+ * Normalize basınç gradyanı α(ρ) = 2μ0 R q² |∂p/∂ρ| ⟨|∇ρ̂|⟩ / B0² (yüzeylerde), p [Pa]; the gradient of
+ * face f is the difference between the two cells that flank it over their distance g.distF[f].
  * Dönüş: pedestal bölgesindeki (ρ ≥ ρ_from) maksimum α.
+ *
+ * pSep: the pressure at the separatrix [Pa]. On a packed grid the last face (the separatrix, half a cell
+ * from the last centre) is a face of the pedestal like the others and takes part in the maximum, since the
+ * steepest gradient of the barrier sits there; the legacy uniform grid stops at the last full cell
+ * (its outermost half cell was not resolved) and ignores pSep.
  */
-export function alphaMHD(g: TransportGeometry, p: Float64Array, qF: Float64Array, rhoFrom: number, outAlpha?: Float64Array): number {
+export function alphaMHD(g: TransportGeometry, p: Float64Array, qF: Float64Array, rhoFrom: number, outAlpha?: Float64Array, pSep?: number): number {
   const N = g.N;
+  const fEnd = pSep !== undefined && !g.uniform ? N : N - 1;
   let amax = 0;
-  for (let f = 1; f < N; f++) {
-    const dp = (p[f] - p[f - 1]) / g.dRho;
+  for (let f = 1; f <= fEnd; f++) {
+    const dp = ((f < N ? p[f] : (pSep as number)) - p[f - 1]) / g.distF[f];
     const R = 0.5 * (g.RinF[f] + g.RoutF[f]);
     const a = (2 * MU0 * R * qF[f] * qF[f] * Math.abs(Math.min(dp, 0)) * g.gradRhoF[f]) / (g.B0 * g.B0);
     if (outAlpha) outAlpha[f] = a;
@@ -171,9 +177,9 @@ export function stabilityProfiles(g: TransportGeometry, p: Float64Array, qF: Flo
   let minM = Infinity, maxB = 0;
   for (let f = 1; f < N; f++) {
     const rho = g.rhoF[f];
-    const dq = (qF[f + 1] - qF[f - 1]) / (2 * g.dRho);
+    const dq = (qF[f + 1] - qF[f - 1]) / g.spanF[f];
     const s = (rho * dq) / Math.max(qF[f], 1e-6);
-    const dp = (p[f] - p[f - 1]) / g.dRho;
+    const dp = (p[f] - p[f - 1]) / g.distF[f];
     const R = 0.5 * (g.RinF[f] + g.RoutF[f]);
     const r = 0.5 * (g.RoutF[f] - g.RinF[f]);
     const alphaM = (2 * MU0 * r * Math.abs(Math.min(dp, 0)) * g.gradRhoF[f]) / (g.B0 * g.B0);

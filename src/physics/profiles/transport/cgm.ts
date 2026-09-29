@@ -20,7 +20,7 @@ export class CriticalGradientTransport implements TransportModel {
     for (let f = 0; f <= N; f++) {
       const iL = Math.max(0, Math.min(N - 2, f - 1));
       const Tif = Math.max(0.5 * (Ti[iL] + Ti[iL + 1]), 0.01), Tef = Math.max(0.5 * (Te[iL] + Te[iL + 1]), 0.01);
-      const dTi = (Ti[iL + 1] - Ti[iL]) / g.dRho * g.gradRhoF[f];
+      const dTi = (Ti[iL + 1] - Ti[iL]) / g.distF[iL + 1] * g.gradRhoF[f];
       const RLT = (-g.R0 * dTi) / Tif;
       const mi = ctx.M * AMU;
       const rhoS = Math.sqrt(mi * Tef * KEV) / (1.602176634e-19 * g.B0);

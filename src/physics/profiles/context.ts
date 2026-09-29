@@ -14,7 +14,7 @@ import { RNG } from '../rng';
 import type { Equilibrium } from '../equilibrium/gs';
 import type { MagneticConfig, ProfileSettings, SimEvent, TerminationInfo } from '../types';
 import { DEFAULT_PROFILE_SETTINGS } from './defaults';
-import type { TransportGeometry } from './geometry1d';
+import { gridSpec, type GridSpec, type TransportGeometry } from './geometry1d';
 import { CurrentSolver, DensitySolver, HeatSolver } from './fvsolver';
 import { volumeIntegral } from './sources/deposition';
 import type { BootstrapCoeffs } from './neoclassical';
@@ -92,6 +92,8 @@ export class ProfileContext {
   readonly ps: ProfileSettings;
   /** radial cells */
   readonly N: number;
+  /** edge packing of the cells (ProfileSettings.gridPacking; undefined: the uniform grid); every transport geometry is built with it */
+  readonly grid: GridSpec | undefined;
   readonly layout: StateLayout;
   /** Grad–Shafranov boundary shape (LCFS) */
   readonly geomB: Geometry;
@@ -180,6 +182,7 @@ export class ProfileContext {
     this.cfg = cfg;
     this.ps = profileSettings(cfg);
     this.N = Math.max(16, Math.round(this.ps.nRho));
+    this.grid = gridSpec(this.ps);
     this.layout = new StateLayout(this.N);
     this.w = allocateWorkArrays(this.N);
     const g0 = cfg.geometry;

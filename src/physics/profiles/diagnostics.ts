@@ -11,6 +11,7 @@ import type { DiagSpec } from '../types';
 import { KEV, MU0, ProfileContext, StepConstants } from './context';
 import { lossPower } from './control/confinement';
 import { HEAT_CONVECTION } from './fvsolver';
+import { cellIndex, interpCells } from './geometry1d';
 import { q95 } from './qprofile';
 import { volumeIntegral } from './sources/deposition';
 import type { ProfileState } from './state';
@@ -125,7 +126,7 @@ export function powerTotals(ctx: ProfileContext, K: StepConstants): PowerTotals 
   // core radiation: bremsstrahlung and line radiation inside ρ < RHO_CORE (the cell that straddles it
   // counts by its share), synchrotron entirely
   let core = 0;
-  for (let i = 0; i < g.N; i++) core += Math.min(1, Math.max(0, (RHO_CORE - g.rhoF[i]) / g.dRho)) * (w.Pbr[i] + w.Pline[i]) * g.dV[i];
+  for (let i = 0; i < g.N; i++) core += Math.min(1, Math.max(0, (RHO_CORE - g.rhoF[i]) / g.dRhoC[i])) * (w.Pbr[i] + w.Pline[i]) * g.dV[i];
   const P_rad_core = core + P_sync;
   const P_heat = P_aux_abs + P_oh + P_alpha;
   return { P_fus, P_chg, P_neut, P_bt, P_aux_abs, P_beam, P_oh, P_alpha, P_brems, P_line, P_sync, P_rad, P_rad_core, P_heat, Wss_alpha: I(w.Walpha), Wss_beam: I(w.Wbeam) };
@@ -170,8 +171,12 @@ export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: Globa
   // L–H threshold: Martin 2008 with the line-averaged density and the Ryter 2014 low-density branch, as in 0D
   const P_LH = pLH_threshold(X.nbar, g.B0, g.surface, ctx.M, Math.max(Ip_MA, 0.01), g.a, g.R0);
   const rhoPed = 1 - ctx.ps.pedestalWidth;
-  const iPed = Math.min(N - 1, Math.floor(rhoPed / g.dRho));
-  const aMax = alphaMHD(g, w.p, w.qF, rhoPed - 0.02, w.alphaF);
+  // T_ped: the electron temperature at ρ_ped. The legacy uniform grid takes the cell that contains it (a cell 0.02 wide, in the steep
+  // gradient of the barrier); the packed grid interpolates linearly between the two centres around ρ_ped
+  const Tped = g.uniform ? v.Te[cellIndex(g, rhoPed)] : interpCells(g, v.Te, rhoPed);
+  // pressure at the separatrix: the last face of the α check on a packed grid (alphaMHD)
+  const pSep = (ctx.bc.n * ctx.bc.Te + ctx.bc.n * (w.ni[N - 1] / Math.max(v.ne[N - 1], 1)) * ctx.bc.Ti) * KEV;
+  const aMax = alphaMHD(g, w.p, w.qF, rhoPed - 0.02, w.alphaF, pSep);
   const aCrit = alphaCritical(ctx.geomB.kappa, ctx.geomB.delta, ctx.ps.alphaCritFactor);
   ctx.alphaRatio = aMax / aCrit;
   const rho1 = rhoOfQ(g, w.qF, 1);
@@ -182,7 +187,7 @@ export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: Globa
   let qmin = Infinity; for (let f = 0; f <= N; f++) qmin = Math.min(qmin, w.qF[f]);
   const Ne = volumeIntegral(g, v.ne);
   ctx.lastDiag = {
-    Ti: TiA, Te: TeA, Ti0: v.Ti[0], Te0: v.Te[0], Tped: v.Te[iPed], Tsep: ctx.bc.Te,
+    Ti: TiA, Te: TeA, Ti0: v.Ti[0], Te0: v.Te[0], Tped, Tsep: ctx.bc.Te,
     ne: neAvg / 1e20, nbar: X.nbar / 1e20, ne0: v.ne[0] / 1e20, nG_frac: X.nbar / nG, fHe: s.NHe / Math.max(Ne, 1),
     P_fus: X.P_fus / 1e6, P_alpha: X.P_alpha / 1e6, P_beam_heat: X.P_beam / 1e6, P_bt: X.P_bt / 1e6, P_aux: (K.P_NBI + K.P_IC + K.P_EC) / 1e6, P_oh: X.P_oh / 1e6,
     P_cond: X.W / X.tauE / 1e6, P_SOL: ctx.PSOL / 1e6, P_brems: X.P_brems / 1e6, P_sync: X.P_sync / 1e6, P_line: X.P_line / 1e6, P_rad: X.P_rad / 1e6, P_rad_core: X.P_rad_core / 1e6,
@@ -207,7 +212,7 @@ export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: Globa
     chie: Array.from(g.rhoC, (_, i) => 0.5 * (w.chiE[i] + w.chiE[i + 1])), chii: Array.from(g.rhoC, (_, i) => 0.5 * (w.chiI[i] + w.chiI[i + 1])),
     Palpha: r(w.Pchg, 1e-6), Paux: Array.from(g.rhoC, (_, i) => (w.PnbiE[i] + w.PnbiI[i] + w.PicE[i] + w.PicI[i] + w.PecE[i]) * 1e-6),
     Prad: r(w.Prad, 1e-6), Pohm: r(w.Poh, 1e-6), p: r(w.p, 1e-3), Zeff: r(w.Zeff),
-    shear: Array.from(g.rhoC, (rr, i) => (rr * (w.qF[i + 1] - w.qF[i]) / g.dRho) / Math.max(w.q[i], 1e-6)),
+    shear: Array.from(g.rhoC, (rr, i) => (rr * (w.qF[i + 1] - w.qF[i]) / g.dRhoC[i]) / Math.max(w.q[i], 1e-6)),
     alpha: Array.from(g.rhoC, (_, i) => 0.5 * (w.alphaF[i] + w.alphaF[i + 1])),
   };
 }

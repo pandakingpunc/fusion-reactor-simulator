@@ -13,6 +13,7 @@ import type { ProfileContext } from '../context';
 import type { ProfileState } from '../state';
 import { recNum, type CheckpointRecord } from '../checkpoint';
 import { composition } from '../composition';
+import { cellIndex } from '../geometry1d';
 import { flattenConserving, kadomtsevMixingRadius, rhoOfQ, shearAt } from '../mhd';
 import { currentProfiles } from '../qprofile';
 import { seedIslands } from './ntm';
@@ -23,7 +24,7 @@ export class SawtoothEvents implements EventModel {
   private lastSaw = -1e9;
 
   afterStep(ctx: ProfileContext, t: number, st: ProfileState, d: Readonly<Record<string, number>>, ev: SimEvent[]): void {
-    const c = ctx.cfg, g = ctx.tg, w = ctx.w, N = ctx.N, v = st;
+    const c = ctx.cfg, g = ctx.tg, w = ctx.w, v = st;
     if (!(c.events.sawteeth && t - this.lastSaw > 0.05)) return;
     const r1 = rhoOfQ(g, w.qF, 1);
     if (!(r1 > 0.05 && r1 < 0.8)) return;
@@ -43,11 +44,11 @@ export class SawtoothEvents implements EventModel {
     composition(ctx, v.Te, v.ne, v.s);
     flattenConserving(g, v.Ti, w.ni, r1, rmix, niBefore);
     // q → max(q, 1.01) in the mixing region; rebuild ψ inward from ρ_mix
-    const iMix = Math.min(N - 1, Math.floor(rmix / g.dRho));
+    const iMix = cellIndex(g, rmix);
     for (let f = 1; f <= iMix; f++) {
       if (w.qF[f] < 1.01) w.dpsiF[f] = (g.PhiB * g.rhoF[f]) / (Math.PI * 1.01);
     }
-    for (let i = iMix - 1; i >= 0; i--) v.psi[i] = v.psi[i + 1] - w.dpsiF[i + 1] * g.dRho;
+    for (let i = iMix - 1; i >= 0; i--) v.psi[i] = v.psi[i + 1] - w.dpsiF[i + 1] * g.distF[i + 1];
     currentProfiles(ctx, v.psi, v.s.Ip);
     if (before) ctx.crashHook!('sawtooth', t, before, ctx.crashSnapshot(v));
     this.lastSaw = t;

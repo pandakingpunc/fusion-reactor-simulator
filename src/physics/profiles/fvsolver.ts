@@ -1,7 +1,9 @@
 /**
  * 1.5D SONLU HACİM ÇÖZÜCÜLERİ — örtük (geri Euler, θ = 1; L-kararlı) adımlar.
  *
- * Hücre-merkezli ızgara ρ̂_i = (i+½)Δρ; akılar yüzeylerde. Eksende akı sıfır (V'=0),
+ * Hücre-merkezli ızgara (merkezler yüzey orta noktalarında; düzgün ρ̂_i = (i+½)Δρ veya kenara
+ * sıkıştırılmış, geometry1d.ts); akılar yüzeylerde, yüz mesafesi g.distF (iki komşu düğüm arası),
+ * hücre değerinden yüz değerine doğrusal ağırlık g.wR. Eksende akı sıfır (V'=0),
  * dış sınırda Dirichlet (T, n) veya Neumann (ψ' ← I_p) koşulu yarım hücre mesafesiyle.
  * Yönetici denklemler (V' = dV/dρ̂, g1 = ⟨|∇ρ̂|²⟩, g2 = ⟨|∇ρ̂|²/R²⟩):
  *
@@ -17,7 +19,7 @@
  */
 import { solveBlockTridiag2, solveTridiag } from '../numerics/linalg';
 import { asLinearAlgebraFailure } from './failures';
-import { TransportGeometry } from './geometry1d';
+import { TransportGeometry, faceValue } from './geometry1d';
 
 const MU0 = 1.25663706212e-6;
 
@@ -62,20 +64,20 @@ export class HeatSolver {
     this.Cp = new Float64Array(4 * N); this.dp = new Float64Array(2 * N);
   }
   solve(h: HeatInputs, Te: Float64Array, Ti: Float64Array): void {
-    const g = this.g, N = g.N, dr = g.dRho;
+    const g = this.g, N = g.N;
     const { A, B, C, d } = this;
     A.fill(0); B.fill(0); C.fill(0); d.fill(0);
     for (let i = 0; i < N; i++) {
       const dV = g.dV[i], k = 4 * i, k2 = 2 * i;
-      // yüzey iletkenlikleri D = V' g1 n χ / Δρ  (dış yüz: yarım hücre)
-      const nL = i > 0 ? 0.5 * (h.ne1[i] + h.ne1[i - 1]) : h.ne1[i];
-      const nR = i < N - 1 ? 0.5 * (h.ne1[i] + h.ne1[i + 1]) : h.nB;
-      const niL = i > 0 ? 0.5 * (h.ni1[i] + h.ni1[i - 1]) : h.ni1[i];
-      const niR = i < N - 1 ? 0.5 * (h.ni1[i] + h.ni1[i + 1]) : h.nB * (h.ni1[N - 1] / Math.max(h.ne1[N - 1], 1));
-      const distR = i < N - 1 ? dr : 0.5 * dr;
-      const DeL = i > 0 ? (g.VpF[i] * g.g1F[i] * nL * h.chiE[i]) / dr : 0;
+      // yüzey iletkenlikleri D = V' g1 n χ / Δρ_f  (Δρ_f = g.distF: iki komşu düğüm arası; dış yüz: yarım hücre)
+      const nL = i > 0 ? faceValue(g, h.ne1, i) : h.ne1[i];
+      const nR = i < N - 1 ? faceValue(g, h.ne1, i + 1) : h.nB;
+      const niL = i > 0 ? faceValue(g, h.ni1, i) : h.ni1[i];
+      const niR = i < N - 1 ? faceValue(g, h.ni1, i + 1) : h.nB * (h.ni1[N - 1] / Math.max(h.ne1[N - 1], 1));
+      const distL = g.distF[i], distR = g.distF[i + 1];
+      const DeL = i > 0 ? (g.VpF[i] * g.g1F[i] * nL * h.chiE[i]) / distL : 0;
       const DeR = (g.VpF[i + 1] * g.g1F[i + 1] * nR * h.chiE[i + 1]) / distR;
-      const DiL = i > 0 ? (g.VpF[i] * g.g1F[i] * niL * h.chiI[i]) / dr : 0;
+      const DiL = i > 0 ? (g.VpF[i] * g.g1F[i] * niL * h.chiI[i]) / distL : 0;
       const DiR = (g.VpF[i + 1] * g.g1F[i + 1] * niR * h.chiI[i + 1]) / distR;
       const cE = 1.5 * h.ne1[i] * dV / h.dt, cI = 1.5 * h.ni1[i] * dV / h.dt;
       const eq = 1.5 * h.ne1[i] * h.nuEq[i] * dV;
@@ -115,7 +117,7 @@ export class HeatSolver {
    */
   boundaryLoss(h: BoundaryFluxInputs, Te: ArrayLike<number>, Ti: ArrayLike<number>): { e: number; i: number } {
     const g = this.g, N = g.N;
-    const f = g.VpF[N] * g.g1F[N] / (0.5 * g.dRho);
+    const f = g.VpF[N] * g.g1F[N] / g.distF[N];
     const niB = h.nB * (h.ni1[N - 1] / Math.max(h.ne1[N - 1], 1));
     let e = f * h.nB * h.chiE[N] * (Te[N - 1] - h.TeB);
     let i = f * niB * h.chiI[N] * (Ti[N - 1] - h.TiB);
@@ -156,20 +158,19 @@ export class DensitySolver {
     return [diff * bernoulli(-Pe), diff * bernoulli(Pe)];
   }
   solve(h: DensityInputs, n: Float64Array): void {
-    const g = this.g, N = g.N, dr = g.dRho;
+    const g = this.g, N = g.N;
     const { a, b, c, d } = this;
     for (let i = 0; i < N; i++) {
       const dV = g.dV[i];
       b[i] = dV / h.dt; a[i] = 0; c[i] = 0;
       d[i] = h.n0[i] * dV / h.dt + h.S[i] * dV;
       // sağ yüz i+1
-      const distR = i < N - 1 ? dr : 0.5 * dr;
-      const [WL, WR] = this.faceCoef(i + 1, distR, h.D[i + 1], h.v[i + 1]);
+      const [WL, WR] = this.faceCoef(i + 1, g.distF[i + 1], h.D[i + 1], h.v[i + 1]);
       b[i] += WL;
       if (i < N - 1) c[i] -= WR; else d[i] += WR * h.nB;
       // sol yüz i
       if (i > 0) {
-        const [wl, wr] = this.faceCoef(i, dr, h.D[i], h.v[i]);
+        const [wl, wr] = this.faceCoef(i, g.distF[i], h.D[i], h.v[i]);
         b[i] += wr; a[i] -= wl;
       }
     }
@@ -177,8 +178,7 @@ export class DensitySolver {
     // akılar
     this.GammaF[0] = 0;
     for (let f = 1; f <= N; f++) {
-      const dist = f < N ? dr : 0.5 * dr;
-      const [WL, WR] = this.faceCoef(f, dist, h.D[f], h.v[f]);
+      const [WL, WR] = this.faceCoef(f, g.distF[f], h.D[f], h.v[f]);
       this.GammaF[f] = WL * n[f - 1] - WR * (f < N ? n[f] : h.nB);
     }
   }
@@ -204,12 +204,12 @@ export class CurrentSolver {
   /** G = V' F g2 (yüzeylerde) */
   G(f: number): number { const g = this.g; return g.VpF[f] * g.FF[f] * g.g2F[f]; }
   solve(h: CurrentInputs, psi: Float64Array): void {
-    const g = this.g, N = g.N, dr = g.dRho;
+    const g = this.g, N = g.N;
     const { a, b, c, d } = this;
     for (let i = 0; i < N; i++) {
       const m = (h.sigma[i] * g.FC[i] * g.R2invC[i] * g.dV[i]) / h.dt;
-      const GL = i > 0 ? this.G(i) / (MU0 * dr) : 0;
-      const GR = i < N - 1 ? this.G(i + 1) / (MU0 * dr) : 0;
+      const GL = i > 0 ? this.G(i) / (MU0 * g.distF[i]) : 0;
+      const GR = i < N - 1 ? this.G(i + 1) / (MU0 * g.distF[i + 1]) : 0;
       a[i] = -GL; c[i] = -GR; b[i] = m + GL + GR;
       d[i] = m * h.psi0[i] - h.jniB[i] * g.dV[i];
       if (i === N - 1) d[i] += 2 * Math.PI * g.FF[N] * h.Ip; // (1/μ0) G ψ' = 2π F I_p
@@ -220,7 +220,7 @@ export class CurrentSolver {
   dpsiF(psi: Float64Array, Ip: number, out: Float64Array): Float64Array {
     const g = this.g, N = g.N;
     out[0] = 0;
-    for (let f = 1; f < N; f++) out[f] = (psi[f] - psi[f - 1]) / g.dRho;
+    for (let f = 1; f < N; f++) out[f] = (psi[f] - psi[f - 1]) / g.distF[f];
     out[N] = (2 * Math.PI * MU0 * Ip) / (g.VpF[N] * g.g2F[N]);
     return out;
   }

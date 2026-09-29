@@ -44,7 +44,7 @@ function after(model: EventModel, ctx: ProfileContext, t: number, st: ProfileSta
 function setQ(ctx: ProfileContext, st: ProfileState, qf: (rho: number) => number): void {
   const g = ctx.tg;
   st.psi[0] = 0;
-  for (let f = 1; f < ctx.N; f++) st.psi[f] = st.psi[f - 1] + (g.dRho * g.PhiB * g.rhoF[f]) / (Math.PI * qf(g.rhoF[f]));
+  for (let f = 1; f < ctx.N; f++) st.psi[f] = st.psi[f - 1] + (g.distF[f] * g.PhiB * g.rhoF[f]) / (Math.PI * qf(g.rhoF[f]));
   currentProfiles(ctx, st.psi, st.s.Ip);
 }
 

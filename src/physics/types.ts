@@ -40,6 +40,11 @@ export type Fidelity = '0D' | '1.5D';
 export interface ProfileSettings {
   /** radyal hücre sayısı (ρ_tor) */
   nRho: number;
+  /**
+   * edge packing of the radial cells (tanh step, 1.5D): the cells at the pedestal and the separatrix are
+   * (1 + gridPacking) times narrower than the core cells, for the same nRho. 0: the uniform grid of v3.
+   */
+  gridPacking?: number;
   /** GS ızgarası R yönü düğüm sayısı */
   eqNR: number;
   /** denge güncelleme aralığı üst sınırı [s] */

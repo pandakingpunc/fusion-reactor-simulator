@@ -39,7 +39,7 @@ export function neoclassicalCurrent(ctx: ProfileContext, st: ProfileState): void
   const pB = (nB * TeB + niB * TiB) * KEV;
   for (let i = 0; i < N; i++) {
     const im = Math.max(i - 1, 0);
-    const h = i === 0 ? g.dRho : i === N - 1 ? 1.5 * g.dRho : 2 * g.dRho;
+    const h = g.spanC[i];
     const pR = i < N - 1 ? w.p[i + 1] : pB, TeR = i < N - 1 ? Te[i + 1] : TeB, TiR = i < N - 1 ? Ti[i + 1] : TiB;
     const pL = i === 0 ? w.p[0] : w.p[im], TeL = i === 0 ? Te[0] : Te[im], TiL = i === 0 ? Ti[0] : Ti[im];
     const dlnp = (pR - pL) / h / Math.max(w.p[i], 1);

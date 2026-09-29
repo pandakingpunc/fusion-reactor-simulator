@@ -9,12 +9,12 @@
  *  - Akım sürme verimi γ = n_e[1e20] R I_CD / P [10²⁰ A W⁻¹ m⁻²] (ITER tipik: NBCD ≈ 0.3,
  *    ECCD ≈ 0.2 T_e ölçekli) — APPROXIMATION.
  */
-import { TransportGeometry } from '../geometry1d';
+import { TransportGeometry, cellIndex } from '../geometry1d';
 
 /** Gauss birikim profili; Σ p_i ΔV_i = 1 olacak şekilde normalize [1/m³] */
 export function gaussianDeposition(g: TransportGeometry, rho0: number, width: number, out: Float64Array = new Float64Array(g.N)): Float64Array {
   let s = 0;
-  const w = Math.max(width, 0.5 * g.dRho);
+  const w = Math.max(width, 0.5 * g.dRhoC[cellIndex(g, rho0)]);
   for (let i = 0; i < g.N; i++) {
     const x = (g.rhoC[i] - rho0) / w;
     out[i] = Math.exp(-x * x);
@@ -88,7 +88,7 @@ function pencilBeam(g: TransportGeometry, ne: Float64Array, E_keV: number, A_bea
     const R = Math.sqrt(Rt * Rt + ell * ell);
     const r = rhoOfR(g, R);
     if (r < 0 || r >= 1) continue;
-    const i = Math.min(g.N - 1, Math.floor(r / g.dRho));
+    const i = cellIndex(g, r);
     const dI = I * (1 - Math.exp(-ne[i] * sig * dl));
     out[i] += dI;
     I -= dI;
@@ -117,7 +117,7 @@ export class NbiChord {
     for (let m = 0; m < M; m++) {
       const ell = L - (m + 0.5) * this.dl;
       const r = rhoOfR(g, Math.sqrt(Rt * Rt + ell * ell));
-      this.cell[m] = r < 0 || r >= 1 ? -1 : Math.min(N - 1, Math.floor(r / g.dRho));
+      this.cell[m] = r < 0 || r >= 1 ? -1 : cellIndex(g, r);
     }
     this.kernel = new Float64Array(N * N);
     for (let j = 0; j < N; j++) {

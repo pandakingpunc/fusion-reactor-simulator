@@ -3,6 +3,7 @@ import { ProfileSettings } from '../types';
 
 export const DEFAULT_PROFILE_SETTINGS: ProfileSettings = {
   nRho: 50,
+  gridPacking: 0,
   eqNR: 49,
   eqUpdateInterval: 10,
   transportModel: 'scaling',

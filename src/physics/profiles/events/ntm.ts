@@ -19,12 +19,13 @@ import type { SimEvent } from '../../types';
 import { MU0, ProfileContext } from '../context';
 import type { ProfileState, ScalarView } from '../state';
 import type { CheckpointRecord } from '../checkpoint';
+import { cellIndex } from '../geometry1d';
 import { mreRate, rhoOfQ } from '../mhd';
 import type { EventModel } from './EventModel';
 
 /** Island regions for transport: [ρ_s, full width in ρ] of each island wider than 0.002 a */
 export function islandRegions(ctx: ProfileContext, s: ScalarView): [number, number][] {
-  const w = ctx.w, g = ctx.tg, N = ctx.N;
+  const w = ctx.w, g = ctx.tg;
   const islands: [number, number][] = [];
   const a = g.a;
   for (const [key, qv] of [['w32', 1.5], ['w21', 2]] as const) {
@@ -32,7 +33,7 @@ export function islandRegions(ctx: ProfileContext, s: ScalarView): [number, numb
     if (wi > 0.002 * a) {
       const rs = rhoOfQ(g, w.qF, qv);
       if (rs > 0) {
-        const i = Math.min(N - 1, Math.floor(rs / g.dRho));
+        const i = cellIndex(g, rs);
         islands.push([rs, wi * g.gradRhoC[i]]);
       }
     }
@@ -59,12 +60,12 @@ export function evolveIslands(ctx: ProfileContext, dt: number, o: ProfileState, 
     if (wv <= 0 || !c.events.ntm) { s[key] = 0; continue; }
     const rs = rhoOfQ(g, w.qF, qv);
     if (rs <= 0) { s[key] = 0; continue; }
-    const i = Math.min(N - 2, Math.max(1, Math.floor(rs / g.dRho)));
+    const i = Math.min(N - 2, Math.max(1, cellIndex(g, rs)));
     const rsm = 0.5 * (g.RoutC[i] - g.RinC[i]);
     const eta = 1 / Math.max(w.sigma[i], 1);
     const pS = w.p[i];
-    const dp = (w.p[i + 1] - w.p[i - 1]) / (2 * g.dRho) * g.gradRhoC[i];
-    const dq = (w.qF[i + 1] - w.qF[i]) / g.dRho * g.gradRhoC[i];
+    const dp = (w.p[i + 1] - w.p[i - 1]) / g.spanC[i] * g.gradRhoC[i];
+    const dq = (w.qF[i + 1] - w.qF[i]) / g.dRhoC[i] * g.gradRhoC[i];
     const Lp = pS / Math.max(-dp, 1e-6), Lq = qv / Math.max(dq, 1e-6);
     const Bth = (g.epsC[i] * g.B0) / qv;
     const bth = (2 * MU0 * pS) / (Bth * Bth);

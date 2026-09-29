@@ -239,7 +239,7 @@ describe('cell volumes on real Grad–Shafranov tables (51 flux surfaces)', () =
     return { eq, g: geometryFromEquilibrium(eq, N, shape) };
   };
   /** Simpson integral of V' over the cell between faces i and i + 1 */
-  const simpson = (g: TransportGeometry, i: number) => ((g.VpF[i] + 4 * g.VpC[i] + g.VpF[i + 1]) * g.dRho) / 6;
+  const simpson = (g: TransportGeometry, i: number) => ((g.VpF[i] + 4 * g.VpC[i] + g.VpF[i + 1]) * g.dRhoC[i]) / 6;
 
   // [case, config, largest |ΔV/∫V' − 1| (the volume scale factor, ρ̂ error of the table), largest |ΔV/ΔV(201 surfaces) − 1|]
   it.each([

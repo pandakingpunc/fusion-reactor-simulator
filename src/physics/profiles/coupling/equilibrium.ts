@@ -18,7 +18,7 @@ import type { Checkpointable, CheckpointRecord } from '../checkpoint';
 import { recNum } from '../checkpoint';
 import { GsAttempt, GsStage, acceptableEquilibrium, binomialSmooth, gridScalePasses, isUsableEquilibrium, isUsableGeometry, solveGuarded, solverErrorMessage } from '../eqguard';
 import { EquilibriumInitFailure } from '../failures';
-import { TransportGeometry, geometryFromEquilibrium } from '../geometry1d';
+import { TransportGeometry, centerInterval, geometryFromEquilibrium } from '../geometry1d';
 import type { ProfileState } from '../state';
 
 /**
@@ -81,7 +81,7 @@ export class EquilibriumCoupling implements Checkpointable {
    */
   initialize(ctx: ProfileContext): void {
     const eq0 = this.initialEquilibrium(ctx);
-    ctx.adoptGeometry({ eq: eq0, tg: geometryFromEquilibrium(eq0, ctx.N, ctx.geomB) });
+    ctx.adoptGeometry({ eq: eq0, tg: geometryFromEquilibrium(eq0, ctx.N, ctx.geomB, ctx.grid) });
     this.eqBetaP = ctx.eq.betaP; this.eqLi = ctx.eq.li3;
   }
 
@@ -165,8 +165,8 @@ export class EquilibriumCoupling implements Checkpointable {
     const pAt = (r: number) => {
       if (r <= g.rhoC[0]) return w.p[0];
       if (r >= g.rhoC[N - 1]) { const t = (r - g.rhoC[N - 1]) / (1 - g.rhoC[N - 1]); return w.p[N - 1] + t * (pB - w.p[N - 1]); }
-      const i = Math.min(N - 2, Math.floor((r - g.rhoC[0]) / g.dRho));
-      const t = (r - g.rhoC[i]) / g.dRho;
+      const i = centerInterval(g, r);
+      const t = (r - g.rhoC[i]) / g.distF[i + 1];
       return w.p[i] + t * (w.p[i + 1] - w.p[i]);
     };
     // flux-surface averaged ⟨j_φ/R⟩ = 2π dI/dV (on the transport geometry, at the cell centres)
@@ -175,8 +175,8 @@ export class EquilibriumCoupling implements Checkpointable {
     const jRAt = (r: number) => {
       if (r <= g.rhoC[0]) return jRc[0];
       if (r >= g.rhoC[N - 1]) return jRc[N - 1];
-      const i = Math.min(N - 2, Math.floor((r - g.rhoC[0]) / g.dRho));
-      const t = (r - g.rhoC[i]) / g.dRho;
+      const i = centerInterval(g, r);
+      const t = (r - g.rhoC[i]) / g.distF[i + 1];
       return jRc[i] + t * (jRc[i + 1] - jRc[i]);
     };
     const pT = Array.from(P.rhoTor, pAt);
@@ -202,7 +202,7 @@ export class EquilibriumCoupling implements Checkpointable {
       if (eq.warnings.some((w) => w.code === 'table-current-rescaled')) {
         return `current table rescaled by ${(eq.currentScale ?? NaN).toFixed(2)} to meet I_p (limit ±${CURRENT_SCALE_LIMIT})`;
       }
-      try { built.tg = geometryFromEquilibrium(eq, N, ctx.geomB); } catch { return false; }
+      try { built.tg = geometryFromEquilibrium(eq, N, ctx.geomB, ctx.grid); } catch { return false; }
       return isUsableGeometry(built.tg);
     };
     const out = solveGuarded(this.gsSolver, base, stages, accept);

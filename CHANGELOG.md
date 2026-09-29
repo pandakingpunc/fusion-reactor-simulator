@@ -103,6 +103,20 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   instead of the 1.5D model failing on start.
 - A 1.5D shot that ends in 'Numerical failure' or 'Equilibrium failure' is shown in the live panel
   and the report with the failure named in the interface language, the diagnosis and the fix text.
+- 3D view on the run screen (magnetic devices): nested flux surfaces of the plasma (from the 1.5D
+  Grad-Shafranov equilibrium snapshot, or Miller surfaces in 0D), the vacuum vessel, toroidal field
+  coils, and a cut-away wedge showing the poloidal cross-section coloured by temperature; orbit / pan
+  / zoom camera with mouse, touch and keyboard (browser shortcuts such as Ctrl+0 and Alt+Left are
+  left to the browser); toggles for cut-away, coils and auto-rotation.
+- Event effects in the 3D view: ELM flash shell, H-mode pedestal glow, and an animated disruption
+  (thermal-quench flash, colour loss, contraction and drop; jumps to the end state under
+  prefers-reduced-motion).
+- The 3D view is raw WebGL2 with no new dependency, in a separate lazily loaded chunk (about 31 kB,
+  gzip about 12 kB) fetched on first use; the main bundle grows by 1.7 kB. Where WebGL2 is
+  unavailable or its context is lost, a canvas 2D projection of the same scene takes over.
+- Mesh generation for the 3D view is pure and tested in Node: closed 2-manifolds, outward normals,
+  and boundary volume within 0.3 % of the equilibrium or Miller volume (limit 2 %) for eight presets
+  plus ITER, JET, SPARC and MAST-U equilibria.
 
 ### Changed
 - POPCON T axis scaled to where the device operates instead of a fixed 0-40 keV: 2.5 times the

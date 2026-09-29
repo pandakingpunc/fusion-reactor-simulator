@@ -268,10 +268,26 @@ describe('solver choice and the Pareto front', { timeout: 120_000 }, () => {
     // the ends are the single-objective optima (they seed the population) ...
     const single = solveDesign({ base: ITER, objective: 'major-radius', constraints: { pauxMaxMW: 200 }, startTemperatures: [10] });
     expect(pareto.points[0].objectives[0]).toBeLessThan(single.objective.value * 1.005);
-    // ... and the other end needs no auxiliary power at all (ignition in this model)
-    expect(pareto.points[pareto.points.length - 1].objectives[1]).toBe(0);
+    // ... and the other end is the machine that needs the least heating: a tenth of the smallest machine's or less. Since the TF stress
+    // is the Tresca stress of the PROCESS-style leg model (systems/tfCoil.ts, v4.0; the thin-ring estimate of v3 was never binding),
+    // the coil at its preset thickness limits the size: the front stops at the upper bound of R with the stress at its limit and a few
+    // MW of heating left (ITER: 3.75 MW at R = 9.3 m); the test below has it reach ignition without the coil constraint
+    const end = pareto.points[pareto.points.length - 1];
+    expect(end.objectives[1]).toBeGreaterThan(0);
+    expect(end.objectives[1]).toBeLessThan(0.1 * pareto.points[0].objectives[1]);
+    const endPt = designPoint(ITER, { ...presetDesign(ITER), ...end.variables } as never);
+    expect(endPt.magnet.stress_MPa).toBeGreaterThan(0.999 * endPt.magnet.stress_limit);
     expect(pareto.hypervolume).toBeGreaterThan(0);
     expect(pareto.evals).toBe(60 + 40 * 60);
+  });
+
+  it('without the coil constraint the front runs on to a machine that needs no auxiliary power at all (ignition in this model)', () => {
+    const free = solvePareto({ ...spec, constraints: { pauxMaxMW: 200, coil: false }, popSize: 32, generations: 15 });
+    expect(free.feasibleFound).toBe(true);
+    expect(free.points[free.points.length - 1].objectives[1]).toBe(0);
+    // that machine is far beyond its coil (the reason the constraint exists)
+    const pt = designPoint(ITER, { ...presetDesign(ITER), ...free.points[free.points.length - 1].variables } as never);
+    expect(pt.magnet.stress_MPa).toBeGreaterThan(pt.magnet.stress_limit);
   });
 
   it('every point of the front satisfies the constraints and reproduces its reported quantities', () => {

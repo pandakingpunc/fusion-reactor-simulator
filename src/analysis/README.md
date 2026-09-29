@@ -77,7 +77,10 @@ access (P_L >= P_LH), installed heating power, TF coil peak field and stress, an
 defaults, which come from the preset's own limits). The solver is an augmented Lagrangian (Hestenes/Powell/Rockafellar; Nocedal &
 Wright 17.4) with Nelder-Mead inside (`--solver cma-es` for CMA-ES), started from four temperatures because a POPCON has more than
 one Q maximum. `--pareto major-radius,aux-power` gives the whole front of two objectives with NSGA-II, seeded with the two
-single-objective optima. Results report the multipliers and which constraints are active.
+single-objective optima. Results report the multipliers and which constraints are active. The coil stress is the Tresca stress of the
+PROCESS-style inboard-leg model (`physics/systems/tfCoil.ts`, v4.0) at the preset's coil thickness, so it limits the size of the machine:
+the ITER front of `major-radius,aux-power` ends at the upper bound of R with the stress at its limit and 3.75 MW of heating left, and
+reaches ignition (no auxiliary power) only with `--no-coil`; the thin-ring estimate of v3.0.0 never bound.
 
 **Verification** (see the tests): Hock-Schittkowski #71 (f* = 17.0140173, x* = 1, 4.7429994, 3.8211503, 1.3794082) is reproduced to
 1e-8 with a feasible point; #6 and #12 too; the design optimum beats 20000 random feasible designs and every feasible node of a

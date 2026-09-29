@@ -463,7 +463,9 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   800 MPa limit, a new warning); the preset inboard legs of SPARC (0.5 m) and DEMO (1.0 m) are thin (the same model gives
   571 MPa for the 1.4 m leg of the PROCESS DEMO build), so both presets carry the warning until the presets are
   reviewed. The magnetic energy is the toroidal-cavity integral with the D-shaped coil height of the boundary shape (ITER
-  37.69 -> 41.77 GJ against 41 GJ built).
+  37.69 -> 41.77 GJ against 41 GJ built). The `optimize` coil constraint reads the same stress, so it now limits the size of
+  the machine: the ITER Pareto front of major radius against auxiliary power ends at the upper bound of R with the stress at
+  its limit and 3.75 MW of heating left (it reached ignition before; `--no-coil` still does).
 - Cryogenic plant power: the Slack heat load of PROCESS (static, pulsed-field, current leads, TF nuclear heating) times the
   technology's `cryo_W_per_W` replaces the flat 5 MW of the recirculating power (ITER cryoplant 32.6 MW, ITER net
   electric power 40 -> 13 MW, Q_eng 1.22 -> 1.06, DEMO net 452 -> 427 MW, SPARC net -22 -> -45 MW). The pulsed-field

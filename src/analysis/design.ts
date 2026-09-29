@@ -16,7 +16,7 @@
  *   q95 >= q95Min                  kink safety factor (default max(3, preset limits.q95_limit))
  *   P_L >= lhMargin P_LH           H-mode access, Martin 2008 + Ryter 2014 (the confinement model is H-mode everywhere)
  *   P_aux <= pauxMaxMW             installed auxiliary power (default: the preset's total)
- *   B_coil <= B_max(technology)    TF coil peak field and hoop stress of engineering.ts checkMagnet
+ *   B_coil <= B_max(technology)    TF coil peak field and Tresca stress of the inboard leg (engineering.ts checkMagnet, systems/tfCoil.ts)
  *   A = R/a within [aspectMin, aspectMax]   (default 0.6 to 1.6 times the preset's)
  *   P_fus >= pfusMinMW, neutron wall load <= wallLoadMax   (optional)
  * plus the bounds of the variables (fG <= the preset's Greenwald limit).
@@ -86,7 +86,7 @@ export interface DesignPoint {
   state: SteadyState;
   /** volume-averaged density [m^-3] */
   n: number;
-  /** TF coil peak field and hoop stress against the limits of the magnet technology */
+  /** TF coil peak field and Tresca stress against the limits of the magnet technology */
   magnet: MagnetCheck;
   aspect: number;
   wallLoad: number;

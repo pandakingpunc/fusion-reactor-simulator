@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import App from '../../App';
 import { PRESETS, TAE } from '../../physics/presets';
@@ -8,8 +8,8 @@ import { AppStore, AppStoreContext, createAppStore } from '../state/store';
 import { installDomStubs } from '../testing/dom';
 
 beforeAll(installDomStubs);
-beforeEach(() => { localStorage.clear(); });
-afterEach(cleanup);
+beforeEach(() => { localStorage.clear(); window.location.hash = ''; });
+afterEach(() => { cleanup(); window.location.hash = ''; });
 
 function mount() {
   const store: AppStore = createAppStore();
@@ -63,6 +63,77 @@ describe('the education and comparison screens in the app shell', () => {
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(await screen.findAllByText('cancelled')).toHaveLength(4);
+  });
+
+  it('the Learn tab is in the address: #/learn, #/learn/missions/<id>, #/learn/glossary/<term>, and back returns', async () => {
+    const { store } = mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Learn' }));
+    expect(window.location.hash).toBe('#/learn');
+    fireEvent.click(await screen.findByRole('button', { name: /Ignite the capsule/ }));
+    expect(window.location.hash).toBe('#/learn/missions/nif');
+    expect(await screen.findByRole('button', { name: 'Run the shot' })).toBeTruthy();
+
+    // a glossary link of a mission: the term is in the address
+    fireEvent.click(screen.getAllByRole('button', { name: /^Explain / })[0]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Open in the glossary' }));
+    await waitFor(() => expect(window.location.hash).toMatch(/^#\/learn\/glossary\/[A-Za-z0-9]+$/));
+    expect(store.getState().tab).toBe('learn');
+    expect(screen.getByRole('searchbox')).toBeTruthy();
+
+    // back returns to the mission, and another back to the list
+    act(() => { window.history.back(); });
+    await waitFor(() => expect(window.location.hash).toBe('#/learn/missions/nif'));
+    expect(await screen.findByRole('button', { name: 'Run the shot' })).toBeTruthy();
+    act(() => { window.history.back(); });
+    await waitFor(() => expect(window.location.hash).toBe('#/learn'));
+    expect(await screen.findByRole('button', { name: /Ignite the capsule/ })).toBeTruthy();
+    expect(store.getState().tab).toBe('learn');
+
+    // leaving the tab leaves the address
+    fireEvent.click(screen.getByRole('button', { name: 'Setup' }));
+    expect(window.location.hash).toBe('#/wizard');
+  });
+
+  it('a Learn address opens the mission or the term the page was loaded with', async () => {
+    window.location.hash = '#/learn/missions/ignition';
+    const { store } = mount();
+    expect(store.getState().tab).toBe('learn');
+    expect(await screen.findByRole('heading', { name: /Find ignition in POPCON/ })).toBeTruthy();
+    expect(screen.getByText('POPCON map with your operating point')).toBeTruthy();
+    expect(window.location.hash).toBe('#/learn/missions/ignition');
+    cleanup();
+
+    window.location.hash = '#/learn/glossary/pLH';
+    const g = mount();
+    expect(g.store.getState().tab).toBe('learn');
+    await screen.findByRole('searchbox');
+    expect(document.querySelector('#gl-pLH')?.getAttribute('aria-current')).toBe('true');
+    expect(window.location.hash).toBe('#/learn/glossary/pLH');
+  });
+
+  it('a Learn address that names nothing shows the list and is rewritten; a Learn address the router does not know goes to the tab that is showing', async () => {
+    window.location.hash = '#/learn/missions/not-a-mission';
+    mount();
+    expect(await screen.findByText('Learn fusion')).toBeTruthy();
+    expect(screen.getAllByRole('button').filter((b) => b.classList.contains('mission-card'))).toHaveLength(10);
+    await waitFor(() => expect(window.location.hash).toBe('#/learn/missions'));
+    cleanup();
+
+    window.location.hash = '#/learn/whatever/at/all';
+    const { store } = mount();
+    await waitFor(() => expect(window.location.hash).toBe('#/wizard'));
+    expect(store.getState().tab).toBe('setup');
+  });
+
+  it('the other tabs and the Learn addresses take over from each other when the address changes', async () => {
+    const { store } = mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Learn' }));
+    expect(await screen.findByText('Learn fusion')).toBeTruthy();
+    act(() => { window.location.hash = '#/compare'; });
+    await waitFor(() => expect(store.getState().tab).toBe('compare'));
+    act(() => { window.location.hash = '#/learn/glossary'; });
+    await waitFor(() => expect(store.getState().tab).toBe('learn'));
+    expect(await screen.findByRole('searchbox')).toBeTruthy();
   });
 
   it('the Learn tab label is translated', async () => {

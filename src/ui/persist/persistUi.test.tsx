@@ -235,6 +235,22 @@ describe('persistence UI: sharing', () => {
     expect(screen.queryByText(/from a shared link/)).toBeNull();
   });
 
+  it('a shared link opened while the Learn tab shows (ws10e x ws10b) lands in the wizard with its notice, and Learn deep links still work afterwards', async () => {
+    const h = mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Learn' }));
+    expect(await screen.findByText('Learn fusion')).toBeTruthy();
+    expect(window.location.hash).toBe('#/learn');
+    const code = await encodeShare({ cfg: { ...TAE, name: 'from a link' } as ReactorConfig, name: 'Linked FRC', appVersion: APP_VERSION });
+    act(() => { window.location.hash = `#/share/${code}`; });
+    expect(await screen.findByText(/Opened "Linked FRC" from a shared link/)).toBeTruthy();
+    expect(h.store.getState().tab).toBe('setup');
+    await waitFor(() => expect(window.location.hash).toBe('#/wizard'));
+    act(() => { window.location.hash = '#/learn/glossary/tauE'; });
+    await waitFor(() => expect(h.store.getState().tab).toBe('learn'));
+    expect(await screen.findByRole('searchbox')).toBeTruthy();
+    expect(window.location.hash).toBe('#/learn/glossary/tauE');
+  });
+
   it('says so, and stays on the wizard, when the link is damaged', async () => {
     const code = await encodeShare({ cfg: TAE, appVersion: APP_VERSION });
     window.location.hash = `#/share/${code.slice(0, -6)}AAAAAA`;

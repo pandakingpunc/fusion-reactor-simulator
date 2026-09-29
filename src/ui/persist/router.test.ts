@@ -65,7 +65,8 @@ describe('parseHash and formatRoute', () => {
     const rng = new RNG(4);
     const code = () => Array.from({ length: 1 + Math.floor(rng.next() * 60) }, () => 'ABCxyz019-_'[Math.floor(rng.next() * 11)]).join('');
     const routes: Route[] = [];
-    for (const name of TAB_ROUTES) routes.push({ name });
+    for (const name of TAB_ROUTES) routes.push(name === 'learn' ? { name } : { name });
+    routes.push({ name: 'learn', section: 'missions' }, { name: 'learn', section: 'missions', id: 'sparcQ' }, { name: 'learn', section: 'glossary' }, { name: 'learn', section: 'glossary', id: 'pLH' });
     for (let i = 0; i < 100; i++) {
       routes.push({ name: 'share', code: code() });
       const e: Route = { name: 'embed', view: rng.next() < 0.5 ? 'run' : 'report', code: code() };
@@ -79,11 +80,43 @@ describe('parseHash and formatRoute', () => {
   });
 
   it('maps tabs to routes and back; share and embed are no tab', () => {
-    const tabs: Tab[] = ['setup', 'run', 'report', 'compare', 'validate'];
+    const tabs: Tab[] = ['setup', 'run', 'report', 'compare', 'validate', 'learn'];
     for (const t of tabs) expect(tabOfRoute(routeOfTab(t))).toBe(t);
     expect(routeOfTab('setup')).toEqual({ name: 'wizard' });
+    expect(routeOfTab('learn')).toEqual({ name: 'learn' });
     expect(tabOfRoute({ name: 'share', code: 'x' })).toBeNull();
     expect(tabOfRoute({ name: 'unknown', path: 'x' })).toBeNull();
+  });
+});
+
+describe('the Learn routes', () => {
+  it('reads #/learn, the two sections, and a mission or a term in them', () => {
+    expect(parseHash('#/learn')).toEqual({ name: 'learn' });
+    expect(parseHash('#/learn/missions')).toEqual({ name: 'learn', section: 'missions' });
+    expect(parseHash('#/learn/missions/hmode')).toEqual({ name: 'learn', section: 'missions', id: 'hmode' });
+    expect(parseHash('#/learn/missions/sparcQ/')).toEqual({ name: 'learn', section: 'missions', id: 'sparcQ' });
+    expect(parseHash('#/learn/glossary')).toEqual({ name: 'learn', section: 'glossary' });
+    expect(parseHash('#/learn/glossary/pLH')).toEqual({ name: 'learn', section: 'glossary', id: 'pLH' });
+    expect(parseHash('learn/glossary/tauE')).toEqual({ name: 'learn', section: 'glossary', id: 'tauE' });
+  });
+
+  it('anything else under #/learn is an unknown route, never an exception', () => {
+    for (const h of ['#/learn/nonsense', '#/learn/missions/a/b', '#/learn/missions/%20', '#/learn/glossary/a b', `#/learn/missions/${'x'.repeat(65)}`, '#/learn/missions/%E0%A4%A']) {
+      expect(parseHash(h), h).toMatchObject({ name: 'unknown' });
+    }
+    expect(parseHash('#/learn/missions/' + 'x'.repeat(64))).toMatchObject({ name: 'learn', id: 'x'.repeat(64) });
+  });
+
+  it('formats a route with an id only under a section, and only for an id the reader accepts', () => {
+    expect(formatRoute({ name: 'learn' })).toBe('#/learn');
+    expect(formatRoute({ name: 'learn', section: 'missions', id: 'hmode' })).toBe('#/learn/missions/hmode');
+    expect(formatRoute({ name: 'learn', id: 'hmode' })).toBe('#/learn');
+    expect(formatRoute({ name: 'learn', section: 'glossary', id: 'not an id!' })).toBe('#/learn/glossary');
+  });
+
+  it('is a tab of its own, whatever it shows', () => {
+    expect(tabOfRoute({ name: 'learn', section: 'glossary', id: 'pLH' })).toBe('learn');
+    expect(sameRoute({ name: 'learn' }, { name: 'learn', section: 'missions' })).toBe(false);
   });
 });
 
@@ -154,7 +187,7 @@ describe('createRouter', () => {
 });
 
 describe('bindTabs: the tab and the hash follow each other', () => {
-  const setup = (initial: string, allowed: Tab[] = ['setup', 'run', 'report', 'compare', 'validate']) => {
+  const setup = (initial: string, allowed: Tab[] = ['setup', 'run', 'report', 'compare', 'validate', 'learn']) => {
     const host = new FakeHost(initial);
     const router = createRouter(host);
     const store = createAppStore();
@@ -198,6 +231,49 @@ describe('bindTabs: the tab and the hash follow each other', () => {
     h.host.edit('#/report');
     expect(h.store.getState().tab).toBe('report');
     h.off();
+  });
+
+  it('the Learn tab: a click pushes #/learn, a deep link selects it and is kept, back returns', () => {
+    const h = setup('');
+    h.store.actions.setTab('learn');
+    expect(h.host.stack).toEqual(['', '#/learn']);
+    h.router.navigate({ name: 'learn', section: 'missions', id: 'hmode' }); // the screen writes where it is
+    expect(h.store.getState().tab).toBe('learn');
+    expect(h.host.getHash()).toBe('#/learn/missions/hmode');
+    h.router.navigate({ name: 'learn', section: 'glossary', id: 'pLH' });
+    expect(h.store.getState().tab).toBe('learn');
+    h.host.back();
+    expect(h.host.getHash()).toBe('#/learn/missions/hmode');
+    expect(h.store.getState().tab).toBe('learn');
+    h.store.actions.setTab('compare');
+    expect(h.host.getHash()).toBe('#/compare');
+    h.host.back();
+    expect(h.host.getHash()).toBe('#/learn/missions/hmode');
+    expect(h.store.getState().tab).toBe('learn');
+    h.off();
+
+    const d = setup('#/learn/glossary/tauE');
+    expect(d.store.getState().tab).toBe('learn');
+    expect(d.host.stack).toEqual(['#/learn/glossary/tauE']); // not rewritten to #/learn
+    d.host.edit('#/learn/missions/density');
+    expect(d.store.getState().tab).toBe('learn');
+    expect(d.host.getHash()).toBe('#/learn/missions/density');
+    d.host.edit('#/run');
+    expect(d.store.getState().tab).toBe('run');
+    d.off();
+  });
+
+  it('an unknown Learn address goes back to the current tab, and a share address is left alone while Learn shows', () => {
+    const h = setup('#/learn/nonsense');
+    expect(h.store.getState().tab).toBe('setup');
+    expect(h.host.getHash()).toBe('#/wizard');
+    h.off();
+    const l = setup('#/learn/missions/kink');
+    expect(l.store.getState().tab).toBe('learn');
+    l.host.edit('#/share/AQAA');
+    expect(l.store.getState().tab).toBe('learn');
+    expect(l.host.getHash()).toBe('#/share/AQAA');
+    l.off();
   });
 
   it('an unknown hash goes back to the current tab', () => {

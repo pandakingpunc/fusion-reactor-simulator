@@ -10,6 +10,7 @@ import { RunScreen } from './ui/run/RunScreen';
 import { ErrorBoundary } from './ui/ErrorBoundary';
 import { fmtTime } from './ui/format';
 import { RouterContext, useRoute, useRouting } from './ui/persist/routing';
+import type { LearnLocation } from './ui/edu/LearnView';
 
 // Setup and Run are the first screens; the others are separate chunks, prefetched after start-up.
 const loadReport = () => import('./ui/report/Report');
@@ -65,6 +66,11 @@ export default function App({ createWorker, schedule }: Props) {
   const canEnter = (tb: Tab) => !((tb === 'run' && state.status === 'idle') || (tb === 'report' && !shots.length && !state.report));
   const router = useRouting(store, canEnter);
   const route = useRoute(router);
+  // the Learn tab lives in the address (#/learn/missions/<id>, #/learn/glossary/<term>): the route is where it is, and moving writes it back
+  const learnAt = useMemo<LearnLocation | undefined>(
+    () => (route.name === 'learn' ? { section: route.section ?? 'missions', id: route.id } : undefined),
+    [route]);
+  const learnGo = useCallback((to: LearnLocation, opts?: { replace?: boolean }) => router.navigate({ name: 'learn', section: to.section, id: to.id }, opts), [router]);
 
   // Canlı atış bitince arşive ekle (rapor + karşılaştırma). The key includes the timeline branch,
   // so a run that is rewound and completed again is archived as a new shot, and each branch only once.
@@ -147,7 +153,7 @@ export default function App({ createWorker, schedule }: Props) {
         )}
         {tab === 'compare' && <Compare shots={shots} onRemove={actions.removeShot} onLoad={actions.editShot} />}
         {tab === 'validate' && <Validation createWorker={createWorker ?? createSimWorker} />}
-        {tab === 'learn' && <Learn createWorker={createWorker ?? createSimWorker} />}
+        {tab === 'learn' && <Learn createWorker={createWorker ?? createSimWorker} location={learnAt} onNavigate={learnGo} />}
         </Suspense>
         </ErrorBoundary>
       </main>

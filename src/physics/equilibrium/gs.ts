@@ -406,6 +406,25 @@ export class GSGrid {
   }
 
   /**
+   * The ordinary 5-point Δ*ψ = ψ_RR − ψ_R/R + ψ_ZZ (equal arms) at the interior nodes, 0 elsewhere, from the values of ψ at
+   * the neighbouring nodes whatever their kind: for a state whose exterior nodes hold the true field (an imported
+   * equilibrium), where Shortley–Weller's crossing value ψ = 0 would put the error of the boundary polygon into the
+   * first layer of nodes. Second-order accurate everywhere.
+   */
+  applyStandardOperator(psi: ArrayLike<number>, out: Float64Array = new Float64Array(this.NR * this.NZ)): Float64Array {
+    const { NR, NZ, interior, dR, dZ } = this;
+    out.fill(0);
+    const a = 1 / (dR * dR), b = 1 / (dZ * dZ);
+    for (let u = 0; u < this.nInside; u++) {
+      const k = interior[u], i = k % NR, j = (k - i) / NR;
+      if (i < 1 || i > NR - 2 || j < 1 || j > NZ - 2) continue;
+      const R = this.R(i), c = 1 / (2 * dR * R);
+      out[k] = (a - c) * psi[k + 1] + (a + c) * psi[k - 1] + b * (psi[k + NR] + psi[k - NR]) - 2 * (a + b) * psi[k];
+    }
+    return out;
+  }
+
+  /**
    * Fill the exterior nodes from the interior solution so that the global bicubic spline stays
    * smooth near the boundary:
    *  layer 1: along each grid line, quadratic Lagrange extrapolation through the boundary crossing
@@ -1091,10 +1110,12 @@ export class GSSolver {
    * Equilibrium of a state that was not solved here: ψ on this grid (NR·NZ values; ψ_b = 0, ψ > 0 inside and maximal on
    * the axis — e.g. an imported equilibrium resampled onto the grid) and its profiles as functions of ψ_N. The tables —
    * flux-surface metrics, q, ρ_tor, β, l_i, the force balance — are traced from ψ; the profiles enter as p, p', FF' and F
-   * (`profiles(Δψ)` is called with the axis flux). iterations = 0 and converged = true; `residual` is the fixed-point
-   * residual max|G(ψ) − ψ|/Δψ of one Picard step under this grid's operator, i.e. how well ψ satisfies
-   * Δ*ψ = −μ0 R j_φ(ψ) for these profiles at this resolution. The exterior nodes of ψ are kept when `keepExterior`
-   * (a field known outside the boundary), otherwise refilled from the interior as after a solve.
+   * (`profiles(Δψ)` is called with the axis flux). iterations = 0 and converged = true. The exterior nodes of ψ are kept
+   * when `keepExterior` (a field known outside the boundary), otherwise refilled from the interior as after a solve.
+   * `residual` says how well ψ satisfies Δ*ψ = −μ0 R j_φ(ψ) for these profiles at this resolution: the fixed-point
+   * residual max|G(ψ) − ψ|/Δψ of one Picard step under this grid's Shortley–Weller operator; with `keepExterior`
+   * (where the boundary polygon is not a flux surface to better than its own accuracy) Σ|Δ*ψ + μ0 R j_φ| over
+   * Σ|μ0 R j_φ| on the interior nodes with the ordinary 5-point operator, and forceBalanceResidual uses that operator too.
    */
   assemble(psi: ArrayLike<number>, profiles: (psiAxis: number) => StateProfiles, o: TableOptions & { keepExterior?: boolean }): Equilibrium {
     const grid = this.grid, N = grid.NR * grid.NZ;
@@ -1113,10 +1134,21 @@ export class GSSolver {
       if (x < 0) x = 0;
       jphi[k] = Rn[u] * fns.pp(x) + fns.ffp(x) / (MU0 * Rn[u]);
     }
-    const g = grid.solveLinear((R, _Z, k) => -MU0 * R * jphi[k]);
     let dmax = 0;
-    for (let u = 0; u < grid.nInside; u++) { const k = inIdx[u]; dmax = Math.max(dmax, Math.abs(g[k] - p[k])); }
-    eq.residual = dmax / dpsi;
+    if (o.keepExterior) {
+      const lap = grid.applyStandardOperator(p);
+      let scale = 0;
+      for (let u = 0; u < grid.nInside; u++) {
+        const k = inIdx[u];
+        dmax += Math.abs(lap[k] + MU0 * Rn[u] * jphi[k]);
+        scale += MU0 * Rn[u] * Math.abs(jphi[k]);
+      }
+      eq.residual = dmax / scale;
+    } else {
+      const g = grid.solveLinear((R, _Z, k) => -MU0 * R * jphi[k]);
+      for (let u = 0; u < grid.nInside; u++) { const k = inIdx[u]; dmax = Math.max(dmax, Math.abs(g[k] - p[k])); }
+      eq.residual = dmax / dpsi;
+    }
     return eq;
   }
 
@@ -1236,7 +1268,7 @@ export class GSSolver {
     const q95 = qS.eval(0.95);
     let qmin = Infinity;
     for (let i = 0; i < n; i++) qmin = Math.min(qmin, P.q[i]);
-    const fb = this.forceBalance(psi, bi, dpsi, ppOf, ffpOf);
+    const fb = this.forceBalance(psi, bi, dpsi, ppOf, ffpOf, !extend);
     return {
       grid, psi, psiAxis: dpsi, psiB: 0, Raxis: ax.R, Zaxis: ax.Z, Ip: o.Ip, B0: o.B0, R0,
       prof: P, surfaces: tr, PhiB, rhoTorB: Math.sqrt(PhiB / (Math.PI * o.B0)),
@@ -1267,9 +1299,9 @@ export class GSSolver {
   }
 
   /** Volume-integrated force balance of (ψ, p', FF') — see Equilibrium.forceBalanceResidual. */
-  private forceBalance(psi: Float64Array, bi: Bicubic, dpsi: number, ppOf: (x: number) => number, ffpOf: (x: number) => number): { residual: number; ratio: number } {
+  private forceBalance(psi: Float64Array, bi: Bicubic, dpsi: number, ppOf: (x: number) => number, ffpOf: (x: number) => number, standard = false): { residual: number; ratio: number } {
     const grid = this.grid, NR = grid.NR;
-    const lap = grid.applyOperator(psi);
+    const lap = standard ? grid.applyStandardOperator(psi) : grid.applyOperator(psi);
     const inIdx = grid.interior, Rn = grid.interiorR;
     const g3 = new Float64Array(3);
     let num = 0, denP = 0, denJ = 0, numRatio = 0, denRatio = 0;

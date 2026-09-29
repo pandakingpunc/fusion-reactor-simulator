@@ -223,7 +223,9 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   3 %". ITER and DEMO carry their LCFS shape (kappa 1.85, delta 0.49 and 0.5) in `profiles.lcfsKappa/lcfsDelta`,
   which now also sets the 0D volume and surface: 842 m3 and 683 m2 for ITER against the design 837 m3 and 678 m2,
   the same shape as ITER15; the presets' kappa, delta stay the 95 % values of q95 and the scalings. ITER Q
-  10.55 -> 9.97, SPARC 0D Q 6.6 -> 7.5, JT-60SA and DIII-D +10 %.
+  10.55 -> 9.97, SPARC 0D Q 6.6 -> 7.5, JT-60SA and DIII-D +10 %. The 1.5D neutron wall load uses the same
+  surface (ITER15 0.50 -> 0.53 MW/m2), and the 0D shot and disruption reports take the boundary shape like the
+  1.5D reports.
 - ITPA20 and ITPA20-IL take the areal elongation kappa_a = V/(2 pi^2 R a^2) and the average LCFS triangularity of
   Verdoolaege et al. (2021), not the 95 % values of the presets (delta 0.33 instead of 0.48 would lower tau_E by
   3.8 % and 5.8 %); the ITPA20-IL n exponent is the printed 0.147, not 0.15 (0.7 % in tau_E). With H98 = 1 the

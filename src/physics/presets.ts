@@ -39,7 +39,11 @@ export interface Preset { id: string; name: string; desc: string; cfg: ReactorCo
 export const ITER = defaultMagnetic({
   geometry: { R: 6.2, a: 2.0, kappa: 1.7, delta: 0.33 }, B0: 5.3, Ip_MA: 15,
   profiles: { lcfsKappa: 1.85, lcfsDelta: 0.49 },
-  n_target: 1.0e20, n_rampTime: 30,
+  // n_target of the 0D model is the VOLUME average (the 1.5D model regulates the line average). The design point is n̄/n_G = 0.85 with the
+  // LINE-averaged n̄ (ITER Physics Basis; Shimada et al. 2007; T.A. Casper et al., Nucl. Fusion 54 (2014) 013005: "densities at 85 % of the
+  // Greenwald density limit"): n_G = I_p/(π a²) = 1.194e20, n̄ = 1.015e20 = f_line(α_n = 0.3) × 0.914e20 (f_line = 1.110). The earlier
+  // 1.0e20 volume average was n̄ = 1.09e20 = 0.915 n_G.
+  n_target: 0.914e20, n_rampTime: 30,
   heating: { P_NBI_MW: 33, E_NBI_keV: 1000, P_ICRH_MW: 17, f_ICRH_ion: 0.6, P_ECRH_MW: 0, rampTime: 10, autoOff: false },
   // ITER Q=10 senaryosu: Be %2 + Ar %0.12 tohumlama (divertör radyasyonu) → Z_eff ≈ 1.65 (Shimada 2007, Tablo 2)
   impurity: { species: 'Be', concentration: 0.02, wallReflectivity: 0.7, W_source_frac: 0, seedSpecies: 'Ar', seedConcentration: 0.0012 },
@@ -89,12 +93,20 @@ export const JT60SA = defaultMagnetic({
   limits: { betaN_limit: 4.0, greenwald_limit: 1.0, q95_limit: 2.0, W_conc_limit: 3e-4 },
   t_end: 100, seed: 5,
 });
-// MAST-U: R=0.85, a=0.65, κ=2.5, δ=0.5, B=0.75 T, Ip=1.0–2 MA, 5 MW NBI (75 keV), D-D
+// MAST-U first-campaign H-mode scenario (the shape of the machine's design maximum, R = 0.85 m, a = 0.65 m, κ = 2.5, gave q95 = 18 against the
+// campaign's 5–10): R = 0.8 m, a = 0.5 m (R/a ≈ 1.6), κ = 2.1 (2.0–2.2), I_p = 0.75 MA, B_T = 0.55 T: J.R. Harrison et al., Plasma Phys. Control.
+// Fusion 66 (2024) 065019, section 2 and 4 (typical R and a; 450 kA ≤ I_p ≤ 1000 kA, 0.42 T < B < 0.64 T, κ 2.0–2.2; the scenario at 750 kA) and
+// K. Imada et al., Nucl. Fusion 64 (2024) 086002, table 1 (discharges #45261, #45270, #45272 at 722–740 kA, 0.55–0.56 T, κ = 2.10–2.15, δ = 0.45–0.49
+// averaged over the upper and lower halves, EFIT q95 6.3–6.7: the Sauter fit gives 6.6). q95 of the preset is inside the published band 5–10 of
+// J.W. Berkery et al., Plasma Phys. Control. Fusion 65 (2023) 045001. NBI: 3 MW are injected in the 750 kA scenario and TRANSP predicts 1.5–2.2 MW
+// absorbed (Harrison, section 4.4); the 0D model has no first-orbit loss, so the preset takes 2 MW (75 keV) as the power that reaches the plasma
+// (the design 5 MW of the two beams, or 3.5 MW, disrupt the small plasma on the beta limit within 0.4 s of the start-up). D-D. n̄/n_G = 0.46 (Harrison:
+// 0.4–0.6).
 export const MASTU = defaultMagnetic({
   method: 'spherical_tokamak', scaling: 'ST_Valovic',
-  geometry: { R: 0.85, a: 0.65, kappa: 2.5, delta: 0.5 }, B0: 0.75, Ip_MA: 1.0,
+  geometry: { R: 0.8, a: 0.5, kappa: 2.1, delta: 0.47 }, B0: 0.55, Ip_MA: 0.75,
   fuel: 'DD', fuelFracA: 1.0, n_target: 0.4e20, n_rampTime: 0.3,
-  heating: { P_NBI_MW: 5, E_NBI_keV: 75, P_ICRH_MW: 0, f_ICRH_ion: 0.5, P_ECRH_MW: 0, rampTime: 0.1, autoOff: false },
+  heating: { P_NBI_MW: 2, E_NBI_keV: 75, P_ICRH_MW: 0, f_ICRH_ion: 0.5, P_ECRH_MW: 0, rampTime: 0.1, autoOff: false },
   fueling: { method: 'gas', maxRate_1e20s: 200, pelletDepth: 0.3 },
   impurity: { species: 'C', concentration: 0.02, wallReflectivity: 0.5, W_source_frac: 0 },
   limits: { betaN_limit: 5.5, greenwald_limit: 1.0, q95_limit: 2.0, W_conc_limit: 3e-4 },
@@ -119,8 +131,12 @@ export const W7X = defaultMagnetic({
 export const DEMO = defaultMagnetic({
   geometry: { R: 9.07, a: 2.93, kappa: 1.65, delta: 0.33 }, B0: 5.86, Ip_MA: 17.75,
   profiles: { lcfsKappa: 1.85, lcfsDelta: 0.5 },
-  // DEMO n_G = 0.66e20: tasarım n/n_G ≈ 1.2 (pedestal Greenwald altında, tepeli profil) → limit 1.3 (APPROXIMATION)
-  n_target: 0.75e20, n_rampTime: 80,
+  // DEMO n_G = 0.658e20 (I_p/(π a²)): the 2018 baseline has n/n_G = 1.2 (M. Siccinio et al., Fusion Eng. Des. 176 (2022) 113047, table 1;
+  // taken as the line average, the quantity of the Greenwald fraction: "the line-averaged density is an output" of the systems code, with the
+  // pedestal top imposed at 0.85 n_G; the 2015 systems-code study has n̄ = 1.1 n_G, R. Wenninger et al., Nucl. Fusion 55 (2015) 063003) with a
+  // peaked profile and the pedestal below the Greenwald density → limit 1.3 (APPROXIMATION). n_target of the 0D model is the VOLUME average:
+  // n̄ = 1.2 n_G = 0.790e20 = f_line(0.3) × 0.711e20 (1.5D: the line average). The earlier 0.75e20 volume average was n̄ = 1.24 n_G.
+  n_target: 0.711e20, n_rampTime: 80,
   // Flat-top P_aux = 50 MW; H-mod erişimi (P_LH ≈ 100+ MW) için rampa sırasında ek ECRH gerekir (Siccinio 2020)
   heating: { P_NBI_MW: 50, E_NBI_keV: 1000, P_ICRH_MW: 0, f_ICRH_ion: 0.5, P_ECRH_MW: 50, rampTime: 20, autoOff: false },
   impurity: { species: 'W', concentration: 1e-5, wallReflectivity: 0.7, W_source_frac: 0, seedSpecies: 'Ar', seedConcentration: 0.001 },
@@ -135,10 +151,13 @@ export const DEMO = defaultMagnetic({
 // 1.5D profil modeli preset'leri: aynı makineler, radyal taşınım + Grad–Shafranov dengesi.
 // ITER/DEMO için LCFS şekli (κ_sep, δ_sep) kullanılır; 0D preset'lerdeki κ, δ 95% yüzey değerleridir
 // (ITER: κ95 = 1.70 → κ_sep = 1.85, δ95 = 0.33 → δ_sep = 0.49; ITER Physics Basis 1999).
-export const ITER_15D: MagneticConfig = { ...ITER, fidelity: '1.5D' }; // profiles: the LCFS shape of ITER above
+// n_target of the 1.5D model is the LINE-averaged density (control/fueling.ts): ITER15 and DEMO15 keep the targets of v3.0.0 (1.0e20 = 0.84 n_G against
+// the design 0.85; 0.75e20 = 1.14 n_G, between the 1.1 and 1.2 of the DEMO studies), where the 0D presets re-based their volume-average targets.
+// profiles: the LCFS shape of ITER and DEMO above.
+export const ITER_15D: MagneticConfig = { ...ITER, fidelity: '1.5D', n_target: 1.0e20 };
 export const JET_15D: MagneticConfig = { ...JET, fidelity: '1.5D' };
 export const SPARC_15D: MagneticConfig = { ...SPARC, fidelity: '1.5D' };
-export const DEMO_15D: MagneticConfig = { ...DEMO, fidelity: '1.5D' }; // profiles: the LCFS shape of DEMO above
+export const DEMO_15D: MagneticConfig = { ...DEMO, fidelity: '1.5D', n_target: 0.75e20 };
 
 // NIF N221204 (Aralık 2022): 2.05 MJ lazer (351 nm), 3.15 MJ verim (G≈1.5); HDC kapsül ~1.05 mm dış yarıçap,
 // DT buz ~ 220 µg (≈ 0.065 mm kalınlık), v_imp ≈ 390 km/s, CR ≈ 30, α ≈ 2.5–3, hohlraum η ≈ 0.10–0.12 (Zylstra 2022, Abu-Shawareb 2024)
@@ -186,7 +205,7 @@ export const PRESETS: Preset[] = [
   { id: 'SPARC', name: 'SPARC', desc: 'REBCO 12.2 T, R=1.85 m, 25 MW ICRH → Q≈11', cfg: SPARC, validation: 'Q ≈ 2–11' },
   { id: 'DIIID', name: 'DIII-D', desc: 'R=1.67 m, B=2.2 T, D-D experiment', cfg: DIIID },
   { id: 'JT60SA', name: 'JT-60SA', desc: 'R=2.96 m, B=2.25 T, superconducting, 41 MW, D-D', cfg: JT60SA },
-  { id: 'MASTU', name: 'MAST-U', desc: 'Spherical tokamak A≈1.3, B=0.75 T', cfg: MASTU },
+  { id: 'MASTU', name: 'MAST-U', desc: 'Spherical tokamak A=1.6, B=0.55 T, I_p=0.75 MA', cfg: MASTU },
   { id: 'W7X', name: 'Wendelstein 7-X', desc: 'Stellarator R=5.5 m, B=2.5 T, 7.5 MW ECRH', cfg: W7X },
   { id: 'DEMO', name: 'EU DEMO', desc: 'R=9.07 m, B=5.86 T, I_p=17.75 MA, 2 GW fusion', cfg: DEMO },
   { id: 'ITER15', name: 'ITER · 1.5D profiles', desc: 'Radial transport + Grad–Shafranov equilibrium; sawteeth, ELMs, NTMs, bootstrap', cfg: ITER_15D, validation: 'Q ≈ 10, P_fus ≈ 500 MW, f_bs ≈ 0.2' },

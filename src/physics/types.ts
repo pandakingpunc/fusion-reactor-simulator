@@ -101,7 +101,7 @@ export interface MagneticConfig {
   Ip_MA: number; // stellarator için 0 (bootstrap ihmal)
   fuel: FuelType;
   fuelFracA: number; // tür a oranı (D-T: n_D/(n_D+n_T))
-  n_target: number; // hedef hacim-ort. elektron yoğunluğu [m^-3]
+  n_target: number; // hedef elektron yoğunluğu [m^-3]: 0D hacim ortalaması ⟨n_e⟩; 1.5D çizgi ortalaması n̄ (control/fueling.ts)
   n_rampTime: number; // s
   heating: {
     P_NBI_MW: number; E_NBI_keV: number;

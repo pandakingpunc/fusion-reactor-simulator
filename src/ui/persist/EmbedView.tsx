@@ -71,7 +71,7 @@ export default function EmbedView({ route, sim }: { route: EmbedRoute; sim: SimA
       {route.view === 'run'
         ? <RunScreen sim={sim} onReport={() => undefined} onSetup={() => undefined} />
         : shot
-          ? <Report shot={shot} onRerun={() => compute(loaded.cfg, loaded.name)} onEdit={() => window.open(openHref, '_blank', 'noopener')} />
+          ? <Report embedded shot={shot} onRerun={() => compute(loaded.cfg, loaded.name)} onEdit={() => window.open(openHref, '_blank', 'noopener')} />
           : <div className="panel muted" role="status">{p('persist.imp.checking', { pct })}</div>}
     </div>
   );

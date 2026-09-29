@@ -261,4 +261,12 @@ export const tr: Dict = {
   'cmp.termination': 'Sonlanma',
   'cmp.warnCount': 'Uyarı sayısı',
   'cmp.eventCount': 'Olay sayısı',
+  'cmp.engShow': 'Mühendislik değerlerini göster ({n})',
+  'cmp.engHide': 'Mühendislik değerlerini gizle',
+
+  'note.step': 'ProfileSettings.{key} = {given} {why}: bunun yerine {used}{unit} kullanılıyor.',
+  'note.step.pos': 'pozitif bir sayı değil',
+  'note.step.nonneg': 'negatif olmayan bir sayı değil',
+  'note.step.time': 'pozitif bir süre değil',
+  'note.step.floor': 'en kısa adım olan {min} s değerinin altında',
 };

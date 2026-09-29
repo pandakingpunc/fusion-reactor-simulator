@@ -264,6 +264,15 @@ export const en = {
   'cmp.termination': 'Termination',
   'cmp.warnCount': 'Warning count',
   'cmp.eventCount': 'Event count',
+  'cmp.engShow': 'Show the engineering values ({n})',
+  'cmp.engHide': 'Hide the engineering values',
+
+  // notes of the run: what the model changed in the configuration it was given
+  'note.step': 'ProfileSettings.{key} = {given} {why}: {used}{unit} is used.',
+  'note.step.pos': 'is not a positive number',
+  'note.step.nonneg': 'is not a non-negative number',
+  'note.step.time': 'is not a positive time',
+  'note.step.floor': 'is below the shortest step of {min} s',
 } as const;
 
 export type MessageKey = keyof typeof en;

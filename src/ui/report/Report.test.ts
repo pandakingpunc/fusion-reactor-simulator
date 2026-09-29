@@ -54,7 +54,8 @@ describe.each(cases)('$name report units', ({ cfg, unit, seconds }) => {
     expect(html).toContain(`Shot duration 11.00 ${unit}`);
     expect(html).toContain(`<td>Stable operating time</td><td class="num">${unit === 's' ? '11.00' : '11.0'} ${unit}</td>`);
     expect(html).toContain(`<td>Burn time</td><td class="num">5.00 ${unit}</td>`);
-    expect(html).toContain(`<td>Ignition time</td><td class="num">3.00 ${unit}</td>`);
+    // the label carries an Explain popover: the value is the cell after the one that holds it
+    expect(html).toMatch(new RegExp(`<span>Ignition time</span>.*?</td><td class="num">3[.]00 ${unit}</td>`));
   });
 });
 

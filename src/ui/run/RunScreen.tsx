@@ -76,9 +76,9 @@ export function RunScreen({ sim, onReport, onSetup }: Props) {
       {guard(<TransportBar sim={sim} seekTo={seekTo} onReport={onReport} onSetup={onSetup} />)}
 
       <div className="left">
-        {guard(<LiveValuesPanel meta={meta} last={last} report={state.report} />)}
+        {guard(<LiveValuesPanel meta={meta} last={last} report={state.report} frames={frames} />)}
         {guard(<ControlsPanel controls={state.controls} defaults={meta.controls} disabled={status === 'done'} onChange={sim.control} />)}
-        {guard(<EventLogPanel events={events} timeUnit={meta.timeUnit} />)}
+        {guard(<EventLogPanel events={events} timeUnit={meta.timeUnit} cfg={cfg} />)}
       </div>
 
       <div className="center">

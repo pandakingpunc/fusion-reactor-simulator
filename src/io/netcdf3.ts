@@ -402,6 +402,7 @@ export function netcdfFromRun(source: RunSource, opts: RunNetcdfOptions = {}): N
     ...(src.meta?.commit ? { simulation_commit: src.meta.commit } : {}),
     ...(src.meta?.fingerprint ? { simulation_fingerprint: src.meta.fingerprint } : {}),
     ...(src.meta?.configSha256 ? { simulation_config_sha256: src.meta.configSha256 } : {}),
+    ...(src.meta?.scenarioSha256 ? { simulation_scenario_sha256: src.meta.scenarioSha256 } : {}),
     ...(src.cfg && typeof (src.cfg as { seed?: unknown }).seed === 'number' ? { simulation_seed: (src.cfg as { seed: number }).seed } : {}),
     simulation_time_unit: src.timeUnit,
     simulation_events: { type: 'int', value: src.events.length },

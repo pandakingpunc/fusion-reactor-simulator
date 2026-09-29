@@ -203,6 +203,7 @@ function code(src: RunSource): Obj {
     ...(m?.commit ? { commit: m.commit } : {}),
     ...(src.cfg ? { parameters: JSON.stringify(src.cfg) } : {}),
     ...(m?.fingerprint ? { fingerprint: m.fingerprint } : {}),
+    ...(m?.scenarioSha256 ? { scenario_sha256: m.scenarioSha256 } : {}),
   };
 }
 

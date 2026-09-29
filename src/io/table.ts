@@ -54,6 +54,8 @@ export interface RunMeta {
   fingerprint?: string;
   /** SHA-256 of the canonical configuration */
   configSha256?: string;
+  /** SHA-256 of the canonical JSON of the scenario the run was driven by (scenarioToJSON); left out for a run without one */
+  scenarioSha256?: string;
   /** ISO 8601 creation time; left out of the output unless given, so that files are reproducible */
   created?: string;
   /** free text stored in the file */

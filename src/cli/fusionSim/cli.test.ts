@@ -257,6 +257,15 @@ describe('run: --scenario', () => {
     const r = await cli(['run', ...SHORT, '--scenario', 'drop.json', '--format', 'ndjson', '--every', '250'], { files });
     expect(r.code).toBe(0);
     expect(r.out).toContain(new Simulation(JET1, { scenario: spec }).fingerprint(VERSION));
+    // every export names the scenario by its hash: ndjson (meta provenance), csv (comment line), imas (code block), netcdf (global attribute)
+    const hash = sha256Hex(scenarioToJSON(spec));
+    expect(r.out).toContain(hash);
+    const csv = await cli(['run', ...SHORT, '--scenario', 'drop.json', '--format', 'csv', '--every', '250'], { files });
+    expect(csv.out.split('\n').slice(0, 2)).toEqual([`# scenario_sha256 ${hash}`, expect.stringMatching(/^# fingerprint [0-9a-f]{64}$/)]);
+    const imas = await cli(['run', ...SHORT, '--scenario', 'drop.json', '--format', 'imas'], { files });
+    expect(json(imas.out).summary.code.scenario_sha256).toBe(hash);
+    expect(csv.out.startsWith('#')).toBe(true);
+    expect((await cli(['run', ...SHORT, '--format', 'csv', '--every', '250'])).out.startsWith('#')).toBe(false);
   });
   it('a problem in the scenario file is an input error (exit 2), listed with its path, before anything runs', async () => {
     const bad = await cli(['run', ...SHORT, '--scenario', 'bad.json'], { files: { 'bad.json': '{"schema":1,"rampStep":1e-20,"waveforms":{"P_NBI_MW":{"kind":"pwl","points":[[0,null],[1,5]]}},"trigers":[]}' } });

@@ -2,7 +2,8 @@
 /**
  * `fusion-sim run`: one shot from a preset or a configuration file, written as JSON, CSV, NDJSON, NetCDF-3,
  * IMAS-like JSON or a text summary. `--scenario FILE` drives the controls of the shot with a scenario (waveforms and
- * triggers, src/physics/scenario.ts).
+ * triggers, src/physics/scenario.ts); the hash of the scenario is in every export: `provenance.scenarioSha256` (json), the
+ * `provenance` record (ndjson), `simulation_scenario_sha256` (netcdf), `code.scenario_sha256` (imas) and a comment line (csv).
  */
 import { runShot } from '../../physics/config/run';
 import { ScenarioError, type ScenarioIssue } from '../../physics/kernel/errors';
@@ -106,6 +107,7 @@ export async function runCommand(argv: readonly string[], ctx: CliContext): Prom
   const meta: RunMeta = {
     version: prov.version as string, ...(prov.git ? { commit: (prov.git as { sha: string }).sha } : {}), ...(preset ? { preset } : {}),
     fingerprint: prov.fingerprint as string, configSha256: prov.configSha256 as string,
+    ...(inForce ? { scenarioSha256: prov.scenarioSha256 as string } : {}),
   };
   const src = { ...sourceFromSimulation(result.sim, meta, { report: false }), report: result.report };
   const { keys, all } = seriesKeys(args.series);
@@ -130,7 +132,11 @@ export async function runCommand(argv: readonly string[], ctx: CliContext): Prom
       break;
     }
     case 'csv':
-      emit(ctx.io, args.out, writeCsv(src, { ...(keys ? { keys } : {}), ...(args.every ? { every: args.every } : {}) }));
+      // a run with a scenario carries its hash and fingerprint in comment lines (a plain run's file has none, so that it stays readable as it was)
+      emit(ctx.io, args.out, writeCsv(src, {
+        ...(keys ? { keys } : {}), ...(args.every ? { every: args.every } : {}),
+        ...(inForce ? { comments: [`scenario_sha256 ${meta.scenarioSha256}`, `fingerprint ${meta.fingerprint}`] } : {}),
+      }));
       break;
     case 'ndjson':
       emit(ctx.io, args.out, writeRunNdjson(src, { ...(keys ? { keys } : {}), ...(args.every ? { every: args.every } : {}), profiles: args.profiles }));

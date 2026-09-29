@@ -413,16 +413,31 @@ describe('ITER 0D: drop P_NBI', () => {
 });
 
 describe('1.5D: JET15 with a scenario', () => {
-  // L-H at 0.22 s; the NBI ramp (off the output grid, with a grid of 5 ms on the ramp) starts before it, the trigger fires after it
-  const spec = parseScenario({ ...mergeScenarios(rampTemplate('P_NBI_MW', 0.1537, 0.4413, 12), interlockTemplate('H_mode', '>=', 1, { P_ICRH_MW: 8 }, { id: 'in H-mode' })), rampStep: 0.005 });
-  const o: SimulationOptions = { scenario: spec };
-  const cfg = presetCfg('JET15', 0.6) as ReactorConfig;
+  // The L-H time of the configuration belongs to the model (it moves whenever the loss power or the threshold scaling changes), so the
+  // scenario is built around the L-H time of the run without a scenario: the NBI ramp (corners off the output grid, a grid of 5 ms on
+  // the ramp) starts after the transition, so that the scenario run up to its first corner is the baseline and has the same L-H
+  // transition; the trigger fires after it.
+  const T_END = 0.6, GRID = 0.005, RAMP = 0.13;
+  const cfg = presetCfg('JET15', T_END) as ReactorConfig;
+  let cached: { o: SimulationOptions; tLH: number; t0: number; t1: number; frameDt: number } | undefined;
+  const setup = () => cached ??= (() => {
+    const base = referenceRun(cfg);
+    const lh = base.events.find((e) => e.kind === 'LH');
+    if (!lh) throw new Error('the JET15 baseline has no L-H transition; the scenario needs one to fire its trigger after');
+    const frameDt = base.history[1].t - base.history[0].t;
+    const t0 = (Math.ceil((lh.t + 0.02) / frameDt) + 0.37) * frameDt, t1 = t0 + RAMP;
+    expect(t1 + 0.02, 'the ramp has to end before the run does').toBeLessThan(T_END);
+    const spec = parseScenario({ ...mergeScenarios(rampTemplate('P_NBI_MW', t0, t1, 12), interlockTemplate('H_mode', '>=', 1, { P_ICRH_MW: 8 }, { id: 'in H-mode' })), rampStep: GRID });
+    return { o: { scenario: spec } as SimulationOptions, tLH: lh.t, t0, t1, frameDt };
+  })();
 
   it('chunk invariance (6 schedules) and exact rewind hold with the 1.5D stepper', async () => {
+    const { o, tLH } = setup();
     const ref = referenceRun(cfg, o);
     const fired = ref.events.filter((e) => e.kind === 'info');
     expect(fired).toHaveLength(1);
     const lh = ref.events.find((e) => e.kind === 'LH')!;
+    expect(lh.t).toBe(tLH); // the ramp starts after the transition: the transition is the baseline's
     expect(fired[0].t).toBeGreaterThan(lh.t);
     for (let s = 1; s <= 6; s++) {
       expectSameRun(runChunked(cfg, 9000 + s, o), ref, `JET15 scenario schedule ${s}`);
@@ -438,24 +453,31 @@ describe('1.5D: JET15 with a scenario', () => {
   }, 180000);
 
   it('the corners are step boundaries, the ramp is followed on a 5 ms grid, and ICRH steps up after the L-H transition', () => {
+    const { o, t0, t1, tLH, frameDt } = setup();
     const sim = new Simulation(cfg, o);
     const ends: number[] = [];
     while (!sim.done) { sim.advance(2e-12); ends.push(sim.t); }
-    for (const c of [0.1537, 0.4413]) expect(ends.some((t) => Math.abs(t - c) <= 1e-12), `a step ends at ${c}`).toBe(true);
+    // the corners are off the output grid, and a step ends at each of them
+    for (const c of [t0, t1]) {
+      expect(sim.history.some((f) => Math.abs(f.t - c) < 1e-6 * frameDt), `${c} is off the output grid`).toBe(false);
+      expect(ends.some((t) => Math.abs(t - c) <= 1e-12), `a step ends at ${c}`).toBe(true);
+    }
     // on the ramp no step is longer than the grid (5 ms) plus a rounding error
-    const ramp = ends.map((t, i) => [i ? ends[i - 1] : 0, t]).filter(([a, b]) => a >= 0.1537 - 1e-12 && b <= 0.4413 + 1e-12);
-    expect(ramp.length).toBeGreaterThan(50);
-    for (const [a, b] of ramp) expect(b - a).toBeLessThanOrEqual(0.005 + 1e-9);
+    const ramp = ends.map((t, i) => [i ? ends[i - 1] : 0, t]).filter(([a, b]) => a >= t0 - 1e-12 && b <= t1 + 1e-12);
+    expect(ramp.length).toBeGreaterThan(20);
+    for (const [a, b] of ramp) expect(b - a).toBeLessThanOrEqual(GRID + 1e-9);
     const at = (t: number) => sim.history.reduce((a, f) => (Math.abs(f.t - t) < Math.abs(a.t - t) ? f : a));
     expect(at(0.1).sim!.controls.P_NBI_MW).toBe(29);
-    for (const t of [0.2, 0.3, 0.4]) {
-      const f = at(t);
-      // the staircase of the grid lags the ideal ramp by less than one grid step (17 MW over 0.2876 s: 0.3 MW)
-      expect(Math.abs(f.sim!.controls.P_NBI_MW - (29 + (12 - 29) * (f.t - 0.1537) / (0.4413 - 0.1537)))).toBeLessThan(0.35);
+    expect(at(tLH).sim!.controls.P_NBI_MW).toBe(29); // still the configured value at the transition
+    // the staircase of the grid lags the ideal ramp by less than one grid step (slope x 5 ms)
+    const lag = (29 - 12) / RAMP * GRID;
+    for (const w of [0.25, 0.5, 0.75]) {
+      const f = at(t0 + w * RAMP);
+      expect(Math.abs(f.sim!.controls.P_NBI_MW - (29 + (12 - 29) * (f.t - t0) / RAMP))).toBeLessThan(lag + 0.05);
     }
-    expect(at(0.55).sim!.controls.P_NBI_MW).toBe(12);
+    expect(at(t1 + 0.02).sim!.controls.P_NBI_MW).toBe(12);
     expect(at(0.1).sim!.controls.P_ICRH_MW).toBe(4);
-    expect(at(0.55).sim!.controls.P_ICRH_MW).toBe(8);
+    expect(at(t1 + 0.02).sim!.controls.P_ICRH_MW).toBe(8);
     expect(sim.actuatorLog).toEqual([]);
   }, 180000);
 });

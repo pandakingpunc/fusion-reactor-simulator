@@ -183,7 +183,7 @@ export function eccdSurface(eps: number): EccdSurface {
 }
 
 /**
- * The efficiency ζ* of equation 10 (see the header for the sign), 0 if the resonance curve is empty or lies at γ < 1 only. `surf` the constants
+ * The efficiency ζ* of equation 10 (see the header for the sign), 0 if the resonance curve is empty or lies above 40 thermal energies (no electron is resonant). `surf` the constants
  * of the surface (eccdSurface(p.eps)), computed if not given.
  */
 export function eccdZetaStar(p: EccdPoint, surf: EccdSurface = eccdSurface(p.eps)): number {
@@ -196,6 +196,8 @@ export function eccdZetaStar(p: EccdPoint, surf: EccdSurface = eccdSurface(p.eps
   const rho = (p.Zeff + 1) / fc;
   const hLoc = (1 - a.eps) / (1 + a.eps * Math.cos(p.thetaP));
   const [gLo, gHi] = range;
+  // no electron of the Maxwellian is resonant (the resonance curve starts above 40 thermal energies): the wave is not absorbed and drives nothing
+  if (!(gLo - 1 < 40 * theta)) return 0;
   const X = Math.min((gHi - gLo) / theta, 60);
   const bounds = X_PANELS.filter((b) => b < X).concat(X);
   let num = 0, den = 0;

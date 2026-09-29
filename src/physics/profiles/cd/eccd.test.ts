@@ -135,7 +135,7 @@ describe('the efficiency ζ*', () => {
 
   it('large aspect ratio, non-relativistic: agrees with an independent evaluation of equation 40 with F = (u/u_e)⁴/(Z_eff + 5) and H = |ξ| to 3 % (what it leaves out: the relativistic corrections of order γ − 1 ≈ 1e-2 of the resonant electrons here, f_c = 0.999)', () => {
     const Te = 0.1, ne = 3e19;
-    for (const [n, y, ell] of [[0.3, 0.97, 2], [0.5, 0.95, 2], [0.2, 0.99, 1]]) {
+    for (const [n, y, ell] of [[0.3, 0.985, 2], [0.5, 0.96, 2], [0.2, 0.99, 1]]) {
       const surf = eccdSurface(1e-6);
       const z = eccdZetaStar({ Te_keV: Te, Zeff: 1.5, nPar: n, harmonic: ell, y, eps: 1e-6, thetaP: 0, lnLambda: lnL(ne, Te) }, surf);
       expect(rel(z, straightFieldZeta(Te, 1.5, n, y, ell, lnL(ne, Te)))).toBeLessThan(3e-2);
@@ -143,7 +143,7 @@ describe('the efficiency ζ*', () => {
   });
 
   it('the Z_eff dependence of the straight-field efficiency is Taguchi\'s (Z_eff + 5)^{-1} (non-relativistic, ε → 0)', () => {
-    const p = { Te_keV: 0.1, nPar: 0.3, harmonic: 2, y: 0.97, eps: 1e-6, thetaP: 0, lnLambda: 16 };
+    const p = { Te_keV: 0.1, nPar: 0.3, harmonic: 2, y: 0.985, eps: 1e-6, thetaP: 0, lnLambda: 16 };
     const z1 = eccdZetaStar({ ...p, Zeff: 1 }), z3 = eccdZetaStar({ ...p, Zeff: 3 });
     expect(rel(z1 / z3, (3 + 5) / (1 + 5))).toBeLessThan(1.5e-2);
   });

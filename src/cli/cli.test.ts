@@ -199,9 +199,11 @@ describe('validate CLI exit codes', { timeout: 60_000 }, () => {
   });
 });
 
-describe('golden CLI', { timeout: 60_000 }, () => {
+// The update -> check -> tamper test starts the CLI (node + tsx + two 0D cases) about ten times: 35 s alone, and it passed the 60 s
+// of the other groups only on an idle machine, so its budget is three times as long (a hung child is still killed by spawnSync).
+describe('golden CLI', { timeout: 180_000 }, () => {
   const golden = (...args: string[]) => {
-    const r = spawnSync(process.execPath, ['--import', 'tsx', 'src/cli/golden.cli.ts', '--threads', '2', ...args], { cwd: ROOT, encoding: 'utf8', timeout: 60_000 });
+    const r = spawnSync(process.execPath, ['--import', 'tsx', 'src/cli/golden.cli.ts', '--threads', '2', ...args], { cwd: ROOT, encoding: 'utf8', timeout: 120_000 });
     if (r.error) throw r.error;
     return { code: r.status, stdout: r.stdout, stderr: r.stderr };
   };

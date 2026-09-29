@@ -128,6 +128,9 @@ export const en = {
   'field.required': 'Required — enter a value (the run is blocked while it is empty)',
 
   'wiz.steps': 'Setup steps',
+  'wiz.advanced': 'Advanced',
+  'wiz.advancedHint': 'Settings that are safe at their defaults; a value is written to the configuration only when you edit it',
+  'wiz.advancedLoading': 'Loading the advanced settings…',
   'wiz.cfgName': 'Configuration name',
   'wiz.back': '◀ Back',
   'wiz.next': 'Next ▶',

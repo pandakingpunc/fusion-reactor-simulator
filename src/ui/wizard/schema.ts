@@ -30,16 +30,22 @@ export interface FieldDef {
   /** i18n keys of `label` / `hint` (`label` and `hint` stay the English text, see `txt`); fields without a key are shown as written */
   labelKey?: MessageKey;
   hintKey?: MessageKey;
+  /** no range slider under the input (a tolerance or a coefficient whose range spans decades: the range still limits what is recommended) */
+  noSlider?: boolean;
 }
 
 /** Label and hint of a field from the message dictionary: the English text is the fallback, the keys let Field translate it. */
 const txt = (labelKey: MessageKey, hintKey?: MessageKey): Pick<FieldDef, 'label' | 'hint' | 'labelKey' | 'hintKey'> =>
   ({ label: en[labelKey], labelKey, ...(hintKey ? { hint: en[hintKey], hintKey } : {}) });
 
-/** Displayed label of a field in the interface language. */
-export const fieldLabel = (f: FieldDef, t: Translate): string => (f.labelKey ? t(f.labelKey) : f.label);
+/** A text of the wizard (label, hint, option, title) in the interface language: the English text is the key of its Turkish one (i18n/wizard.tr.ts). */
+export type WizText = (english: string) => string;
+const same: WizText = (s) => s;
+
+/** Displayed label of a field in the interface language (`wt`: the translation of the texts that are not in the message dictionary). */
+export const fieldLabel = (f: FieldDef, t: Translate, wt: WizText = same): string => (f.labelKey ? t(f.labelKey) : wt(f.label));
 /** Displayed hint of a field in the interface language. */
-export const fieldHint = (f: FieldDef, t: Translate): string | undefined => (f.hintKey ? t(f.hintKey) : f.hint);
+export const fieldHint = (f: FieldDef, t: Translate, wt: WizText = same): string | undefined => (f.hintKey ? t(f.hintKey) : f.hint === undefined ? undefined : wt(f.hint));
 
 export interface StepDef { id: string; title: string; fields: FieldDef[]; note?: string }
 
@@ -297,6 +303,8 @@ export function fieldVisible(method: Method, path: string, cfg?: ReactorConfig):
   if (path === 'profiles.lcfsKappa' || path === 'profiles.lcfsDelta') return method === 'tokamak' || method === 'spherical_tokamak';
   // the edge model (two-point SOL) exists for tokamaks and spherical tokamaks; a stellarator has no such divertor
   if (path.startsWith('divertor.edge.')) return method === 'tokamak' || method === 'spherical_tokamak';
+  // the systems-lite report (TF coil, CS flux, cryoplant) is written for every magnetic torus
+  if (path.startsWith('systems.')) return method === 'tokamak' || method === 'spherical_tokamak' || method === 'stellarator';
   if (path.startsWith('profiles.')) return (method === 'tokamak' || method === 'spherical_tokamak') && (cfg as { fidelity?: string } | undefined)?.fidelity === '1.5D';
   if (path.startsWith('stellarator.')) {
     // an explicit H_ISS04 replaces the old f_ren · H98 product: those two are then not used
@@ -315,6 +323,35 @@ export function fieldVisible(method: Method, path: string, cfg?: ReactorConfig):
   if (path === 'jitter_us') return method !== 'zpinch_sfs';
   if (path === 'linerThicknessRatio' || path === 'compressionRatio' || path === 'driverEnergy_MJ' || path === 'compressionTime_us') return method !== 'zpinch_sfs' || path !== 'linerThicknessRatio';
   return true;
+}
+
+/**
+ * The Advanced section: settings that are safe at their defaults and that few runs change, in a chunk of their own (AdvancedFields.tsx; the
+ * step that holds them and, for a step, whether it applies). This list is the paths only, so that the wizard knows without loading the chunk
+ * whether a configuration carries one (the run summary lists those) and which step to show the section in; the fields are in advanced.ts
+ * (a test keeps the two equal).
+ */
+export const ADVANCED_STEPS = ['driver', 'heating'] as const;
+export type AdvancedStep = (typeof ADVANCED_STEPS)[number];
+export const ADVANCED_PATHS: Record<AdvancedStep, readonly string[]> = {
+  driver: ['systems.pulseLength_s', 'divertor.edge.outerShare', 'divertor.edge.spreadingRatio', 'divertor.edge.S_mm', 'divertor.edge.divertorLengthFraction',
+    'divertor.edge.kappa0e', 'divertor.edge.sheathGamma', 'divertor.edge.lossFit', 'divertor.edge.seedEnrichment', 'divertor.edge.detachTt_eV',
+    'divertor.edge.targetTilt', 'divertor.edge.strikeRadiusFraction'],
+  heating: ['profiles.rtol', 'profiles.atol', 'profiles.dtMax', 'profiles.gridPacking', 'profiles.nonlinearSolver'],
+};
+
+/** Whether the Advanced section of `step` has a field to show for this configuration. */
+export function advancedApplies(step: AdvancedStep, method: Method, cfg?: ReactorConfig): boolean {
+  return ADVANCED_PATHS[step].some((p) => fieldVisible(method, p, cfg));
+}
+
+/** Advanced settings the configuration carries (a value that is not blank), by step: the run summary lists them. */
+export function advancedOverrides(cfg: ReactorConfig): { step: AdvancedStep; path: string }[] {
+  const out: { step: AdvancedStep; path: string }[] = [];
+  for (const step of ADVANCED_STEPS) {
+    for (const path of ADVANCED_PATHS[step]) if (fieldVisible(cfg.method, path, cfg) && getPath(cfg, path) !== undefined && getPath(cfg, path) !== null) out.push({ step, path });
+  }
+  return out;
 }
 
 /** A numeric field must have a value before a run: blank is neither a documented model default nor a documented setting. */

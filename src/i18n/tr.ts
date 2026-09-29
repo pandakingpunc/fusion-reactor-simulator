@@ -124,6 +124,9 @@ export const tr: Dict = {
   'field.empty': 'Boş — modele değer aktarılmaz',
   'field.required': 'Zorunlu — bir değer girin (boş kaldıkça çalıştırılamaz)',
 
+  'wiz.advanced': 'Gelişmiş',
+  'wiz.advancedHint': 'Öntanımlı değerlerinde güvenli olan ayarlar; bir değer yalnızca siz düzenleyince yapılandırmaya yazılır',
+  'wiz.advancedLoading': 'Gelişmiş ayarlar yükleniyor…',
   'wiz.steps': 'Kurulum adımları',
   'wiz.cfgName': 'Yapılandırma adı',
   'wiz.back': '◀ Geri',

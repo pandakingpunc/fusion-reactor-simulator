@@ -24,9 +24,10 @@ const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const REF = 'src/physics/reference';
 const PROF = 'src/physics/profiles';
 // test files that guard the v4 numerics (short ones: a mutant of the 1.5D model runs each of them once)
-const TRBDF2 = `${PROF}/solver/trbdf2.test.ts`, STEP = `${PROF}/solver/coupledStep.test.ts`, ENERGY = `${PROF}/energy.test.ts`, IPRAMP = `${PROF}/currentDiffusion.test.ts`;
+const TRBDF2 = `${PROF}/solver/trbdf2.test.ts`, STEP = `${PROF}/solver/coupledStep.test.ts`, ENERGY = `${PROF}/energy.test.ts`, IPRAMP = `${PROF}/currentDiffusion.test.ts`, STEP_DETAILS = `${PROF}/solver/stepDetails.test.ts`;
 const ANDERSON = 'src/physics/numerics/anderson.test.ts', NUM = 'src/physics/numerics/numerics.test.ts', EDGE = 'src/physics/edge/twoPoint.test.ts', EDGE_SOLVE = 'src/physics/edge/solve.test.ts';
-const TF = 'src/physics/systems/tfCoil.test.ts', TF_STATE = 'src/physics/systems/tfStressState.test.ts', GS = 'src/physics/equilibrium/gs.test.ts', OUTER = `${PROF}/coupling/outer.test.ts`;
+const TF = 'src/physics/systems/tfCoil.test.ts', TF_STATE = 'src/physics/systems/tfStressState.test.ts', GS = 'src/physics/equilibrium/gs.test.ts', GS_ITER = 'src/physics/equilibrium/gsIteration.test.ts';
+const OUTER = `${PROF}/coupling/outer.test.ts`, OUTER_LOGIC = `${PROF}/coupling/outerLogic.test.ts`;
 
 /** each mutant replaces `find` (which must occur exactly once in `file`) by `replace` */
 const MUTANTS = [
@@ -72,13 +73,13 @@ const MUTANTS = [
   { id: 'M20', file: 'src/physics/profiles/solver/trbdf2.ts', what: 'a repeated step may grow after all (afterReject cap removed)',
     find: 'return afterReject ? Math.min(fac, 1) : fac;', replace: 'return afterReject ? fac : fac;', tests: [TRBDF2] },
   { id: 'M21', file: 'src/physics/profiles/solver/coupledStep.ts', what: 'error estimate of the internal energy: 3/2 n_e T_e at the stage state loses its 3/2',
-    find: 'c.cG * 1.5 * g1.ne[i] * g1.Te[i]', replace: 'c.cG * g1.ne[i] * g1.Te[i]', tests: [STEP] },
+    find: 'c.cG * 1.5 * g1.ne[i] * g1.Te[i]', replace: 'c.cG * g1.ne[i] * g1.Te[i]', tests: [STEP_DETAILS] },
   { id: 'M22', file: 'src/physics/profiles/solver/coupledStep.ts', what: 'error estimate not filtered with the inverse iteration matrix (Hosea–Shampine): density part unfiltered',
-    find: 'ctx.dens.filter({ dt: dtEff, D: w.D, v: w.v }, eNe, fNe);', replace: 'fNe.set(eNe);', tests: [STEP] },
+    find: 'ctx.dens.filter({ dt: dtEff, D: w.D, v: w.v }, eNe, fNe);', replace: 'fNe.set(eNe);', tests: [STEP_DETAILS] },
   { id: 'M23', file: 'src/physics/profiles/solver/coupledStep.ts', what: 'a rejected step is not repeated: error test err > 1 → err > 1e9',
     find: 'if (err > 1 && dt > STEP_DT_FLOOR', replace: 'if (err > 1e9 && dt > STEP_DT_FLOOR', tests: [STEP] },
   { id: 'M24', file: 'src/physics/profiles/solver/coupledStep.ts', what: 'plasma-current boundary of the trapezoidal stage at t + dt/2 instead of t + γ dt',
-    find: 'const ip1 = ctx.ipAt(t + TRBDF2_GAMMA * dt)', replace: 'const ip1 = ctx.ipAt(t + 0.5 * dt)', tests: [STEP, IPRAMP] },
+    find: 'const ip1 = ctx.ipAt(t + TRBDF2_GAMMA * dt)', replace: 'const ip1 = ctx.ipAt(t + 0.5 * dt)', tests: [STEP_DETAILS] },
   { id: 'M25', file: 'src/physics/numerics/anderson.ts', what: 'Anderson: the update difference of G uses the residual differences (ΔG := ΔF)',
     find: 'dGs[i] = g[i] - gPrev[i];', replace: 'dGs[i] = f[i] - fPrev[i];', tests: [ANDERSON, NUM] },
   { id: 'M26', file: 'src/physics/numerics/anderson.ts', what: 'Anderson: the damped correction adds (1 − β)ΔF γ instead of subtracting it',
@@ -92,11 +93,11 @@ const MUTANTS = [
   { id: 'M30', file: 'src/physics/numerics/anderson.ts', what: 'Anderson: the first (Picard) step ignores the damping β',
     find: 'if (m === 0) { for (let i = 0; i < n; i++) x[i] += beta * f[i]; return; }', replace: 'if (m === 0) { for (let i = 0; i < n; i++) x[i] += f[i]; return; }', tests: [ANDERSON, NUM] },
   { id: 'M31', file: 'src/physics/profiles/solver/coupledStep.ts', what: 'Picard of a stage: the Anderson depth 4 → 0 (plain Picard)',
-    find: 'export const PICARD_DEPTH = 4;', replace: 'export const PICARD_DEPTH = 0;', tests: [STEP, ENERGY] },
+    find: 'export const PICARD_DEPTH = 4;', replace: 'export const PICARD_DEPTH = 0;', tests: [STEP_DETAILS] },
   { id: 'M32', file: 'src/physics/profiles/solver/coupledStep.ts', what: 'Picard of a stage: the T_i block of the scaled iterate is scaled with the T_e scale',
-    find: 'xk[N + i] = w.TiIt[i] / sTi;', replace: 'xk[N + i] = w.TiIt[i] / sTe;', tests: [STEP, ENERGY] },
+    find: 'xk[N + i] = w.TiIt[i] / sTi;', replace: 'xk[N + i] = w.TiIt[i] / sTe;', tests: [STEP_DETAILS] },
   { id: 'M33', file: 'src/physics/profiles/solver/coupledStep.ts', what: 'Picard of a stage: convergence tolerance 0.1 rtol → 10 rtol',
-    find: 'const tolPicard = Math.min(2e-3, 0.1 * rtol);', replace: 'const tolPicard = Math.min(2e-3, 10 * rtol);', tests: [STEP, ENERGY] },
+    find: 'const tolPicard = Math.min(2e-3, 0.1 * rtol);', replace: 'const tolPicard = Math.min(2e-3, 10 * rtol);', tests: [STEP_DETAILS] },
   { id: 'M34', file: 'src/physics/edge/twoPoint.ts', what: 'conduction law exponent 2/7 → 2/5',
     find: '(3.5 * Math.max(q, 0) * Math.max(L, 0)) / kappa0, 2 / 7)', replace: '(3.5 * Math.max(q, 0) * Math.max(L, 0)) / kappa0, 2 / 5)', tests: [EDGE] },
   { id: 'M35', file: 'src/physics/edge/twoPoint.ts', what: 'sheath heat flux: momentum loss enters as (1 + f_mom)',
@@ -124,25 +125,25 @@ const MUTANTS = [
   { id: 'M46', file: 'src/physics/systems/tfCoil.ts', what: 'TF: the governing stress is the smallest of the three layers, not the largest',
     find: 'x.tresca_MPa > m.tresca_MPa', replace: 'x.tresca_MPa < m.tresca_MPa', tests: [TF, TF_STATE] },
   { id: 'M47', file: 'src/physics/equilibrium/gs.ts', what: 'GS iteration: the table current is normalised with a sign slip c = (I_p + I_a)/I_b',
-    find: 'const c = (o.Ip - Ia) / Ib;', replace: 'const c = (o.Ip + Ia) / Ib;', tests: [GS] },
+    find: 'const c = (o.Ip - Ia) / Ib;', replace: 'const c = (o.Ip + Ia) / Ib;', tests: [GS, GS_ITER] },
   { id: 'M48', file: 'src/physics/equilibrium/gs.ts', what: 'GS iteration: residual normalised without the axis flux (resid = max|G − ψ|)',
-    find: 'resid = dmax / dpsi;', replace: 'resid = dmax;', tests: [GS] },
+    find: 'resid = dmax / dpsi;', replace: 'resid = dmax;', tests: [GS, GS_ITER] },
   { id: 'M49', file: 'src/physics/equilibrium/gs.ts', what: 'GS iteration: the mixing damping is not applied (ω = 1 in every step)',
-    find: 'acc.step(xv, gv, omega);', replace: 'acc.step(xv, gv, 1);', tests: [GS, OUTER] },
+    find: 'acc.step(xv, gv, omega);', replace: 'acc.step(xv, gv, 1);', tests: [GS, GS_ITER, OUTER] },
   { id: 'M50', file: 'src/physics/equilibrium/gs.ts', what: 'GS iteration: the damping is cut by 0.9 (not 0.5) at a restart',
-    find: 'omega = Math.max(0.5 * omega, OMEGA_MIN); acc.reset();', replace: 'omega = Math.max(0.9 * omega, OMEGA_MIN); acc.reset();', tests: [GS, OUTER] },
+    find: 'omega = Math.max(0.5 * omega, OMEGA_MIN); acc.reset();', replace: 'omega = Math.max(0.9 * omega, OMEGA_MIN); acc.reset();', tests: [GS, GS_ITER] },
   { id: 'M51', file: 'src/physics/equilibrium/gs.ts', what: 'GS iteration: shape profile current scale lam without the (1 − β0) I_1/R part',
-    find: 'const lam = o.Ip / (beta0 * I_R + (1 - beta0) * I_1R);', replace: 'const lam = o.Ip / (beta0 * I_R + I_1R);', tests: [GS] },
+    find: 'const lam = o.Ip / (beta0 * I_R + (1 - beta0) * I_1R);', replace: 'const lam = o.Ip / (beta0 * I_R + I_1R);', tests: [GS, GS_ITER] },
   { id: 'M52', file: 'src/physics/profiles/coupling/outer.ts', what: 'GS outer iteration: node update takes the whole step (no under-relaxation ω)',
-    find: 'x = Float64Array.from(x, (v, j) => v + omega * (xNew[j] - v));', replace: 'x = Float64Array.from(x, (v, j) => xNew[j]);', tests: [OUTER] },
+    find: 'x = Float64Array.from(x, (v, j) => v + omega * (xNew[j] - v));', replace: 'x = Float64Array.from(x, (v, j) => xNew[j]);', tests: [OUTER, OUTER_LOGIC] },
   { id: 'M53', file: 'src/physics/profiles/coupling/outer.ts', what: 'GS outer iteration: no contraction test (delta > 0.9 prev → never)',
-    find: 'if (delta > 0.9 * prev) {', replace: 'if (delta > 1e9 * prev) {', tests: [OUTER] },
+    find: 'if (delta > 0.9 * prev) {', replace: 'if (delta > 1e9 * prev) {', tests: [OUTER, OUTER_LOGIC] },
   { id: 'M54', file: 'src/physics/profiles/coupling/outer.ts', what: 'GS outer iteration: minimum fraction of the way 0.75 → 0.5',
-    find: 'export const MIN_FRACTION = 0.75;', replace: 'export const MIN_FRACTION = 0.5;', tests: [OUTER] },
+    find: 'export const MIN_FRACTION = 0.75;', replace: 'export const MIN_FRACTION = 0.5;', tests: [OUTER, OUTER_LOGIC] },
   { id: 'M55', file: 'src/physics/profiles/coupling/outer.ts', what: 'GS outer iteration: stagnation after 3 (not 2) non-contracting iterations',
-    find: 'if (++stalled >= 2) break;', replace: 'if (++stalled >= 3) break;', tests: [OUTER] },
+    find: 'if (++stalled >= 2) break;', replace: 'if (++stalled >= 3) break;', tests: [OUTER, OUTER_LOGIC] },
   { id: 'M56', file: 'src/physics/profiles/coupling/outer.ts', what: 'GS outer iteration: a short-of-the-whole-way solve is not final after the second iteration',
-    find: 'if (fraction < 1 && outer >= 2) break;', replace: 'if (fraction < 1 && outer >= 3) break;', tests: [OUTER] },
+    find: 'if (fraction < 1 && outer >= 2) break;', replace: 'if (fraction < 1 && outer >= 3) break;', tests: [OUTER, OUTER_LOGIC] },
   { id: 'M57', file: 'src/physics/profiles/coupling/outer.ts', what: 'GS outer iteration: continuation halves the step at most 5 (not 3) times',
     find: 'if (++halvings > 3) break;', replace: 'if (++halvings > 5) break;', tests: [OUTER] },
   { id: 'M58', file: 'src/physics/systems/tfCoil.ts', what: 'TF: the winding-pack hoop stress in the steel is not scaled by E_steel/E_effective',

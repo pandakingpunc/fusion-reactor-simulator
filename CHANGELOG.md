@@ -130,6 +130,26 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   Nelder-Mead, augmented Lagrangian (verified on Hock-Schittkowski #71, f* = 17.0140), CMA-ES and
   NSGA-II Pareto fronts against systems limits; all results carry an educational caveat.
 - npm scripts `uq`, `scan` and `optimize` for the three CLIs.
+- Public library API: `src/physics/index.ts` is the documented barrel (`@public` / `@experimental` tags,
+  export list locked by a test); ESM and CommonJS bundles, type declarations and a compiled preset-runner
+  worker are built by `npm run build:lib` (`scripts/build-lib.mjs`) with no new dependency; the core
+  bundles contain no `window`, `document` or `node:` reference; the build does not depend on the
+  package.json `main` entry. package.json now declares `bin`, `main`, `module`, `types`, `exports` and
+  `files` (the package stays private).
+- Runtime configuration validation (`src/physics/config`): every field of every reactor configuration is
+  checked with path-specific errors, and `schema/fusion-sim.schema.json` (JSON Schema 2020-12) is
+  generated from the same definitions (`npm run schema`; `npm run schema:check`, also a step of
+  `ci:local`, fails when the file is out of date); all 21 presets validate and 50+ mutated invalid
+  configurations are rejected.
+- `fusion-sim` command line: `run`, `scan` (on the worker pool), `presets`, `schema` (print, or `--check`
+  a configuration file) and `export-eqdsk` (needs the GEQDSK writer of the equilibrium work), with a
+  provenance block in every output; a model failure (for example an initial equilibrium that cannot be
+  computed) is a one-line failure with exit 1, and git provenance is reported only for the package's own
+  checkout.
+- Data formats for runs, in the browser and in Node (`src/io`): CSV, NDJSON, NetCDF-3 (CDF-1/2 with CF
+  attributes) and IMAS-like JSON (core_profiles, equilibrium, summary; COCOS 11), with bitwise
+  write-parse round trips; `--every N` keeps the first and the last frame in every format.
+- `python/fusion_sim`: a standard-library subprocess wrapper of the `fusion-sim` command line.
 
 ### Changed
 - POPCON T axis scaled to where the device operates instead of a fixed 0-40 keV: 2.5 times the

@@ -46,9 +46,11 @@ npm run dev        # user interface (Vite) → http://localhost:5173
 npm test           # unit, CLI and fast golden-regression tests (vitest)
 npm run validate   # 21 presets, 42 literature checks (7 documented known failures), on a worker pool (~45 s)
 npm run golden     # golden regression: 30 cases compared with test/golden (~12 s on 4 threads)
-npm run ci:local   # type check + tests + validate + golden, in sequence, stops at the first failure
+npm run ci:local   # type check + schema check + tests + validate + golden, in sequence, stops at the first failure
 npm run figures    # paper figures → docs/figures/*.svg|pdf + captions.md (~1 MB, ~55 s)
 npm run build      # type check + production build
+npm run build:lib  # the library and the fusion-sim command line -> build/lib (ESM + CommonJS, declarations)
+npm run schema     # regenerate schema/fusion-sim.schema.json (npm run schema:check verifies it is current)
 ```
 
 Every command-line tool accepts `--help`, rejects unknown or malformed flags with exit code 2 and
@@ -72,6 +74,16 @@ takes `--threads N` (default: cores − 1).
   power balance (`--objective major-radius|plasma-volume|aux-power|fusion-power|gain`, `--pareto A,B`
   for a two-objective front). All three write JSON/CSV and carry an "educational" caveat; the
   library is in `src/analysis` (see its README).
+- `fusion-sim` (`npx tsx src/cli/fusion-sim.ts <command>`, or `node build/lib/fusion-sim.js <command>` after
+  `npm run build:lib`): `run` (one shot to json, csv, ndjson, netcdf or IMAS-like json), `scan` (a grid of
+  parameter values on worker threads), `presets`, `schema` (print the JSON Schema of a configuration, or check a
+  configuration file) and `export-eqdsk` (waits for the GEQDSK writer of the equilibrium work). Every output
+  carries a provenance block and is byte-identical for the same configuration. This `scan` runs a configuration
+  scan; the `scan` above is the analysis one. See `src/cli/fusionSim/README.md`.
+- Library: `src/physics/index.ts` is the public API (a documented barrel with `@public` and `@experimental`
+  tags; browser-safe, no Node API), built by `npm run build:lib`; `src/io` has the browser-safe CSV, NDJSON,
+  NetCDF-3 and IMAS-like writers and readers; every configuration is validated at run time with path-specific
+  errors (`src/physics/config`, `schema/fusion-sim.schema.json`). `python/fusion_sim` wraps the command line.
 - `npm run stress:exit -- 300 8` (opt-in soak): starts 300 `validate` and `golden` processes on
   fixture inputs (independent of the physics), 8 at a time, and checks that each ends with its
   documented exit code (0 or 1) and no signal. A short version of it is part of `npm test`.
@@ -168,14 +180,18 @@ src/physics/
 src/cli/              Node command-line tools: args (strict flag parser), pool (worker_threads),
                       presetRunner.worker, validate.cli (npm run validate), figures.cli (npm run figures),
                       golden.cli (npm run golden / golden:update), uq.cli / scan.cli / optimize.cli
-                      (npm run uq / scan / optimize)
+                      (npm run uq / scan / optimize), fusion-sim (run | scan | presets | schema | export-eqdsk)
+src/physics/index.ts  The public library API (barrel); src/physics/config: runtime validation, JSON Schema, dotted paths, runShot
+src/io/               Browser-safe CSV, NDJSON, NetCDF-3 and IMAS-like writers and readers
 src/analysis/         Uncertainty quantification and optimisation (samplers, Sobol' indices, ensembles, Nelder-Mead,
                       augmented Lagrangian, CMA-ES, NSGA-II); DOM-free, Node only in analysis/node
 src/regression/       Golden snapshot extraction, comparator and pool worker
 src/plot/             Plotting engine: figure, svg, pdf, png, mathtext, fonts, ticks, contour, colors
   figures/            Paper figures (equilibrium, profiles, timetrace, popcon, validation, reactivity, verification, mhd, scan, generic)
 src/worker/, src/ui/  Web worker and React user interface
-scripts/ci-local.mjs  npm run ci:local
+scripts/              ci-local (npm run ci:local), build-lib (npm run build:lib), gen-schema (npm run schema)
+schema/               fusion-sim.schema.json, the JSON Schema of a configuration (generated)
+python/               fusion_sim, a standard-library wrapper of the fusion-sim command line
 test/golden/          Golden regression snapshots and their change log
 docs/
   technical-report.md Technical report (equations, numerical methods, verification, validation, figures)

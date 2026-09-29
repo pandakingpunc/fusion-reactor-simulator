@@ -59,6 +59,15 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   a tripwire for the intermittent Windows exit code 0xC0000005 seen once) and the opt-in soak
   `npm run stress:exit -- 300 8`; tests of the worker pool shutdown on every path and of the golden
   change-log text (`src/regression/changes.ts`).
+- 1.5D diagnostics `P_beam_heat`, `P_rad_core`, `W_alpha`, `W_beam`, `betaN_th` (thermal beta_N),
+  `ignited` and `dWdt_s` (`Wf`, which was constant 0, is now W_alpha + W_beam), with the same
+  meaning as in the 0D model.
+- Tests for the 1.5D physics parity and robustness: per-channel fusion and beam-target sources, the
+  loss power and the scaling-mode tau_E at it (every accepted step of JET15, L- and H-mode), the
+  ignition test, the fast-ion pools (bounded by the injected energy, build-up, decay, bitwise replay),
+  the checkpoint contract, the atomic step, failure classification and cell volumes on real
+  Grad-Shafranov tables; `SingularMatrixError` of every solver of `numerics/linalg.ts`, and the 0D
+  ignition state through a disruption. Long 1.5D tests use `runAllYielding` (`src/testing/yielding.ts`).
 
 ### Changed
 - The validation CLI moved to `src/cli/validate.cli.ts` (no Node-only entry point left in
@@ -68,9 +77,33 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 - `figures`: invalid `--scan`, `--only`, `--formats` or `--threads` values are rejected with exit
   code 2 instead of being clamped or ignored.
 - README translated to English and extended with a regression-testing section.
-- 1.5D: transport-geometry cell volumes are splined from V(rho^2) with the V' end slopes (the
-  innermost cell was 1.3 % too small); the flat-top central q(0) of the 1.5D cases moves by -2 to
-  -4 % (DEMO15 +15 %) and ITER15 shows 38 instead of 25 sawtooth crashes in 400 s.
+- 1.5D: transport-geometry cell volumes are the integral of V' over each cell, scaled once to the
+  volume of the equilibrium, instead of V(rho) splined through the coarse Grad-Shafranov table (the
+  innermost cell was 1.3 % too small, the outer cells 1-2.5 %, MAST-U 15 %). Against v3.0.0 the
+  flat-top central q(0) of the 1.5D cases moved by -2 to -4 % (DEMO15 +15 %) and ITER15 showed 38
+  instead of 25 sawtooth crashes in 400 s with the spline of V(rho^2) that preceded the final
+  method; the final method changes q(0) by a further -2 to +2.5 % (MASTU15 2.37 -> 2.75). There is
+  one stored-energy definition in the model.
+- 1.5D: the loss power for the tau_E scaling and the L-H test is P_L = P_heat - P_rad,core - dW/dt
+  (core radiation from rho < 0.6, dW/dt filtered with tau_E and including the ELM losses) with the
+  L-H threshold of Martin 2008 plus the Ryter 2014 low-density branch, as in the 0D model: ITER15 Q
+  9.74 -> 10.3, tau_E 2.55 -> 2.36 s, and the L-H transitions come later at the start-up density
+  (ITER15 6.5 -> 8.5 s, SPARC15 0.8 -> 1.5 s). A fast ramp relaxes with tau_E instead of jumping to
+  the scaling value (SPARC15-short Q 6.5 -> 5.2 in its ramp-up window).
+- 1.5D: the pressure of the NBI ions and of the fast fusion products enters beta_T and beta_N
+  (ITER15 beta_N 1.48 -> 1.72, DEMO15 2.22 -> 2.80); their energy content is a pool that builds up
+  with tau_W = tau_se (1 - G)/2 and decays when the source stops (dW/dt = P - W/tau_W, exact step, as
+  in 0D), so it cannot exceed the injected energy: JET15 with a 300 or 500 keV beam no longer ends
+  in a spurious Troyon-limit disruption at 0.5 s. The NTMs are seeded from the thermal beta_N.
+- 1.5D: ignition is P_alpha >= P_rad + W/tau_E without the Q >= 5 guard and is reported as the
+  `ignited` diagnostic, which the report's ignition time follows; `heating.autoOff` (the ignition
+  test: external heating ramps down at Q >= 5) works in 1.5D. A disruption ends the ignition state.
+- Checkpoints: `CheckpointStore.save` throws `CheckpointContractError` on a duplicate record key, a
+  non-numeric value or a duplicate aux key, so a plug-in cannot overwrite a core key; ELM, sawtooth
+  and context restores tolerate missing keys; the fast-ion pools are part of the record.
+- `numerics/linalg.ts` throws the typed `SingularMatrixError` for a singular system (messages
+  unchanged); the 1.5D step converts that class to `LinearAlgebraFailure` instead of taking every
+  plain `Error` of a solver for a singular system.
 - 1.5D: in the predictive 'cgm' transport mode tau_E, P_cond, the triple product and the
   particle, He-ash and impurity times use the actual W/P_loss.
 - 1.5D: ion heat convected in through the separatrix when particles flow in scales with n_i/n_e as
@@ -145,10 +178,29 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   worker RPC call is pending while a long synchronous test runs. Root cause: the runner sends a task
   update when a test starts and the 60 s birpc timer is served before I/O, so a test body that blocks
   the worker for more than 60 s fails the run; documented in `src/vitest.setup.ts`.
+- 1.5D: the fusion and NBI sources evaluate every channel like the 0D model: the D-D thermal rate is
+  0.5 (n_a + n_b)^2 (it was fA^2, too low for fuelFracA < 1), burn-up and He-ash production are per
+  channel (the D-D side channels of D-3He consume two D each), the beam-target rate has the target
+  species of its channel (the beam-target neutrons of D-D, booked on the neutron-free D(d,p)T
+  branch, are now counted: x4 in DIII-D 1.5D, x53 in MAST-U 1.5D) and the heating by every charged
+  product uses its own Stix critical energy.
+- 1.5D: a blank profile setting in the wizard keeps its default (it overwrote it with undefined and
+  crashed or misbehaved); the implicit step retries only numerical failures (typed
+  `NumericalFailure`, `LinearAlgebraFailure`, `GSFailure`) and lets programming errors of plug-ins
+  propagate instead of ending the shot as 'Numerical failure'; a step that throws such an error,
+  also from the update after the accepted step (a plug-in `accepted` hook, the equilibrium
+  update), puts y and the context scalars back, so a caller that catches it continues as if the
+  step had not been tried.
+- 0D: a disruption ends the ignition state (`ignited` stayed 1 through the quench and the report's
+  ignition time counted the quench frames; ITER at H98 = 1.6, beta-limit disruption while ignited:
+  5.38 s -> 5.04 s of ignition, the disruption at 21.4 s). The 1.5D model did this already.
 
 Physics results are unchanged by the 1.5D changes above: a full-precision dump of all 21 presets
 was byte-identical before and after them. The frame fix of the ELM presets is the exception (see
-Changed).
+Changed), and so are the 1.5D physics changes (loss power, fusion and NBI sources, fast ions,
+ignition, cell volumes): they move the nine 1.5D golden cases (ITER15 flat-top Q 9.74 -> 10.3, P_fus
+490 -> 520 MW; DEMO15 Q 22.7 -> 23.3; SPARC15 Q 6.09 -> 6.32; DIIID15 neutron yield x4.1; MASTU15,
+a documented poor case, changes by tens of per cent) and no 0D golden case.
 
 ## [3.0.0] — 2026-09-23
 

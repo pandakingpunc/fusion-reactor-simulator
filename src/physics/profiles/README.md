@@ -246,19 +246,30 @@ after a step of I_p the enclosed current is I(x, t)/I_p = x² − Σ a_n x J1(λ
 `currentDiffusion.test.ts` steps the solver with TR-BDF2 and finds the series to 2·10⁻³ of I_p at 0.02, 0.1 and 0.5 τ_R, the relaxation
 time to 2 %, and second-order convergence in Δt.
 
-**The plasma-current programme** (`control/plasmaCurrent.ts`). I_p is the boundary condition and enters the stages at their ends: I_p(t + γΔt) in
-the first stage of a TR-BDF2 step, I_p(t + Δt) in the second, I_p(t) of the old state in the explicit rate; the state scalar `Ip` holds the value
-at the end of the last accepted step. A programme is a function of t alone (so a chunked run, a rewind and a replay see the same values), given
+**The plasma current as the boundary condition** (`control/plasmaCurrent.ts`). I_p enters the stages at their ends: I_p(t + γΔt) in the first stage
+of a TR-BDF2 step, I_p(t + Δt) in the second, I_p(t) of the old state in the explicit rate; the state scalar `Ip` holds the value at the end of the last
+accepted step. It comes from one of two sources (`ProfileContext.ipAt`):
 
-- as data: `ProfileSettings.IpWaveform`, points [t (s), I_p (MA)] in increasing time, linearly interpolated, constant beyond the ends, at least
-  0.05 MA (`currentWaveform`); it is part of the configuration and so of the run fingerprint;
-- as a function: `ProfileModules.plasmaCurrent(t) → A` (`new ProfileModel(cfg, { plasmaCurrent })`), which takes precedence and is not part of the
-  fingerprint (the caller owns its determinism).
+- **the control `Ip_MA`** [MA], one of the keys of `getControls()` (`ProfileContext.ctrl`): `Simulation.applyControl({ Ip_MA })`, the set-points restored by a
+  rewind, the replay of the actuator log and the waveforms and triggers of the scenario engine (which validates its control keys against `getControls()`;
+  `rampTemplate('Ip_MA', …)` works as it is) all reach it. Its initial value is the configured `MagneticConfig.Ip_MA`; a value below 0.05 MA is 0.05 MA,
+  one that is not a number is the configured current. The kernel changes a control at step boundaries, so the value holds over the whole next step, both
+  stages: a ramp is a staircase of the model's steps (the scenario's `rampStep` refines it), and a step change of I_p is a jump of the boundary current that
+  the current diffusion follows at the skin time (`currentDiffusion.test.ts`: the boundary current is the new value at every later step, the inner
+  surfaces lag). Without a change the model is bit for bit the constant-I_p one;
+- **a programme**, a function of t alone (so a chunked run, a rewind and a replay see the same values), which takes the control's place (the run then has
+  no `Ip_MA` among its controls: a scenario that names it is refused, a live patch of it is ignored) and is evaluated at the stage times themselves,
+  so a smooth ramp is second order. It is given
+  - as data: `ProfileSettings.IpWaveform`, points [t (s), I_p (MA)] in increasing time, linearly interpolated, constant beyond the ends, at least
+    0.05 MA (`currentWaveform`); it is part of the configuration and so of the run fingerprint;
+  - as a function: `ProfileModules.plasmaCurrent(t) → A` (`new ProfileModel(cfg, { plasmaCurrent })`), which takes precedence over the waveform and is
+    not part of the fingerprint (the caller owns its determinism).
 
-`MagneticConfig.Ip_MA` is what the initial equilibrium is solved for and should equal the programme at t = 0; the Grad–Shafranov updates use the I_p
-of the state; the current quench of a disruption overrides the programme. Without a programme the code path is the one it was, bit for bit. Not
-done: the equilibrium coupling updates by the interval, β_p and ℓ_i, not by a change of I_p, so a fast ramp runs on a geometry that is up to an
-update interval old (a request to the coupling lane: an update when |ΔI_p|/I_p exceeds 10 %); the setup wizard does not offer the waveform.
+`MagneticConfig.Ip_MA` is what the initial equilibrium is solved for and should equal the current at t = 0; the Grad–Shafranov updates use the I_p of the
+state; the current quench of a disruption overrides the current. Not done: the equilibrium coupling updates by the interval, β_p and ℓ_i, not by a
+change of I_p (β_p ∝ I_p⁻² follows a large change, a small fast ramp does not trigger it), so a ramp runs on a geometry that is up to an update
+interval old (a request to the coupling lane: an update when |ΔI_p|/I_p exceeds 10 %); the setup wizard does not offer the waveform, and the run
+controls give `Ip_MA` the automatic slider range of an unknown key (a `CONTROL_DEFS` entry is the UI lane's).
 
 **The moving coordinate.** The grid is ρ̂ = √(Φ/Φ_b): if the toroidal flux Φ_b through the boundary changes, a flux surface (Φ fixed) moves
 in ρ̂ with dρ̂/dt = −ρ̂ Φ̇_b/(2Φ_b), the equation above holds at fixed Φ and at fixed ρ̂ ∂ψ/∂t|ρ̂ = ∂ψ/∂t|Φ + (ρ̂ Φ̇_b/(2Φ_b)) ∂ρ̂ψ.

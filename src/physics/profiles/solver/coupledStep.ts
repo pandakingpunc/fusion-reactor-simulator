@@ -367,8 +367,8 @@ export class CoupledStepper implements Checkpointable {
     const dtEff = TRBDF2_D * dt;
     const rtol = ctx.ps.rtol ?? DEFAULT_RTOL;
     const tolPicard = Math.min(2e-3, 0.1 * rtol);
-    // the boundary condition of the current diffusion at the end of each stage: the plasma-current programme, or the constant of the state
-    const ip1 = ctx.ipAt(t + TRBDF2_GAMMA * dt) ?? o.s.Ip, ip2 = ctx.ipAt(t + dt) ?? o.s.Ip;
+    // the boundary condition of the current diffusion at the end of each stage: the plasma-current programme, or the control Ip_MA
+    const ip1 = ctx.ipAt(t + TRBDF2_GAMMA * dt), ip2 = ctx.ipAt(t + dt);
     // old composition and current profiles
     composition(ctx, o.Te, o.ne, o.s);
     w.ni0.set(w.ni);

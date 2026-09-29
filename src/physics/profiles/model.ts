@@ -113,7 +113,7 @@ export class ProfileModel implements SimModel {
     this.tEnd = cfg.t_end;
     this.outputDt = Math.max(cfg.t_end / 800, 0.002);
     this.nState = ctx.layout.size;
-    if (modules.plasmaCurrent) ctx.ipProgramme = modules.plasmaCurrent;
+    if (modules.plasmaCurrent) ctx.setCurrentProgramme(modules.plasmaCurrent);
     this.physics = new PhysicsPipeline(ctx, modules.transport ?? createTransportModel(ctx.ps.transportModel), modules.sources ?? defaultSources());
     this.fueling = new FuelingControl(ctx);
     const ev = defaultEvents(modules.events);
@@ -195,7 +195,7 @@ export class ProfileModel implements SimModel {
     s.cZ = c.impurity.concentration;
     s.fA = c.fuelFracA;
     s.Cchi = 0.5; s.CI = 0.5;
-    s.Ip = ctx.ipAt(0) ?? Math.max(c.Ip_MA, 0.05) * 1e6;
+    s.Ip = ctx.ipAt(0);
     s.Sfuel = 0;
     ctx.bc = { Te: 0.05, Ti: 0.05, n: fsep * n0 };
     composition(ctx, Te, ne, s);

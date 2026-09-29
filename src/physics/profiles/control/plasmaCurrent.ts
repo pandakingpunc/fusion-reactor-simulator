@@ -1,20 +1,27 @@
 /**
- * The plasma-current programme I_p(t): the boundary condition of the current diffusion equation as a function of time.
+ * The plasma current I_p as the boundary condition of the current diffusion equation.
  *
  * The enclosed current at the boundary is fixed by I_p (X/F = 2π μ0 I_p/F at ρ̂ = 1, fvsolver.ts CurrentSolver), and a transport
  * stage of the TR-BDF2 step takes it at the end of its interval: I_p(t + γΔt) for the first stage, I_p(t + Δt) for the second, and
- * I_p(t) of the old state for the explicit rate of the trapezoidal stage. Without a programme I_p is the constant of the configuration
- * (`MagneticConfig.Ip_MA`), which the state carries as a scalar, and the model is bit for bit what it was.
+ * I_p(t) of the old state for the explicit rate of the trapezoidal stage. The state carries the value at the end of the last accepted step
+ * as the scalar `Ip`. Where the current comes from (ProfileContext.ipAt):
  *
- * A programme is a function of t alone (so that a chunked run, a rewind and a replay see the same values). It is given
+ *  - the control `Ip_MA` [MA] (ProfileContext.ctrl, so `applyControl({ Ip_MA })`, `getControls()`, the rewind of the set-points and the
+ *    waveforms and triggers of the scenario engine reach it), the configured `MagneticConfig.Ip_MA` until it is changed. The kernel changes a
+ *    control at step boundaries, so the value holds over the whole next step (both stages); a ramp is a staircase of the model's steps. Without
+ *    a change the model is bit for bit the constant-I_p one. A live control is the answer to "what is the plasma current now": it is not a
+ *    programme that a stage can look ahead in. Or
+ *  - a programme, a function of t alone (so that a chunked run, a rewind and a replay see the same values), which is evaluated at the
+ *    stage times themselves, and which takes the control's place (then there is no `Ip_MA` among the controls: a scenario that names it is
+ *    refused by the scenario engine, a live patch of it is ignored). It is given
+ *    - as data: `ProfileSettings.IpWaveform`, points [t (s), I_p (MA)] in increasing time, linearly interpolated, held constant before the
+ *      first and after the last point (`currentWaveform`); this is part of the configuration and so of the run fingerprint; or
+ *    - as a function: `ProfileModules.plasmaCurrent(t) → A`, for a caller that computes it (not part of the fingerprint: the caller owns its
+ *      determinism), which takes precedence over the waveform.
  *
- *  - as data, `ProfileSettings.IpWaveform`: points [t (s), I_p (MA)] in increasing time, linearly interpolated, held constant before the
- *    first and after the last point (`currentWaveform`); this is part of the configuration and so of the run fingerprint; or
- *  - as a function, `ProfileModules.plasmaCurrent(t) → A`, for a scenario or controller that computes it (not part of the fingerprint:
- *    the caller owns its determinism), which takes precedence.
- *
- * `MagneticConfig.Ip_MA` is what the initial equilibrium is solved for, so it should equal the programme at t = 0; the Grad–Shafranov
- * updates use the current I_p of the state. The disruption's current quench overrides the programme (the state's I_p decays).
+ * `MagneticConfig.Ip_MA` is what the initial equilibrium is solved for, so the current at t = 0 (the control, or the programme) should
+ * equal it; the Grad–Shafranov updates use the current I_p of the state. The disruption's current quench overrides both (the state's I_p
+ * decays).
  */
 
 /** I_p(t) [A] */

@@ -57,6 +57,11 @@ export interface BoundaryValues { Te: number; Ti: number; n: number }
 export interface Actuators {
   P_NBI_MW: number; P_ICRH_MW: number; P_ECRH_MW: number;
   n_target_1e20: number; H98: number; cZ: number; fuelRate_1e20s: number;
+  /**
+   * plasma current [MA]: the boundary condition of the current diffusion for the next step (control/plasmaCurrent.ts). Present unless a
+   * programme I_p(t) (`ProfileSettings.IpWaveform`, `ProfileModules.plasmaCurrent`) drives the current: then the programme is the only source
+   */
+  Ip_MA?: number;
 }
 
 /** State of a disruption once a limit has been crossed */
@@ -105,7 +110,7 @@ export class ProfileContext {
   /** stochastic events (ELM size); part of the checkpoint */
   readonly rng: RNG;
   readonly ctrl: Actuators;
-  /** plasma-current programme I_p(t) [A] (control/plasmaCurrent.ts); null: I_p is the constant of the state */
+  /** plasma-current programme I_p(t) [A] (control/plasmaCurrent.ts); null: I_p is the control `Ip_MA` (the configured current until it is changed) */
   ipProgramme: CurrentProgramme | null;
 
   // ---------------------------------------------------------------- equilibrium and geometry
@@ -199,6 +204,7 @@ export class ProfileContext {
       n_target_1e20: cfg.n_target / 1e20, H98: cfg.H98, cZ: cfg.impurity.concentration,
       fuelRate_1e20s: cfg.fueling.maxRate_1e20s,
     };
+    if (!this.ipProgramme) this.ctrl.Ip_MA = cfg.Ip_MA;
     // pinch parameter: source-free equilibrium n ∝ exp(−P ρ²) has n(0)/⟨n⟩ = 1 + α_n
     const target = 1 + cfg.transport.alpha_n;
     let P = 0.5;
@@ -209,10 +215,22 @@ export class ProfileContext {
   /** Views of a state vector */
   view(y: Float64Array): ProfileState { return this.layout.view(y); }
 
-  /** The plasma current of the programme at time t [A] (at least 0.05 MA), or null without a programme */
-  ipAt(t: number): number | null {
+  /**
+   * The plasma current that a step ending at time t takes as its boundary condition [A], at least 0.05 MA: the programme at t, or without one
+   * the control `Ip_MA` (a set-point that holds over the whole step: the kernel changes it at step boundaries). A control that is not a number
+   * is the configured current.
+   */
+  ipAt(t: number): number {
     const p = this.ipProgramme;
-    return p ? Math.max(p(t), IP_PROGRAMME_FLOOR) : null;
+    if (p) return Math.max(p(t), IP_PROGRAMME_FLOOR);
+    const c = this.ctrl.Ip_MA;
+    return Math.max(c !== undefined && Number.isFinite(c) ? c : this.cfg.Ip_MA, 0.05) * 1e6;
+  }
+
+  /** Puts a programme I_p(t) in place of the control `Ip_MA`, which is then no longer one of the controls (the programme is the only source of the current) */
+  setCurrentProgramme(p: CurrentProgramme): void {
+    this.ipProgramme = p;
+    delete this.ctrl.Ip_MA;
   }
 
   /** Registers a cache that depends on the transport geometry; called now if a geometry exists and on every adoptGeometry */

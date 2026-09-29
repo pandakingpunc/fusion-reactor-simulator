@@ -218,11 +218,20 @@ describe('the plasma-current programme', () => {
     expect(() => currentWaveform([[0, Infinity]])).toThrow(/not finite/);
   });
 
-  it('a context without a programme has none (I_p is the state constant); with a waveform it evaluates it with the floor', () => {
-    expect(new ProfileContext(ITER_15D as MagneticConfig).ipAt(3)).toBeNull();
+  it('a context without a programme takes I_p from the control Ip_MA (the configured current until it is changed); with a waveform there is no such control and it evaluates the waveform with the floor', () => {
+    const c0 = new ProfileContext(ITER_15D as MagneticConfig);
+    expect(c0.ctrl.Ip_MA).toBe(ITER_15D.Ip_MA);
+    expect(c0.ipAt(3)).toBe(ITER_15D.Ip_MA * 1e6);
+    c0.ctrl.Ip_MA = 9;
+    expect(c0.ipAt(3)).toBe(9e6);
+    c0.ctrl.Ip_MA = 0; // below the floor
+    expect(c0.ipAt(3)).toBeCloseTo(IP_PROGRAMME_FLOOR, 6);
+    c0.ctrl.Ip_MA = Number.NaN; // not a number: the configured current
+    expect(c0.ipAt(3)).toBe(ITER_15D.Ip_MA * 1e6);
     const ctx = new ProfileContext({ ...ITER_15D, profiles: { ...ITER_15D.profiles, IpWaveform: [[0, 5], [10, 15]] } } as MagneticConfig);
+    expect('Ip_MA' in ctx.ctrl).toBe(false);
     expect(ctx.ipAt(5)).toBeCloseTo(10e6, 6);
-    ctx.ipProgramme = () => 0;
+    ctx.setCurrentProgramme(() => 0);
     expect(ctx.ipAt(1)).toBe(IP_PROGRAMME_FLOOR);
   });
 
@@ -267,4 +276,66 @@ describe('the plasma-current programme', () => {
     // a constant programme at the configured current is the constant-I_p shot
     expect(zeroWaveform.history[zeroWaveform.history.length - 1].y).toEqual(plain.history[plain.history.length - 1].y);
   }, 120000);
+});
+
+describe('the plasma current as a control (Simulation.applyControl, the scenario engine)', () => {
+  const cfg = { ...JET_15D, Ip_MA: 2, t_end: 0.5 } as MagneticConfig;
+
+  it('Ip_MA is one of the controls of a run without a programme, the configured current; a run with a programme has no such control and ignores the key', () => {
+    const m = new ProfileModel(cfg);
+    expect(m.getControls().Ip_MA).toBe(2);
+    for (const other of [new ProfileModel({ ...cfg, profiles: { ...cfg.profiles, IpWaveform: [[0, 2], [1, 2.6]] } } as MagneticConfig), new ProfileModel(cfg, { plasmaCurrent: () => 2.2e6 })]) {
+      expect('Ip_MA' in other.getControls()).toBe(false);
+      other.applyControl({ Ip_MA: 5 });
+      expect('Ip_MA' in other.getControls()).toBe(false);
+      expect(other.ctx.ipAt(1)).not.toBe(5e6);
+    }
+  });
+
+  it('a change of Ip_MA at a step boundary is the boundary condition of every later step; the state follows it and the current diffuses inwards at the skin time', () => {
+    const sim = new Simulation(cfg);
+    const m = sim.model as ProfileModel;
+    const post = m.postStep.bind(m);
+    const seen: { t: number; Ip: number; edge: number }[] = [];
+    m.postStep = (t, dt, y) => {
+      const ev = post(t, dt, y);
+      if (dt > 0 && m.ctx.phase === 'normal') { const Ip = m.ctx.view(y).s.Ip; seen.push({ t, Ip, edge: m.ctx.w.IencF[m.ctx.N] }); }
+      return ev;
+    };
+    sim.advance(0.2);
+    const tChange = sim.t;
+    sim.applyControl({ Ip_MA: 2.5 });
+    sim.runAll();
+    const before = seen.filter((s) => s.t <= tChange + 1e-12), after = seen.filter((s) => s.t > tChange + 1e-12);
+    expect(before.length).toBeGreaterThan(20);
+    expect(after.length).toBeGreaterThan(20);
+    for (const s of before) expect(s.Ip).toBe(2e6);
+    for (const s of after) { expect(s.Ip).toBe(2.5e6); expect(Math.abs(s.edge / s.Ip - 1)).toBeLessThan(1e-9); }
+    expect(sim.model.terminated?.reason).toBe('Scheduled end');
+    // the enclosed current of the inner surfaces has not followed the edge: the current diffuses in, at the skin time, not at once
+    const inner = (m.ctx.w.IencF[Math.floor(m.ctx.N / 2)] / m.ctx.w.IencF[m.ctx.N]);
+    expect(inner).toBeLessThan(0.9);
+    const last = sim.history[sim.history.length - 1];
+    expect(last.d.Ip).toBeCloseTo(2.5, 9);
+    expect(last.sim?.controls.Ip_MA).toBe(2.5);
+  }, 120000);
+
+  it('a run with an Ip_MA change is replayed from its log, and a rewind to a frame before it gives back the configured current and the run without it, bitwise', () => {
+    const plain = new Simulation(cfg);
+    plain.runAll();
+    const sim = new Simulation(cfg);
+    sim.advance(0.2);
+    const iBefore = sim.history.length - 1;
+    sim.applyControl({ Ip_MA: 2.5 });
+    sim.runAll();
+    const withChange = sim.history[sim.history.length - 1].y;
+    expect(withChange).not.toEqual(plain.history[plain.history.length - 1].y);
+    const log = sim.actuatorLog;
+    expect(log).toHaveLength(1);
+    expect(Simulation.replay(cfg, log).history[sim.history.length - 1].y).toEqual(withChange);
+    sim.rewindTo(iBefore);
+    expect(sim.model.getControls().Ip_MA).toBe(2);
+    sim.runAll();
+    expect(sim.history[sim.history.length - 1].y).toEqual(plain.history[plain.history.length - 1].y);
+  }, 240000);
 });

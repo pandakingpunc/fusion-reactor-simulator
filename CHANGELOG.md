@@ -150,8 +150,30 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   attributes) and IMAS-like JSON (core_profiles, equilibrium, summary; COCOS 11), with bitwise
   write-parse round trips; `--every N` keeps the first and the last frame in every format.
 - `python/fusion_sim`: a standard-library subprocess wrapper of the `fusion-sim` command line.
+- Share links: a Share button (top bar) builds a link that carries the configuration and its name. It is
+  deflate-raw + base64url, versioned, CRC-32-checked and validated on open. Opening a link loads the
+  setup with a notice; a link that also carries an exact run (actuator log, breakpoints, scenario,
+  fingerprint) offers to reproduce it. Nothing is uploaded anywhere. The Share dialog does not yet
+  produce exact-run links: that needs the simulation worker to report its actuator log.
+- Hash routes: `#/wizard`, `#/run`, `#/report`, `#/compare`, `#/validate`, `#/share/<code>`,
+  `#/embed/<run|report>/<code>` for iframes. Back and forward move between tabs.
+- Saved runs: completed runs are saved in the browser (IndexedDB, up to 40, slimmed frames, can be
+  switched off). The Saved runs dialog opens, renames, exports and deletes them. Saving twice stores a
+  run once; an unverified import never stands in for a run of the same inputs.
+- Run files: the report's JSON button writes a run file (configuration, report, events, fingerprint).
+  Importing one re-simulates it in a worker and shows a verified-reproduction badge when the
+  fingerprint, the final report and the events all match. The Report shows the numbers the re-run
+  produced, never the numbers typed into a file. Files from another simulator version, edited files
+  and older exports are flagged.
+- Embed views: `#/embed/run` and `#/embed/report` render the shared configuration without the top bar;
+  Share offers the iframe HTML.
+- Tests of the persistence layer: the share codec (21 presets x 200 random edits), the archive on
+  fake-indexeddb, the router, verification (including a real worker replay) and the archive, import,
+  share and embed views through the application.
 
 ### Changed
+- The Report's JSON button writes `<name>_run.json` (the run file above) instead of
+  `<name>_report.json` (configuration, report and events only); the export is loaded on demand.
 - POPCON T axis scaled to where the device operates instead of a fixed 0-40 keV: 2.5 times the
   temperature its installed heating alone would hold at its own density, bounded by the beta limit
   there (ITER 15 keV, DEMO 20, SPARC 20, JET 8, MAST-U and W7-X 2.5); p-11B keeps a wide axis.

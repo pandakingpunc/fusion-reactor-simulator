@@ -3,7 +3,7 @@
  * Each call uses a fresh worker and ends it (on success, failure or abort), so nothing lingers between runs and an
  * abort really stops the computation.
  */
-import { ReplayError, ReplayFromWorker, ReplayInput, ReplayResult, ReplayToWorker } from './replayCore';
+import { ReplayError, ReplayFromWorker, ReplayInput, ReplayResult, ReplayToWorker } from './replayTypes';
 
 /** The part of the Worker interface used here (a real Worker or a test double). */
 export interface ReplayWorkerLike {

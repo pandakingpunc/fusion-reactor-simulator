@@ -70,6 +70,8 @@ export interface RunData {
   actuatorLog?: ActuatorEntry[];
   breakpoints?: number[];
   scenario?: unknown;
+  /** live interventions the run received (more than the log holds when the log was not recorded) */
+  interventions?: number;
 }
 
 export type ArchivedRun = RunSummary & RunData;
@@ -205,6 +207,7 @@ export class RunArchive {
       ...(run.actuatorLog ? { actuatorLog: run.actuatorLog } : {}),
       ...(run.breakpoints ? { breakpoints: run.breakpoints } : {}),
       ...(run.scenario !== undefined ? { scenario: run.scenario } : {}),
+      ...(run.interventions !== undefined ? { interventions: run.interventions } : {}),
     };
     const tx = this.db.transaction([RUNS, DATA], 'readwrite');
     const done = finished(tx);

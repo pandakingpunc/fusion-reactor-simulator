@@ -80,6 +80,67 @@ describe('PoolField: dw/dt = S - w/tau per cell', () => {
   });
 });
 
+describe('FastIonProfile: pressure, the equilibrium table and the remap at a geometry change', () => {
+  const N = 30;
+  const dV = Float64Array.from({ length: N }, (_, i) => 5 * (2 * i + 1) / (N * N) * 40);
+  const rhoC = Float64Array.from({ length: N }, (_, i) => (i + 0.5) / N);
+  const dRhoC = new Float64Array(N).fill(1 / N);
+  const make = () => {
+    const f = new FastIonProfile(N, beamComponents(110));
+    for (let i = 0; i < N; i++) { f.beam[0].W[i] = 3e4 * Math.exp(-((rhoC[i] / 0.3) ** 2)); f.beam[1].W[i] = 4e3 * (1 - rhoC[i]); f.alpha.W[i] = 1e3 * Math.exp(-((rhoC[i] / 0.2) ** 2)); }
+    f.updatePressure();
+    return f;
+  };
+
+  it('p_f = 2/3 of the energy density of all fields; the total pressure adds it to the thermal one', () => {
+    const f = make();
+    const p = Float64Array.from({ length: N }, (_, i) => 1e5 * (1 - rhoC[i] * rhoC[i]));
+    const tot = f.totalPressure(p);
+    for (let i = 0; i < N; i++) {
+      expect(rel(f.pFast[i], (2 / 3) * (f.beam[0].W[i] + f.beam[1].W[i] + f.beam[2].W[i] + f.alpha.W[i]))).toBeLessThan(1e-14);
+      expect(rel(tot[i], p[i] + f.pFast[i])).toBeLessThan(1e-14);
+    }
+  });
+
+  it('the pressure table of the equilibrium is the thermal pressure plus the fast pressure smoothed over the grid of the solver, with the integral of the fast part conserved', () => {
+    const f = make();
+    const p = new Float64Array(N).fill(2e5);
+    const table = f.equilibriumPressure(p, { rhoC, dRhoC, dV }, 0.08);
+    let fast = 0, smooth = 0;
+    for (let i = 0; i < N; i++) { fast += f.pFast[i] * dV[i]; smooth += (table[i] - p[i]) * dV[i]; expect(table[i]).toBeGreaterThanOrEqual(p[i]); }
+    expect(rel(smooth, fast)).toBeLessThan(1e-13);
+    // smoothing lowers the peak and raises the flank
+    expect(table[0] - p[0]).toBeLessThan(f.pFast[0]);
+    expect(table[12] - p[12]).toBeGreaterThan(f.pFast[12]);
+  });
+
+  it('a change of the cell volumes keeps the energy of every cell: w_i dV_i is unchanged, the first call only records the volumes, a snapshot restores them', () => {
+    const f = make();
+    const e0 = f.beam.map((b) => Float64Array.from(b.W, (w, i) => w * dV[i]));
+    f.remap(dV);
+    expect(f.beam[0].W[3]).toBe(make().beam[0].W[3]);
+    const dV2 = Float64Array.from(dV, (v, i) => v * (1 + 0.02 * Math.sin(i)));
+    const snap = f.snapshot();
+    f.remap(dV2);
+    f.beam.forEach((b, k) => { for (let i = 0; i < N; i++) expect(rel(b.W[i] * dV2[i], e0[k][i])).toBeLessThan(1e-14); });
+    expect(rel(f.pFast[5], (2 / 3) * (f.beam[0].W[5] + f.beam[1].W[5] + f.beam[2].W[5] + f.alpha.W[5]))).toBeLessThan(1e-14);
+    // restoring the snapshot brings back both the energy densities and the volumes they are expressed on
+    f.restoreSnapshot(snap);
+    expect(rel(f.beam[0].W[3], make().beam[0].W[3])).toBe(0);
+    f.remap(dV);
+    expect(rel(f.beam[0].W[3], make().beam[0].W[3])).toBeLessThan(1e-15);
+  });
+
+  it('a record without fields (from elsewhere) gets uniform fields that carry the contents over the volume', () => {
+    const f = new FastIonProfile(N, beamComponents(110));
+    f.restore(undefined, 2e6, 5e5, dV);
+    const c = f.contents(dV);
+    expect(rel(c.beam, 2e6)).toBeLessThan(1e-13);
+    expect(rel(c.alpha, 5e5)).toBeLessThan(1e-13);
+    expect(rel(f.beam[0].W[0] / f.beam[1].W[0], 0.75 / 0.15)).toBeLessThan(1e-13);
+  });
+});
+
 describe('the fast-ion fields in a JET15 shot (fastIonModel "profile")', () => {
   it('every accepted step closes the energy ledger to 1e-10 and delivers what the heat equation received; the content is the energy born minus the energy delivered', () => {
     const m = new PM(profileCfg(0.8));

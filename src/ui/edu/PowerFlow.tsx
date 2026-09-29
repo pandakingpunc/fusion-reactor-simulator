@@ -15,7 +15,7 @@ interface Props {
   fixedWindow?: boolean;
 }
 
-const W = 760, H = 300, MARGIN = { l: 130, r: 140, t: 18, b: 8 };
+const W = 640, H = 300, MARGIN = { l: 112, r: 124, t: 18, b: 8 };
 const NODE_W = 14;
 
 /** colour of a node: sources warm, radiation blue, transport green, the rest grey */

@@ -77,8 +77,8 @@
 .pf { display: flex; flex-direction: column; gap: 6px; }
 .pf svg { width: 100%; height: auto; display: block; background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; }
 .pf .pf-tools { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
-.pf text { fill: var(--text); font-size: 11px; font-family: var(--sans); }
-.pf text.pf-val { fill: var(--muted); font-family: var(--mono); font-size: 10px; }
+.pf text { fill: var(--text); font-size: 12px; font-family: var(--sans); }
+.pf text.pf-val { fill: var(--muted); font-family: var(--mono); font-size: 11px; }
 .pf-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--muted); }
 
 /* Compare 2.0 */

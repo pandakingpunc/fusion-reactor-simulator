@@ -4,7 +4,8 @@
  * Radial transport on ρ̂ = √(Φ/Φ_b) (cell-centred finite volumes) coupled to a fixed-boundary
  * Grad–Shafranov equilibrium (periodic, quasi-static). State: T_e(ρ), T_i(ρ), n_e(ρ), ψ(ρ) and the
  * global scalars of state.ts (He ash, impurity, fuel mix, counters, transport multiplier, NTM
- * island widths). Implicit (backward Euler) steps with a Picard iteration and adaptive Δt.
+ * island widths). TR-BDF2 steps with a Picard iteration and an error-controlled Δt; ELMs and
+ * sawtooth crashes end the step at the crossing of their threshold.
  *
  * This class is the orchestrator implementing SimModel; the physics lives in the modules:
  *
@@ -16,7 +17,7 @@
  *   sources/             SourceModel plug-ins: NBI, RF, fusion, radiation, exchange; current sources
  *   transport/           TransportModel plug-ins ('scaling', 'cgm'), barrier, neoclassical floor
  *   control/             actuators, fueling feedback, confinement (τ_E scaling, C_χ controller)
- *   solver/              evaluation pipeline, coupled implicit step, accepted-step update
+ *   solver/              evaluation pipeline, coupled TR-BDF2 step (Δt control, event localisation), accepted-step update
  *   coupling/            Grad–Shafranov coupling (initial solve, update policy, guarded updates)
  *   events/              EventModel plug-ins: L–H, ELM, sawtooth, NTM, burn, warnings, disruption
  *   diagnostics.ts       time traces and profiles; checkpoint.ts: rewind checkpoints
@@ -117,7 +118,7 @@ export class ProfileModel implements SimModel {
     this.stepper = new CoupledStepper(ctx, this.physics, this.fueling, this.disruption, (t, dt, yOld, y) => {
       acceptStep(ctx, this.fueling, this.physics, t, dt, yOld, y);
       this.coupling.check(ctx, t + dt, y, (tu, yu) => this.updateEquilibrium(tu, yu));
-    });
+    }, this.events);
     this.checkpointParts = [contextCheckpoint(ctx), this.coupling, this.stepper, this.physics.transport, ...this.physics.sources, ...this.events];
     this.magnetInfo = checkMagnet(cfg.geometry, cfg.B0, cfg.magnet.tech, cfg.magnet.gap_m, cfg.magnet.coilThickness_m);
     this.coupling.initialize(ctx);
@@ -293,6 +294,7 @@ export class ProfileModel implements SimModel {
         'Shafranov shift (m)': +ctx.eq.shafranovShift.toFixed(3),
         'GS updates accepted': this.eqUpdates, 'GS updates needing a retry': this.eqRetried, 'GS updates rejected': this.eqRejected,
         'Forced transport steps': this.forcedSteps,
+        'Transport steps (accepted / rejected by the error test)': `${this.stepper.stats.accepted} / ${this.stepper.stats.rejected}`,
       },
       extraExtras: {
         'T_e axis (final, keV)': +(d.Te0 ?? 0).toFixed(2), 'T_ped (final, keV)': +(d.Tped ?? 0).toFixed(2), 'T_sep (final, keV)': +(d.Tsep ?? 0).toFixed(3),

@@ -6,8 +6,8 @@
  *
  * The model keeps its Δt in the shared context (`ProfileModel.ctx.dt`, since the split of model.ts;
  * before it was a private field of the model) and reuses it as the next proposal; lowering it before
- * each step caps every step. APPROXIMATION of a missing configuration option (ProfileSettings has no
- * dtMax yet).
+ * each step caps every step. The 1.5D model has the same limit as a setting now (ProfileSettings.dtMax, which bench:convergence
+ * uses); this hook caps a model that was built without it, or from a given moment of a run (tests).
  */
 import type { Simulation } from '../src/physics/simulation';
 

@@ -4,6 +4,9 @@ import { ProfileSettings } from '../types';
 export const DEFAULT_PROFILE_SETTINGS: ProfileSettings = {
   nRho: 50,
   gridPacking: 4,
+  rtol: 1e-3,
+  atol: 1e-4,
+  dtMax: 0.5,
   eqNR: 49,
   eqUpdateInterval: 10,
   transportModel: 'scaling',

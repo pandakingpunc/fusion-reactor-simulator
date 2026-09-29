@@ -46,6 +46,14 @@ export interface ProfileSettings {
    * pedestal at nRho 50). 0: the uniform grid of v3.
    */
   gridPacking?: number;
+  /**
+   * error control of the transport time step (TR-BDF2, profiles/solver/coupledStep.ts): the local error estimate of T_e, T_i, n_e
+   * and ψ must stay below atol · max|y| + rtol · |y| in every cell (default rtol 1e-3, atol 1e-4: the profile maximum is the
+   * scale of the absolute tolerance), and the step is at most dtMax seconds (default 0.5)
+   */
+  rtol?: number;
+  atol?: number;
+  dtMax?: number;
   /** GS ızgarası R yönü düğüm sayısı */
   eqNR: number;
   /** denge güncelleme aralığı üst sınırı [s] */

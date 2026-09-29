@@ -970,3 +970,13 @@ Node v24.19.0 · `npm run golden:update` · all cases
   - MASTU15: 2423 keys moved; max rel. diff 1.73e+0
     - moved, largest change first: profiles.last.prof.shear[4], profiles.mid.prof.shear[8], profiles.last.prof.shear[8], profiles.mid.prof.shear[12], profiles.mid.prof.shear[4], profiles.last.prof.shear[12], profiles.last.prof.shear[7], profiles.last.prof.shear[9], profiles.mid.prof.shear[7], profiles.mid.prof.shear[9], profiles.last.prof.shear[13], profiles.mid.prof.shear[13], … (+2411 more)
 - Unchanged (21): ITER, JET, SPARC, DIIID, JT60SA, MASTU, W7X, DEMO, NIF, DIRECT, Z, GF, FRXL, ZAP, TAE, MIRROR, MUON, ITER-DHe3, ITER-pB11, TAE-pB11, MIRROR-DHe3
+
+## 2026-09-29 17:46 UTC — WS6d: three new golden cases for the opt-in physics of the lane (fast-ion energy fields, physics-based current drive, Porcelli sawtooth trigger with the helical-flux reset). No existing case moved: all 30 earlier cases matched at 1e-9 with the WS6d code in the tree before these were recorded (the new settings default to the scalar fast-ion pools, the legacy current-drive scalings, the shear trigger and the q >= 1.01 rebuild).
+
+Headline values of the new cases (flat-top means over the short run): JET15-fast (JET15, 1.5 s, fastIonModel 'profile', cdModel 'physics'): Q 0.570, P_fus 18.8 MW, W 8.32 MJ, fast-ion energy 3.12 MJ, beta_N 1.68, f_bs 0.25, f_cd 0.56 (I_nbcd 1.97 MA at the low start-up density, the current profile is hollowed, q0 44), 1264 steps; relative to the default JET15 shot the fields deliver the heating with the slowing-down delay, smooth the source over the orbit width and put the fast pressure into the equilibrium table and the ballooning drive. DIIID15-eccd (DIII-D 1.5D, 1.5 s, cdModel 'physics', ECCD launcher aimed at rho 0.35 with n_par 0.35): I_nbcd 0.66 MA (80 keV beam), I_eccd 0.022 MA for 3 MW (zeta about 0.04 at the low-field-side absorption, the Ohkawa reduction), f_cd 0.43, 3824 steps. MASTU15-saw (MAST-U 1.5D, 0.5 s, sawtoothTrigger 'porcelli', sawtoothReconnection 'kadomtsev'): 3 sawtooth crashes at 0.32, 0.38 and 0.46 s (the shear trigger of MASTU15 crashes at the 50 ms refractory time), q0 after a crash 1.00, 3933 steps.
+
+The cases are regression guards of the new code paths, not validated predictions: the NBCD magnitude follows the beam pitch (nbiRtan is one value for all presets), and full reconnection leaves q0 = 1.00.
+
+Node v24.19.0 · `npm run golden:update` · --only JET15-fast,DIIID15-eccd,MASTU15-saw
+
+- Added (3): JET15-fast, DIIID15-eccd, MASTU15-saw

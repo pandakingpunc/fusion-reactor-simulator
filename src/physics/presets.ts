@@ -36,9 +36,10 @@ export interface Preset { id: string; name: string; desc: string; cfg: ReactorCo
 // ITER: R=6.2, a=2.0, κ95=1.7 (κ_sep 1.85), δ95=0.33 (δ_sep 0.49), B=5.3 T, Ip=15 MA, n≈1.0e20, P_aux=50 MW (33 NBI + 17 ICRH ... 20 EC), Q=10 hedef, 400 s. (ITER Physics Basis 1999; Shimada 2007)
 // `geometry` carries the 95 % values (q95, the τ_E scalings); `profiles.lcfsKappa/lcfsDelta` the LCFS shape, which sets the plasma volume
 // and surface of the 0D model (geometry.boundaryShape: 842 m³, 683 m² against the design 837 m³, 678 m²) and the shape of the 1.5D model.
+// `lcfsRef95` is the 95 % shape those LCFS values belong to: the 0D volume, surface and area follow an edited κ or δ in that ratio.
 export const ITER = defaultMagnetic({
   geometry: { R: 6.2, a: 2.0, kappa: 1.7, delta: 0.33 }, B0: 5.3, Ip_MA: 15,
-  profiles: { lcfsKappa: 1.85, lcfsDelta: 0.49 },
+  profiles: { lcfsKappa: 1.85, lcfsDelta: 0.49, lcfsRef95: { kappa: 1.7, delta: 0.33 } },
   // n_target of the 0D model is the VOLUME average (the 1.5D model regulates the line average). The design point is n̄/n_G = 0.85 with the
   // LINE-averaged n̄ (ITER Physics Basis; Shimada et al. 2007; T.A. Casper et al., Nucl. Fusion 54 (2014) 013005: "densities at 85 % of the
   // Greenwald density limit"): n_G = I_p/(π a²) = 1.194e20, n̄ = 1.015e20 = f_line(α_n = 0.3) × 0.914e20 (f_line = 1.110). The earlier
@@ -127,15 +128,23 @@ export const W7X = defaultMagnetic({
   t_end: 30, seed: 13,
 });
 // EU DEMO 2018 baseline: R=9.07, a=2.93, κ95=1.65, δ95=0.33, B=5.86 T, Ip=17.75 MA, P_fus=2000 MW, P_aux=50 MW, n≈0.8e20, H98=1.1 (Siccinio 2020)
-// (LCFS shape κ = 1.65·1.12 = 1.85, δ = 0.33·1.5 = 0.5: the system-code convention, as for ITER's 1.70 → 1.85 and 0.33 → 0.49)
+// LCFS shape (APPROXIMATION, no published DEMO LCFS values were found): M. Siccinio et al., Fusion Eng. Des. 176 (2022) 113047, table 1, gives
+// κ95 = 1.65 and δ95 = 0.33 only. The LCFS values κ = 1.65 · 1.12 = 1.85 and δ = 0.33 · 1.5 = 0.5 invert the PROCESS conversion κ95 = κ/1.12,
+// δ95 = δ/1.5 (M. Kovari et al., Fusion Eng. Des. 89 (2014) 3054, section 7, after N.A. Uckan, ITER Physics Design Guidelines 1989,
+// IAEA/ITER/DS/10) that the DEMO baselines were produced with. The Miller boundary of that shape has 2637 m³ and 1462 m² against 2434 m³ and
+// 1371 m² of the 95 % shape (+8.3 % and +6.6 %); measured on the 600 s shot, the LCFS shape lowers P_fus and Q by 3.0 % (1836 against 1892 MW),
+// because the bigger volume at a given stored energy is a lower temperature. ITER's 1.70 → 1.85 and 0.33 → 0.49 are the published Shimada et al. 2007 values.
 export const DEMO = defaultMagnetic({
   geometry: { R: 9.07, a: 2.93, kappa: 1.65, delta: 0.33 }, B0: 5.86, Ip_MA: 17.75,
-  profiles: { lcfsKappa: 1.85, lcfsDelta: 0.5 },
-  // DEMO n_G = 0.658e20 (I_p/(π a²)): the 2018 baseline has n/n_G = 1.2 (M. Siccinio et al., Fusion Eng. Des. 176 (2022) 113047, table 1;
-  // taken as the line average, the quantity of the Greenwald fraction: "the line-averaged density is an output" of the systems code, with the
-  // pedestal top imposed at 0.85 n_G; the 2015 systems-code study has n̄ = 1.1 n_G, R. Wenninger et al., Nucl. Fusion 55 (2015) 063003) with a
-  // peaked profile and the pedestal below the Greenwald density → limit 1.3 (APPROXIMATION). n_target of the 0D model is the VOLUME average:
-  // n̄ = 1.2 n_G = 0.790e20 = f_line(0.3) × 0.711e20 (1.5D: the line average). The earlier 0.75e20 volume average was n̄ = 1.24 n_G.
+  profiles: { lcfsKappa: 1.85, lcfsDelta: 0.5, lcfsRef95: { kappa: 1.65, delta: 0.33 } },
+  // DEMO n_G = 0.658e20 (I_p/(π a²)): the 2018 baseline has n/n_G = 1.2 (Siccinio et al. 2022, table 1, written ⟨n⟩/n_GW). APPROXIMATION on the
+  // basis: the angle brackets can mean the VOLUME average (PROCESS's ⟨n_e⟩, Kovari et al. 2014 nomenclature), while the text says the pedestal
+  // top is imposed at 0.85 n_G and "the line-averaged density is an output" of the systems code (the 2015 study has n̄ = 1.1 n_G, R. Wenninger
+  // et al., Nucl. Fusion 55 (2015) 063003). This preset takes 1.2 as the LINE average, the quantity of the Greenwald fraction: n_target of the
+  // 0D model is the VOLUME average, n̄ = 1.2 n_G = 0.790e20 = f_line(0.3) × 0.711e20 (1.5D: the line average). The earlier 0.75e20 volume average
+  // was n̄ = 1.24 n_G. Read as a volume average (0.790e20) the preset's peaking α_n = 0.3 (DEMO's ASTRA profile is flatter, Siccinio Fig. 3) would
+  // give n̄ = 1.33 n_G, above the limit 1.3 below: the shot then ends in a density-limit disruption at 81 s (measured). Limit 1.3: a peaked profile
+  // with the pedestal below the Greenwald density (APPROXIMATION).
   n_target: 0.711e20, n_rampTime: 80,
   // Flat-top P_aux = 50 MW; H-mod erişimi (P_LH ≈ 100+ MW) için rampa sırasında ek ECRH gerekir (Siccinio 2020)
   heating: { P_NBI_MW: 50, E_NBI_keV: 1000, P_ICRH_MW: 0, f_ICRH_ion: 0.5, P_ECRH_MW: 50, rampTime: 20, autoOff: false },

@@ -223,7 +223,11 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   overestimated the volume by 3.6 % (JET) to 14 % (MAST-U) and the surface by 4-18 %, against a documented "about
   3 %". ITER and DEMO carry their LCFS shape (kappa 1.85, delta 0.49 and 0.5) in `profiles.lcfsKappa/lcfsDelta`,
   which now also sets the 0D volume and surface: 842 m3 and 683 m2 for ITER against the design 837 m3 and 678 m2,
-  the same shape as ITER15; the presets' kappa, delta stay the 95 % values of q95 and the scalings. ITER Q
+  the same shape as ITER15; the presets' kappa, delta stay the 95 % values of q95 and the scalings, and the new
+  `profiles.lcfsRef95` (the 95 % shape the LCFS values belong to) makes the 0D volume, surface and area follow an
+  edited kappa or delta in that ratio, so no override is hidden in the 1.5D-only fields. The DEMO LCFS shape is
+  the PROCESS conversion of kappa95 = 1.65, delta95 = 0.33 (kappa95 = kappa/1.12, delta95 = delta/1.5), an
+  approximation: +8.3 % volume, -3 % P_fus and Q against the 95 % shape. ITER Q
   10.55 -> 9.97, SPARC 0D Q 6.6 -> 7.5, JT-60SA and DIII-D +10 %. The 1.5D neutron wall load uses the same
   surface (ITER15 0.50 -> 0.53 MW/m2), and the 0D shot and disruption reports take the boundary shape like the
   1.5D reports.
@@ -237,7 +241,9 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   transition of a ramp-up moves by 0.1 s (JET) to 0.6 s (DEMO15) between Martin only and this branch.
 - ITER (0D) `n_target` 1.0e20 -> 0.914e20 and DEMO (0D) 0.75e20 -> 0.711e20: the target of the 0D model is the
   volume average, the design points are the line-averaged n/n_G = 0.85 (ITER) and 1.2 (EU-DEMO 2018 baseline,
-  Siccinio et al. 2022), which the flat tops now reach to 2.5 % (0.84 and 1.17; before 0.92 and 1.24). The 1.5D
+  Siccinio et al. 2022; their table 1 writes it as the angle-bracket <n>/n_GW, which may mean the volume average:
+  read that way, the 0D DEMO shot exceeds its Greenwald limit 1.3 and disrupts at 81 s), which the flat tops now
+  reach to 2.5 % (0.84 and 1.17; before 0.92 and 1.24). The 1.5D
   presets already regulate the line average and keep their targets. The ITER-pB11 golden case, whose power balance
   is marginal (1.0e20 collapses at 28 s, 0.85e20 survives), now runs to the scheduled end.
 - MAST-U preset: the first-campaign scenario (R 0.8 m, a 0.5 m, kappa 2.1, delta 0.47, 0.75 MA, 0.55 T, 2 MW of NBI

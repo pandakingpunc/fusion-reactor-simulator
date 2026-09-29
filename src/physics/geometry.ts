@@ -79,11 +79,23 @@ export function crossSectionArea(g: Geometry): number {
  * ITER design values are 837 m³ and 678 m² (ITER Physics Basis, Nucl. Fusion 39 (1999) 2137, ch. 1, design parameters; +0.6 %
  * and +0.7 %); the 95 % shape would give 799 m³ and 653 m² (−4.6 % and −3.7 %). Without `profiles` the geometry is the
  * boundary itself.
+ *
+ * The LCFS values follow the configuration's own κ, δ when `profiles.lcfsRef95` names the 95 % shape they belong to (the ITER and DEMO
+ * presets): κ_LCFS = lcfsKappa · κ/κ95_ref and δ_LCFS = lcfsDelta · δ/δ95_ref, the system-code convention of a fixed LCFS-to-95 % ratio
+ * (equal to the given values at the preset's own κ, δ, exactly). An edited κ or δ therefore moves V, S and A as it moves q95 and the scalings,
+ * with no override hidden in the 1.5D-only settings (the 0D wizard does not show them). Without the reference the LCFS values are absolute,
+ * as the 1.5D model always reads them (ProfileContext.geomB); a reference δ of 0 or a non-positive κ cannot scale and leaves that value absolute.
  */
-export function boundaryShape(cfg: { geometry: Geometry; profiles?: { lcfsKappa?: number; lcfsDelta?: number } }): Geometry {
+export function boundaryShape(cfg: {
+  geometry: Geometry;
+  profiles?: { lcfsKappa?: number; lcfsDelta?: number; lcfsRef95?: { kappa: number; delta: number } };
+}): Geometry {
   const g = cfg.geometry, p = cfg.profiles;
-  return p && (p.lcfsKappa !== undefined || p.lcfsDelta !== undefined)
-    ? { R: g.R, a: g.a, kappa: p.lcfsKappa ?? g.kappa, delta: p.lcfsDelta ?? g.delta } : g;
+  if (!p || (p.lcfsKappa == null && p.lcfsDelta == null)) return g;
+  const ref = p.lcfsRef95;
+  const sk = ref && Number.isFinite(ref.kappa) && ref.kappa > 0 ? g.kappa / ref.kappa : 1;
+  const sd = ref && Number.isFinite(ref.delta) && ref.delta !== 0 ? g.delta / ref.delta : 1;
+  return { R: g.R, a: g.a, kappa: p.lcfsKappa != null ? p.lcfsKappa * sk : g.kappa, delta: p.lcfsDelta != null ? p.lcfsDelta * sd : g.delta };
 }
 
 /** Areal elongation κ_a = V / (2π² R a²) — the definition of IPB98(y,2) and of the ITPA20 scalings (Verdoolaege et al. 2021) */

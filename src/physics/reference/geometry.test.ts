@@ -134,6 +134,27 @@ describe('boundary shape of the 0D model (boundaryShape)', () => {
     expect(boundaryShape({ geometry: g, profiles: {} })).toBe(g);
     expect(boundaryShape({ geometry: g, profiles: { lcfsKappa: 1.9 } })).toEqual({ R: 3, a: 1, kappa: 1.9, delta: 0.3 });
     expect(boundaryShape({ geometry: g, profiles: { lcfsDelta: 0.5 } })).toEqual({ R: 3, a: 1, kappa: 1.7, delta: 0.5 });
+    // a blank (null, as a JSON round trip of the wizard's emptied input gives) is not a value
+    expect(boundaryShape({ geometry: g, profiles: { lcfsKappa: null as unknown as undefined } })).toBe(g);
+  });
+
+  // The LCFS values of a preset belong to its 95 % shape (profiles.lcfsRef95): an edited κ or δ scales them, so the 0D volume, surface and
+  // area respond to it as q95 and the scalings do. Without a reference the LCFS values are absolute (the 1.5D reading).
+  it('with a 95 % reference the LCFS shape scales with κ and δ and equals the given values, exactly, at the reference shape', () => {
+    const profiles = { lcfsKappa: 1.85, lcfsDelta: 0.49, lcfsRef95: { kappa: 1.7, delta: 0.33 } };
+    expect(boundaryShape({ geometry: { R: 6.2, a: 2, kappa: 1.7, delta: 0.33 }, profiles })).toEqual({ R: 6.2, a: 2, kappa: 1.85, delta: 0.49 });
+    const g = boundaryShape({ geometry: { R: 6.2, a: 2, kappa: 2.04, delta: 0.165 }, profiles });
+    expect(g.kappa).toBeCloseTo(1.85 * 1.2, 14);
+    expect(g.delta).toBeCloseTo(0.49 * 0.5, 14);
+    // an edited LCFS value alone still counts (times the 95 % ratio, 1 at the reference)
+    expect(boundaryShape({ geometry: { R: 6.2, a: 2, kappa: 1.7, delta: 0.33 }, profiles: { ...profiles, lcfsKappa: 2.0 } }).kappa).toBe(2.0);
+    // a value that is not given is the geometry's own, unscaled
+    expect(boundaryShape({ geometry: { R: 6.2, a: 2, kappa: 1.9, delta: 0.4 }, profiles: { lcfsKappa: 1.85, lcfsRef95: profiles.lcfsRef95 } }).delta).toBe(0.4);
+    // a reference that cannot scale (δ95 = 0, κ95 <= 0, not a number) leaves that value absolute
+    const gd = { R: 6.2, a: 2, kappa: 1.7, delta: 0.2 };
+    expect(boundaryShape({ geometry: gd, profiles: { lcfsDelta: 0.49, lcfsRef95: { kappa: 1.7, delta: 0 } } }).delta).toBe(0.49);
+    expect(boundaryShape({ geometry: gd, profiles: { lcfsKappa: 1.85, lcfsRef95: { kappa: 0, delta: 0.33 } } }).kappa).toBe(1.85);
+    expect(boundaryShape({ geometry: gd, profiles: { lcfsKappa: 1.85, lcfsRef95: { kappa: NaN, delta: 0.33 } } }).kappa).toBe(1.85);
   });
 
   // ITER design values: plasma volume 837 m³, plasma surface 678 m² (ITER Physics Basis, Nucl. Fusion 39 (1999) 2137, ch. 1, design parameters).

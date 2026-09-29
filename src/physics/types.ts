@@ -47,6 +47,13 @@ export interface ProfileSettings {
   /** LCFS şekli (verilmezse geometry.kappa/delta) */
   lcfsKappa?: number;
   lcfsDelta?: number;
+  /**
+   * The 95 % surface shape (κ95, δ95) that lcfsKappa/lcfsDelta belong to (the ITER and DEMO presets: the nominal `geometry`). The 0D volume,
+   * surface and cross-section (geometry.boundaryShape) then scale with the configuration's own κ, δ: κ_LCFS = lcfsKappa · κ/κ95_ref,
+   * δ_LCFS = lcfsDelta · δ/δ95_ref, so an edited κ or δ moves them as it moves q95 and the scalings. Without it the LCFS values are absolute
+   * (the 1.5D model always reads them so).
+   */
+  lcfsRef95?: { kappa: number; delta: number };
   /** 'scaling': τ_E ölçeklemesiyle kısıtlanmış taşınım (doğrulanmış global dinamik, fiziksel profil şekli);
    *  'cgm': kritik-gradyan modeli (öngörücü, kalibrasyonsuz) */
   transportModel: 'scaling' | 'cgm';

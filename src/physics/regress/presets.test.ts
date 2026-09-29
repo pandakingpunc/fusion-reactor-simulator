@@ -5,8 +5,9 @@
  */
 import { describe, expect, it } from 'vitest';
 import { Simulation } from '../simulation';
+import { MagneticModel } from '../confinement/magnetic';
 import { greenwaldDensity, lineAverageFactor } from '../limits';
-import { q95Sauter } from '../geometry';
+import { boundaryShape, plasmaVolume, q95Sauter } from '../geometry';
 import { DEMO, DEMO_15D, ITER, ITER_15D, MASTU, PRESETS } from '../presets';
 import type { MagneticConfig } from '../types';
 
@@ -40,6 +41,40 @@ describe('density targets of the ITER and DEMO presets', () => {
       expect(Math.abs(f.nG_frac / want - 1), `${cfg === ITER ? 'ITER' : 'DEMO'} n̄/n_G = ${f.nG_frac}`).toBeLessThan(0.03);
     }
   }, 90_000);
+});
+
+describe('the 0D volume, surface and area follow an edited κ or δ (no override hidden in the 1.5D-only LCFS fields)', () => {
+  const zeroD = PRESETS.map((p) => p.cfg).filter((c): c is MagneticConfig => 'geometry' in c && (c as MagneticConfig).fidelity !== '1.5D');
+  const geo = (cfg: MagneticConfig, kappa: number, delta: number) => new MagneticModel({ ...cfg, geometry: { ...cfg.geometry, kappa, delta } }).geometryInfo();
+
+  it('every 0D magnetic preset: V and S grow with κ and change with δ (the wizard hides profiles.lcfs*; ITER and DEMO once did not respond)', () => {
+    expect(zeroD.length).toBeGreaterThanOrEqual(8);
+    for (const cfg of zeroD) {
+      const { kappa, delta } = cfg.geometry;
+      const base = geo(cfg, kappa, delta);
+      const taller = geo(cfg, kappa + 0.3, delta);
+      const shaped = geo(cfg, kappa, delta + 0.15);
+      expect(taller.V, `${cfg.method} R=${cfg.geometry.R}: V(κ+0.3)`).toBeGreaterThan(base.V * 1.05);
+      expect(taller.S, `${cfg.method} R=${cfg.geometry.R}: S(κ+0.3)`).toBeGreaterThan(base.S * 1.02);
+      expect(shaped.V, `${cfg.method} R=${cfg.geometry.R}: V(δ+0.15)`).not.toBe(base.V);
+      expect(shaped.S, `${cfg.method} R=${cfg.geometry.R}: S(δ+0.15)`).not.toBe(base.S);
+      // the same edit through the shape function of the model and POPCON
+      const gB = boundaryShape({ ...cfg, geometry: { ...cfg.geometry, kappa: kappa + 0.3, delta } });
+      expect(plasmaVolume(gB)).toBe(taller.V);
+    }
+  });
+
+  it('ITER and DEMO: at the preset shape V and S are those of the LCFS shape (842 m3, 683 m2; 2637 m3, 1462 m2); V is proportional to κ at fixed δ', () => {
+    for (const [cfg, V, S] of [[ITER, 842.0, 682.6], [DEMO, 2637.5, 1461.6]] as const) {
+      const g = geo(cfg, cfg.geometry.kappa, cfg.geometry.delta);
+      expect(g.V).toBeCloseTo(V, 1);
+      expect(g.S).toBeCloseTo(S, 1);
+      const k = geo(cfg, cfg.geometry.kappa * 1.1, cfg.geometry.delta);
+      expect(k.V / g.V).toBeCloseTo(1.1, 12);
+      // δ = 0 has the ellipse's larger volume (the Miller volume factor falls with δ)
+      expect(geo(cfg, cfg.geometry.kappa, 0).V).toBeGreaterThan(g.V);
+    }
+  });
 });
 
 describe('the boundary shape reaches the report', () => {

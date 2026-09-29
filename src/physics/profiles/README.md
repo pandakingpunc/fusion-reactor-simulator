@@ -19,7 +19,8 @@ current equilibrium and transport geometry, work arrays, plasma and controller s
 | `geometry1d.ts` | the radial grid (uniform, or packed towards the edge: `GridSpec`, `buildGrid`, `cellIndex`, `faceValue`, …) and the transport geometry on it, ρ̂ = √(Φ/Φ_b), from equilibrium tables (`EquilibriumTables`) |
 | `fvsolver.ts` | implicit finite-volume solvers (heat, density, current) with the reference state and explicit rate of a TR-BDF2 stage, their right-hand sides (`residual`, `rate`) and error-estimate filter, `boundaryLoss` (P_bound), the Pereverzev–Corrigan term of the heat solve; the current diffusion in the Hinton–Hazeltine form with the moving-coordinate term |
 | `composition.ts` | quasi-neutral composition; He ash, impurity and fuel-mix inventories |
-| `qprofile.ts` | ψ → ψ′, q, enclosed current, ⟨j·B⟩; q95 |
+| `qprofile.ts` | ψ → ψ′, q, enclosed current, ⟨j·B⟩; q95; the scale that makes the initial ψ carry I_p (`equilibriumCurrentScale`) |
+| `settings.ts` | the check of the step-control settings: `rtol`, `atol` and `dtMax` outside their domain are replaced by the default and reported |
 | `boundary/sol.ts` | separatrix values (two-point T_sep, n_sep), lagged P_SOL |
 | `sources/` | `SourceModel` plug-ins: `nbi`, `rf`, `fusion`, `radiation`, `exchange`; `current.ts` (σ_neo, bootstrap, ohmic); `deposition.ts` (profiles, NBI chord). `fusion` evaluates every channel of the fuel with the helpers the 0D model uses (`pairDensity`, `burnPerReaction`, the products of `FUEL_CHANNELS`) |
 | `transport/` | `TransportModel` plug-ins: `scaling`, `cgm`; `coefficients.ts` adds barrier (`pedestal.ts`), D and pinch, NTM islands, neoclassical floor |
@@ -128,7 +129,11 @@ equations are the density n_e, the energy contents (3/2) n_e T_e and (3/2) n_i T
 solve a stage as they solved a backward-Euler step, with the reference state and the explicit rate above. The inputs that are held
 fixed over a step (heating powers, boundary values, the fueling source, the sources' `prepare`) are those of the old state.
 
-**Error control** (`ProfileSettings.rtol`, `atol`, `dtMax`; defaults 1e-2, 1e-4, 0.5 s). The embedded estimate of the local truncation
+**Error control** (`ProfileSettings.rtol`, `atol`, `dtMax`; defaults 1e-2, 1e-4, 0.5 s; `settings.ts` keeps them in the domain of the control:
+rtol > 0, atol ≥ 0, dtMax ≥ the shortest step of 1 µs. A value outside it stalls the shot without an error, a step limit of zero never advances the
+kernel and a tolerance that is not a number rejects every step, so it is replaced by the default, or by the shortest step for a positive limit
+below it, and `ProfileContext` issues one warning per replacement at t = 0; a shared link, a library call or a hand-written configuration reaches
+the model unchecked). The embedded estimate of the local truncation
 error, a linear combination of R_n Δt and the three states that costs no further evaluation, is converted to T_e, T_i, n_e and ψ and
 compared with `atol · max|y| + rtol · |y|` in every cell; the step is accepted when the largest ratio is at most 1. The raw estimate
 is filtered with the inverse of the iteration matrix, `(I − dΔt J)⁻¹`, which is one more solve of each system with the frozen
@@ -256,6 +261,17 @@ the time constant τ_R/λ₁² = μ0 σ a²/14.68 (λ₁ = 3.832 the first zero 
 after a step of I_p the enclosed current is I(x, t)/I_p = x² − Σ a_n x J1(λ_n x) e^{−λ_n² t/τ_R} with a_n = 2/(λ_n J2(λ_n)).
 `currentDiffusion.test.ts` steps the solver with TR-BDF2 and finds the series to 2·10⁻³ of I_p at 0.02, 0.1 and 0.5 τ_R, the relaxation
 time to 2 %, and second-order convergence in Δt.
+
+**The initial current profile.** `ProfileModel.initialState` integrates ψ′ = Φ_b ρ̂/(π q) over the cells from the q profile of the equilibrium. The
+Grad–Shafranov tables carry the current of the equilibrium, which is I_p only to the accuracy of the solver's line integrals (`eq.prof.Ienc` at
+the last surface is 1.0006 to 1.0012 I_p on the presets), while the current equation takes I_p as its boundary condition: the enclosed current at
+the last interior face came out above I_p and the outermost cell carried a negative current, −5.8·10⁻⁴ I_p on ITER15 (the packed cell holds
+5·10⁻⁴ I_p; the uniform grid's cell swallowed the mismatch). The profile is scaled by I_p over that enclosed current (`equilibriumCurrentScale`;
+1 when the table gives no usable value), so the shape is the equilibrium's, the current is the boundary current, q of the initial state is
+0.1 % higher, and every cell of the t = 0 profile is positive (`initialCurrent.test.ts`: ITER15, JET15, SPARC15, DEMO15 and DIIID15 with both
+grids, SPARC15 at nRho 30). MASTU15 keeps a negative outermost cell at t = 0 (the base has it on the uniform grid too): the last interval of its
+surface table, ρ̂ 0.886 → 1, is too coarse for a q that diverges at the X-point, and the enclosed current stays above I_p at the last interior face
+after the scaling (1.003 I_p on the packed grid); a finer table (`nSurf`) is the fix and belongs to the coupling lane.
 
 **The plasma current as the boundary condition** (`control/plasmaCurrent.ts`). I_p enters the stages at their ends: I_p(t + γΔt) in the first stage
 of a TR-BDF2 step, I_p(t + Δt) in the second, I_p(t) of the old state in the explicit rate; the state scalar `Ip` holds the value at the end of the last
@@ -469,6 +485,8 @@ model take part as soon as they implement the hooks; other parts are listed in
 | `fvsolver.test.ts` | the solvers' right-hand sides against their solutions, the reference state and explicit rate of a stage, the error-estimate filter, the Pereverzev–Corrigan term (a fixed point stays fixed; the frozen-χ iteration on a steep χ cycles and the stabilised one converges) |
 | `../numerics/blockTridiagN.test.ts`, `../numerics/newton.test.ts` | the block-tridiagonal solver for block sizes 1 to 5 against dense LU (pivoting inside blocks, several right-hand sides, singular blocks), the coloured Jacobian against the column-by-column one and a linear map, the damped Newton iteration (quadratic convergence, the chord variant, the line search, the bounds, a Jacobian passed in, the failure reasons) |
 | `solver/newtonStage.test.ts` | the residual of a stage is a function of the state alone, its coloured Jacobian is the Jacobian, its root is the Picard fixed point, quadratic convergence on a smooth stage, the choice of the solver, the fallback (a shot with every Newton solve failing is the PC-Picard shot bit for bit), chunk invariance and exact rewind of a Newton shot |
+| `settings.test.ts` | the check of `rtol`, `atol` and `dtMax` (out-of-domain values, the shortest step) and shots that stall without it (a step limit of 0, −1 or NaN, a NaN or zero tolerance): the replacement is a warning at t = 0 and the shot is the default one bit for bit, stepped with a bound on the step count |
+| `initialCurrent.test.ts` | the current of the initial state: every cell of the t = 0 profile positive for the presets with both grids, the enclosed current of the last interior face below I_p, the scale of the equilibrium and its guards |
 | `currentDiffusion.test.ts` | the skin-time response of a uniform cylinder to a step of I_p against the Bessel series and its second order in Δt, the Φ̇_b term (a frozen flux is carried with the moving grid), the Hinton–Hazeltine form with a non-constant F, the plasma-current programme (waveform, a shot whose boundary current follows it) and the control `Ip_MA` (a change at a step boundary, the log replay, the rewind, no control when a programme drives the current) |
 | `solver/coupledStep.test.ts` | the TR-BDF2 step on whole shots: error control against a tight reference, `dtMax`, rejections and their counters, the energy identity, ELM counts against the step limit, the checkpoint of the counters |
 | `modules.test.ts` | state layout, work arrays, module wiring, checkpoint keys, the three plug-in interfaces (hooks and their call counts, particle source, state over accepted steps and rewinds) |

@@ -14,6 +14,7 @@ import { ProfilesPanel } from './panels/ProfilesPanel';
 import { PopconPanel } from './panels/PopconPanel';
 import { ImplosionPanel } from './panels/ImplosionPanel';
 import { GeometryPanel } from './panels/GeometryPanel';
+import { Viz3DPanel } from '../viz3d/Viz3DPanel';
 import { ErrorBoundary } from '../ErrorBoundary';
 
 interface Props { sim: SimApi; onReport: () => void; onSetup: () => void }
@@ -86,6 +87,10 @@ export function RunScreen({ sim, onReport, onSetup }: Props) {
       <div className="right">
         {isMag && last && guard(
           <CrossSectionPanel meta={meta} cfg={cfg as MagneticConfig} last={last} events={events}
+            disrupted={status === 'done' && !!state.report?.termination?.disruption} eqFrame={eqFrame} profFrame={profFrame} />,
+        )}
+        {isMag && last && guard(
+          <Viz3DPanel meta={meta} cfg={cfg as MagneticConfig} last={last} events={events}
             disrupted={status === 'done' && !!state.report?.termination?.disruption} eqFrame={eqFrame} profFrame={profFrame} />,
         )}
         {is15 && guard(<ProfilesPanel profFrame={profFrame} timeUnit={meta.timeUnit} />)}

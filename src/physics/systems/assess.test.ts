@@ -140,11 +140,26 @@ describe('assessSystems', () => {
   });
 
   it('report keys are finite numbers and the margin follows the stress', () => {
-    const s = assessSystems(inputOf(DEMO, { P_fus_MW: 2000 }));
-    const keys = systemsReportKeys(s);
-    for (const [k, v] of Object.entries(keys)) expect(isFinite(v), k).toBe(true);
-    expect(keys['TF stress margin']).toBeLessThan(0); // the DEMO preset's 1.0 m leg is over the 660 MPa limit in this model
+    // whatever the verdict on a preset's own leg thickness is (the presets are reviewed on their own, not pinned here), the report
+    // keys are finite and the sign of the margin and the warning follow the stress against the technology limit
+    for (const cfg of [DEMO, SPARC, ITER]) {
+      const s = assessSystems(inputOf(cfg, { P_fus_MW: 2000 }));
+      const keys = systemsReportKeys(s);
+      for (const [k, v] of Object.entries(keys)) expect(isFinite(v), `${k} of ${cfg.geometry.R} m`).toBe(true);
+      expect(Math.sign(keys['TF stress margin'])).toBe(Math.sign(MAGNET_TECH[cfg.magnet.tech].stress_MPa - s.tf.tresca_MPa));
+      expect(s.warnings.some((w) => w.startsWith('TF coil stress'))).toBe(s.tf.overstress);
+    }
+  });
+
+  it('a thin inboard leg is over the stress limit (negative margin, warning); the ITER leg is not', () => {
+    const thin: MagneticConfig = { ...ITER, magnet: { ...ITER.magnet, coilThickness_m: 0.3 } };
+    const s = assessSystems(inputOf(thin));
+    expect(s.tf.tresca_MPa).toBeGreaterThan(MAGNET_TECH[thin.magnet.tech].stress_MPa);
+    expect(systemsReportKeys(s)['TF stress margin']).toBeLessThan(0);
     expect(s.warnings.some((w) => w.startsWith('TF coil stress'))).toBe(true);
+    const iter = assessSystems(inputOf(ITER));
+    expect(systemsReportKeys(iter)['TF stress margin']).toBeGreaterThan(0);
+    expect(iter.warnings.some((w) => w.startsWith('TF coil stress'))).toBe(false);
   });
 });
 

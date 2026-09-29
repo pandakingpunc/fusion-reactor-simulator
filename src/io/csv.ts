@@ -22,7 +22,7 @@ export interface CsvOptions {
   newline?: '\n' | '\r\n';
   /** lines written before the header, each prefixed with '# ' */
   comments?: readonly string[];
-  /** write every n-th frame (default 1: all); the first frame is always written */
+  /** write every n-th frame (default 1: all); the first and the last frame are always written (the last carries the end state or the disruption) */
   every?: number;
 }
 
@@ -47,7 +47,8 @@ export function writeCsv(src: RunSource, opts: CsvOptions = {}): string {
   const every = Math.max(1, Math.floor(opts.every ?? 1));
   const nl = opts.newline ?? '\n';
   const rows: (number | string)[][] = [[opts.timeKey ?? 't', ...tab.columns.map((c) => c.key)]];
-  for (let i = 0; i < tab.t.length; i += every) rows.push([tab.t[i], ...tab.values.map((col) => col[i])]);
+  const n = tab.t.length;
+  for (let i = 0; i < n; i++) if (i % every === 0 || i === n - 1) rows.push([tab.t[i], ...tab.values.map((col) => col[i])]);
   const head = (opts.comments ?? []).map((c) => `# ${c.replace(/[\r\n]+/g, ' ')}${nl}`).join('');
   return head + csvFromRows(rows, opts);
 }

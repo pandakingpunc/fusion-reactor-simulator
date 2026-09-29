@@ -100,11 +100,19 @@ describe('writeCsv round trip', () => {
     expect(p.columns.nonexistent.every(Number.isNaN)).toBe(true);
     expect(p.columns.Q).toEqual(src.history.map((f) => f.d.Q));
   });
-  it('writes every n-th frame, always the first', () => {
+  it('writes every n-th frame, always the first and the last', () => {
     const { src } = jet();
+    const n = src.history.length;
     const p = parseCsv(writeCsv(src, { every: 100, keys: ['Q'] }));
-    expect(p.columns.t).toEqual(src.history.filter((_, i) => i % 100 === 0).map((f) => f.t));
+    expect(p.columns.t).toEqual(src.history.filter((_, i) => i % 100 === 0 || i === n - 1).map((f) => f.t));
     expect(p.columns.t[0]).toBe(0);
+    expect(p.columns.t[p.columns.t.length - 1]).toBe(src.history[n - 1].t);
+    // a stride that does not divide n-1 still ends on the last frame (before the fix it stopped one stride short)
+    const q = parseCsv(writeCsv(src, { every: 7, keys: ['Q'] }));
+    expect(q.columns.t[q.columns.t.length - 1]).toBe(src.history[n - 1].t);
+    // and no frame is written twice when the last one is on the stride
+    const r = parseCsv(writeCsv(src, { every: n - 1, keys: ['Q'] }));
+    expect(r.columns.t).toEqual([src.history[0].t, src.history[n - 1].t]);
   });
   it('writes comment lines first (single-line, prefixed) and a CRLF file reads back the same', () => {
     const { src } = jet();

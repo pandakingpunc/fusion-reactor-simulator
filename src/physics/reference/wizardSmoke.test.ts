@@ -13,8 +13,6 @@ import type { MagneticConfig, Method, ReactorConfig } from '../types';
 import { METHOD_INFO, PRESETS, setPath } from '../../ui/wizard/schema';
 import { NONE, WizardCase, buildConfig, canBlank, fieldArbitrary, showCase, wizardCase, wizardFields } from '../../testing/wizardCases';
 import { forAll, mulberry32 } from '../../testing/prop';
-import { INTEGRATOR_FIXED } from '../../testing/knownBugs';
-import { pinUntil } from '../../testing/pinUntil';
 
 /**
  * Integrator steps allowed for one output step: typical cases need ~20, the largest regular ones
@@ -31,11 +29,10 @@ function smoke(c: WizardCase, slices = 20): void {
     sim.advance(sim.model.outputDt / slices);
     if (sim.nSteps > STEP_BUDGET) expect.fail(`integration stalled: ${sim.nSteps} steps before t = ${sim.t} (output step ${sim.model.outputDt})`);
   }
-  const hint = Number.isNaN(sim.t) && !INTEGRATOR_FIXED ? ' — the time itself is NaN: see BUG(ws2a) "NaN step size" in numericsProps.test.ts' : '';
   for (const f of sim.history) {
-    for (const [k, v] of Object.entries(f.d)) if (!Number.isFinite(v)) expect.fail(`diagnostic ${k} = ${v} at t = ${f.t}${hint}`);
+    for (const [k, v] of Object.entries(f.d)) if (!Number.isFinite(v)) expect.fail(`diagnostic ${k} = ${v} at t = ${f.t}`);
   }
-  sim.y.forEach((v, i) => { if (!Number.isFinite(v)) expect.fail(`state[${i}] = ${v} at t = ${sim.t}${hint}`); });
+  sim.y.forEach((v, i) => { if (!Number.isFinite(v)) expect.fail(`state[${i}] = ${v} at t = ${sim.t}`); });
 }
 
 const METHODS = Object.keys(METHOD_INFO) as Method[];
@@ -72,7 +69,7 @@ describe('pinned wizard counterexamples', () => {
     expect(() => new Simulation(buildConfig(c))).not.toThrow();
   });
   // one advance() call, as the UI and CLI do: slicing the step changes the trial step sizes
-  pinUntil(INTEGRATOR_FIXED).each(pinned.map((c) => [showCase(c), c] as const))('BUG(ws2a) NaN step size — stays finite: %s', (_label, c) => {
+  it.each(pinned.map((c) => [showCase(c), c] as const))('BUG(ws2a) NaN step size — stays finite: %s', (_label, c) => {
     smoke(c, 1);
   });
 });

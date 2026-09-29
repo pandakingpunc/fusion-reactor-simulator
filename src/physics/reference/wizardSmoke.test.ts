@@ -13,7 +13,7 @@ import type { MagneticConfig, Method, ReactorConfig } from '../types';
 import { METHOD_INFO, PRESETS, setPath } from '../../ui/wizard/schema';
 import { NONE, WizardCase, buildConfig, canBlank, fieldArbitrary, showCase, wizardCase, wizardFields } from '../../testing/wizardCases';
 import { forAll, mulberry32 } from '../../testing/prop';
-import { BLANK_DEFAULTS_FIXED, INTEGRATOR_FIXED } from '../../testing/knownBugs';
+import { INTEGRATOR_FIXED } from '../../testing/knownBugs';
 import { pinUntil } from '../../testing/pinUntil';
 
 /**
@@ -156,14 +156,14 @@ describe('blank wizard fields', () => {
     expectSameRun(oneStep(lcfs(undefined, undefined)), oneStep(lcfs(g.kappa, g.delta)));
   });
 
-  // Was BUG(ws2a), fixed in profiles/context.ts (see BLANK_DEFAULTS_FIXED in src/testing/knownBugs.ts). A
+  // Was BUG(ws2a), fixed in profileSettings() (profiles/context.ts) by ws3d. A
   // blank number input stores undefined and RUN is allowed for fields with a model default (`def`);
   // ProfileModel used to let the undefined override DEFAULT_PROFILE_SETTINGS: one output step of each
   // single-field blank over every magnetic preset (0D and 1.5D; v4/integration af38dbe) failed 131 of 261
   // times — "solveBlockTridiag2: tekil blok" for χ shape, χ_i/χ_e, D/χ_e, stiffness, R/L_T crit, ECRH ρ and
   // width, ICRH width, NBI R_tan, n_sep; "Invalid array length" for N_ρ; T_ped = undefined for the pedestal
   // width. Reproduction: setPath(ITER15, 'profiles.DoverChi', undefined), then advance one output step.
-  pinUntil(BLANK_DEFAULTS_FIXED)('blank 1.5D fields with a model default run exactly as that default (MAST-U 1.5D; was BUG(ws2a))', () => {
+  it('blank 1.5D fields with a model default run exactly as that default (MAST-U 1.5D; was BUG(ws2a))', () => {
     const fields = wizardFields('spherical_tokamak').filter((f) => (f.type ?? 'number') === 'number' && f.def !== undefined);
     expect(fields.length).toBeGreaterThan(10);
     const base = setPath(presetCfg('MASTU'), 'fidelity', '1.5D');

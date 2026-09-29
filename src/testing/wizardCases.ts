@@ -16,7 +16,6 @@ import type { Method, ReactorConfig } from '../physics/types';
 import * as schema from '../ui/wizard/schema';
 import { FieldDef, PRESETS, fieldVisible, setPath, stepsFor } from '../ui/wizard/schema';
 import { Arbitrary, gen } from './prop';
-import { BLANK_DEFAULTS_FIXED } from './knownBugs';
 
 /** the empty select option ("none") or a blank number input; an absent edit is plain undefined */
 export const NONE = '<none>';
@@ -34,13 +33,12 @@ export const P_BLANK = 0.25;
 const schemaIsRequired = (schema as unknown as { isRequired?: (f: FieldDef) => boolean }).isRequired;
 
 /**
- * Whether the wizard can hand the simulator a configuration with this number field blank. Fields with
- * a model default (`def`) are left out while BLANK_DEFAULTS_FIXED is false (see knownBugs.ts; the fix
- * is tested in wizardSmoke.test.ts), so that the property keeps covering everything else.
+ * Whether the wizard can hand the simulator a configuration with this number field blank (a field with
+ * a model default, `def`, runs as that default: tested in wizardSmoke.test.ts).
  */
 export function canBlank(f: FieldDef): boolean {
   if ((f.type ?? 'number') !== 'number' || !schemaIsRequired || schemaIsRequired(f)) return false;
-  return BLANK_DEFAULTS_FIXED || f.def === undefined;
+  return true;
 }
 
 export interface WizardCase {

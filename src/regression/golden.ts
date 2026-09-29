@@ -32,7 +32,7 @@ import { Simulation } from '../physics/simulation';
 import { ProfileModel, supportsProfiles } from '../physics/profiles/model';
 import { flatTopAverages } from '../physics/analysis/flatTop';
 import type { FuelType } from '../physics/reactivity';
-import type { EqSnapshot, Fidelity, HistoryFrame, MagneticConfig, ReactorConfig, ShotReport } from '../physics/types';
+import type { EqSnapshot, Fidelity, HistoryFrame, MagneticConfig, ProfileSettings, ReactorConfig, ShotReport } from '../physics/types';
 
 /** 2: + meta.fuel, history, geometry, profiles, equilibrium (a format change: schema-1 values are unchanged) */
 export const GOLDEN_SCHEMA = 2;
@@ -53,7 +53,7 @@ export interface GoldenCase {
    * Settings changed from the preset, for combinations no preset uses (the wizard offers every
    * fuel for every method and 1.5D for both tokamak methods). Plain data: cases go to workers.
    */
-  overrides?: { fuel?: FuelType; fidelity?: Fidelity; n_target?: number };
+  overrides?: { fuel?: FuelType; fidelity?: Fidelity; n_target?: number; profiles?: Partial<ProfileSettings> };
 }
 
 /**
@@ -61,7 +61,8 @@ export interface GoldenCase {
  * that the whole suite runs in well under a minute on 4 threads; DEMO/DEMO15 still reach burn.
  * SPARC15-short is a 3 s variant of SPARC15 (ramp-up, L–H transition, first ELMs) for the fast
  * vitest subset. The variants after MUON cover what no preset does: D-³He and p-¹¹B in 0D and
- * 1.5D, 1.5D D-D, 1.5D spherical tokamak, and the two fuels in an FRC and a mirror.
+ * 1.5D, 1.5D D-D, 1.5D spherical tokamak, and the two fuels in an FRC and a mirror. SPARC15-redl is SPARC15 with the Redl et al. bootstrap
+ * and conductivity coefficients (`profiles.neoclassicalModel: 'redl'`, lane ws6c): an opt-in module has one short case with it switched on.
  *
  * ITER-pB11 keeps the target density of the ITER preset before v4.0 (1.0e20 m^-3): p-11B fuel radiates more than it burns there and the shot
  * ends in a radiative-collapse disruption at about 28 s, the one golden case with a thermal quench, current quench and termination
@@ -95,6 +96,7 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
   { id: 'ITER-pB11', preset: 'ITER', tEnd: 100, overrides: { fuel: 'pB11', n_target: 1.0e20 } },
   { id: 'SPARC15-DHe3', preset: 'SPARC15', tEnd: 3, overrides: { fuel: 'DHe3' } },
   { id: 'SPARC15-pB11', preset: 'SPARC15', tEnd: 3, overrides: { fuel: 'pB11' } },
+  { id: 'SPARC15-redl', preset: 'SPARC15', overrides: { profiles: { neoclassicalModel: 'redl' } } },
   { id: 'DIIID15', preset: 'DIIID', tEnd: 3, overrides: { fidelity: '1.5D' } },
   { id: 'MASTU15', preset: 'MASTU', overrides: { fidelity: '1.5D' } },
   { id: 'TAE-pB11', preset: 'TAE', overrides: { fuel: 'pB11' } },
@@ -138,6 +140,10 @@ export function caseConfig(c: GoldenCase): ReactorConfig {
   if (o.n_target !== undefined) {
     if (!('n_target' in cfg)) throw new Error(`golden case ${c.id}: preset ${c.preset} (${cfg.method}) has no n_target setting`);
     cfg = { ...cfg, n_target: o.n_target } as ReactorConfig;
+  }
+  if (o.profiles !== undefined) {
+    if (!runsProfiles(cfg)) throw new Error(`golden case ${c.id}: profile settings need a 1.5D case, ${c.preset} (${cfg.method}) does not run the profile model`);
+    cfg = { ...cfg, profiles: { ...(cfg as MagneticConfig).profiles, ...o.profiles } } as ReactorConfig;
   }
   if (c.tEnd === undefined) return cfg;
   if (!('t_end' in cfg)) throw new Error(`golden case ${c.id}: preset ${c.preset} (${cfg.method}) has no t_end to shorten`);

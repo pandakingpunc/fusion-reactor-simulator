@@ -273,6 +273,11 @@ describe('golden cases', () => {
     expect(iter.n_target).not.toBe(1.0e20);
     expect(iter.fuel).toBe('DT');
     expect(() => caseConfig({ id: 'x', preset: 'NIF', overrides: { n_target: 1e20 } })).toThrow(/has no n_target setting/);
+    // profile settings: merged into a copy of the preset's, only for a case that runs the profile model
+    const redl = caseConfig(goldenCase('SPARC15-redl')) as MagneticConfig;
+    expect(redl.profiles?.neoclassicalModel).toBe('redl');
+    expect((PRESETS.find((p) => p.id === 'SPARC15')!.cfg as MagneticConfig).profiles?.neoclassicalModel).toBeUndefined();
+    expect(() => caseConfig({ id: 'x', preset: 'JET', overrides: { profiles: { neoclassicalModel: 'redl' } } })).toThrow(/need a 1\.5D case/);
   });
 
   it('the stored suite keeps a shot that ends in a disruption, so that the quench frames, the disruption report and its termination label are under golden', () => {

@@ -15,6 +15,7 @@ import { METRIC_KEYS, MetricKey } from './metrics';
 import { ParamSpec, PriorSet, defaultPriors, H98_SIGMA } from './priors';
 import { parseDist } from './distributions';
 import type { ScanAxis, ScanResult } from './scan';
+import type { DesignReport } from './design';
 
 /** The preset with this id (the ids of the `validate` CLI); throws RangeError listing the valid ones. */
 export function presetConfig(id: string): ReactorConfig {
@@ -184,5 +185,39 @@ export function formatScan(r: ScanResult, maxRows = 25): string {
     L.push(`  ${names.map((n) => fmt(p.values[n]).padStart(12)).join(' ')} ${fmt(m?.Q_flat).padStart(9)} ${fmt(m?.Pfus_flat_MW).padStart(12)} ${fmt(m?.nG_max).padStart(8)} ${fmt(m?.betaN_max).padStart(9)}  ${p.endReason}`);
   }
   if (r.points.length > maxRows) L.push(`  ... ${r.points.length - maxRows} more points (see --csv / --json)`);
+  return L.join('\n') + '\n';
+}
+
+/** --param style bound NAME=LO:HI for optimize (design variable bounds). */
+export function parseBound(text: string): { name: string; lo: number; hi: number } {
+  const [name, rhs] = splitAssign(text, '--bound');
+  const parts = rhs.split(':');
+  const lo = Number(parts[0]), hi = Number(parts[1]);
+  if (parts.length !== 2 || parts[0].trim() === '' || parts[1].trim() === '' || !Number.isFinite(lo) || !Number.isFinite(hi)) throw new RangeError(`--bound ${text}: expected NAME=LO:HI with finite numbers`);
+  if (!(hi > lo)) throw new RangeError(`--bound ${text}: HI must exceed LO`);
+  return { name, lo, hi };
+}
+
+/** Human-readable summary of an optimize report. */
+export function formatDesign(r: DesignReport): string {
+  const L: string[] = [];
+  const res = r.result, p = r.problem;
+  L.push(`Design optimisation of ${p.preset ?? 'the configuration'}: ${res.objective.label} (${p.objective}) ${p.objective === 'fusion-power' || p.objective === 'gain' ? 'maximised' : 'minimised'}`);
+  L.push(wrap(r.caveat), '');
+  L.push(`${res.feasible ? 'Optimum' : 'NO FEASIBLE DESIGN FOUND; least violated design'}: ${res.objective.label} = ${fmt(res.objective.value)} ${res.objective.unit} (preset machine: ${fmt(res.objective.preset)} ${res.objective.unit})`);
+  L.push('', 'Variables:');
+  L.push(`  ${'name'.padEnd(8)} ${'value'.padStart(10)} ${'preset'.padStart(10)}  bounds`);
+  for (const v of res.variables) L.push(`  ${v.name.padEnd(8)} ${fmt(v.value).padStart(10)} ${fmt(v.preset).padStart(10)}  [${fmt(v.lo)}, ${fmt(v.hi)}]${v.atBound ? `  at ${v.atBound} bound` : ''}`);
+  L.push('', 'Constraints:');
+  for (const c of res.constraints) {
+    L.push(`  ${c.satisfied ? (c.active ? 'ACTIVE  ' : 'ok      ') : 'VIOLATED'} ${(c.label + fmt(c.limit)).padEnd(38)} value ${fmt(c.value).padStart(9)}   multiplier ${fmt(c.multiplier)}`);
+  }
+  const o = res.optimum;
+  L.push('', 'Operating point:');
+  L.push(`  Q ${fmt(o.Q)}, P_aux ${fmt(o.Paux_MW)} MW, P_fus ${fmt(o.Pfus_MW)} MW, T ${fmt(o.T_keV)} keV, n_vol ${fmt(o.n_vol_m3)} m^-3 (n/nG ${fmt(o.nOverNG)}), tau_E ${fmt(o.tauE_s)} s`);
+  L.push(`  beta_N ${fmt(o.betaN)}, q95 ${fmt(o.q95)}, P_L/P_LH ${fmt(o.PLoverPLH)}, He ash ${fmt(o.fHe)}, V ${fmt(o.V_m3)} m^3, B_coil ${fmt(o.B_coil_T)} T, A ${fmt(o.aspect)}, wall load ${fmt(o.wallLoad_MWm2)} MW/m^2`);
+  const s = res.solver;
+  L.push('', `Solver: ${s.method}, ${s.starts} starts (best: #${s.bestStart + 1}), ${s.evals} evaluations, ${s.outer} outer iterations, ${s.reason}, constraint violation ${s.violation.toExponential(1)}`);
+  L.push(`input hash ${r.inputHash}`);
   return L.join('\n') + '\n';
 }

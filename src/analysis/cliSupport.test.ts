@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { ITER, JET, SPARC } from '../physics/presets';
 import { EnsembleResult, planEnsemble, resolveSpec, summarizeEnsemble } from './ensemble';
-import { buildPriors, fmt, formatEnsemble, formatScan, parseAxis, parseLevels, parseParam, parseProbability, presetConfig } from './cliSupport';
+import { buildPriors, fmt, formatDesign, formatEnsemble, formatScan, parseAxis, parseBound, parseLevels, parseParam, parseProbability, presetConfig } from './cliSupport';
 import { METRIC_KEYS, MetricKey, RunMetrics } from './metrics';
 import { defaultPriors } from './priors';
 import { planScan, summarizeScan } from './scan';
+import { designReport } from './design';
 import type { SimOutcome } from './ensemble';
 
 describe('flag syntaxes', () => {
@@ -141,5 +142,34 @@ describe('text reports', () => {
       { ok: true, metrics: metrics() }, { ok: true, metrics: metrics() },
     ]);
     expect(formatScan(sampled)).toMatch(/axis H98: 0\.8 \.\.\. 1\.2 \(log\)/);
+  });
+});
+
+describe('design flags and report', () => {
+  it('--bound NAME=LO:HI', () => {
+    expect(parseBound('R=5:7')).toEqual({ name: 'R', lo: 5, hi: 7 });
+    expect(parseBound(' T = 4 : 30 ')).toEqual({ name: 'T', lo: 4, hi: 30 });
+    expect(() => parseBound('R')).toThrow(/expected PATH=VALUE/);
+    expect(() => parseBound('R=5')).toThrow(/expected NAME=LO:HI/);
+    expect(() => parseBound('R=5:7:9')).toThrow(/expected NAME=LO:HI/);
+    expect(() => parseBound('R=a:7')).toThrow(/finite numbers/);
+    expect(() => parseBound('R=:7')).toThrow(/finite numbers/);
+    expect(() => parseBound('R=7:5')).toThrow(/HI must exceed LO/);
+  });
+
+  it('formatDesign: optimum, variables with bound flags, constraints with their status, operating point, solver line', () => {
+    const feasible = formatDesign(designReport({ base: ITER, objective: 'gain', variables: ['fG', 'T'], constraints: { qMin: null, q95Min: 2.5 }, startTemperatures: [8] }, 'ITER'));
+    expect(feasible).toMatch(/^Design optimisation of ITER: steady-state Q \(gain\) maximised\n/);
+    expect(feasible).toMatch(/EDUCATIONAL/);
+    expect(feasible).toMatch(/Optimum: steady-state Q = [0-9.e+]+ {1,2}\(preset machine: /);
+    expect(feasible).toMatch(/fG +[0-9.]+ +0\.85 +\[0\.1, 1\]/);
+    expect(feasible).toMatch(/ACTIVE +/);
+    expect(feasible).toMatch(/ok +beta_N <= 3\.5/);
+    expect(feasible).toMatch(/Operating point:/);
+    expect(feasible).toMatch(/Solver: augmented Lagrangian \+ Nelder-Mead, 1 starts \(best: #1\)/);
+    const bad = formatDesign(designReport({ base: ITER, objective: 'major-radius', variables: ['fG', 'T'], constraints: { qMin: 1e4 }, startTemperatures: [8], solver: { maxOuter: 3, maxEvals: 4000 } }));
+    expect(bad).toMatch(/NO FEASIBLE DESIGN FOUND; least violated design/);
+    expect(bad).toMatch(/VIOLATED steady-state Q >= 10000/);
+    expect(bad).toMatch(/major radius R \(major-radius\) minimised/);
   });
 });

@@ -1,10 +1,11 @@
+// @vitest-environment jsdom
 import { beforeAll, describe, expect, it } from 'vitest';
 import { PopconGrid, computePopcon } from '../../physics/popcon';
 import { ITER, SPARC, W7X } from '../../physics/presets';
 import { deviceTmax, popconAxes } from '../../worker/popconHost';
 import { canvasRecorder } from '../testing/canvasRecorder';
 import { FrameColumns } from './lod';
-import { POPCON_PAD, PopconView, cellAt, cellColor, contourSegments, drawPopcon, fromPx, inPlot, niceTicks, plotRect, readoutAt, toPx, trajectoryOf } from './popconRender';
+import { MapLayer, POPCON_PAD, PopconView, cellAt, cellColor, contourSegments, drawMap, drawOverlay, drawPopcon, fromPx, heatingContour, inPlot, niceTicks, plotRect, readoutAt, toPx, trajectoryOf } from './popconRender';
 
 let iterGrid: PopconGrid, iterView: PopconView;
 beforeAll(() => {
@@ -267,5 +268,112 @@ describe('drawPopcon', () => {
     drawPopcon(rec.ctx, g, { width: 320, height: 260, ...popconAxes(g, Tmax) }, SPARC, { point: { n: 3e20, T: 10 } });
     const ticks = rec.lastDraw().filter((c) => c.name === 'fillText' && c.args[2] !== undefined).map((c) => c.args[0]);
     expect(ticks).toContain(String(Tmax)); // the top of the temperature axis is labelled
+  });
+});
+
+describe('drawMap / drawOverlay: the map and what moves over it', () => {
+  it('drawPopcon is the map and then the overlay; the overlay does not clear the map', () => {
+    const a = canvasRecorder(), b = canvasRecorder();
+    const overlay = { point: { n: 0.9e20, T: 8 }, hover: { n: 0.5e20, T: 12 }, heatingMW: 50 };
+    drawPopcon(a.ctx, iterGrid, iterView, ITER, overlay);
+    drawMap(b.ctx, iterGrid, iterView, ITER);
+    const mapCalls = b.calls.length;
+    drawOverlay(b.ctx, iterGrid, iterView, overlay);
+    expect(b.calls.map((c) => c.name)).toEqual(a.calls.map((c) => c.name)); // the same drawing, in the same order
+    expect(b.calls.slice(mapCalls).some((c) => c.name === 'clearRect' || c.name === 'fillRect')).toBe(false);
+    expect(b.draws()).toBe(1);
+  });
+
+  it('the map has no trajectory, point or cross-hair, and the overlay has no cells', () => {
+    const rec = canvasRecorder();
+    drawMap(rec.ctx, iterGrid, iterView, ITER);
+    expect(rec.calls.some((c) => c.name === 'arc')).toBe(false);
+    rec.reset();
+    drawOverlay(rec.ctx, iterGrid, iterView, { point: { n: 1e20, T: 5 }, trajectory: { n: [1e19, 2e19], T: [1, 2] } });
+    expect(rec.calls.filter((c) => c.name === 'fillRect')).toHaveLength(0);
+    expect(rec.calls.filter((c) => c.name === 'arc').length).toBe(2); // the start of the path and the operating point
+    expect(rec.calls[0].name).toBe('save'); // clipped to the plot
+  });
+
+  it('a precomputed heating contour is drawn as given, without looking for it again', () => {
+    const rec = canvasRecorder();
+    const seg = [1e19, 2, 5e19, 9];
+    drawOverlay(rec.ctx, iterGrid, iterView, { heatingSegments: seg, heatingMW: 999 }); // 999 MW has no contour on this map: the segments win
+    const moves = rec.calls.filter((c) => c.name === 'moveTo');
+    expect(moves).toHaveLength(1);
+    expect(moves[0].args[0]).toBeCloseTo(toPx(iterView, 1e19, 2).x, 9);
+    const lines = rec.calls.filter((c) => c.name === 'lineTo');
+    expect(lines[0].args[1]).toBeCloseTo(toPx(iterView, 5e19, 9).y, 9);
+  });
+});
+
+describe('heatingContour', () => {
+  it('is the contour of P_aux at the power: its segments are the marching-squares ones, and none for a power that is not positive', () => {
+    const P = 60;
+    const seg = heatingContour(iterGrid, P);
+    expect(seg.length).toBeGreaterThan(0);
+    expect(seg.length % 4).toBe(0);
+    expect(seg).toEqual(contourSegments(iterGrid, (i, j) => iterGrid.Paux[i * iterGrid.ny + j] / 1e6, P));
+    // every endpoint lies inside the grid's nodes
+    const g = iterGrid;
+    for (let s = 0; s < seg.length; s += 2) {
+      expect(seg[s]).toBeGreaterThanOrEqual(g.n[0]);
+      expect(seg[s]).toBeLessThanOrEqual(g.n[g.nx - 1]);
+      expect(seg[s + 1]).toBeGreaterThanOrEqual(g.T[0]);
+      expect(seg[s + 1]).toBeLessThanOrEqual(g.T[g.ny - 1]);
+    }
+    expect(heatingContour(iterGrid, 0)).toEqual([]);
+    expect(heatingContour(iterGrid, -3)).toEqual([]);
+  });
+});
+
+describe('MapLayer', () => {
+  const inputs = () => ({ grid: iterGrid, view: iterView, cfg: ITER });
+
+  it('draws the map once into an offscreen canvas of the view size times the pixel ratio, and gives the same canvas back while nothing changed', () => {
+    const rec = canvasRecorder(); rec.install();
+    const layer = new MapLayer();
+    const { grid, view, cfg } = inputs();
+    const a = layer.get(grid, view, cfg, 2)!;
+    expect([a.width, a.height]).toEqual([2 * view.width, 2 * view.height]);
+    expect(layer.get(grid, { ...view }, cfg, 2)).toBe(a); // an equal view is the same key
+    expect(layer.redraws).toBe(1);
+    const cells = rec.of(a).calls.filter((c) => c.name === 'fillRect').length;
+    expect(cells).toBeGreaterThanOrEqual(256);
+    expect(rec.of(a).calls.some((c) => c.name === 'drawImage')).toBe(false);
+  });
+
+  it('is drawn again when the grid, the size, the axes, the limits or the pixel ratio change, on the same canvas', () => {
+    const rec = canvasRecorder(); rec.install();
+    const layer = new MapLayer();
+    const { grid, view, cfg } = inputs();
+    const a = layer.get(grid, view, cfg, 1)!;
+    const changes: [string, () => HTMLCanvasElement | null][] = [
+      ['grid', () => layer.get({ ...grid }, view, cfg, 1)],
+      ['width', () => layer.get(grid, { ...view, width: view.width + 1 }, cfg, 1)],
+      ['height', () => layer.get(grid, { ...view, height: view.height + 1 }, cfg, 1)],
+      ['nMax', () => layer.get(grid, { ...view, nMax: view.nMax * 1.1 }, cfg, 1)],
+      ['Tmax', () => layer.get(grid, { ...view, Tmax: view.Tmax * 1.1 }, cfg, 1)],
+      ['beta limit', () => layer.get(grid, view, { ...cfg, limits: { ...cfg.limits, betaN_limit: cfg.limits.betaN_limit + 0.5 } }, 1)],
+      ['Greenwald limit', () => layer.get(grid, view, { ...cfg, limits: { ...cfg.limits, greenwald_limit: 0.7 } }, 1)],
+      ['method', () => layer.get(grid, view, { ...cfg, method: 'stellarator' }, 1)],
+      ['ratio', () => layer.get(grid, view, cfg, 1.5)],
+    ];
+    let expected = 1;
+    for (const [name, change] of changes) {
+      expect(change(), name).toBe(a);
+      expect(layer.redraws, name).toBe(++expected);
+    }
+    // a limit the map does not use (q95) changes nothing
+    layer.get(grid, view, cfg, 1.5);
+    const n = layer.redraws;
+    layer.get(grid, view, { ...cfg, limits: { ...cfg.limits, q95_limit: 1 } }, 1.5);
+    expect(layer.redraws).toBe(n);
+  });
+
+  it('gives null when there is no 2D context (draw the map on the visible canvas then)', () => {
+    HTMLCanvasElement.prototype.getContext = (() => null) as unknown as HTMLCanvasElement['getContext'];
+    const { grid, view, cfg } = inputs();
+    expect(new MapLayer().get(grid, view, cfg, 1)).toBeNull();
   });
 });

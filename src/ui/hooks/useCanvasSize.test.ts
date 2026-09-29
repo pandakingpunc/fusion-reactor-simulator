@@ -106,9 +106,9 @@ describe('prepareCanvas', () => {
     const rec = canvasRecorder(); rec.install();
     const cv = document.createElement('canvas');
     const ctx = prepareCanvas(cv, 300, 200, 2);
-    expect(ctx).toBe(rec.ctx);
+    expect(ctx).toBe(rec.of(cv).ctx);
     expect([cv.width, cv.height]).toEqual([600, 400]);
-    expect(rec.calls.find((c) => c.name === 'setTransform')!.args).toEqual([2, 0, 0, 2, 0, 0]);
+    expect(rec.of(cv).calls.find((c) => c.name === 'setTransform')!.args).toEqual([2, 0, 0, 2, 0, 0]);
   });
 
   it('rounds to whole device pixels and scales exactly by the rounded size (fractional ratios)', () => {
@@ -116,7 +116,7 @@ describe('prepareCanvas', () => {
     const cv = document.createElement('canvas');
     prepareCanvas(cv, 333, 260, 1.25);
     expect([cv.width, cv.height]).toEqual([416, 325]);
-    const [a, , , d] = rec.calls.find((c) => c.name === 'setTransform')!.args as number[];
+    const [a, , , d] = rec.of(cv).calls.find((c) => c.name === 'setTransform')!.args as number[];
     expect(a).toBe(416 / 333);
     expect(d).toBe(325 / 260);
   });

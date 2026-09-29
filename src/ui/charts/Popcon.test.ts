@@ -40,6 +40,7 @@ function mount(props: Partial<PopconProps> = {}) {
   const utils = render(React.createElement(Popcon, { cfg: ITER, height: H, createWorker: f.create, ...props }));
   const w: FakePopconWorker = f.workers[0];
   const canvas = utils.container.querySelector('canvas')!;
+  canvasEl = canvas;
   /** run the worker's due stages and deliver the replies inside act(); returns the grids delivered */
   const step = (ms = 0): GridMsg[] => {
     let out: FromPopcon[] = [];
@@ -49,7 +50,12 @@ function mount(props: Partial<PopconProps> = {}) {
   return { ...utils, f, w, canvas, step };
 }
 const viewOf = (m: GridMsg): PopconView => ({ width: W, height: H, ...m.axes });
-const arcs = () => rec.lastDraw().filter((c) => c.name === 'arc');
+let canvasEl: HTMLCanvasElement | null = null; // the visible canvas of the latest mount
+/** the map layer is drawn offscreen and composited: what the latest drawing put on screen is the layer's calls, then the visible canvas's */
+const layerDraw = () => (canvasEl ? rec.except(canvasEl).flatMap((r) => r.lastDraw()) : []);
+const mainDraw = () => (canvasEl ? rec.of(canvasEl).lastDraw() : []);
+const everything = () => [...layerDraw(), ...mainDraw()];
+const arcs = () => everything().filter((c) => c.name === 'arc');
 const readout = () => screen.queryByTestId('popcon-readout')?.textContent ?? null;
 
 describe('Popcon: progressive map from the worker', () => {
@@ -60,11 +66,11 @@ describe('Popcon: progressive map from the worker', () => {
     const [preview] = step();
     expect(preview.grid.nx).toBe(16);
     expect(rec.draws()).toBeGreaterThan(0);
-    expect(rec.lastDraw().filter((c) => c.name === 'fillRect').length).toBeGreaterThanOrEqual(256);
+    expect(everything().filter((c) => c.name === 'fillRect').length).toBeGreaterThanOrEqual(256);
     expect(screen.getByText('preview 16×16')).toBeTruthy();
     const [fine] = step(POPCON_IDLE_MS);
     expect(fine.grid.nx).toBe(44);
-    expect(rec.lastDraw().filter((c) => c.name === 'fillRect').length).toBeGreaterThanOrEqual(44 * 44);
+    expect(everything().filter((c) => c.name === 'fillRect').length).toBeGreaterThanOrEqual(44 * 44);
     expect(screen.queryByText(/^preview/)).toBeNull();
   });
 
@@ -101,6 +107,45 @@ describe('Popcon: progressive map from the worker', () => {
   });
 });
 
+describe('Popcon: the map layer', () => {
+  it('the map is drawn once per grid and size: pointer moves and new frames only composite it and draw the overlay', () => {
+    const f = fakePopconFactory();
+    const props = (fr: UiFrame[]) => ({ cfg: ITER, height: H, createWorker: f.create, frames: fr });
+    const { container, rerender } = render(React.createElement(Popcon, props(frames(20))));
+    const cv = container.querySelector('canvas')!;
+    canvasEl = cv;
+    const w = f.workers[0];
+    act(() => { w.elapse(0); w.deliver(); });
+    expect(rec.except(cv)).toHaveLength(1); // the offscreen layer
+    const layer = () => rec.except(cv)[0];
+    expect(layer().draws()).toBe(1);
+    expect(layer().calls.filter((c) => c.name === 'fillRect').length).toBeGreaterThanOrEqual(256);
+    // the visible canvas holds no cells of its own, only the composite and the overlay
+    expect(rec.of(cv).calls.filter((c) => c.name === 'fillRect')).toHaveLength(0);
+    const drawsBefore = rec.of(cv).draws();
+    for (let k = 0; k < 12; k++) fireEvent.mouseMove(cv, { clientX: 100 + 5 * k, clientY: 100 });
+    rerender(React.createElement(Popcon, props(frames(40))));
+    rerender(React.createElement(Popcon, props(frames(60))));
+    expect(layer().draws()).toBe(1);
+    expect(layer().calls.filter((c) => c.name === 'fillRect').length).toBeLessThan(3 * 256); // still the one drawing
+    expect(rec.of(cv).draws()).toBeGreaterThanOrEqual(drawsBefore + 12);
+    // every redraw is one drawImage of the layer at full size
+    const composites = rec.of(cv).calls.filter((c) => c.name === 'drawImage');
+    expect(composites).toHaveLength(rec.of(cv).draws());
+    expect(composites[0].args.slice(1)).toEqual([0, 0, W, H]);
+    // the fine grid, a new size: the layer is drawn again
+    act(() => { w.elapse(POPCON_IDLE_MS); w.deliver(); });
+    expect(layer().draws()).toBe(2);
+    clientWidth = 300;
+    act(() => observers.forEach((cb) => cb()));
+    expect(layer().draws()).toBe(3);
+    // and once more per pixel ratio
+    Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: 2 });
+    act(() => { window.dispatchEvent(new Event('resize')); });
+    Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: 1 });
+  });
+});
+
 describe('Popcon: hover readout', () => {
   it('shows the values of the cell under the pointer, and the hint when the pointer leaves or is outside the plot', () => {
     const { canvas, step } = mount();
@@ -115,7 +160,7 @@ describe('Popcon: hover readout', () => {
     expect(text).toContain(`β_N ${fmtNum(m.grid.betaN[k])}`);
     expect(text).toContain(`T ${fmtNum(fromPx(v, p.x, p.y).T)} keV`);
     // the cross-hair follows the pointer
-    expect(rec.lastDraw().some((c) => c.name === 'moveTo' && Math.abs((c.args[0] as number) - p.x) < 1e-9 && c.args[1] === plotRect(v).y)).toBe(true);
+    expect(everything().some((c) => c.name === 'moveTo' && Math.abs((c.args[0] as number) - p.x) < 1e-9 && c.args[1] === plotRect(v).y)).toBe(true);
     // limits are named in words
     const ro = readoutAt(m.grid, ITER, v.nMax, v.Tmax, m.grid.n[i], m.grid.T[j])!;
     expect(text.includes('above the β_N limit')).toBe(ro.aboveBetaLimit);
@@ -201,6 +246,7 @@ describe('Popcon: click to steer', () => {
     const props = (fr: UiFrame[]) => ({ cfg: ITER, height: H, createWorker: f.create, onSteer, controls, frames: fr });
     const { container, rerender } = render(React.createElement(Popcon, props(frames(40))));
     const w = f.workers[0], canvas = container.querySelector('canvas')!;
+    canvasEl = canvas;
     let m!: GridMsg;
     act(() => { w.elapse(0); m = w.deliver()[0] as GridMsg; });
     const v = viewOf(m), p = toPx(v, m.grid.n[10], m.grid.T[7]), at = fromPx(v, p.x, p.y);
@@ -224,7 +270,7 @@ describe('Popcon: trajectory and operating point', () => {
     const start = arcs().find((c) => c.args[2] === 3)!;
     expect(start.args[0]).toBeCloseTo(toPx(v, 0.3e20, 1).x, 9);
     // path strokes in white of rising alpha
-    const alphas = rec.lastDraw().filter((c) => c.name === 'stroke' && /^rgba\(255,255,255,0\.\d+\)$/.test(String(c.strokeStyle)) && c.lineWidth === 1.6).map((c) => Number(String(c.strokeStyle).match(/0\.\d+/)![0]));
+    const alphas = everything().filter((c) => c.name === 'stroke' && /^rgba\(255,255,255,0\.\d+\)$/.test(String(c.strokeStyle)) && c.lineWidth === 1.6).map((c) => Number(String(c.strokeStyle).match(/0\.\d+/)![0]));
     expect(alphas.length).toBe(8);
     expect(alphas).toEqual([...alphas].sort((a, b) => a - b));
     expect(alphas[0]).toBeLessThan(alphas[7]);
@@ -233,13 +279,14 @@ describe('Popcon: trajectory and operating point', () => {
   it('a long run costs a bounded number of path vertices', () => {
     const { step } = mount({ frames: frames(40_000, 0.2, 1) });
     step();
-    const lineTos = rec.lastDraw().filter((c) => c.name === 'lineTo').length;
+    const lineTos = everything().filter((c) => c.name === 'lineTo').length;
     expect(lineTos).toBeLessThan(6000); // contours, frame ticks and the path: not 40 000 frames
   });
 
   it('follows the run: a new frame moves the operating point and redraws', () => {
     const f = fakePopconFactory();
     const { container, rerender } = render(React.createElement(Popcon, { cfg: ITER, height: H, createWorker: f.create, frames: frames(20) }));
+    canvasEl = container.querySelector('canvas');
     const w = f.workers[0];
     let m!: GridMsg;
     act(() => { w.elapse(0); m = w.deliver()[0] as GridMsg; });
@@ -254,7 +301,7 @@ describe('Popcon: trajectory and operating point', () => {
   it('draws the contour of the heating power applied now, dashed', () => {
     const { step } = mount({ frames: frames(10), heatingMW: 60 });
     step();
-    expect(rec.lastDraw().some((c) => c.name === 'setLineDash' && (c.args[0] as number[]).join() === '3,3')).toBe(true);
+    expect(everything().some((c) => c.name === 'setLineDash' && (c.args[0] as number[]).join() === '3,3')).toBe(true);
   });
 
   it('a frame without a density or temperature has no operating point (and no crash)', () => {
@@ -295,6 +342,7 @@ describe('PopconPanel', () => {
     const f = fakePopconFactory();
     const el = (p: Record<string, unknown>) => React.createElement(PopconPanel, { cfg: ITER, last, frames: [last], controls, onSteer: vi.fn(), createWorker: f.create, ...over, ...p });
     const utils = render(el({}));
+    canvasEl = utils.container.querySelector('canvas');
     return { ...utils, f, w: f.workers[0] as FakePopconWorker, again: (p: Record<string, unknown>) => utils.rerender(el(p)) };
   }
 
@@ -302,7 +350,7 @@ describe('PopconPanel', () => {
     const { w } = panel();
     expect(screen.getByText('Live POPCON')).toBeTruthy();
     act(() => { w.elapse(0); w.deliver(); });
-    expect(rec.lastDraw().some((c) => c.name === 'setLineDash' && (c.args[0] as number[]).join() === '3,3')).toBe(true); // the heating contour of last.d.P_aux
+    expect(everything().some((c) => c.name === 'setLineDash' && (c.args[0] as number[]).join() === '3,3')).toBe(true); // the heating contour of last.d.P_aux
     expect(arcs().some((c) => c.strokeStyle === '#ffffff' && c.args[2] === 5)).toBe(true);
   });
 

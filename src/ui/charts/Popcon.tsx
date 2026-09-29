@@ -6,7 +6,8 @@
  *
  * The grid is computed in a worker (usePopcon): a 16 × 16 preview while the controls move, the 44 × 44 map when they
  * rest. This component only draws it (popconRender.ts), at the width of its container and the device pixel ratio
- * (useCanvasSize).
+ * (useCanvasSize). The map (cells, contours, axes) is drawn once per grid and size into an offscreen layer; a new
+ * frame of the run or a movement of the pointer only composites it and draws the overlay.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MagneticConfig } from '../../physics/types';
@@ -16,7 +17,7 @@ import { fmtNum } from '../format';
 import { prepareCanvas, useCanvasSize } from '../hooks/useCanvasSize';
 import { useT } from '../state/store';
 import { FrameColumns } from './lod';
-import { MapPoint, PopconView, drawPopcon, fromPx, inPlot, readoutAt, trajectoryOf } from './popconRender';
+import { MapLayer, MapPoint, PopconView, drawOverlay, drawPopcon, fromPx, heatingContour, inPlot, readoutAt, trajectoryOf } from './popconRender';
 import { PopconWorkerFactory, steerPatch, usePopcon } from './usePopcon';
 
 export interface PopconProps {
@@ -52,6 +53,10 @@ export function Popcon({ cfg, frames, height = 260, heatingMW, controls, onSteer
   const last = frames && frames.length ? frames[frames.length - 1] : null;
   const point = useMemo<MapPoint | null>(() => (last && Number.isFinite(last.d.ne) && Number.isFinite(last.d.Ti) ? { n: last.d.ne * 1e20, T: last.d.Ti } : null), [last]);
 
+  // the contour of the heating power applied now, found again only when the grid or that power changes
+  const heatingSegments = useMemo(() => (grid && heatingMW != null && heatingMW > 0 ? heatingContour(grid, heatingMW) : null), [grid, heatingMW]);
+  const layerRef = useRef<MapLayer | null>(null);
+
   const [hover, setHover] = useState<MapPoint | null>(null);
   const [target, setTarget] = useState<{ p: MapPoint; Paux_MW: number } | null>(null);
 
@@ -65,8 +70,13 @@ export function Popcon({ cfg, frames, height = 260, heatingMW, controls, onSteer
     if (!cv || !grid || !view) return;
     const ctx = prepareCanvas(cv, width, height, dpr);
     if (!ctx) return;
-    drawPopcon(ctx, grid, view, cfg, { trajectory, point, target: target?.p ?? null, hover, heatingMW });
-  }, [ref, grid, view, cfg, trajectory, point, target, hover, heatingMW, width, height, dpr]);
+    const overlay = { trajectory, point, target: target?.p ?? null, hover, heatingSegments };
+    const layer = (layerRef.current ??= new MapLayer()).get(grid, view, cfg, dpr);
+    if (!layer) { drawPopcon(ctx, grid, view, cfg, overlay); return; }
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(layer, 0, 0, width, height);
+    drawOverlay(ctx, grid, view, overlay);
+  }, [ref, grid, view, cfg, trajectory, point, target, hover, heatingSegments, width, height, dpr]);
 
   const at = (e: React.MouseEvent<HTMLCanvasElement>): MapPoint | null => {
     if (!view) return null;

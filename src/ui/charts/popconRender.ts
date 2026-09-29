@@ -1,6 +1,6 @@
 /**
- * Drawing and hit-testing of the POPCON map (Plasma OPeration CONtour), independent of React: the component keeps the
- * canvas and the state, this module turns a grid into pixels and a pixel into a point of the map.
+ * Drawing and hit-testing of the POPCON map (Plasma OPeration CONtour), independent of the component: the component
+ * keeps the canvas and the state, this module turns a grid into pixels and a pixel into a point of the map.
  *
  * The map shows the auxiliary power P_aux a steady state needs at each (⟨n_e⟩, ⟨T⟩) (colour), the Q = P_fus/P_aux
  * contours, the Greenwald density, where β_N exceeds its limit (red) and where the loss power is below the L-H
@@ -12,6 +12,7 @@ import type { PopconGrid } from '../../physics/popcon';
 import type { MagneticConfig } from '../../physics/types';
 import { FrameColumns, lodIndices, mergeIndices } from './lod';
 import { fmtAxis } from '../format';
+import { prepareCanvas } from '../hooks/useCanvasSize';
 
 export const POPCON_PAD = { l: 50, r: 10, t: 8, b: 24 };
 
@@ -148,6 +149,8 @@ export interface PopconOverlay {
   hover?: MapPoint | null;
   /** auxiliary heating applied now [MW]: its contour is where a steady state at this power lies */
   heatingMW?: number | null;
+  /** the contour of `heatingMW`, when the caller has it already (`heatingContour`): saves finding it on every redraw */
+  heatingSegments?: readonly number[] | null;
 }
 
 const P_LEVELS: readonly { v: number; c: string; lbl: string }[] = [
@@ -161,10 +164,21 @@ export function cellColor(Paux_MW: number): string {
   return `rgba(${Math.round(60 + 190 * u)},${Math.round(100 - 60 * u)},${Math.round(230 - 200 * u)},0.75)`;
 }
 
+/** where a steady state at `power_MW` of auxiliary heating lies: the P_aux = power contour, as segments (contourSegments) */
+export function heatingContour(grid: PopconGrid, power_MW: number): number[] {
+  return power_MW > 0 ? contourSegments(grid, (i, j) => grid.Paux[i * grid.ny + j] / 1e6, power_MW) : [];
+}
+
 const FONT = '10px JetBrains Mono, monospace';
 
-/** Draw the map and its overlays. The canvas is assumed to be `view.width × view.height` CSS px (transform already set). */
-export function drawPopcon(ctx: CanvasRenderingContext2D, grid: PopconGrid, view: PopconView, cfg: Pick<MagneticConfig, 'method' | 'limits'>, overlay: PopconOverlay = {}): void {
+type MapCfg = Pick<MagneticConfig, 'method' | 'limits'>;
+
+/**
+ * The map itself: cells (P_aux colour, β_N above the limit in red, below the L-H threshold darkened), the Q contours,
+ * the Greenwald density, the frame, ticks, labels and the legend. It changes only with the grid, the size and the
+ * limits, so a chart draws it once into a `MapLayer` and only composites it on each redraw. Clears the canvas first.
+ */
+export function drawMap(ctx: CanvasRenderingContext2D, grid: PopconGrid, view: PopconView, cfg: MapCfg): void {
   const { nx, ny, T, Paux, Q, betaN, PLH_ok, nG } = grid;
   const { width, height, nMax, Tmax } = view;
   const r = plotRect(view);
@@ -174,7 +188,6 @@ export function drawPopcon(ctx: CanvasRenderingContext2D, grid: PopconGrid, view
   ctx.save();
   ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
   const dn = nMax / nx;
-  // cells: P_aux colour, β_N above the limit in red, below the L-H threshold darkened
   for (let i = 0; i < nx; i++) {
     const x0 = xp(i * dn), x1 = xp((i + 1) * dn);
     for (let j = 0; j < ny; j++) {
@@ -195,18 +208,46 @@ export function drawPopcon(ctx: CanvasRenderingContext2D, grid: PopconGrid, view
     for (let s = 0; s < seg.length; s += 4) { ctx.moveTo(xp(seg[s]), yp(seg[s + 1])); ctx.lineTo(xp(seg[s + 2]), yp(seg[s + 3])); }
     ctx.stroke();
   }
-  // the heating power applied now: where a steady state at this power lies
-  if (overlay.heatingMW != null && overlay.heatingMW > 0) {
-    const seg = contourSegments(grid, (i, j) => Paux[i * ny + j] / 1e6, overlay.heatingMW);
-    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2; ctx.setLineDash([3, 3]); ctx.beginPath();
-    for (let s = 0; s < seg.length; s += 4) { ctx.moveTo(xp(seg[s]), yp(seg[s + 1])); ctx.lineTo(xp(seg[s + 2]), yp(seg[s + 3])); }
-    ctx.stroke(); ctx.setLineDash([]);
-  }
-  // Greenwald density
   if (!stell && nG * cfg.limits.greenwald_limit < nMax) {
     const gx = xp(nG * cfg.limits.greenwald_limit);
     ctx.strokeStyle = '#ef476f'; ctx.lineWidth = 1.3; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(gx, r.y); ctx.lineTo(gx, r.y + r.h); ctx.stroke(); ctx.setLineDash([]);
     ctx.fillStyle = '#ef476f'; ctx.font = FONT; ctx.textAlign = 'left'; ctx.fillText('n_G', gx + 3, r.y + 10);
+  }
+  ctx.restore();
+  // frame, ticks and labels
+  ctx.strokeStyle = '#263044'; ctx.lineWidth = 1; ctx.strokeRect(r.x, r.y, r.w, r.h);
+  ctx.fillStyle = '#7f8ba3'; ctx.font = FONT; ctx.textAlign = 'center';
+  for (const v of niceTicks(nMax / 1e20, 5)) ctx.fillText(fmtAxis(v), xp(v * 1e20), height - 8);
+  ctx.fillText('n̄_e [10²⁰ m⁻³]', r.x + r.w / 2, height - 0.5);
+  ctx.textAlign = 'right';
+  for (const v of niceTicks(Tmax, 5)) ctx.fillText(fmtAxis(v), r.x - 4, yp(v) + 3);
+  ctx.save(); ctx.translate(11, r.y + r.h / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.fillText('T̄ [keV]', 0, 0); ctx.restore();
+  // legend
+  ctx.textAlign = 'left';
+  let ly = r.y + 14;
+  for (const lv of P_LEVELS) { ctx.fillStyle = lv.c; ctx.fillText(lv.lbl, r.x + r.w - 44, ly); ly += 12; }
+  ctx.fillStyle = '#06d6a0'; ctx.fillText('P_aux<0', r.x + r.w - 44, ly); ly += 12;
+  ctx.fillStyle = '#ef476f'; ctx.fillText('β_N>lim', r.x + r.w - 44, ly); ly += 12;
+  ctx.fillStyle = '#7f8ba3'; ctx.fillText('dark: P<P_LH', r.x + r.w - 74, ly);
+}
+
+/**
+ * What changes while the run goes on and the pointer moves, drawn over the map (without clearing it): the heating
+ * contour, the trajectory (older is fainter), the point the shot is steered to, the operating point and the hover
+ * cross-hair, all clipped to the plot rectangle.
+ */
+export function drawOverlay(ctx: CanvasRenderingContext2D, grid: PopconGrid, view: PopconView, overlay: PopconOverlay = {}): void {
+  const { nMax, Tmax } = view;
+  const r = plotRect(view);
+  const xp = (v: number) => r.x + (v / nMax) * r.w, yp = (v: number) => r.y + r.h - (v / Tmax) * r.h;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
+  // the heating power applied now: where a steady state at this power lies
+  const seg = overlay.heatingSegments ?? (overlay.heatingMW != null ? heatingContour(grid, overlay.heatingMW) : null);
+  if (seg && seg.length) {
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2; ctx.setLineDash([3, 3]); ctx.beginPath();
+    for (let s = 0; s < seg.length; s += 4) { ctx.moveTo(xp(seg[s]), yp(seg[s + 1])); ctx.lineTo(xp(seg[s + 2]), yp(seg[s + 3])); }
+    ctx.stroke(); ctx.setLineDash([]);
   }
   // trajectory of the run: older is fainter
   const tr = overlay.trajectory;
@@ -240,19 +281,36 @@ export function drawPopcon(ctx: CanvasRenderingContext2D, grid: PopconGrid, view
     ctx.moveTo(xp(hv.n), r.y); ctx.lineTo(xp(hv.n), r.y + r.h); ctx.moveTo(r.x, yp(hv.T)); ctx.lineTo(r.x + r.w, yp(hv.T)); ctx.stroke(); ctx.setLineDash([]);
   }
   ctx.restore();
-  // frame, ticks and labels
-  ctx.strokeStyle = '#263044'; ctx.lineWidth = 1; ctx.strokeRect(r.x, r.y, r.w, r.h);
-  ctx.fillStyle = '#7f8ba3'; ctx.font = FONT; ctx.textAlign = 'center';
-  for (const v of niceTicks(nMax / 1e20, 5)) ctx.fillText(fmtAxis(v), xp(v * 1e20), height - 8);
-  ctx.fillText('n̄_e [10²⁰ m⁻³]', r.x + r.w / 2, height - 0.5);
-  ctx.textAlign = 'right';
-  for (const v of niceTicks(Tmax, 5)) ctx.fillText(fmtAxis(v), r.x - 4, yp(v) + 3);
-  ctx.save(); ctx.translate(11, r.y + r.h / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.fillText('T̄ [keV]', 0, 0); ctx.restore();
-  // legend
-  ctx.textAlign = 'left';
-  let ly = r.y + 14;
-  for (const lv of P_LEVELS) { ctx.fillStyle = lv.c; ctx.fillText(lv.lbl, r.x + r.w - 44, ly); ly += 12; }
-  ctx.fillStyle = '#06d6a0'; ctx.fillText('P_aux<0', r.x + r.w - 44, ly); ly += 12;
-  ctx.fillStyle = '#ef476f'; ctx.fillText('β_N>lim', r.x + r.w - 44, ly); ly += 12;
-  ctx.fillStyle = '#7f8ba3'; ctx.fillText('dark: P<P_LH', r.x + r.w - 74, ly);
+}
+
+/** the whole picture: the map, then the overlay */
+export function drawPopcon(ctx: CanvasRenderingContext2D, grid: PopconGrid, view: PopconView, cfg: MapCfg, overlay: PopconOverlay = {}): void {
+  drawMap(ctx, grid, view, cfg);
+  drawOverlay(ctx, grid, view, overlay);
+}
+
+/**
+ * The map drawn once into an offscreen canvas. Finding the contours of a 44 × 44 grid takes about 3 ms of script,
+ * and the map used to be redrawn from scratch on every new frame of the run and every movement of the pointer; the
+ * layer is redrawn only when the grid, the size, the pixel ratio or the limits change, and every other redraw is
+ * one drawImage plus the overlay.
+ */
+export class MapLayer {
+  private canvas: HTMLCanvasElement | null = null;
+  private key: readonly unknown[] = [];
+  /** times the layer has been drawn (for tests) */
+  redraws = 0;
+
+  /** the layer for these inputs, or null where there is no offscreen canvas (draw the map directly then) */
+  get(grid: PopconGrid, view: PopconView, cfg: MapCfg, dpr: number): HTMLCanvasElement | null {
+    const key = [grid, view.width, view.height, view.nMax, view.Tmax, cfg.method, cfg.limits.betaN_limit, cfg.limits.greenwald_limit, dpr];
+    if (this.canvas && this.key.every((k, i) => Object.is(k, key[i]))) return this.canvas;
+    if (typeof document === 'undefined') return null;
+    const cv = this.canvas ?? document.createElement('canvas');
+    const ctx = prepareCanvas(cv, view.width, view.height, dpr);
+    if (!ctx) return null;
+    drawMap(ctx, grid, view, cfg);
+    this.canvas = cv; this.key = key; this.redraws++;
+    return cv;
+  }
 }

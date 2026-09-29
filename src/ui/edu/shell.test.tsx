@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import App from '../../App';
+import App, { preloadRunScreen } from '../../App';
 import { PRESETS, TAE } from '../../physics/presets';
 import { fakeWorkerFactory } from '../../worker/fakeWorker';
 import { AppStore, AppStoreContext, createAppStore } from '../state/store';
 import { installDomStubs } from '../testing/dom';
 
-beforeAll(installDomStubs);
+beforeAll(async () => { installDomStubs(); await preloadRunScreen(); });
 beforeEach(() => { localStorage.clear(); window.location.hash = ''; });
 afterEach(() => { cleanup(); window.location.hash = ''; });
 

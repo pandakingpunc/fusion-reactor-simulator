@@ -2,7 +2,7 @@
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import App from '../../App';
+import App, { preloadRunScreen } from '../../App';
 import { ITER, JET, PRESETS } from '../../physics/presets';
 import { FakePopconWorker, fakePopconFactory } from '../../worker/fakePopconWorker';
 import { FakeWorker, fakeWorkerFactory } from '../../worker/fakeWorker';
@@ -18,8 +18,9 @@ import { installDomStubs } from '../testing/dom';
  * PopconWorkerContext). Checks the wiring RunScreen gives the map: the live controls in, click-to-steer out.
  */
 const W = 420;
-beforeAll(() => {
+beforeAll(async () => {
   installDomStubs();
+  await preloadRunScreen();
   Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => W });
 });
 beforeEach(() => canvasRecorder().install());

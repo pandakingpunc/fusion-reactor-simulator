@@ -7,7 +7,7 @@ import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import App from '../../App';
+import App, { preloadRunScreen } from '../../App';
 import { Simulation } from '../../physics/simulation';
 import { PRESETS, TAE } from '../../physics/presets';
 import { ReactorConfig } from '../../physics/types';
@@ -26,7 +26,7 @@ import { persistTranslator, loadPersistTr } from './usePersistT';
 import { APP_VERSION } from './version';
 import type { SimApi } from '../useSim';
 
-beforeAll(installDomStubs);
+beforeAll(async () => { installDomStubs(); await preloadRunScreen(); });
 beforeEach(() => { window.location.hash = ''; });
 afterEach(() => { cleanup(); window.location.hash = ''; });
 

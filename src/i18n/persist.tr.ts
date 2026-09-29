@@ -73,9 +73,9 @@ export const persistTr: Record<PersistKey, string> = {
   'persist.imp.fields': 'Farklı alanlar: {fields}',
 
   'persist.verify.verified': 'Doğrulanmış yeniden üretim',
-  'persist.verify.verified.text': 'Dosyadaki girdileri yeniden koşturmak, dosyadaki parmak izini ve sayı sayı aynı son raporu verdi.',
+  'persist.verify.verified.text': 'Dosyadaki girdileri yeniden koşturmak, dosyadaki parmak izini ve sayı sayı aynı son raporu ile olayları verdi.',
   'persist.verify.mismatch': 'Rapor farklı',
-  'persist.verify.mismatch.text': 'Girdiler parmak iziyle uyuşuyor ama yeniden koşturunca farklı bir rapor çıkıyor. Dosyadaki rapor değiştirilmiş ya da bu derleme dosyayı yazandan farklı.',
+  'persist.verify.mismatch.text': 'Girdiler parmak iziyle uyuşuyor ama yeniden koşturunca farklı bir rapor ya da farklı olaylar çıkıyor. Dosyadaki sonuçlar değiştirilmiş ya da bu derleme dosyayı yazandan farklı. Rapor, yeniden koşturmanın verdiği sonucu gösterir.',
   'persist.verify.tampered': 'Girdiler değişmiş',
   'persist.verify.tampered.text': 'Dosyadaki girdiler taşıdığı parmak iziyle uyuşmuyor: dışa aktarıldıktan sonra düzenlenmiş.',
   'persist.verify.other-version': 'Başka sürüm',

@@ -180,11 +180,17 @@ describe('persistence UI: import of a run file', () => {
   }, 30000);
 
   it('says so when the report in the file was edited', async () => {
-    mount();
+    const h = mount();
     const dialog = await openLibrary();
-    importFile(dialog, taeRunFile((rec) => { (rec.report as { Q_sci_max: number }).Q_sci_max += 1; }));
+    importFile(dialog, taeRunFile((rec) => { (rec.report as { Q_sci_max: number }).Q_sci_max = 99; }));
     const badge = await within(dialog).findByText(/Report differs/, {}, { timeout: 15000 });
     expect(badge.closest('[data-verify]')?.getAttribute('data-verify')).toBe('mismatch');
+    // the Report never shows the number that was typed into the file, and the archive keeps the re-run's
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Open report' }));
+    await waitFor(() => expect(h.store.getState().tab).toBe('report'));
+    const shown = h.store.getState().shots[0];
+    expect(shown).toMatchObject({ verification: 'mismatch' });
+    expect(shown.report.Q_sci_max).not.toBe(99);
   }, 30000);
 
   it('says so when the inputs were edited after the export, and refuses text that is not a run file', async () => {

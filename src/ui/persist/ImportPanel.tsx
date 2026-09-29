@@ -79,7 +79,7 @@ export function ImportPanel({ onDone }: { onDone(): void }) {
     try {
       const shot = { ...importedShot(rec, v.result, v.verify.status, ''), name: rec.name };
       const archive = await deps.archive();
-      await archive.put(shotToNewRun(shot, { origin: 'import', appVersion: rec.appVersion ?? APP_VERSION, fingerprint: rec.fingerprint }));
+      await archive.put(shotToNewRun(shot, { origin: 'import', appVersion: rec.appVersion ?? APP_VERSION, fingerprint: v.verify.status === 'unsigned' ? null : v.result.fingerprint }));
       setSaved(true);
     } catch (e) {
       setPhase({ kind: 'failed', reason: p('persist.lib.failed', { reason: errorText(e) }) });

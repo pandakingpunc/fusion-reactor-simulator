@@ -78,9 +78,9 @@ export const persistEn = {
   'persist.imp.fields': 'Differing fields: {fields}',
 
   'persist.verify.verified': 'Verified reproduction',
-  'persist.verify.verified.text': 'Re-running the file\'s inputs gave the fingerprint in the file and the same final report, number for number.',
+  'persist.verify.verified.text': 'Re-running the file\'s inputs gave the fingerprint in the file and the same final report and events, number for number.',
   'persist.verify.mismatch': 'Report differs',
-  'persist.verify.mismatch.text': 'The inputs match the fingerprint, but re-running them gives a different report. The report in the file was changed, or this build differs from the one that wrote it.',
+  'persist.verify.mismatch.text': 'The inputs match the fingerprint, but re-running them gives a different report or different events. The results in the file were changed, or this build differs from the one that wrote it. The Report shows what the re-run gave.',
   'persist.verify.tampered': 'Inputs changed',
   'persist.verify.tampered.text': 'The inputs in the file do not match the fingerprint it carries: it was edited after it was exported.',
   'persist.verify.other-version': 'Other version',

@@ -8,6 +8,7 @@ import { replayInWorker, ReplayFn } from './replay';
 import { ReplayError, replayRun } from './replayCore';
 import { buildRunRecord, fingerprintOf, parseRunRecord, RUN_RECORD_FORMAT, RunRecord, RunRecordError, serializeRunRecord } from './runRecord';
 import { inlineWorkerFactory } from './testdata/inlineWorker';
+import { importedShot, shotToNewRun } from './shots';
 import { classify, diffPaths, verifyRecord } from './verify';
 import { APP_VERSION } from './version';
 
@@ -179,6 +180,60 @@ describe('verified reproduction', () => {
     expect(verify.inputsIntact).toBe(true);
     expect(verify.reportMatch).toBe(false);
     expect(verify.differences).toEqual(['Q_sci_max', 'termination.reason']);
+  });
+
+  it('a file whose events were edited is not verified, and the opened shot carries the events of the re-run', async () => {
+    const { text } = makeRecord(TAE);
+    const edited = JSON.parse(text);
+    edited.events.push({ t: 1e-3, kind: 'info', msg: 'Forged: ignition achieved' });
+    const rec = parseRunRecord(JSON.stringify(edited));
+    const { verify, result } = await verifyRecord(rec, replay);
+    expect(verify.status).toBe('mismatch');
+    expect(verify.eventsMatch).toBe(false);
+    expect(verify.reportMatch).toBe(false);
+    expect(verify.differences).toEqual(['events']);
+    const shot = importedShot(rec, result, verify.status, 'k');
+    expect(shot.events).toHaveLength(result.events.length);
+    expect(shot.events.some((e) => /Forged/.test(e.msg))).toBe(false);
+  });
+
+  it('a file whose report was edited shows the numbers the simulator produced, whatever the verdict', async () => {
+    const { text } = makeRecord(TAE);
+    const edited = JSON.parse(text);
+    edited.report.Q_sci_max = 99;
+    const rec = parseRunRecord(JSON.stringify(edited));
+    const { verify, result } = await verifyRecord(rec, replay);
+    expect(verify.status).toBe('mismatch');
+    const shot = importedShot(rec, result, verify.status, 'k');
+    expect(shot.report.Q_sci_max).toBe(result.report.Q_sci_max);
+    expect(shot.report.Q_sci_max).not.toBe(99);
+    expect(canonicalString(shot.report)).toBe(canonicalString(result.report));
+    // an edited input: the shot is the re-run of the inputs as they are, under their own fingerprint (not the stale claimed one)
+    const inputs = JSON.parse(text);
+    inputs.cfg.seed = TAE.seed + 1;
+    inputs.report.Q_sci_max = 99;
+    const rec2 = parseRunRecord(JSON.stringify(inputs));
+    const v2 = await verifyRecord(rec2, replay);
+    expect(v2.verify.status).toBe('tampered');
+    const shot2 = importedShot(rec2, v2.result, v2.verify.status, 'k2');
+    expect(shot2.report.Q_sci_max).not.toBe(99);
+    expect(shot2.prov?.fingerprint).toBe(v2.verify.fingerprint.computed);
+    expect(shot2.prov?.fingerprint).not.toBe(rec2.fingerprint);
+  });
+
+  it('an unsigned file keeps its own report and events (the re-run is not the run it describes), unless the report is incomplete', async () => {
+    const { rec } = makeRecord(TAE);
+    const own = { ...rec.report, Q_sci_max: 7 };
+    const unrecorded = buildRunRecord({ name: 'x', cfg: TAE, report: own, events: rec.events, prov: { interventions: 4 } });
+    const p = parseRunRecord(serializeRunRecord(unrecorded));
+    const v = await verifyRecord(p, replay);
+    expect(v.verify.status).toBe('unsigned');
+    expect(importedShot(p, v.result, v.verify.status, 'k').report.Q_sci_max).toBe(7);
+    // a report with fields missing would break the Report: the re-run's is shown instead
+    const { E_fusion_MJ: _drop, ...partial } = own;
+    const stripped = parseRunRecord(JSON.stringify({ name: 'x', cfg: TAE, report: partial, events: [] }));
+    const v2 = await verifyRecord(stripped, replay);
+    expect(importedShot(stripped, v2.result, v2.verify.status, 'k').report).toBe(v2.result.report);
   });
 
   it('a file from another simulator version is reported as such, and says whether it reproduced anyway', async () => {

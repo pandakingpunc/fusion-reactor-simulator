@@ -18,13 +18,13 @@ import { sha256Hex } from '../../physics/kernel/sha256';
 import { Simulation } from '../../physics/simulation';
 import { dropTemplate, mergeScenarios, interlockTemplate, scenarioToJSON } from '../../physics/scenario';
 import { parseCsv } from '../../io/csv';
+import { detectCocos, readGeqdsk } from '../../io/geqdsk';
 import { parseNdjson } from '../../io/ndjson';
 import { readNetcdf3 } from '../../io/netcdf3';
 import type { CliDeps, CliIo } from './common';
 import { parseJsonFile, takeRepeated } from './common';
 import { main } from './main';
 import { DEFAULT_METRICS, checkMetric, gridPoints, inProcessExecutor, parseParam, workerUrl, type Executor } from './scanCmd';
-import { EQDSK_UNAVAILABLE } from './otherCmds';
 import { textSummary } from './runCmd';
 import { runShot } from '../../physics/config/run';
 import { NonFiniteStateError } from '../../physics/kernel/errors';
@@ -532,11 +532,25 @@ describe('scan: input errors are found before anything runs', () => {
 });
 
 describe('export-eqdsk', () => {
-  it('says plainly that it is not available while the GEQDSK writer is not merged (exit 1)', async () => {
-    const r = await cli(['export-eqdsk', '--preset', 'ITER15', '--out', 'x.eqdsk']);
-    expect(r.code).toBe(1);
-    expect(r.err).toBe(`fusion-sim export-eqdsk: ${EQDSK_UNAVAILABLE}\n`);
-    expect(r.err).toMatch(/src\/io\/geqdsk\.ts, workstream WS4/);
+  it('writes the G-EQDSK of the run by default (COCOS 11, the standard layout), at the time asked for', async () => {
+    const args = ['export-eqdsk', '--preset', 'SPARC15', '--t-end', '0.3', '--set', 'profiles.nRho=20', '--set', 'profiles.eqNR=25'];
+    const last = await cli([...args, '--out', 'x.eqdsk']);
+    expect(last.code).toBe(0);
+    expect(last.err).toBe('');
+    const text = file(last, 'x.eqdsk') as string;
+    const g = readGeqdsk(text);
+    expect(g.warnings).toEqual([]);
+    expect(detectCocos(g.data).cocos).toBe(11);
+    expect(g.data.nw).toBe(25);
+    expect(g.data.current).toBeCloseTo(8.7e6, -3);
+    expect(text.split('\n')[1]).toMatch(/^ ?[-\d.]+e[-+]\d+/i); // the 5e16.9 lines follow the header
+    // --time: the equilibrium in force then; the same time twice gives the same bytes, and the initial one differs from the last
+    const first = await cli([...args, '--time', '0', '--out', 'y.eqdsk']);
+    expect(first.code).toBe(0);
+    expect(file(first, 'y.eqdsk')).not.toBe(text);
+    expect(file(await cli([...args, '--time', '0', '--out', 'z.eqdsk']), 'z.eqdsk')).toBe(file(first, 'y.eqdsk'));
+    const std = await cli([...args, '--out', '-']);
+    expect(std.out).toBe(text);
   });
   it('with a writer: runs the 1.5D shot and writes what the writer returns', async () => {
     let seen: { t: number; time: number | undefined } | undefined;

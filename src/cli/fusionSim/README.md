@@ -3,7 +3,7 @@
 ```
 fusion-sim run           one shot -> json | csv | ndjson | netcdf | imas | text
 fusion-sim scan          a grid of parameter values on worker threads -> a table of metrics
-fusion-sim export-eqdsk  the equilibrium of a 1.5D run as a GEQDSK file (needs the WS4 writer)
+fusion-sim export-eqdsk  the equilibrium of a 1.5D run as a GEQDSK file (COCOS 11)
 fusion-sim presets       the built-in presets, or one configuration as JSON
 fusion-sim schema        the JSON Schema of a configuration, or a check of a configuration file
 ```
@@ -76,17 +76,17 @@ point, and `--series KEY,...` keeps the time series of those diagnostics (the `k
 
 ## Exit codes
 
-0 success. 1 a run failed, a point crashed, a check failed (`schema --check`) or the command is not available
-(`export-eqdsk` until WS4's writer is wired in). 2 usage or input error (unknown flag, invalid or unreadable
+0 success. 1 a run failed, a point crashed or a check failed (`schema --check`). 2 usage or input error (unknown flag, invalid or unreadable
 configuration, bad `--param`). 130 interrupted (Ctrl-C during a scan).
 
 ## export-eqdsk
 
-Stubbed: it says so and exits 1. `CliDeps.writeEqdsk(sim, { time })` (src/cli/fusionSim/common.ts) is the
-injection point: pass a function that returns the GEQDSK text of the equilibrium of a finished 1.5D `Simulation`
-(COCOS 11), e.g. in `src/cli/fusion-sim.ts`: `main(argv, { deps: { writeEqdsk } })`. The command already runs the
-shot (`--preset`, `--set`, ...), requires a 1.5D tokamak or spherical tokamak, and writes what the function returns to
-`--out`.
+Runs the shot (`--preset`, `--set`, ...; it must be a 1.5D tokamak or spherical tokamak) and writes the equilibrium of
+the run as a G-EQDSK in COCOS 11 (the 5e16.9 text format of `src/io/geqdsk.ts`) to `--out` (`-` is stdout). `--time S`
+selects the equilibrium in force at that time (the last recorded frame at or before it; the last equilibrium of the run
+by default). The writer is `writeRunEqdsk` in `src/cli/fusionSim/eqdsk.ts` (it rewinds the finished run to the frame);
+`CliDeps.writeEqdsk(sim, { time })` (common.ts) replaces it in tests. The ψ map outside the plasma is the solver's smooth
+continuation of the fixed-boundary state, not a coil-consistent vacuum field, and the file has no limiter.
 
 ## Code layout
 

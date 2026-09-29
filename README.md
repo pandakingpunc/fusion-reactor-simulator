@@ -77,7 +77,7 @@ takes `--threads N` (default: cores − 1).
 - `fusion-sim` (`npx tsx src/cli/fusion-sim.ts <command>`, or `node build/lib/fusion-sim.js <command>` after
   `npm run build:lib`): `run` (one shot to json, csv, ndjson, netcdf or IMAS-like json), `scan` (a grid of
   parameter values on worker threads), `presets`, `schema` (print the JSON Schema of a configuration, or check a
-  configuration file) and `export-eqdsk` (waits for the GEQDSK writer of the equilibrium work). Every output
+  configuration file) and `export-eqdsk` (the G-EQDSK of a 1.5D run, COCOS 11). Every output
   carries a provenance block and is byte-identical for the same configuration. This `scan` runs a configuration
   scan; the `scan` above is the analysis one. See `src/cli/fusionSim/README.md`.
 - Library: `src/physics/index.ts` is the public API (a documented barrel with `@public` and `@experimental`

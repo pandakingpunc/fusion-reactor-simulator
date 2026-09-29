@@ -61,9 +61,11 @@ describe('fusion-sim in a child process', { timeout: 120_000 }, () => {
     expect(JSON.parse(sim('schema').out).$schema).toBe('https://json-schema.org/draft/2020-12/schema');
   });
 
-  it('export-eqdsk says it is not available (exit 1)', () => {
-    const r = sim('export-eqdsk', '--preset', 'ITER15', '--out', 'x.eqdsk');
-    expect(r.code).toBe(1);
-    expect(r.err).toMatch(/not available in this build/);
+  it('export-eqdsk writes a G-EQDSK of a 1.5D run to stdout (exit 0), and refuses a 0D run (exit 2)', () => {
+    const r = sim('export-eqdsk', '--preset', 'SPARC15', '--t-end', '0.2', '--set', 'profiles.nRho=20', '--set', 'profiles.eqNR=25', '--out', '-');
+    expect(r.err).toBe('');
+    expect(r.code).toBe(0);
+    expect(r.out.split('\n')[0]).toMatch(/^fusion-sim equilibrium in force at t = 0\.2000 s +3 +25 +49$/);
+    expect(sim('export-eqdsk', '--preset', 'JET', '--out', '-').code).toBe(2);
   });
 });

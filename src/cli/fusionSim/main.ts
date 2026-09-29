@@ -4,17 +4,18 @@
  *
  *   fusion-sim run           one shot -> json | csv | ndjson | netcdf | imas | text
  *   fusion-sim scan          a grid of parameter values on worker threads -> a table of metrics
- *   fusion-sim export-eqdsk  the equilibrium of a 1.5D run as a GEQDSK file (needs the WS4 writer)
+ *   fusion-sim export-eqdsk  the equilibrium of a 1.5D run as a GEQDSK file (COCOS 11)
  *   fusion-sim presets       the built-in presets, or one configuration as JSON
  *   fusion-sim schema        the JSON Schema of a configuration, or a check of a configuration file
  *
  * `main` is the whole program with its environment passed in (streams, files, optional pieces), so that
  * tests run it in-process; src/cli/fusion-sim.ts is the three-line entry point.
- * Exit codes: 0 success; 1 a run or check failed, or the command is not available; 2 usage or input error;
+ * Exit codes: 0 success; 1 a run or check failed; 2 usage or input error;
  * 130 interrupted.
  */
 import { CliHelpRequested, CliUsageError, formatHelp } from '../args';
 import { CliFailure, CliInputError, findPackageRoot, nodeIo, packageVersionOf, type CliContext, type CliDeps, type CliIo } from './common';
+import { writeRunEqdsk } from './eqdsk';
 import { EQDSK_CLI, PRESETS_CLI, SCHEMA_CLI, eqdskCommand, presetsCommand, schemaCommand } from './otherCmds';
 import { RUN_CLI, runCommand } from './runCmd';
 import { SCAN_CLI, poolExecutor, scanCommand } from './scanCmd';
@@ -56,7 +57,7 @@ export interface MainEnv {
 /** Runs the CLI with `argv` (without node and the script) and returns the exit code; never calls process.exit. */
 export async function main(argv: readonly string[], env: MainEnv = {}): Promise<number> {
   const io = env.io ?? nodeIo();
-  const ctx: CliContext = { io, deps: { execute: poolExecutor, ...env.deps }, root: 'root' in env ? env.root : findPackageRoot(import.meta.url) };
+  const ctx: CliContext = { io, deps: { execute: poolExecutor, writeEqdsk: writeRunEqdsk, ...env.deps }, root: 'root' in env ? env.root : findPackageRoot(import.meta.url) };
   const [cmd, ...rest] = argv;
   if (cmd === undefined || cmd === '-h' || cmd === '--help' || cmd === 'help') {
     (cmd === undefined ? io.stderr : io.stdout).write(TOP_HELP);

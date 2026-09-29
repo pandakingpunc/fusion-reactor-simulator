@@ -192,7 +192,7 @@ describe('library build', { timeout: 300_000 }, () => {
     expect(node([bin]).code).toBe(2);
     expect(node([bin, 'run', '--preset', 'ITER', '--set', 'B0=-1']).code).toBe(2);
     expect(node([bin, 'run', '--preset', 'NOPE']).code).toBe(2);
-    expect(node([bin, 'export-eqdsk', '--preset', 'ITER15', '--out', 'x']).code).toBe(1);
+    expect(node([bin, 'export-eqdsk', '--preset', 'JET', '--out', 'x']).code).toBe(2);
     expect(node([bin, 'schema', '--check', join(WORK, 'missing.json')]).code).toBe(2);
   });
 

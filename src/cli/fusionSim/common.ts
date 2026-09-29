@@ -69,11 +69,11 @@ export function runFailureOf(e: unknown): CliFailure | null {
   return null;
 }
 
-/** Optional pieces of the CLI that other workstreams supply; absent ones make their command say so. */
+/** The pieces of the CLI that a caller may replace (tests do); main() fills in the ones it leaves out. */
 export interface CliDeps {
   /**
-   * GEQDSK text of the equilibrium of a finished 1.5D run (COCOS 11), from the writer of src/io/geqdsk.ts.
-   * `time` is the requested time in seconds (the last equilibrium of the run if undefined).
+   * GEQDSK text of the equilibrium of a finished 1.5D run (COCOS 11); the default is writeRunEqdsk (eqdsk.ts), which uses
+   * the writer of src/io/geqdsk.ts. `time` is the requested time in seconds (the last equilibrium of the run if undefined).
    */
   writeEqdsk?: (sim: import('../../physics/simulation').Simulation, opts: { time?: number }) => string;
   /** runs scan tasks; the default is the worker pool (src/cli/pool.ts) */
@@ -82,8 +82,8 @@ export interface CliDeps {
 
 export interface CliContext {
   io: CliIo;
-  /** the pieces of CliDeps, with the scan executor always present (the worker pool unless a caller replaced it) */
-  deps: CliDeps & { execute: import('./scanCmd').Executor };
+  /** the pieces of CliDeps, all present (the worker pool and the G-EQDSK writer unless a caller replaced them) */
+  deps: CliDeps & { execute: import('./scanCmd').Executor; writeEqdsk: NonNullable<CliDeps['writeEqdsk']> };
   /** the package root (where package.json is), or undefined when it cannot be found */
   root: string | undefined;
 }

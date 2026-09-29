@@ -100,14 +100,10 @@ export const EQDSK_CLI = defineCli({
   epilog: CONFIG_EPILOG,
 });
 
-export const EQDSK_UNAVAILABLE = 'not available in this build: the GEQDSK writer (src/io/geqdsk.ts, workstream WS4) has not been merged into it.\n' +
-  'The flux surfaces of a 1.5D run are available meanwhile as the equilibrium IDS of `fusion-sim run --format imas` (boundary outline, axis, q95, l_i, beta_p).';
-
 export async function eqdskCommand(argv: readonly string[], ctx: CliContext): Promise<number> {
   const { rest, values } = takeRepeated(argv, ['set']);
   const args = parseArgs(EQDSK_CLI, rest);
   const write = ctx.deps.writeEqdsk;
-  if (!write) throw new CliFailure(EQDSK_UNAVAILABLE);
   const { cfg } = resolveConfig(args, values.set, ctx.io);
   if ((cfg as { fidelity?: string }).fidelity !== '1.5D' || !['tokamak', 'spherical_tokamak'].includes(cfg.method)) {
     throw new CliInputError(`export-eqdsk needs a 1.5D tokamak or spherical tokamak run (fidelity "1.5D"; got method '${cfg.method}', fidelity '${(cfg as { fidelity?: string }).fidelity ?? '0D'}'): add --fidelity 1.5D or use a preset such as ITER15`);

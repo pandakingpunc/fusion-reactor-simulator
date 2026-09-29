@@ -2,15 +2,17 @@
  * Regression tests (lane ws2b, consistency pass): L–H power threshold.
  *  - Martin et al. (2008) is fitted to the LINE-averaged density; the 0D model passed the volume
  *    average.
- *  - Below the density of minimum threshold (Ryter et al., Nucl. Fusion 54 (2014) 083003) the
- *    threshold rises again; the model had no low-density branch.
+ *  - Below the density of minimum threshold (Ryter et al., Nucl. Fusion 54 (2014) 083003, eq. 3) the
+ *    threshold rises again; the model had no low-density branch. The exponent of the rise is the SPARC-study
+ *    penalty (n_min/n̄)² (Hughes et al., J. Plasma Phys. 86 (2020) 865860504; ws2c): the first Wave-1 version
+ *    used the first power.
  */
 import { describe, expect, it } from 'vitest';
 import { MagneticModel } from '../confinement/magnetic';
 import { boundaryShape, plasmaSurface } from '../geometry';
 import { lineAverageFactor } from '../limits';
 import { ITER, JET } from '../presets';
-import { nLHmin, pLH_Martin, pLH_threshold } from '../transport';
+import { LH_LOW_DENSITY_EXPONENT, nLHmin, pLH_Martin, pLH_threshold } from '../transport';
 
 describe('L–H threshold with the Ryter (2014) low-density branch', () => {
   const S = plasmaSurface(ITER.geometry), g = ITER.geometry;
@@ -23,11 +25,13 @@ describe('L–H threshold with the Ryter (2014) low-density branch', () => {
     expect(nmin).toBeLessThan(0.5e20);
   });
 
-  it('is Martin above n̄_min (bit for bit) and rises ∝ 1/n̄ below, continuously', () => {
+  it('is Martin above n̄_min (bit for bit) and rises as (n̄_min/n̄)² below, continuously', () => {
+    expect(LH_LOW_DENSITY_EXPONENT).toBe(2);
     for (const n of [nmin, 1.2 * nmin, 1e20]) expect(pLH_threshold(n, ITER.B0, S, 2.5, ITER.Ip_MA, g.a, g.R)).toBe(pLH_Martin(n, ITER.B0, S, 2.5));
     const atMin = pLH_Martin(nmin, ITER.B0, S, 2.5);
     expect(pLH_threshold(nmin * (1 - 1e-9), ITER.B0, S, 2.5, ITER.Ip_MA, g.a, g.R) / atMin).toBeCloseTo(1, 7);
-    expect(pLH_threshold(0.5 * nmin, ITER.B0, S, 2.5, ITER.Ip_MA, g.a, g.R) / atMin).toBeCloseTo(2, 12);
+    expect(pLH_threshold(0.5 * nmin, ITER.B0, S, 2.5, ITER.Ip_MA, g.a, g.R) / atMin).toBeCloseTo(4, 12);
+    expect(pLH_threshold(0.25 * nmin, ITER.B0, S, 2.5, ITER.Ip_MA, g.a, g.R) / atMin).toBeCloseTo(16, 12);
     expect(pLH_threshold(0.5 * nmin, ITER.B0, S, 2.5, ITER.Ip_MA, g.a, g.R)).toBeGreaterThan(pLH_Martin(0.5 * nmin, ITER.B0, S, 2.5));
   });
 

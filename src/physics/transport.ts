@@ -167,8 +167,9 @@ export function pLH_Martin(n: number, B: number, S: number, M: number): number {
 }
 
 /**
- * Line-averaged density at which the L-H threshold is minimal [m^-3] — Ryter et al., Nucl. Fusion 54
- * (2014) 083003 (multi-machine scaling):
+ * Line-averaged density at which the L-H threshold is minimal [m^-3] — F. Ryter et al., Nucl. Fusion 54 (2014) 083003, eq. (3),
+ * the multi-machine scaling of the density minimum (ASDEX Upgrade, C-Mod, DIII-D, JET; as quoted by T. Eich et al., arXiv:2407.13539
+ * (2024), eq. (12), and in the SPARC POPCON tool):
  *  n̄_e,min [10^19 m^-3] = 0.7 · I_p[MA]^0.34 · B[T]^0.62 · a[m]^-0.95 · (R/a)^0.4
  */
 export function nLHmin(Ip_MA: number, B: number, a: number, R: number): number {
@@ -176,15 +177,30 @@ export function nLHmin(Ip_MA: number, B: number, a: number, R: number): number {
 }
 
 /**
+ * Exponent of the low-density branch of the L-H threshold: for n̄ < n̄_min, P_LH = P_Martin(n̄_min) · (n̄_min/n̄)^LH_LOW_DENSITY_EXPONENT.
+ * Neither source of the two ends of the branch gives it: Martin et al. (2008) is a fit of the HIGH-density branch only, and Ryter et
+ * al. (2014) supply n̄_min (their eq. 3) and show that the threshold rises below it (the low-density branch, from the ion heat channel:
+ * less electron-ion coupling), but no multi-machine law for the rise. The exponent is that of the SPARC design studies: J.W. Hughes et
+ * al., "Projections of H-mode access and edge pedestal in the SPARC tokamak", J. Plasma Phys. 86 (2020) 865860504, add a penalty to the
+ * ITPA (Martin) threshold below n_min, implemented in the open-source POPCON tool cfspopcon (CFS, formulas/separatrix_conditions/
+ * threshold_power.py, "Added in low density branch from Ryter 2014") as (n_min/n)². APPROXIMATION: that penalty (the paper's text was
+ * not read, only the tool's source). v4.0-dev (ws2b) used the first power, the first Wave-1 assumption; the choice moves the first L-H
+ * transition of a ramp-up only where the plasma starts below n_min. Measured on the presets (exponent 0 = Martin only / 1 / 2): JET 0D
+ * 0.17 / 0.34 / 0.44 s, JET15 0.10 / 0.22 / 0.32 s, JT-60SA 0.06 / 0.44 / 0.50 s, DIII-D 0.05 / 0.10 / 0.18 s, SPARC15 1.37 / 1.50 / 1.57 s,
+ * DEMO15 14.25 / 14.55 / 14.85 s; the ITER, DEMO and SPARC 0D and ITER15 transitions (9.4, 16.25, 1.35 and 8.2 s) are set by the heating ramp
+ * and move by 0.02 s at most.
+ */
+export const LH_LOW_DENSITY_EXPONENT = 2;
+
+/**
  * L-H power threshold, including the low-density branch: Martin (2008) for n̄ ≥ n̄_min (bit-for-bit the same);
- * for n̄ < n̄_min the threshold rises again (Ryter 2014): P_LH = P_Martin(n̄_min) · n̄_min / n̄.
- * APPROXIMATION: the form of the low-density branch (∝ 1/n̄) — the compilation shows a rise but gives no general
- * scaling. n: LINE-averaged density [m^-3] (Martin's definition).
+ * for n̄ < n̄_min the threshold rises again: P_LH = P_Martin(n̄_min) · (n̄_min/n̄)^LH_LOW_DENSITY_EXPONENT (Ryter 2014 supply n̄_min and
+ * the rise; the exponent is the SPARC-study penalty, see LH_LOW_DENSITY_EXPONENT). n: LINE-averaged density [m^-3] (Martin's definition).
  */
 export function pLH_threshold(nbar: number, B: number, S: number, M: number, Ip_MA: number, a: number, R: number): number {
   const nmin = nLHmin(Ip_MA, B, a, R);
   if (nbar >= nmin) return pLH_Martin(nbar, B, S, M);
-  return pLH_Martin(nmin, B, S, M) * (nmin / Math.max(nbar, 1e17));
+  return pLH_Martin(nmin, B, S, M) * Math.pow(nmin / Math.max(nbar, 1e17), LH_LOW_DENSITY_EXPONENT);
 }
 
 /**

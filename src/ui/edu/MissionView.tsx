@@ -53,8 +53,11 @@ export function MissionView({ mission, pool, solved, onSolved, onBack, onOpenGlo
   const running = status === 'running';
   const popcon = mission.kind === 'popcon';
 
-  // the POPCON map depends on the configuration only (not on the operating point): compute it once per H98
-  const cfg = useMemo(() => buildConfig(mission, edits), [mission, edits]);
+  // the POPCON map depends on the configuration only (not on the operating point): the configuration is rebuilt only
+  // when one of the configuration levers moves, so dragging the operating point does not recompute the map
+  const cfgKey = mission.levers.filter((l) => !l.path.startsWith('point.')).map((l) => String(values[l.id])).join('|');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const cfg = useMemo(() => buildConfig(mission, edits), [mission, cfgKey]);
   const grid = useMemo(() => (popcon ? computePopcon(cfg as MagneticConfig) : null), [popcon, cfg]);
   const point = useMemo(() => operatingPoint(mission, edits), [mission, edits]);
   const reading = useMemo(() => (grid && point ? readPopcon(grid, point) : null), [grid, point]);

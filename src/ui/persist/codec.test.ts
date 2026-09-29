@@ -7,6 +7,7 @@ import { fromBase64Url, toBase64Url } from './base64url';
 import { crc32, decodeShare, encodeShare, MAX_JSON_BYTES, SAFE_LINK_CHARS, ShareError, shareUrl, SharePayload, tryDecodeShare } from './codec';
 import { parseJson, stringifyJson } from './json';
 import { editConfig, editPayload } from './testdata/edits';
+import { checkConfig } from './validate';
 
 const same = (a: unknown, b: unknown) => canonicalString(a) === canonicalString(b);
 const roundTrip = async (p: SharePayload) => (await decodeShare(await encodeShare(p))).payload;
@@ -193,6 +194,21 @@ describe('share codec: decoding refuses what is not a configuration', () => {
       expect(e.code, label).toMatch(/^(invalid|malformed)$/);
       expect(e.message, label).toMatch(msg);
     }
+  });
+
+  it('the profiles section is optional in every tokamak configuration: ITER and DEMO carry their LCFS shape there (v4.0), the others have none', () => {
+    for (const id of ['ITER', 'DEMO', 'JET', 'SPARC', 'DIIID', 'JT60SA', 'MASTU', 'ITER15']) {
+      const c = structuredClone(PRESETS.find((p) => p.id === id)!.cfg) as unknown as Record<string, unknown>;
+      expect(checkConfig(c).errors, id).toEqual([]);
+      delete c.profiles;
+      expect(checkConfig(c).errors, `${id} without a profiles section`).toEqual([]);
+    }
+    // the reference shape of the LCFS values is a known field of the section (no warning), with a number in each place
+    const iter = structuredClone(PRESETS.find((p) => p.id === 'ITER')!.cfg) as unknown as { profiles: { lcfsRef95: Record<string, unknown> } };
+    expect(iter.profiles.lcfsRef95).toEqual({ kappa: 1.7, delta: 0.33 });
+    expect(checkConfig(iter).warnings.filter((w) => w.includes('lcfs'))).toEqual([]);
+    iter.profiles.lcfsRef95.kappa = 'high';
+    expect(checkConfig(iter).errors.join('; ')).toMatch(/profiles\.lcfsRef95\.kappa: expected a number/);
   });
 
   it('a hostile scenario is refused; an odd but usable configuration is accepted with warnings', async () => {

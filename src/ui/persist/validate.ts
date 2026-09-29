@@ -52,6 +52,13 @@ interface Template {
 
 const templates = new Map<Method, Template>();
 
+/**
+ * Sections a configuration may leave out although the method's default preset has them: `profiles` holds the optional 1.5D settings, and
+ * since v4.0 the ITER and DEMO presets carry one in 0D too (only the LCFS shape: profiles.lcfsKappa, lcfsDelta, lcfsRef95), so the default
+ * tokamak preset has a profiles section that JET, SPARC and every configuration written by an older version do not.
+ */
+const OPTIONAL_SECTIONS = ['profiles'];
+
 function walk(v: unknown, path: string, leaves: Map<string, LeafType>, sections?: string[]): void {
   if (v === undefined || v === null) return;
   if (typeof v === 'object' && !Array.isArray(v)) {
@@ -80,7 +87,7 @@ function templateFor(method: Method): Template {
       if (type === 'number' && f.min !== undefined && f.max !== undefined) ranges.set(f.path, [f.min * (f.scale ?? 1), f.max * (f.scale ?? 1)]);
     }
   }
-  t = { leaves, required, enums, ranges };
+  t = { leaves, required: required.filter((s) => !OPTIONAL_SECTIONS.some((o) => s === o || s.startsWith(`${o}.`))), enums, ranges };
   templates.set(method, t);
   return t;
 }

@@ -70,13 +70,16 @@ export interface ProfileSettings {
    * ash sourced by the local fusion rate and exhausted with the confinement time τ_He* of `transport.tau_He_over_tau_E`, the impurities fixed
    * at the separatrix to their concentration (`impurity.concentration` as a live control, `impurity.seedConcentration`, `impurityExtraConcentration`)
    * and, for tungsten, a wall source. 'facit': the same with the neoclassical D, K, H of FACIT (Fajardo et al., Plasma Phys. Control. Fusion 64
-   * (2022) 055017) added, replacing the uniform-concentration heuristic (τ_W × 4 without ELMs and sawteeth).
+   * (2022) 055017) added. Both replace the scalar heuristics: the He confinement time enters as the exhaust only, the impurity profile is what the
+   * transport makes of the boundary value, and the tungsten inventory of the wall source is S_W times the confinement time of the transport instead
+   * of τ_Z (τ_W × 4 without ELMs and sawteeth; the crashes are in the profiles).
    */
   impurityTransport?: 'legacy' | 'anomalous' | 'facit';
   /**
    * meaning of the configured impurity concentrations (`impurity.concentration`, `impurity.seedConcentration`, `impurityExtraConcentration`) in the
    * profile-resolved modes: 'average' (default) the volume-average concentration N_z/N_e, as in the scalar model (a slow controller sets the separatrix
-   * value that gives it); 'separatrix' the concentration at the separatrix (a fixed boundary value, the profile is what the transport makes of it)
+   * value that gives it, the steady inventory of a tungsten wall source is added to it); 'separatrix' the concentration at the separatrix (a fixed
+   * boundary value, the profile is what the transport makes of it)
    */
   impuritySetpoint?: 'average' | 'separatrix';
   /** anomalous impurity diffusivity over the electron particle diffusivity D of the transport model (default 1) */

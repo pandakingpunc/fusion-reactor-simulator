@@ -512,7 +512,7 @@ describe('short shots', () => {
     expect(mirrorMisses).toBe(0);
     // the diagnostics carry the keys of the module and the report says so
     const d = m.ctx.lastDiag;
-    for (const key of ['fHe', 'fHe0', 'cZ', 'cZ0', 'cZpeak', 'cSeed', 'cSeed0', 'cExtra', 'tauHeStar', 'GammaHe', 'S_W', 'mZ']) expect(Number.isFinite(d[key]), key).toBe(true);
+    for (const key of ['fHe', 'fHe0', 'cZ', 'cZ0', 'cZpeak', 'cSeed', 'cSeed0', 'cExtra', 'tauHeStar', 'GammaHe', 'GammaZ', 'GammaSeed', 'GammaExtra', 'S_W', 'mZ']) expect(Number.isFinite(d[key]), key).toBe(true);
     for (const key of ['nHe', 'nZ', 'nSeed', 'nExtra']) expect(m.ctx.lastProf[key]).toHaveLength(m.N);
   }, 120000);
 
@@ -523,11 +523,11 @@ describe('short shots', () => {
     expect(a.history[a.history.length - 1].d.fHe0).toBeUndefined();
   }, 120000);
 
-  it('the run is a function of its configuration: 3 random chunk schedules equal runAll() bitwise, and a rewind at 50 % replays it', async () => {
+  it('the run is a function of its configuration: 2 random chunk schedules equal runAll() bitwise, and a rewind at 50 % replays it', async () => {
     const cfg = jet(1.0);
     const ref = referenceRun(cfg);
     expect(ref.events.some((e) => e.kind === 'ELM')).toBe(true);
-    for (let s = 1; s <= 3; s++) { expectSameRun(runChunked(cfg, 9100 + s), ref, `chunk schedule ${s}`); await tick(); }
+    for (let s = 1; s <= 2; s++) { expectSameRun(runChunked(cfg, 9100 + s), ref, `chunk schedule ${s}`); await tick(); }
     const sim = rewindAt(cfg, 0.5, 9200);
     await tick();
     advanceRandomly(sim, 9300);

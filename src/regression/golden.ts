@@ -32,7 +32,7 @@ import { Simulation } from '../physics/simulation';
 import { ProfileModel, supportsProfiles } from '../physics/profiles/model';
 import { flatTopAverages } from '../physics/analysis/flatTop';
 import type { FuelType } from '../physics/reactivity';
-import type { EqSnapshot, Fidelity, HistoryFrame, MagneticConfig, ReactorConfig, ShotReport } from '../physics/types';
+import type { EqSnapshot, Fidelity, HistoryFrame, MagneticConfig, ProfileSettings, ReactorConfig, ShotReport } from '../physics/types';
 
 /** 2: + meta.fuel, history, geometry, profiles, equilibrium (a format change: schema-1 values are unchanged) */
 export const GOLDEN_SCHEMA = 2;
@@ -53,7 +53,7 @@ export interface GoldenCase {
    * Settings changed from the preset, for combinations no preset uses (the wizard offers every
    * fuel for every method and 1.5D for both tokamak methods). Plain data: cases go to workers.
    */
-  overrides?: { fuel?: FuelType; fidelity?: Fidelity; n_target?: number };
+  overrides?: { fuel?: FuelType; fidelity?: Fidelity; n_target?: number; /** settings of the 1.5D model merged over the preset's (an opt-in module switched on) */ profiles?: Partial<ProfileSettings> };
 }
 
 /**
@@ -99,6 +99,8 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
   { id: 'MASTU15', preset: 'MASTU', overrides: { fidelity: '1.5D' } },
   { id: 'TAE-pB11', preset: 'TAE', overrides: { fuel: 'pB11' } },
   { id: 'MIRROR-DHe3', preset: 'MIRROR', overrides: { fuel: 'DHe3' } },
+  // ws6e: the profile-resolved He ash and impurities with the FACIT neoclassical coefficients (opt-in; every other case has them off)
+  { id: 'ITER15-impurity', preset: 'ITER15', tEnd: 60, overrides: { profiles: { impurityTransport: 'facit' } } },
 ];
 
 /** Quick cases compared by `npm test` (0D magnetic, two pulsed models, short 1.5D). */
@@ -134,6 +136,10 @@ export function caseConfig(c: GoldenCase): ReactorConfig {
     if (!MAGNETIC_METHODS.includes(cfg.method)) throw new Error(`golden case ${c.id}: preset ${c.preset} (${cfg.method}) has no fidelity setting`);
     cfg = { ...cfg, fidelity: o.fidelity } as ReactorConfig;
     if (o.fidelity === '1.5D' && !runsProfiles(cfg)) throw new Error(`golden case ${c.id}: ${cfg.method} has no 1.5D model`);
+  }
+  if (o.profiles !== undefined) {
+    if (!runsProfiles(cfg)) throw new Error(`golden case ${c.id}: profile settings need the 1.5D model`);
+    cfg = { ...cfg, profiles: { ...(cfg as MagneticConfig).profiles, ...o.profiles } } as ReactorConfig;
   }
   if (o.n_target !== undefined) {
     if (!('n_target' in cfg)) throw new Error(`golden case ${c.id}: preset ${c.preset} (${cfg.method}) has no n_target setting`);

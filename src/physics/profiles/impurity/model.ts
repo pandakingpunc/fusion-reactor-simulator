@@ -439,6 +439,10 @@ export class ImpurityModel implements SourceModel {
     conc(this.iZ, 'cZ', 'cZpeak');
     conc(this.iSeed, 'cSeed');
     conc(this.iExtra, 'cExtra');
+    // net particle flux INTO the plasma through the separatrix [1e20 /s], the seeding rate that holds the boundary concentration (the wall source of W is not in it)
+    if (this.iZ >= 0) d.GammaZ = -this.lastOut[this.iZ] / 1e20;
+    if (this.iSeed >= 0) d.GammaSeed = -this.lastOut[this.iSeed] / 1e20;
+    if (this.iExtra >= 0) d.GammaExtra = -this.lastOut[this.iExtra] / 1e20;
     if (this.iZ >= 0) { d.S_W = this.lastWsrc / 1e20; d.mZ = this.mult[this.iZ]; }
   }
 

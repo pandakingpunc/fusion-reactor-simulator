@@ -3,6 +3,8 @@
  */
 import { FRCConfig, ICFConfig, MagneticConfig, MirrorConfig, MTFConfig, MuonConfig, ReactorConfig } from './types';
 
+const MERGED_SECTIONS = ['heating', 'fueling', 'impurity', 'limits', 'transport', 'events', 'magnet', 'blanket', 'divertor', 'economics', 'stellarator'] as const;
+
 export function defaultMagnetic(over: Partial<MagneticConfig> & { geometry: MagneticConfig['geometry']; B0: number; Ip_MA: number }): MagneticConfig {
   const base: MagneticConfig = {
     method: 'tokamak',
@@ -23,12 +25,10 @@ export function defaultMagnetic(over: Partial<MagneticConfig> & { geometry: Magn
     economics: { availability: 0.6, thermalEff: 0.35, wallPlugEff: 0.4, discountRate: 0.07, lifetime_yr: 30 },
     t_end: 400, seed: 42,
   };
-  return { ...base, ...over, heating: { ...base.heating, ...(over.heating ?? {}) }, fueling: { ...base.fueling, ...(over.fueling ?? {}) },
-    impurity: { ...base.impurity, ...(over.impurity ?? {}) }, limits: { ...base.limits, ...(over.limits ?? {}) },
-    transport: { ...base.transport, ...(over.transport ?? {}) }, events: { ...base.events, ...(over.events ?? {}) },
-    magnet: { ...base.magnet, ...(over.magnet ?? {}) }, blanket: { ...base.blanket, ...(over.blanket ?? {}) },
-    divertor: { ...base.divertor, ...(over.divertor ?? {}) }, economics: { ...base.economics, ...(over.economics ?? {}) },
-    stellarator: { ...base.stellarator, ...(over.stellarator ?? {}) } };
+  // the sections of a preset merge into those of the base (the keys keep the order of the base object)
+  const out: Record<string, unknown> = { ...base, ...over };
+  for (const k of MERGED_SECTIONS) out[k] = { ...base[k], ...(over[k] ?? {}) };
+  return out as unknown as MagneticConfig;
 }
 
 export interface Preset { id: string; name: string; desc: string; cfg: ReactorConfig; validation?: string }

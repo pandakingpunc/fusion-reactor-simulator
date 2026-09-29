@@ -55,7 +55,8 @@ describe("'cgm' transport smoke test", () => {
     expect(rel(last.tauE, last.tauE_scal)).toBeGreaterThan(0.1);
     expect(last.Te0).toBeGreaterThan(5);
     expect(last.Te0).toBeLessThan(40);
-    // stiff transport: the energy balance of each step still closes within the Picard tolerance
-    expect(worstBalance).toBeLessThan(2e-3);
+    // stiff transport: the energy balance of each step still closes within the Picard tolerance (< 2e-3 on the uniform
+    // grid; the edge-packed grid of the default has cells 4 times narrower where the critical gradient is steepest)
+    expect(worstBalance).toBeLessThan(4e-3);
   }, 180000);
 });

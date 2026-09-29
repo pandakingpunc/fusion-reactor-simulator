@@ -20,15 +20,16 @@ import { ProfileModel } from './model';
 import { mean, rel, stepChecks } from './testkit';
 
 describe('core radiation of the loss power', () => {
-  it.each([50, 47, 40])('N = %s cells: bremsstrahlung and line radiation inside ρ < 0.6 (a straddling cell by its share) plus all the synchrotron radiation', (N) => {
-    const m = new ProfileModel({ ...JET_15D, profiles: { ...JET_15D.profiles, nRho: N } });
+  // the uniform grid (gridPacking 0) and the packed grid of the default: the cells are the faces of the grid in use
+  it.each([[50, 0], [47, 0], [40, 0], [50, 4], [47, 4], [40, 4]])('N = %s cells, gridPacking %s: bremsstrahlung and line radiation inside ρ < 0.6 (a straddling cell by its share) plus all the synchrotron radiation', (N, packing) => {
+    const m = new ProfileModel({ ...JET_15D, profiles: { ...JET_15D.profiles, nRho: N, gridPacking: packing } });
     const y = m.initialState();
     const st = m.ctx.view(y);
     const K = m.physics.evaluateWorkArrays(100, st);
     const g = m.ctx.tg, w = m.ctx.w;
     let core = 0;
     for (let i = 0; i < N; i++) {
-      const lo = i / N, hi = (i + 1) / N;
+      const lo = g.rhoF[i], hi = g.rhoF[i + 1];
       const share = Math.max(0, Math.min(hi, RHO_CORE) - lo) / (hi - lo);
       core += share * (w.Pbr[i] + w.Pline[i]) * g.dV[i];
     }
@@ -38,8 +39,8 @@ describe('core radiation of the loss power', () => {
     // the mantle radiates too, so the core is a part of the total
     expect(P.P_rad_core).toBeLessThan(P.P_rad);
     expect(P.P_rad_core).toBeGreaterThan(K.Psync);
-    // the cell-edge case: 40 cells put a face at exactly ρ = 0.6 (cells 0 … 23 end at or below it), so 24 cells count fully
-    if (N === 40) {
+    // the cell-edge case: 40 uniform cells put a face at exactly ρ = 0.6 (cells 0 … 23 end at or below it), so 24 cells count fully
+    if (N === 40 && packing === 0) {
       let full = 0;
       for (let i = 0; i < 24; i++) full += (w.Pbr[i] + w.Pline[i]) * g.dV[i];
       expect(rel(P.P_rad_core, full + K.Psync)).toBeLessThan(1e-12);
@@ -108,7 +109,7 @@ describe('the τ_E scaling and the C_χ controller use the loss power (scaling t
     expect(worstTau).toBeLessThan(1e-12);
     expect(controlled).toBeGreaterThan(20);
     expect(worstC).toBeLessThan(1e-9);
-  });
+  }, 60000); // 4.6 s alone, over the 5 s default on a loaded machine
 });
 
 describe('smoothed dW/dt with the ELM losses', () => {

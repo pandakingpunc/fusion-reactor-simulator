@@ -49,7 +49,6 @@ export function rhoOfQ(g: TransportGeometry, qF: Float64Array, qval: number, out
 
 /** Manyetik kayma s = ρ q'/q verilen ρ'de (yüzey ızgarası) */
 export function shearAt(g: TransportGeometry, qF: Float64Array, rho: number): number {
-  const N = g.N;
   const f = nearestFace(g, rho);
   const dq = (qF[f + 1] - qF[f - 1]) / g.spanF[f];
   return (rho * dq) / Math.max(qF[f], 1e-6);

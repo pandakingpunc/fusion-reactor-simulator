@@ -47,7 +47,7 @@ import type { ElmEvents } from './events/elm';
 import type { EquilibriumInitFailure, StepFailure } from './failures';
 import type { TransportGeometry } from './geometry1d';
 import type { GsAttempt } from './eqguard';
-import { currentProfiles } from './qprofile';
+import { currentProfiles, equilibriumCurrentScale } from './qprofile';
 import { defaultSources, SourceModel } from './sources';
 import { acceptStep } from './solver/acceptStep';
 import { CoupledStepper } from './solver/coupledStep';
@@ -182,20 +182,22 @@ export class ProfileModel implements SimModel {
       Ti[i] = 0.8 * Te[i];
       ne[i] = n0 * (fsep + (1 - fsep) * (1 + an) * Math.pow(1 - r * r, an));
     }
-    // ψ from the q profile of the equilibrium: ψ' = Φ_b ρ/(π q)
+    // ψ from the q profile of the equilibrium: ψ' = Φ_b ρ/(π q), scaled to carry the boundary current (equilibriumCurrentScale)
+    const Ip0 = ctx.ipAt(0);
+    const scale = equilibriumCurrentScale(ctx.eq, Ip0);
     let acc = 0;
     for (let i = 0; i < N; i++) {
       const r0 = i === 0 ? 0 : g.rhoC[i - 1], r1 = g.rhoC[i];
       const qm = i === 0 ? g.qEqC[0] : 0.5 * (g.qEqC[i - 1] + g.qEqC[i]);
       const rm = 0.5 * (r0 + r1);
-      acc += ((g.PhiB * rm) / (Math.PI * Math.max(qm, 0.3))) * (r1 - r0);
+      acc += ((scale * g.PhiB * rm) / (Math.PI * Math.max(qm, 0.3))) * (r1 - r0);
       psi[i] = acc;
     }
     s.NHe = 0;
     s.cZ = c.impurity.concentration;
     s.fA = c.fuelFracA;
     s.Cchi = 0.5; s.CI = 0.5;
-    s.Ip = ctx.ipAt(0);
+    s.Ip = Ip0;
     s.Sfuel = 0;
     ctx.bc = { Te: 0.05, Ti: 0.05, n: fsep * n0 };
     composition(ctx, Te, ne, s);

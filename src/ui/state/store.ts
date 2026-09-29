@@ -48,7 +48,7 @@ export function useStore<T extends object, S>(store: Store<T>, selector: (s: T) 
 const LOCALE_KEY = 'fusion-sim.locale';
 
 export function initialAppState(): AppState {
-  return { tab: 'setup', cfg: ITER, cfgName: 'ITER', shots: [], archivedKey: null, locale: 'en' };
+  return { tab: 'setup', cfg: ITER, cfgName: 'ITER', shots: [], archivedKey: null, viewId: null, locale: 'en' };
 }
 
 export interface AppActions {
@@ -58,6 +58,13 @@ export interface AppActions {
   /** archive a completed run once per `key` (`${runId}:${branchId}`); later calls with the same key are ignored */
   archiveShot(key: string, shot: Omit<SavedShot, 'id' | 'name'>): void;
   removeShot(id: number): void;
+  /** show a shot (or, with null, the live or latest run) in the Report */
+  viewShot(id: number | null): void;
+  /**
+   * Add a shot that did not come from a live run (opened from the archive, imported from a file) and show it in the
+   * Report. A shot with the same `sourceKey` that is already in the list is shown instead of adding another.
+   */
+  openShot(shot: Omit<SavedShot, 'id'>): void;
   /** load an archived shot's configuration into the wizard */
   editShot(shot: SavedShot): void;
   /** switch the interface language (loads the dictionary first, then updates <html lang>) */
@@ -79,10 +86,19 @@ export function createAppStore(init: Partial<AppState> = {}): AppStore {
       store.setState((s) => {
         if (s.archivedKey === key) return s;
         const id = s.shots.reduce((m, x) => Math.max(m, x.id), 0) + 1;
-        return { ...s, archivedKey: key, shots: [...s.shots, { ...shot, id, name: `${s.cfgName} #${s.shots.length + 1}` }] };
+        return { ...s, archivedKey: key, viewId: null, shots: [...s.shots, { ...shot, id, name: `${s.cfgName} #${s.shots.length + 1}` }] };
       });
     },
-    removeShot: (id) => store.setState((s) => ({ ...s, shots: s.shots.filter((x) => x.id !== id) })),
+    removeShot: (id) => store.setState((s) => ({ ...s, shots: s.shots.filter((x) => x.id !== id), viewId: s.viewId === id ? null : s.viewId })),
+    viewShot: (viewId) => set({ viewId }),
+    openShot(shot) {
+      store.setState((s) => {
+        const same = shot.sourceKey ? s.shots.find((x) => x.sourceKey === shot.sourceKey) : undefined;
+        if (same) return { ...s, viewId: same.id, tab: 'report' };
+        const id = s.shots.reduce((m, x) => Math.max(m, x.id), 0) + 1;
+        return { ...s, shots: [...s.shots, { ...shot, id }], viewId: id, tab: 'report' };
+      });
+    },
     editShot: (shot) => set({ cfg: shot.cfg, cfgName: shot.name.replace(/ #\d+$/, ''), tab: 'setup' }),
     async setLocale(locale) {
       await loadLocale(locale);

@@ -24,7 +24,7 @@ export type FrameScheduler = (flush: () => void) => void;
 
 export const initialSimState: SimState = {
   status: 'idle', cfg: null, meta: null, frames: [], events: [], t: 0, dt: 0, nSteps: 0, controls: {},
-  report: null, error: null, speed: 1, wallMs: 0, runId: 0, branchId: 0, autoPlay: false,
+  report: null, error: null, speed: 1, wallMs: 0, runId: 0, branchId: 0, autoPlay: false, interventions: 0,
 };
 
 /** upper bound on how long incoming messages may wait when animation frames are throttled */
@@ -177,7 +177,7 @@ export class SimController {
 
   readonly control = (patch: Record<string, number>): void => {
     this.send({ type: 'control', patch });
-    this.patch({ controls: { ...this.state.controls, ...patch } });
+    this.patch({ controls: { ...this.state.controls, ...patch }, interventions: this.state.interventions + 1 });
   };
 
   readonly restart = (): void => {

@@ -245,3 +245,90 @@ Node v24.19.0 · `npm run golden:update` was not run for this entry · numbers c
 - ITER15: ELMs 1020 -> 1101, sawtooth crashes 36 -> 38, GS updates 23 -> 25, f_bs 0.2235 -> 0.2300 (+2.9 %), T_ped 3.716 -> 3.739 keV. Cause: the higher loss power (P_L 117 -> 130 MW) and the later L-H transition (6.5 -> 8.5 s); the counts follow the ELM and sawtooth cycle phase.
 - DEMO15: ELMs 1072 -> 1095, GS updates 30 -> 31, f_bs 0.4221 -> 0.4283 (+1.5 %), q(0) 1.815 -> 1.645 (ELM-cycle phase, as the ws3d review noted). JET15: ELMs 149 -> 146, GS updates 15 -> 14 (14 accepted, 3 of them after a retry, 1 rejected). DIIID15: ELMs 250 -> 251, T_ped -0.3 %, q(0) 1.339 -> 1.398.
 - No golden case has an ignited frame in either fidelity (`ignited` is 0 in every frame of every case), so the golden files do not guard the ignition path; src/physics/regress/fastIonPools.test.ts, autoOff.test.ts, ignitionQuench.test.ts and src/physics/profiles/ignition.test.ts do.
+
+## 2026-09-29 02:01 UTC — ws2c numbers hygiene before the Wave-3 reconciliation: time-weighted flat tops, exact D-T energies, Miller volume and surface, ITER/DEMO density targets, MAST-U scenario, Ryter branch exponent
+
+Five intended changes, in commit order; the moves of each were measured on its own commit against the golden snapshot of the commit before it, and this last commit of the lane re-records. All numbers are flat-top means (time-weighted since change 1) unless stated. 23 of the 30 cases move; MIRROR-DHe3, MUON, TAE, TAE-pB11, W7X, Z and ZAP are unchanged to 1e-9 (pulsed and concept models with their own energies, or a steady D-D stellarator without ELM frames; W7X, the case with a fuelling-loss risk, does not reach the new density-collapse termination).
+
+1. Flat-top weighting (76beb92). flatTopMean/flatTopAverages default to the trapezoidal time average of the last 30 % of the shot instead of the mean over the frames of that window; the extra frames at ELM and sawtooth crashes weighted the crash states. The report, the golden flat-top, the validation table and the figures use it. Moves flatTop.* and the report scalars built from it, no simulated state: 22 of 30 cases show a moved key, largest 2.2 %. ITER Q 10.130 -> 10.134, DEMO Q 20.13 -> 20.11, SPARC Q 6.590 -> 6.590, ITER15 Q 10.341 -> 10.341, GF and FRXL P_fus -2.0 %, ITER-pB11 Q +2.2 %, NIF P_fus +0.3 %, DIIID15 E_fus -0.8 %.
+
+2. D + T energies (4ead482). 4He 3.561 MeV and neutron 14.028 MeV (exact two-body kinematics of Q = 17.589 MeV, AME2020 masses) instead of 3.5 + 14.1 MeV = 17.6 MeV: the alpha heating per reaction was 1.7 % low and P_charged + P_neutron was 1.000625 P_fus. Moves every D-T case through the alpha heating: ITER Q 10.134 -> 10.55 (+4.1 %, P_fus 523.6 -> 544.6 MW, T_i(0) +2 %), DEMO Q 20.11 -> 20.36, SPARC Q 6.59 -> 6.63, ITER15 Q 10.34 -> 10.41, DEMO15 Q 23.27 -> 23.43, JET P_alpha +1.8 %, P_alpha/P_fus 0.199 -> 0.203. ELM counts follow (ITER 1310 -> 1348). The D-T MIRROR has P_alpha +1.8 % (0.001771 -> 0.001802 MW). Cases without D-T fuel and the pulsed models are unchanged.
+
+3. Miller volume, surface and cross-section (0e9e679, 74aa931). plasmaVolume, plasmaSurface and crossSectionArea are the exact integrals of the Miller boundary of (kappa, delta); the ellipse formulas overestimated the volume by 3.6 % (JET) to 14.3 % (MAST-U) and the surface by 4 to 18 %. ITER and DEMO carry their LCFS shape (kappa 1.85, delta 0.49 and 0.5) in profiles.lcfsKappa/lcfsDelta, which sets their 0D volume, surface and cross-section (ITER 842 m3 and 683 m2 against the design 837 m3 and 678 m2); the other presets use kappa, delta as the boundary, as the 1.5D model always did. Volume falls 3.5 % (JET), 8 % (SPARC), 9 to 10 % (DIII-D, JT-60SA) at the same inputs: SPARC Q 6.63 -> 7.54, JET Q 0.369 -> 0.387 and E_fus 64.2 -> 67.2 MJ, JT-60SA Q +12 %, DIII-D Q +11 %, ITER Q 10.55 -> 9.97 (V +1.2 %, P_fus -5.7 %, T_i -3.7 %), DEMO Q 20.36 -> 19.94, ITER-DHe3 P_fus 0.139 -> 0.112 MW, ITER-pB11 P_fus +6 %. The nine 1.5D cases keep their state (the 1.5D model builds its own volumes) and move only in the neutron wall load, the surface of which is the Miller one: ITER15 0.50 -> 0.53 MW/m2 (dpa/year 3.0 -> 3.2, neutron fluence +6.6 %), SPARC15 1.74 -> 1.86, DEMO15 1.04 -> 1.11. The 0D shot report and disruption report take the boundary shape like the 1.5D ones do: ITER report wall load 0.53 -> 0.52 MW/m2, DEMO 0.99 -> 0.87 (with the volume change SPARC 1.86 -> 2.26).
+
+4. Low-density L-H branch (c202c5a). The threshold below Ryter's n_min rises as (n_min/n)^2 (the SPARC-study penalty, Hughes et al. 2020, as implemented in cfspopcon) instead of n_min/n; n_min itself (Ryter et al. 2014, eq. 3) is unchanged. The first L-H transition of a ramp-up moves by 0.02 to 0.3 s: JET 0.34 -> 0.44 s, JET15 0.22 -> 0.32 s, SPARC15 1.50 -> 1.57 s, DEMO15 14.55 -> 14.85 s. Effects: JET15 E_fus 82.2 -> 81.6 MJ, JET Q_sci_max 0.475 -> 0.481, SPARC15-pB11 Q 5.4e-5 -> 4.6e-5 (a 3 s run: the H-mode window is shorter), event counts of the ELM presets within 1.5 %. The ITPA20 and ITPA20-IL scalings (aad6293) are opt-in: this snapshot pair is identical to 1e-12.
+
+5. Presets (4d62b86). ITER 0D n_target 1.0e20 -> 0.914e20 volume average (line-averaged n/n_G 0.915 -> 0.837; design 0.85: Casper et al. 2014, Shimada et al. 2007), DEMO 0D 0.75e20 -> 0.711e20 (n/n_G 1.238 -> 1.171; 2018 baseline 1.2: Siccinio et al. 2022); the 1.5D presets already regulate the line average and keep 1.0e20 and 0.75e20 (ITER15 and DEMO15 do not move). ITER Q 9.97 -> 10.04 (P_fus 513.8 -> 513.7 MW, T_i 8.06 -> 8.84 keV, tau_E 2.72 -> 2.59 s, L-H 10.0 -> 9.4 s), DEMO P_fus 2005 -> 1836 MW and Q 19.94 -> 18.27, ITER-DHe3 P_fus 0.112 -> 0.238 MW (n/n_G 0.95 -> 0.87). ITER-pB11, a marginal power balance (the Wave-1 report: 1.0e20 collapses at 28 s, 0.85e20 survives), now survives to the scheduled end: termination 'Radiative collapse (P_rad > P_heat)' -> 'Scheduled end', 152 ELMs instead of 33, 2 L-H transitions, no disruption, Q 1.6e-7 -> 2.4e-12; the golden suite has no disrupting case any more. MAST-U becomes the first-campaign scenario (R 0.8 m, a 0.5 m, kappa 2.1, delta 0.47, 0.75 MA, 0.55 T, 2 MW NBI absorbed, instead of the design-maximum R 0.85, a 0.65, kappa 2.5, 1 MA, 0.75 T, 5 MW): q95 18.18 -> 6.39 (published 5 to 10), P_fus 6.5e-4 -> 1.4e-4 MW, beta_N 4.77 -> 3.96, W 0.38 -> 0.12 MJ, ELMs 28 -> 11; MASTU15 (same preset, 1.5D) q95 17.54 -> 6.42, beta_N 4.18 -> 3.64, P_fus 9.3e-4 -> 2.3e-4 MW, ELMs 200 -> 297.
+
+No golden number moves with the density-collapse termination (4ccc225: no golden case is near it), the p-11B beam-target quadrature (168b9b9: neither model calls it for p-11B) or the test-only commits. Net change of the headline numbers against the golden of the Wave-1 gate: ITER Q 10.13 -> 10.04, P_fus 523.4 -> 513.7 MW, E_fus 207 -> 202 GJ, n/n_G 0.915 -> 0.837; SPARC Q 6.59 -> 7.56, JET Q 0.369 -> 0.386, JT-60SA Q +12 %, DIII-D Q +11 %, DEMO Q 20.13 -> 18.27; ITER15 Q 10.34 -> 10.41, DEMO15 Q 23.26 -> 23.46, JET15 Q 0.4413 -> 0.4413, SPARC15 Q 6.319 -> 6.345.
+
+Node v24.19.0 · `npm run golden:update` · all cases
+
+- Changed (30):
+  - ITER: 388 keys moved; max rel. diff 1.91e-1
+    - moved, largest change first: flatTop.P_oh, history.P_oh.mean, history.P_line.max, flatTop.P_line, history.P_line.mean, flatTop.W_alpha, flatTop.Wf, history.P_line.min, flatTop.W_beam, history.W_alpha.mean, history.Wf.mean, history.W_beam.mean, … (+376 more)
+  - JET: 365 keys moved; max rel. diff 4.36e-1
+    - moved, largest change first: history.P_LH.max, flatTop.W_alpha, history.W_alpha.mean, traces.Q[5], traces.P_fus[5], history.n_wall.max, history.W_alpha.max, scalars.neutronFluence_m2, flatTop.P_ei, flatTop.n_wall, history.fHe.max, history.n_wall.mean, … (+353 more)
+  - SPARC: 362 keys moved; max rel. diff 5.00e-1; 1 key added (events 1)
+    - moved, largest change first: events.burn_start, history.P_LH.max, history.dWdt.min, flatTop.W_alpha, flatTop.Wf, scalars.engineering.Net P_electric (MW), flatTop.P_sync, history.W_alpha.mean, history.Wf.mean, history.P_sync.mean, history.P_sync.max, history.W_alpha.max, … (+350 more)
+    - added: events.burn_end
+  - DIIID: 356 keys moved; max rel. diff 4.91e-1
+    - moved, largest change first: history.P_ei.mean, flatTop.P_ei, history.P_ei.min, history.P_ei.max, history.dWdt.max, flatTop.W_alpha, history.W_alpha.mean, history.fHe.max, flatTop.fHe, history.fHe.mean, flatTop.n_wall, scalars.neutronFluence_m2, … (+344 more)
+  - JT60SA: 373 keys moved; max rel. diff 6.37e-1
+    - moved, largest change first: history.P_ei.min, flatTop.P_ei, history.P_ei.mean, flatTop.W_alpha, history.W_alpha.mean, flatTop.fHe, history.fHe.max, history.fHe.mean, scalars.neutronFluence_m2, flatTop.n_wall, history.n_wall.mean, history.n_wall.max, … (+361 more)
+  - MASTU: 383 keys moved; max rel. diff 1.00e+0
+    - moved, largest change first: scalars.engineering.EROI, scalars.engineering.Magnetic energy (GJ), history.dWdt.max, history.P_sync.max, flatTop.P_sync, flatTop.W_alpha, history.P_sync.mean, history.W_alpha.mean, history.W_alpha.max, traces.P_fus[4], traces.P_fus[5], history.P_charged.max, … (+371 more)
+  - W7X: 39 keys moved; max rel. diff 1.86e-14
+    - moved, largest change first: flatTop.Q, flatTop.P_fus, flatTop.P_rad_core, flatTop.n_wall, flatTop.P_cond, flatTop.P_transport, flatTop.tauE, flatTop.W, flatTop.Ti0, flatTop.S_fuel, flatTop.P_ei, flatTop.cZ, … (+27 more)
+  - DEMO: 397 keys moved; max rel. diff 1.81e-1
+    - moved, largest change first: traces.P_fus[16], traces.Q[16], flatTop.dWdt, scalars.engineering.LCOE ($/MWh), traces.betaN[16], history.dWdt.mean, traces.P_fus[8], traces.P_fus[15], traces.Q[8], scalars.engineering.Net P_electric (MW), traces.Q[15], scalars.engineering.dpa/year, … (+385 more)
+  - ITER15: 2299 keys moved; max rel. diff 1.69e+0
+    - moved, largest change first: profiles.last.prof.shear[10], profiles.last.prof.shear[15], profiles.last.prof.shear[16], profiles.last.prof.shear[11], profiles.last.prof.shear[5], profiles.last.prof.shear[4], profiles.last.prof.shear[17], profiles.mid.prof.Pohm[49], profiles.last.prof.shear[12], profiles.last.prof.shear[3], profiles.mid.prof.Pohm[48], profiles.last.prof.shear[13], … (+2287 more)
+  - JET15: 2265 keys moved; max rel. diff 9.57e-1
+    - moved, largest change first: profiles.last.prof.Pohm[49], profiles.last.prof.Pohm[48], profiles.last.prof.johm[49], profiles.last.prof.Pohm[47], profiles.mid.prof.shear[1], profiles.last.prof.chie[41], profiles.last.prof.chie[40], profiles.mid.prof.shear[0], profiles.last.prof.chii[41], profiles.last.prof.chii[40], profiles.last.prof.johm[48], profiles.mid.prof.shear[5], … (+2253 more)
+  - SPARC15: 2155 keys moved; max rel. diff 6.98e-1
+    - moved, largest change first: equilibrium.last.Zaxis, history.V_loop.min, history.P_LH.max, traces.Q[3], traces.P_fus[3], traces.Ti0[3], traces.Te0[3], traces.f_bs[3], traces.W[3], history.dWdt.min, history.P_LH.mean, profiles.mid.prof.shear[8], … (+2143 more)
+  - SPARC15-short: 2155 keys moved; max rel. diff 1.58e+0
+    - moved, largest change first: profiles.mid.prof.j[49], equilibrium.last.Zaxis, profiles.mid.prof.johm[49], profiles.mid.prof.chie[49], profiles.mid.prof.chie[48], profiles.mid.prof.Palpha[47], profiles.mid.prof.Palpha[48], profiles.mid.prof.Pohm[48], profiles.mid.prof.chii[49], profiles.mid.prof.chii[48], profiles.mid.prof.Palpha[46], profiles.mid.prof.chie[47], … (+2143 more)
+  - DEMO15: 2288 keys moved; max rel. diff 1.69e+0
+    - moved, largest change first: profiles.mid.prof.johm[49], equilibrium.last.Zaxis, profiles.mid.prof.johm[2], profiles.mid.prof.shear[5], profiles.mid.prof.johm[3], profiles.mid.prof.Pohm[3], profiles.mid.prof.Pohm[48], profiles.mid.prof.Pohm[2], profiles.mid.prof.johm[48], profiles.mid.prof.Pohm[4], profiles.last.prof.Pohm[1], profiles.mid.prof.Pohm[1], … (+2276 more)
+  - NIF: 8 keys moved; max rel. diff 3.32e-3
+    - moved, largest change first: flatTop.ignited, flatTop.P_fus, flatTop.Q, flatTop.Nn, flatTop.Efus_MJ, flatTop.Ein_MJ, flatTop.rhoR, flatTop.Ti
+  - DIRECT: 8 keys moved; max rel. diff 3.32e-3
+    - moved, largest change first: flatTop.P_fus, flatTop.ignited, flatTop.Q, flatTop.Efus_MJ, flatTop.Nn, flatTop.Ein_MJ, flatTop.rhoR, flatTop.Ti
+  - Z: 9 keys moved; max rel. diff 9.17e-15
+    - moved, largest change first: flatTop.Ein_MJ, flatTop.P_fus, flatTop.triple, flatTop.Q, flatTop.ne, flatTop.Nn, flatTop.Te, flatTop.Ti, flatTop.Efus_MJ
+  - GF: 11 keys moved; max rel. diff 2.00e-2
+    - moved, largest change first: flatTop.P_fus, flatTop.triple, flatTop.B, flatTop.ne, flatTop.C, flatTop.Te, flatTop.Ti, flatTop.Efus_MJ, flatTop.Q, flatTop.Nn, flatTop.Ein_MJ
+  - FRXL: 11 keys moved; max rel. diff 2.01e-2
+    - moved, largest change first: flatTop.P_fus, flatTop.triple, flatTop.B, flatTop.ne, flatTop.C, flatTop.Te, flatTop.Ti, flatTop.Q, flatTop.Nn, flatTop.Efus_MJ, flatTop.Ein_MJ
+  - ZAP: 7 keys moved; max rel. diff 8.57e-15
+    - moved, largest change first: flatTop.P_fus, flatTop.triple, flatTop.ne, flatTop.Ein_MJ, flatTop.Nn, flatTop.Q, flatTop.Efus_MJ
+  - TAE: 16 keys moved; max rel. diff 7.22e-15
+    - moved, largest change first: flatTop.ne, flatTop.P_aux, flatTop.W, flatTop.P_cond, flatTop.tauE, flatTop.Te, flatTop.Ti, flatTop.Nn, flatTop.P_fus, flatTop.P_brems, flatTop.Ein_MJ, flatTop.triple, … (+4 more)
+  - MIRROR: 189 keys moved; max rel. diff 1.71e-2
+    - moved, largest change first: flatTop.P_alpha, history.P_alpha.max, history.P_alpha.mean, history.P_alpha.min, flatTop.P_fus, flatTop.Q, traces.P_fus[10], traces.P_fus[11], traces.P_fus[12], traces.P_fus[13], traces.P_fus[14], traces.P_fus[15], … (+177 more)
+  - MUON: 8 keys moved; max rel. diff 4.74e-15
+    - moved, largest change first: flatTop.Q, flatTop.P_fus, flatTop.P_in, flatTop.Ti, flatTop.Ein_MJ, flatTop.Yf, flatTop.Efus_MJ, flatTop.Nn
+  - ITER-DHe3: 384 keys moved; max rel. diff 9.92e-1; 1 key removed (events 1)
+    - moved, largest change first: history.dWdt.mean, flatTop.W_alpha, traces.Q[8], traces.Q[12], traces.Q[13], traces.Q[17], traces.Q[14], traces.Q[7], traces.Q[9], traces.Q[15], history.P_cond.min, traces.Q[10], … (+372 more)
+    - removed: events.HL
+  - ITER-pB11: 388 keys moved; max rel. diff 1.01e+0; 1 key added (events 1); 15 keys removed (scalars 13, events 2)
+    - moved, largest change first: labels.termination.reason, flatTop.dWdt, history.P_charged.min, history.P_fus.min, history.Q.min, scalars.termination.natural, traces.P_fus[19], traces.Q[19], traces.Q[8], traces.Q[9], traces.Q[10], traces.P_fus[8], … (+376 more)
+    - added: events.HL
+    - removed: events.disruption, events.quench, scalars.termination.disruption.TPF, scalars.termination.disruption.W_mag_MJ, scalars.termination.disruption.W_th_MJ, scalars.termination.disruption.halo_TPF_product, scalars.termination.disruption.halo_fraction, scalars.termination.disruption.melt_risk, scalars.termination.disruption.runaway_avalanche_efolds, scalars.termination.disruption.runaway_current_MA, scalars.termination.disruption.t_onset, scalars.termination.disruption.tau_CQ_ms, … (+3 more)
+  - SPARC15-DHe3: 70 keys moved; max rel. diff 4.84e-1
+    - moved, largest change first: history.P_LH.max, history.P_LH.mean, scalars.neutronFluence_m2, history.n_wall.max, history.n_wall.min, history.n_wall.mean, flatTop.n_wall, flatTop.dWdt, scalars.engineering.Loop voltage (avg., V), flatTop.dWdt_s, flatTop.W_alpha, flatTop.Wf, … (+58 more)
+  - SPARC15-pB11: 2041 keys moved; max rel. diff 1.01e+0
+    - moved, largest change first: profiles.last.prof.shear[12], history.V_loop.min, profiles.mid.prof.Palpha[49], profiles.mid.prof.chie[49], profiles.mid.prof.chie[48], profiles.mid.prof.Palpha[48], profiles.mid.prof.Palpha[47], profiles.mid.prof.chie[47], profiles.mid.prof.Palpha[46], profiles.mid.prof.chie[46], history.P_LH.max, profiles.mid.prof.jbs[49], … (+2029 more)
+  - DIIID15: 2253 keys moved; max rel. diff 1.00e+0; 1 key added (events 1)
+    - moved, largest change first: scalars.engineering.GS updates rejected, profiles.last.prof.Pohm[49], profiles.last.prof.Pohm[48], profiles.last.prof.Pohm[47], profiles.last.prof.johm[49], profiles.last.prof.chie[41], profiles.last.prof.chie[40], profiles.last.prof.johm[48], scalars.warnings.length, profiles.last.prof.chii[41], profiles.last.prof.chii[40], profiles.last.prof.Pohm[46], … (+2241 more)
+    - added: events.warning
+  - MASTU15: 2330 keys moved; max rel. diff 1.98e+0; 1 key added (events 1); 1 key removed (events 1)
+    - moved, largest change first: profiles.mid.prof.johm[1], profiles.mid.prof.johm[0], profiles.mid.prof.johm[2], profiles.mid.prof.johm[3], profiles.mid.prof.johm[4], profiles.last.prof.johm[0], profiles.mid.prof.johm[5], profiles.last.prof.johm[1], profiles.last.prof.johm[2], flatTop.rho_q1, profiles.mid.prof.johm[6], profiles.last.prof.johm[3], … (+2318 more)
+    - added: events.sawtooth
+    - removed: events.warning
+  - TAE-pB11: 15 keys moved; max rel. diff 8.49e-15
+    - moved, largest change first: flatTop.P_alpha, flatTop.P_fus, flatTop.P_brems, flatTop.Te, flatTop.Ti, flatTop.P_aux, flatTop.ne, flatTop.Q, flatTop.W, flatTop.tauE, flatTop.triple, flatTop.Ein_MJ, … (+3 more)
+  - MIRROR-DHe3: 14 keys moved; max rel. diff 8.42e-15
+    - moved, largest change first: flatTop.tauE, flatTop.P_fus, flatTop.triple, flatTop.Q, flatTop.W, flatTop.Te, flatTop.Ti, flatTop.P_brems, flatTop.P_cond, flatTop.Ein_MJ, flatTop.P_alpha, flatTop.ne, … (+2 more)

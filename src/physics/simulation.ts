@@ -45,24 +45,33 @@
  *    keys of its patch from the waveforms for the rest of the run branch. Replaying an actuator log
  *    needs the same scenario. A run without a scenario is bitwise what it was before scenarios.
  *  - Step atomicity and slicing. A kernel step is atomic: the observable state of the run (t, history, events, the step
- *    counter, the actuator log, every checkpoint) changes only when a step completes, and the completed run is a function
- *    of the configuration, the seed, the actuator log, the breakpoints and the scenario, never of when or how often the
- *    caller stopped (chunk invariance above). advance() can still return in the middle of a step, for a caller that must
- *    stay responsive (the simulation worker: a message, a pause, waits for the task that is running): given
- *    AdvanceOptions.yieldWhen, a model that provides stepSlices() (SimModel: a resumable form of step(); the 1.5D model,
- *    whose Grad-Shafranov update alone takes 30 to 100 ms) is stepped by running that generator, and yieldWhen() is asked
- *    at each of its yields. When it says stop, advance() returns with the step suspended (stepInProgress). The step is the
- *    same statements in the same order as without slicing (the model derives step() from stepSlices()), so slicing
- *    changes no bit of the run (kernel/slicing.test.ts, determinism15.test.ts). A suspended step is not a boundary and not
- *    visible: t, history, events, nSteps and done are those of the boundary before it, no frame of it exists yet, and y and
- *    the model belong to the step (nothing may read or change them until it ends). What ends it:
+ *    counter, the actuator log) changes only when a step completes, a frame and its checkpoint (above) are recorded only
+ *    then, so no checkpoint ever holds half a step, and the completed run is a function of the configuration, the seed,
+ *    the actuator log, the breakpoints and the scenario, never of when or how often the caller stopped (chunk invariance
+ *    above). advance() can nevertheless return in the middle of a step, for a caller that must stay responsive (the
+ *    simulation worker: a message from the page, a pause, waits for the task that is running, and a 1.5D step that
+ *    carries a Grad-Shafranov update takes 30 to 130 ms): given AdvanceOptions.yieldWhen, a model that provides
+ *    stepSlices() (SimModel: the resumable form of step(), a generator that offers a yield at the points where all its state
+ *    is in its locals and in the model's own fields; the 1.5D model) is stepped by running that generator, and yieldWhen()
+ *    is asked at each yield. The model only offers the points, the caller decides: when yieldWhen() says stop, advance()
+ *    returns with the step suspended (stepInProgress). The step is the same statements in the same order as without
+ *    slicing (the model derives step() from stepSlices(), the same body run to its end), so no bit of the run changes:
+ *    kernel/slicing.test.ts suspends an ITER15 shot with equilibrium updates at every yield and compares the digest with
+ *    runAll(), worker/hostMidStep.test.ts does the same through the worker host. A caller that passes no yieldWhen
+ *    (runAll(), the CLIs, the golden harness, validation) never sees a suspended step, and a Dormand–Prince model or a model
+ *    without stepSlices() is stepped whole: yieldWhen() is asked between its steps only. A suspended step is not a boundary
+ *    and not visible: t, history, events, nSteps and done are those of the boundary before it, no frame of it exists yet, and
+ *    y and the model belong to the step (nothing may read or change them until it ends). What ends it:
  *      - advance() continues it first, to its end or, with yieldWhen, to the next stop; the frames and events it
- *        completes are in that call's result. The target of the call is measured from t, the start of the step;
+ *        completes are in that call's result. The target of the call is measured from t, the start of the step, so a
+ *        call whose target lies inside the step ends with it;
  *      - applyControl() settles it (runs it to its end), then applies the patch at the boundary that follows, exactly as
- *        if the patch had arrived when the step ended. The frames of the settled step are in `history` but in no advance()
- *        result: a caller that mirrors the history reads them (worker/host.ts calls advance(0) first);
- *      - rewindTo() drops it (the model is restored from the frame's checkpoint, which does not depend on the partial
- *        effects of the step), and runAll() runs it to its end.
+ *        if the patch had arrived when the step ended (and is logged there: the log replays the run). The frames of the
+ *        settled step are in `history` but in no advance() result: a caller that mirrors the history reads them
+ *        (worker/host.ts calls advance(0) first);
+ *      - rewindTo() drops it (the generator is closed, and the model is restored from the frame's checkpoint, which does
+ *        not depend on the partial effects of the step); an exception thrown inside it clears it and propagates, the model
+ *        having put its state back as step() promises, and runAll() runs it to its end.
  *    report() and fingerprint() do not settle it: report() reads the model's state, so call it at a boundary.
  *  - Frame times. Each recorded frame is later than the one before, except that a shot ended by a
  *    step that made no progress in time (a model's own stepper giving up: 'Numerical failure') gets

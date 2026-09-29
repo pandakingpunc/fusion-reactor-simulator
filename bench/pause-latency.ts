@@ -1,7 +1,7 @@
 /// <reference types="node" />
 /**
  * Responsiveness of the simulation worker's playback loop:
- *   node node_modules/tsx/dist/cli.mjs bench/pause-latency.ts [--mode thread|tasks|both] [--presets DEMO15,ITER15] [--speeds 1,30,100] [--seconds 4]
+ *   node node_modules/tsx/dist/cli.mjs bench/pause-latency.ts [--mode thread|tasks|both|stretch] [--presets DEMO15,ITER15] [--speeds 1,30,100] [--seconds 4] [--priority high]
  *
  * The worker is one thread: a `pause`, `control` or `rewind` message posted to it is handled when the task that is
  * running ends, so the time a request waits is the longest uninterrupted stretch of computation. Two measurements:
@@ -16,25 +16,39 @@
  *    between, and a message arriving at the start of that task would have waited that long. Gaps below 1 ms are the
  *    spinner itself and are not counted. Finally a real `pause` is issued and the host must post nothing after it.
  *
+ *  - stretch (not in `both`): the kernel's own yield-to-yield stretches, without the host: the run of a preset is suspended
+ *    at every yield of every step (Simulation.advance with a yieldWhen that always stops, "Step atomicity and slicing" in
+ *    simulation.ts) and each stretch is timed. The run is repeated and every stretch takes the minimum of its repeats, which
+ *    drops what the neighbours on a shared machine add (the runs are identical, bit for bit, so stretch n is the same work in
+ *    each). A slice of the host ends at the first yield after SLICE_MS, so a request waits for one slice plus one stretch: the
+ *    "task" columns model the host loop from the stretches (a task is the stretches until SLICE_MS has gone by). Runs on any
+ *    load and gives the number that the two other modes approach on an idle machine; it needs the model to offer stepSlices().
+ *
  * Timings depend on the machine and its load (on a shared machine the tail is noisy), so compare the numbers of two
  * runs made back to back on the same machine, e.g. this file against a checkout of an older commit (copy the two
- * bench/pause-latency*.ts files there: they use only the host's createSimHost(post)). The spinner of the tasks mode
- * keeps one core busy while it runs. Not part of ci:local.
+ * bench/pause-latency*.ts files there: they use only the host's createSimHost(post); the stretch mode needs the kernel
+ * of the commit that has it), and give both `--priority high` so that the OS does not preempt the worker for tens of
+ * milliseconds at a time. The spinner of the tasks mode keeps one core busy while it runs. Not part of ci:local.
  */
+import * as os from 'node:os';
 import { Worker } from 'node:worker_threads';
 import { defineCli, parseArgsOrExit } from '../src/cli/args';
 import { PRESETS } from '../src/physics/presets';
-import { createSimHost } from '../src/worker/host';
+import { Simulation } from '../src/physics/simulation';
+import { SLICE_MS, createSimHost } from '../src/worker/host';
 import { FromWorker, PROTOCOL_VERSION, ToWorker } from '../src/worker/protocol';
 
 const CLI = defineCli({
   name: 'bench/pause-latency.ts',
   summary: 'How long a message to the simulation worker can wait behind the playback loop, per preset and speed.',
   flags: {
-    mode: { type: 'string', default: 'both', choices: ['thread', 'tasks', 'both'], help: 'thread: request latency in a worker thread; tasks: task lengths of the loop in this thread' },
-    presets: { type: 'list', default: ['DEMO15', 'ITER15'], metavar: 'ID,…', help: 'preset ids (JET15 is left out: its Grad-Shafranov update at t = 0.68 s is one 1.3 s step, which no host can slice)' },
+    mode: { type: 'string', default: 'both', choices: ['thread', 'tasks', 'both', 'stretch'], help: 'thread: request latency in a worker thread; tasks: task lengths of the loop in this thread; both: those two; stretch: the kernel yield-to-yield stretches (load-robust)' },
+    presets: { type: 'list', default: ['DEMO15', 'ITER15'], metavar: 'ID,…', help: 'preset ids (JET15 ends within about a second at 100x, its rows are short)' },
     speeds: { type: 'list', default: ['1', '30', '100'], metavar: 'X,…', help: 'playback speeds' },
-    seconds: { type: 'number', default: 4, min: 0.5, max: 120, metavar: 'S', help: 'wall time of each measurement' },
+    seconds: { type: 'number', default: 4, min: 0.5, max: 120, metavar: 'S', help: 'wall time of each measurement (thread, tasks)' },
+    horizon: { type: 'number', default: 30, min: 0.001, metavar: 'T', help: 'stretch mode: simulated time to cover (the ITER15 ramp-up and its first Grad-Shafranov updates are inside 30 s)' },
+    repeats: { type: 'number', default: 3, min: 1, max: 20, metavar: 'N', help: 'stretch mode: runs per preset, every stretch takes its minimum over them' },
+    priority: { type: 'string', default: 'normal', choices: ['normal', 'above-normal', 'high'], help: 'scheduling priority of this process (and its worker thread): on a machine that other processes share, the OS preempts the worker for tens of ms and the tail is that noise; a raised priority measures the loop, not the neighbours' },
   },
 });
 
@@ -124,9 +138,54 @@ async function measureTasks(id: string, speed: number, seconds: number) {
   return { id, speed, initMs, frames, messages, tasks: gaps.length - 1, p50: pct(gaps, 0.5), p95: pct(gaps, 0.95), p99: pct(gaps, 0.99), max: gaps[gaps.length - 1], afterPause, done, failed };
 }
 
+/** the kernel's yield-to-yield stretches of one preset, and the task lengths of the host loop modelled on them */
+function measureStretch(id: string, horizon: number, repeats: number) {
+  const cfg = preset(id).cfg;
+  const runs: number[][] = [];
+  let steps = 0, tEnd = 0, stepSlices = true;
+  for (let k = 0; k < repeats; k++) {
+    const sim = new Simulation(cfg);
+    stepSlices = typeof sim.model.stepSlices === 'function';
+    const eps = 1e-9 * sim.model.tEnd;
+    const d: number[] = [];
+    while (!sim.done && sim.t < horizon) {
+      const a = performance.now();
+      sim.advance(eps, { yieldWhen: () => true });
+      d.push(performance.now() - a);
+    }
+    runs.push(d);
+    steps = sim.nSteps; tEnd = sim.t;
+  }
+  const n = Math.min(...runs.map((r) => r.length));
+  const stretch: number[] = [];
+  for (let i = 0; i < n; i++) stretch.push(Math.min(...runs.map((r) => r[i])));
+  // the host loop: a slice takes stretches until SLICE_MS has gone by, and ends at that yield
+  const tasks: number[] = [];
+  for (let i = 0, acc = 0; i < n; i++) { acc += stretch[i]; if (acc >= SLICE_MS || i === n - 1) { tasks.push(acc); acc = 0; } }
+  const sorted = (a: number[]) => [...a].sort((x, y) => x - y);
+  const s = sorted(stretch), k = sorted(tasks);
+  const worst = stretch.indexOf(s[s.length - 1]);
+  return { id, tEnd, steps, yields: n, stepSlices, p50: pct(s, 0.5), p99: pct(s, 0.99), max: s[s.length - 1], worst, taskP99: pct(k, 0.99), taskMax: k[k.length - 1] };
+}
+
 async function main() {
   const args = parseArgsOrExit(CLI);
+  if (args.priority !== 'normal') {
+    try { os.setPriority(0, args.priority === 'high' ? os.constants.priority.PRIORITY_HIGH : os.constants.priority.PRIORITY_ABOVE_NORMAL); }
+    catch (e) { console.log(`(could not raise the priority: ${e instanceof Error ? e.message : e})`); }
+  }
   const note = (r: { done: boolean; failed: string }) => `${r.done ? ' (run ended)' : ''}${r.failed ? ` ERROR ${r.failed.slice(0, 60)}` : ''}`;
+  if (args.mode === 'stretch') {
+    console.log(`kernel yield-to-yield stretches (min of ${args.repeats} runs of each), up to t = ${args.horizon} s of each preset, Node ${process.version}, slice ${SLICE_MS} ms`);
+    console.log('| preset | t [s] | steps | yields | stretch p50 [ms] | p99 | max | (at yield) | task p99 | task max [ms] |');
+    console.log('|---|---|---|---|---|---|---|---|---|---|');
+    for (const id of args.presets) {
+      const r = measureStretch(id, args.horizon, args.repeats);
+      if (!r.stepSlices) { console.log(`| ${id} | – | – | – | the model has no stepSlices(): a step is one stretch | | | | | |`); continue; }
+      console.log(`| ${r.id} | ${r.tEnd.toFixed(1)} | ${r.steps} | ${r.yields} | ${r.p50.toFixed(2)} | ${r.p99.toFixed(1)} | ${r.max.toFixed(1)} | ${r.worst} | ${r.taskP99.toFixed(1)} | ${r.taskMax.toFixed(1)} |`);
+    }
+    return;
+  }
   if (args.mode !== 'tasks') {
     console.log(`pause latency of the simulation worker (request to reply in a worker thread), ${args.seconds} s per row, Node ${process.version}`);
     console.log('| preset | speed | requests | frames | wait p50 [ms] | p95 | p99 | max |');

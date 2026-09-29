@@ -1,4 +1,4 @@
-import React, { Fragment, useMemo } from 'react';
+import { Fragment, useMemo } from 'react';
 import { SavedShot } from '../state/types';
 import { useT } from '../state/store';
 import { fmtNum } from '../format';

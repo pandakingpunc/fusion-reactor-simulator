@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { GLOSSARY, GLOSSARY_GROUPS, GlossaryGroup, termKeys } from '../../edu/glossary';
 import type { EduKey } from '../../edu/i18n';
 import { useEduT } from './useEduT';

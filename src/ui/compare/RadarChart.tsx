@@ -1,4 +1,3 @@
-import React from 'react';
 import { radarPoints } from './radar';
 
 export interface RadarSeries { id: number; name: string; color: string; radii: number[] }

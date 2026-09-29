@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { MISSIONS, MissionId, missionKey } from '../../edu/missions';
 import type { EduKey } from '../../edu/i18n';
 import { RunPool } from '../pool/pool';

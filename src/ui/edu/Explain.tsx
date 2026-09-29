@@ -1,4 +1,4 @@
-import React, { ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { findTerm, termKeys } from '../../edu/glossary';
 import { useEduT } from './useEduT';
 import './edu.css';

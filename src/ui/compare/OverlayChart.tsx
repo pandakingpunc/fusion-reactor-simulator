@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { fmtAxis } from '../format';
 import { Trace, extent, tickValues } from './overlay';
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ReactorConfig, ShotReport } from '../../physics/types';
 import { PRESETS, Preset } from '../../physics/presets';
 import { WorkerFactory } from '../state/sim';

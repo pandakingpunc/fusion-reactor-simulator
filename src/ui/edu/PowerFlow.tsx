@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { PowerWindow, balanceTotals, pickDiag, powerBalance, powerFlowGraph } from '../../edu/powerFlow';
 import { layoutSankey } from '../../edu/sankey';
 import type { EduKey } from '../../edu/i18n';

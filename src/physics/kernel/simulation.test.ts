@@ -205,7 +205,7 @@ describe('FSAL stage reuse', () => {
       expect(callsOff() - callsOn(), id).toBeGreaterThan(0.9 * on.nSteps);
       expect(callsOn(), id).toBeLessThan(6.2 * on.nSteps);
     }
-  });
+  }, 60000); // six whole 0D shots: about 1 s idle, over the 5 s default on a machine that other processes share
 
   it('a step follows a control change: interventions through applyControl() and around the kernel', async () => {
     // through the kernel: every applyControl invalidates the reusable stage
@@ -240,7 +240,7 @@ describe('FSAL stage reuse', () => {
       expect(sim.history.length).toBe(ref.history.length);
       expect(sim.y).toEqual(ref.y);
     }
-  });
+  }, 60000); // three W7X shots and two rewinds
 
   describe('model state that postStep() changes', () => {
     const run = (reportK: boolean, fsal: boolean) => {

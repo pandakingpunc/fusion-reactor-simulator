@@ -488,6 +488,7 @@
     "engineering.B_coil (T)": 3.15,
     "engineering.Capital cost (M$)": 1845,
     "engineering.Cryo heat load (kW)": 29.1,
+    "engineering.Cryo pulse length (s)": 1055,
     "engineering.Cryoplant power (MW)": 8.7,
     "engineering.Divertor q_max (MW/m²)": 0.6,
     "engineering.EROI": 0.1,

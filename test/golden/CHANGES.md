@@ -313,3 +313,48 @@ Node v24.19.0 · `npm run golden:update` · all cases
     - moved, largest change first: scalars.engineering.EROI, scalars.engineering.TF stress (MPa), scalars.engineering.Net P_electric (MW), scalars.Q_eng, scalars.engineering.P_recirculating (MW)
     - added: scalars.engineering.TF case Tresca (MPa), scalars.engineering.TF coils, scalars.engineering.TF mass (t), scalars.engineering.TF stress margin, scalars.engineering.TF vertical tension per coil (MN), scalars.engineering.TF winding pack J (MA/m²), scalars.engineering.TF winding pack Tresca (MPa)
 - Unchanged (11): NIF, DIRECT, Z, GF, FRXL, ZAP, TAE, MIRROR, MUON, TAE-pB11, MIRROR-DHe3
+
+## 2026-09-29 06:59 UTC — ws7b review fix: the pulsed-field load of the cryoplant follows the design pulse of the plant (systems.pulseLength_s, default 1055 s), not the simulated shot length; only engineering keys of 13 magnetic cases move
+
+Node v24.19.0 · `npm run golden:update` · all cases
+
+- Changed (13):
+  - ITER: 6 keys moved; max rel. diff 1.88e-1; 1 key added (scalars 1)
+    - moved, largest change first: scalars.engineering.Net P_electric (MW), scalars.engineering.LCOE ($/MWh), scalars.engineering.Cryoplant power (MW), scalars.engineering.Cryo heat load (kW), scalars.engineering.P_recirculating (MW), scalars.Q_eng
+    - added: scalars.engineering.Cryo pulse length (s)
+  - SPARC: 5 keys moved; max rel. diff 2.00e-2; 1 key added (scalars 1)
+    - moved, largest change first: scalars.engineering.Net P_electric (MW), scalars.engineering.Cryo heat load (kW), scalars.engineering.Cryoplant power (MW), scalars.engineering.P_recirculating (MW), scalars.Q_eng
+    - added: scalars.engineering.Cryo pulse length (s)
+  - JT60SA: 3 keys moved; max rel. diff 5.00e-2; 1 key added (scalars 1)
+    - moved, largest change first: scalars.engineering.Cryoplant power (MW), scalars.engineering.Cryo heat load (kW), scalars.Q_eng
+    - added: scalars.engineering.Cryo pulse length (s)
+  - W7X: 0 keys moved; 1 key added (scalars 1)
+    - added: scalars.engineering.Cryo pulse length (s)
+  - DEMO: 6 keys moved; max rel. diff 1.71e-1; 1 key added (scalars 1)
+    - moved, largest change first: scalars.engineering.Cryo heat load (kW), scalars.engineering.Cryoplant power (MW), scalars.Q_eng, scalars.engineering.P_recirculating (MW), scalars.engineering.LCOE ($/MWh), scalars.engineering.Net P_electric (MW)
+    - added: scalars.engineering.Cryo pulse length (s)
+  - ITER15: 6 keys moved; max rel. diff 1.76e-1; 1 key added (scalars 1)
+    - moved, largest change first: scalars.engineering.Net P_electric (MW), scalars.engineering.LCOE ($/MWh), scalars.engineering.Cryoplant power (MW), scalars.engineering.Cryo heat load (kW), scalars.engineering.P_recirculating (MW), scalars.Q_eng
+    - added: scalars.engineering.Cryo pulse length (s)
+  - SPARC15: 3 keys moved; max rel. diff 1.41e-2; 1 key added (scalars 1)
+    - moved, largest change first: scalars.engineering.Cryo heat load (kW), scalars.engineering.Cryoplant power (MW), scalars.Q_eng
+    - added: scalars.engineering.Cryo pulse length (s)
+  - SPARC15-short: 5 keys moved; max rel. diff 5.50e-2; 1 key added (scalars 1)
+    - moved, largest change first: scalars.engineering.Cryo heat load (kW), scalars.engineering.Cryoplant power (MW), scalars.engineering.Net P_electric (MW), scalars.Q_eng, scalars.engineering.P_recirculating (MW)
+    - added: scalars.engineering.Cryo pulse length (s)
+  - DEMO15: 6 keys moved; max rel. diff 2.34e-1; 1 key added (scalars 1)
+    - moved, largest change first: scalars.engineering.Cryo heat load (kW), scalars.engineering.Cryoplant power (MW), scalars.engineering.P_recirculating (MW), scalars.Q_eng, scalars.engineering.LCOE ($/MWh), scalars.engineering.Net P_electric (MW)
+    - added: scalars.engineering.Cryo pulse length (s)
+  - ITER-DHe3: 5 keys moved; max rel. diff 5.38e-1; 1 key added (scalars 1)
+    - moved, largest change first: scalars.engineering.Cryo heat load (kW), scalars.engineering.Cryoplant power (MW), scalars.engineering.Net P_electric (MW), scalars.Q_eng, scalars.engineering.P_recirculating (MW)
+    - added: scalars.engineering.Cryo pulse length (s)
+  - ITER-pB11: 5 keys moved; max rel. diff 8.16e-1; 1 key added (scalars 1)
+    - moved, largest change first: scalars.engineering.Cryo heat load (kW), scalars.engineering.Cryoplant power (MW), scalars.engineering.Net P_electric (MW), scalars.Q_eng, scalars.engineering.P_recirculating (MW)
+    - added: scalars.engineering.Cryo pulse length (s)
+  - SPARC15-DHe3: 5 keys moved; max rel. diff 6.47e-1; 1 key added (scalars 1)
+    - moved, largest change first: scalars.engineering.Cryoplant power (MW), scalars.engineering.Cryo heat load (kW), scalars.engineering.Net P_electric (MW), scalars.Q_eng, scalars.engineering.P_recirculating (MW)
+    - added: scalars.engineering.Cryo pulse length (s)
+  - SPARC15-pB11: 5 keys moved; max rel. diff 6.47e-1; 1 key added (scalars 1)
+    - moved, largest change first: scalars.engineering.Cryoplant power (MW), scalars.engineering.Cryo heat load (kW), scalars.engineering.Net P_electric (MW), scalars.Q_eng, scalars.engineering.P_recirculating (MW)
+    - added: scalars.engineering.Cryo pulse length (s)
+- Unchanged (17): JET, DIIID, MASTU, JET15, NIF, DIRECT, Z, GF, FRXL, ZAP, TAE, MIRROR, MUON, DIIID15, MASTU15, TAE-pB11, MIRROR-DHe3

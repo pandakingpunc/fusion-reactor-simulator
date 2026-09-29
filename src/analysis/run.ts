@@ -6,14 +6,14 @@
 import { Simulation } from '../physics/simulation';
 import type { ReactorConfig } from '../physics/types';
 import type { BatchRunner, SimOutcome, SimTask } from './ensemble';
-import { runMetrics } from './metrics';
+import { MetricsOptions, runMetrics } from './metrics';
 
 /** Runs one configuration to its end and returns its metrics; a run that throws is reported as a failed outcome, not raised. */
-export function simulateMetrics(cfg: ReactorConfig): SimOutcome {
+export function simulateMetrics(cfg: ReactorConfig, opts: MetricsOptions = {}): SimOutcome {
   try {
     const sim = new Simulation(cfg);
     const report = sim.runAll();
-    return { ok: true, metrics: runMetrics(sim.history, sim.events, report) };
+    return { ok: true, metrics: runMetrics(sim.history, sim.events, report, opts) };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? `${e.name}: ${e.message}` : String(e) };
   }
@@ -24,7 +24,7 @@ export const serialRunner: BatchRunner = async (tasks: SimTask[], onProgress) =>
   const out: SimOutcome[] = [];
   let failed = 0;
   for (const t of tasks) {
-    const o = simulateMetrics(t.cfg);
+    const o = simulateMetrics(t.cfg, { weighting: t.weighting });
     if (!o.ok) failed++;
     out.push(o);
     onProgress?.({ done: out.length, total: tasks.length, failed });

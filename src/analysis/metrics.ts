@@ -26,7 +26,7 @@
  *
  * A metric whose diagnostic the model does not have (e.g. Q of an ICF capsule) is NaN. Pure TypeScript.
  */
-import { flatTopMean } from '../physics/analysis/flatTop';
+import { FlatTopWeighting, flatTopMean } from '../physics/analysis/flatTop';
 import type { HistoryFrame, ShotReport, SimEvent } from '../physics/types';
 
 export const METRIC_KEYS = [
@@ -71,15 +71,20 @@ function maxOf(hist: readonly Pick<HistoryFrame, 'd'>[], key: string): number {
 
 const fin = (x: unknown): number => (typeof x === 'number' && Number.isFinite(x) ? x : NaN);
 
+export interface MetricsOptions {
+  /** flat-top weighting: 'frame' (default, the definition of the golden numbers, the shot report and the validation table) or 'time' (unbiased by the extra frames at ELMs and sawtooth crashes) */
+  weighting?: FlatTopWeighting;
+}
+
 /** The metrics of a finished run. */
-export function runMetrics(history: readonly HistoryFrame[], events: readonly SimEvent[], report: ShotReport): RunMetrics {
+export function runMetrics(history: readonly HistoryFrame[], events: readonly SimEvent[], report: ShotReport, opts: MetricsOptions = {}): RunMetrics {
   const onset = events.find((e) => e.kind === 'disruption');
   const disrupted = onset !== undefined;
   const natural = report.termination.natural && !disrupted;
   // a disrupted shot: only the frames up to the onset (see the header)
   const frames = onset ? history.filter((f) => f.t <= onset.t) : history;
   const hist = frames.length ? frames : history;
-  const flat = (key: string) => (hist.length ? flatTopMean(hist, key) : NaN);
+  const flat = (key: string) => (hist.length ? flatTopMean(hist, key, { weighting: opts.weighting ?? 'frame' }) : NaN);
   const qMax = disrupted ? maxOf(hist, 'Q') : fin(report.Q_sci_max);
   return {
     values: {

@@ -10,6 +10,6 @@ import { simulateMetrics } from '../run';
 export type WorkerOutcome = SimOutcome & { id: string };
 
 parentPort!.on('message', (task: SimTask) => {
-  const out: WorkerOutcome = { id: task.id, ...simulateMetrics(task.cfg) };
+  const out: WorkerOutcome = { id: task.id, ...simulateMetrics(task.cfg, { weighting: task.weighting }) };
   parentPort!.postMessage(out);
 });

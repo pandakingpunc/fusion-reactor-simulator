@@ -76,6 +76,21 @@ describe('runMetrics on constructed histories', () => {
   });
 });
 
+describe('flat-top weighting', () => {
+  it('frame (default) and time weighting differ when the frames are unevenly spaced in time, and time weighting is the unbiased one', () => {
+    // 20 frames, the last 6 clustered in the final 1 % of the time: the frame mean is dominated by the cluster
+    const times = [...Array.from({ length: 14 }, (_, i) => i * 7), ...Array.from({ length: 6 }, (_, i) => 99 + i * 0.2)];
+    const h: HistoryFrame[] = times.map((t) => ({ t, y: [], internal: {}, d: { Q: t < 90 ? 10 : 1, P_fus: 1, nG_frac: 1, tauE: 1, betaN: 1 } }));
+    const rep = fakeReport(true, 'Scheduled end');
+    const frame = runMetrics(h, [], rep).values.Q_flat;
+    expect(runMetrics(h, [], rep, { weighting: 'frame' }).values.Q_flat).toBe(frame);
+    const time = runMetrics(h, [], rep, { weighting: 'time' }).values.Q_flat;
+    expect(frame).toBeLessThan(time); // most of the frame-weighted window is the low-Q cluster
+    expect(time).toBeGreaterThan(5);
+    expect(time).toBe(flatTopMean(h, 'Q', { weighting: 'time' }));
+  });
+});
+
 describe('runMetrics on real shots', () => {
   it('a short JET shot: finite performance metrics that agree with the shot report and the flat-top definition', () => {
     const sim = new Simulation({ ...JET, t_end: 1 });

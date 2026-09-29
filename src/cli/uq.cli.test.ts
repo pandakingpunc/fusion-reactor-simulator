@@ -123,6 +123,15 @@ describe('uq CLI results', { timeout: 180_000 }, () => {
     expect(q.indices[0].ST).toBeGreaterThan(0.05);
   });
 
+  it('--flat-top time changes the weighting of the flat-top means and is part of the input hash', () => {
+    const args = [...SHORT, '--n', '4', '--bootstrap', '0', '--threads', '2', '--json', '-', '--quiet'];
+    const frame = JSON.parse(uq(...args).stdout), time = JSON.parse(uq(...args, '--flat-top', 'time').stdout);
+    expect(frame.system.flatTop).toBe('frame');
+    expect(time.system.flatTop).toBe('time');
+    expect(time.inputHash).not.toBe(frame.inputHash);
+    expect(uq(...SHORT, '--flat-top', 'median').code).toBe(2);
+  });
+
   it('a non-magnetic preset runs with explicit parameters', () => {
     const r = uq('--preset', 'NIF', '--param', 'E_laser_MJ=uniform:1.8:2.2', '--n', '4', '--bootstrap', '0', '--threads', '2', '--json', '-', '--quiet');
     expect(r.code).toBe(0);
@@ -183,6 +192,12 @@ describe('scan CLI', { timeout: 180_000 }, () => {
       expect(p.values.H98).toBeGreaterThanOrEqual(0.8);
       expect(p.values.H98).toBeLessThanOrEqual(1.2);
     }
+  });
+
+  it('--flat-top time is recorded in the result', () => {
+    const r = scan(...SHORT, '--param', 'H98=0.8:1.2:2', '--threads', '2', '--flat-top', 'time', '--json', '-', '--quiet');
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.stdout).system.flatTop).toBe('time');
   });
 
   it('the text table is printed to stdout without --json/--csv', () => {

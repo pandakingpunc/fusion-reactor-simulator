@@ -44,6 +44,7 @@ const CLI = defineCli({
     'h98-prior': { type: 'string', default: 'ipb98y2', choices: Object.keys(H98_SIGMA), help: 'width of the H98 prior: IPB98(y,2) RMSE 14 %, or the ITPA20-IL prediction uncertainty 15.8 %' },
     stochastic: { type: 'bool', help: 'also vary the ELM/jitter random seed of each shot (default: every shot keeps the preset seed)' },
     't-end': { type: 'number', min: 1e-6, metavar: 'S', help: 'override the shot duration [s] (a shorter shot is cheaper but the flat top moves)' },
+    'flat-top': { type: 'string', default: 'frame', choices: ['frame', 'time'], help: 'weighting of the flat-top means: frame (the published definition) or time (unbiased by the extra frames at ELMs)' },
     'q-target': { type: 'number', default: 10, min: 0, help: 'Q of the headline probability P(Q >= target)' },
     prob: { type: 'list', metavar: 'METRIC>=X,…', help: `extra probabilities; metrics: ${METRIC_KEYS.join(', ')}` },
     levels: { type: 'list', metavar: 'P,…', help: 'quantile levels (default 0.05,0.16,0.5,0.84,0.95)' },
@@ -77,7 +78,7 @@ async function main(): Promise<void> {
     const priors = buildPriors(cfg, mode, (args.param ?? []).map(parseParam), h98);
     spec = resolveSpec({
       preset: args.preset, base: cfg, priors, n: args.n, sampler: args.sampler as EnsembleSpec['sampler'], seed: args.seed,
-      analysis: args.analysis as EnsembleSpec['analysis'], runSeed: args.stochastic ? 'perRow' : 'fixed', tEnd: args['t-end'],
+      analysis: args.analysis as EnsembleSpec['analysis'], runSeed: args.stochastic ? 'perRow' : 'fixed', tEnd: args['t-end'], flatTop: args['flat-top'] as EnsembleSpec['flatTop'],
       qTarget: args['q-target'], probabilities: (args.prob ?? []).map(parseProbability), quantileLevels: args.levels ? parseLevels(args.levels) : undefined,
       bootstrap: args.bootstrap, confidence: args.confidence, maxRuns: args['max-runs'],
     });

@@ -14,6 +14,7 @@
  */
 import { canonicalString } from '../physics/kernel/canonical';
 import { sha256Hex } from '../physics/kernel/sha256';
+import type { FlatTopWeighting } from '../physics/analysis/flatTop';
 import type { ReactorConfig } from '../physics/types';
 import { CAVEAT, SimOutcome, SimTask } from './ensemble';
 import type { MetricKey } from './metrics';
@@ -44,6 +45,8 @@ export interface ScanSpec {
   /** override of the configuration's own seed for every run */
   runSeed?: number;
   tEnd?: number;
+  /** flat-top weighting of the metrics (default 'frame') */
+  flatTop?: FlatTopWeighting;
   maxRuns: number;
 }
 
@@ -125,7 +128,7 @@ export function planScan(spec: ScanSpec): ScanPlan {
   };
   return {
     spec, d, names: axes.map((a) => a.path), runs, values, axisValues, config,
-    tasks: () => Array.from({ length: runs }, (_, row) => ({ id: `s${row}`, cfg: config(row) })),
+    tasks: () => Array.from({ length: runs }, (_, row) => ({ id: `s${row}`, cfg: config(row), weighting: spec.flatTop ?? 'frame' })),
     block: () => (mode === 'grid' ? 'grid' : mode),
   };
 }
@@ -144,7 +147,7 @@ export interface ScanResult {
   tool: 'scan';
   caveat: string;
   inputHash: string;
-  system: { preset?: string; method: string; fidelity: string; t_end_s: number; runSeed: number | 'preset' };
+  system: { preset?: string; method: string; fidelity: string; t_end_s: number; runSeed: number | 'preset'; flatTop: FlatTopWeighting };
   design: { mode: ScanMode; points: number; seed: number | null; notes: string[] };
   axes: { path: string; lo: number; hi: number; log: boolean; nominal: number | null; points?: number; values?: number[] }[];
   runs: { total: number; valid: number; failed: number; completed: number; disrupted: number };
@@ -152,8 +155,8 @@ export interface ScanResult {
 }
 
 export function scanHash(spec: ScanSpec): string {
-  const { base, axes, mode, points, seed, runSeed, tEnd } = spec;
-  return sha256Hex(canonicalString({ base, axes, mode, points: points ?? null, seed: mode === 'grid' ? null : seed, runSeed: runSeed ?? null, tEnd: tEnd ?? null }));
+  const { base, axes, mode, points, seed, runSeed, tEnd, flatTop } = spec;
+  return sha256Hex(canonicalString({ base, axes, mode, points: points ?? null, seed: mode === 'grid' ? null : seed, runSeed: runSeed ?? null, tEnd: tEnd ?? null, flatTop: flatTop ?? 'frame' }));
 }
 
 export function summarizeScan(plan: ScanPlan, outcomes: readonly SimOutcome[]): ScanResult {
@@ -170,7 +173,7 @@ export function summarizeScan(plan: ScanPlan, outcomes: readonly SimOutcome[]): 
   const okPts = points.filter((p) => p.metrics !== null);
   return {
     schema: 1, tool: 'scan', caveat: CAVEAT, inputHash: scanHash(spec),
-    system: { ...(spec.preset ? { preset: spec.preset } : {}), method: base.method, fidelity: base.fidelity ?? '0D', t_end_s: spec.tEnd ?? base.t_end ?? NaN, runSeed: spec.runSeed ?? 'preset' },
+    system: { ...(spec.preset ? { preset: spec.preset } : {}), method: base.method, fidelity: base.fidelity ?? '0D', t_end_s: spec.tEnd ?? base.t_end ?? NaN, runSeed: spec.runSeed ?? 'preset', flatTop: spec.flatTop ?? 'frame' },
     design: { mode: spec.mode, points: runs, seed: spec.mode === 'grid' ? null : spec.seed, notes: spec.mode === 'sobol' && spec.points !== undefined && (spec.points & (spec.points - 1)) !== 0 ? [`points = ${spec.points} is not a power of two: a Sobol' design keeps its balance properties only for 2^k points`] : [] },
     axes: spec.axes.map((a, k) => {
       const v = getPath(spec.base, a.path);

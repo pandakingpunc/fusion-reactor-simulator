@@ -24,6 +24,7 @@
  *
  * Pure TypeScript, no DOM or Node API.
  */
+import type { FlatTopWeighting } from '../physics/analysis/flatTop';
 import type { ReactorConfig } from '../physics/types';
 import { canonicalString } from '../physics/kernel/canonical';
 import { sha256Hex } from '../physics/kernel/sha256';
@@ -64,6 +65,8 @@ export interface EnsembleSpec {
   runSeed: RunSeedMode;
   /** override of the shot duration [s] */
   tEnd?: number;
+  /** flat-top weighting of the metrics: 'frame' (default, the project's published definition) or 'time' */
+  flatTop: FlatTopWeighting;
   /** Q target of the headline probability (default 10) */
   qTarget: number;
   probabilities: CustomProbability[];
@@ -83,7 +86,7 @@ export const DEFAULT_QUANTILES: readonly number[] = [0.05, 0.16, 0.5, 0.84, 0.95
 export function resolveSpec(s: Partial<EnsembleSpec> & Pick<EnsembleSpec, 'base' | 'priors'>): EnsembleSpec {
   return {
     preset: s.preset, base: s.base, priors: s.priors, n: s.n ?? 64, sampler: s.sampler ?? 'sobol', seed: s.seed ?? 1,
-    analysis: s.analysis ?? 'propagate', runSeed: s.runSeed ?? 'fixed', tEnd: s.tEnd, qTarget: s.qTarget ?? 10,
+    analysis: s.analysis ?? 'propagate', runSeed: s.runSeed ?? 'fixed', tEnd: s.tEnd, flatTop: s.flatTop ?? 'frame', qTarget: s.qTarget ?? 10,
     probabilities: s.probabilities ?? [], quantileLevels: s.quantileLevels ?? [...DEFAULT_QUANTILES], bootstrap: s.bootstrap ?? 200,
     confidence: s.confidence ?? 0.95, maxRuns: s.maxRuns ?? 100_000,
   };
@@ -93,6 +96,8 @@ export function resolveSpec(s: Partial<EnsembleSpec> & Pick<EnsembleSpec, 'base'
 export interface SimTask {
   id: string;
   cfg: ReactorConfig;
+  /** flat-top weighting of the metrics (default 'frame') */
+  weighting?: FlatTopWeighting;
 }
 
 export type SimOutcome = { ok: true; metrics: RunMetrics } | { ok: false; error: string };
@@ -163,7 +168,7 @@ export function planEnsemble(spec: EnsembleSpec): EnsemblePlan {
   };
   return {
     spec, d, names: priors.params.map((p) => p.path), runs, values, saltelli: analysis === 'sensitivity', notes, config,
-    tasks: () => Array.from({ length: runs }, (_, row) => ({ id: `r${row}`, cfg: config(row) })),
+    tasks: () => Array.from({ length: runs }, (_, row) => ({ id: `r${row}`, cfg: config(row), weighting: spec.flatTop })),
     block: (row) => (analysis === 'sensitivity' ? (Math.floor(row / n) === 0 ? 'A' : Math.floor(row / n) === 1 ? 'B' : `AB${Math.floor(row / n) - 1}`) : 'MC'),
   };
 }
@@ -209,7 +214,7 @@ export interface EnsembleResult {
   tool: 'uq';
   caveat: string;
   inputHash: string;
-  system: { preset?: string; method: string; fidelity: string; t_end_s: number; runSeed: RunSeedMode };
+  system: { preset?: string; method: string; fidelity: string; t_end_s: number; runSeed: RunSeedMode; flatTop: FlatTopWeighting };
   design: { analysis: Analysis; sampler: SamplerKind; seed: number; n: number; runs: number; confidence: number; bootstrap: number; notes: string[] };
   parameters: ReturnType<typeof describeParam>[];
   /** over the propagation sample: all runs of a propagate design, the A and B blocks of a Saltelli design */
@@ -317,7 +322,7 @@ export function summarizeEnsemble(plan: EnsemblePlan, outcomes: readonly SimOutc
   const result: EnsembleResult = {
     schema: 1, tool: 'uq', caveat: CAVEAT,
     inputHash: ensembleHash(spec),
-    system: { ...(spec.preset ? { preset: spec.preset } : {}), method: base.method, fidelity: base.fidelity ?? '0D', t_end_s: spec.tEnd ?? base.t_end ?? NaN, runSeed: spec.runSeed },
+    system: { ...(spec.preset ? { preset: spec.preset } : {}), method: base.method, fidelity: base.fidelity ?? '0D', t_end_s: spec.tEnd ?? base.t_end ?? NaN, runSeed: spec.runSeed, flatTop: spec.flatTop },
     design: { analysis: spec.analysis, sampler: spec.sampler, seed: spec.seed, n: spec.n, runs, confidence: conf, bootstrap: spec.bootstrap, notes: plan.notes },
     parameters: spec.priors.params.map((p) => describeParam(spec.base, p)),
     runs: {
@@ -354,8 +359,8 @@ function sortKeys(o: Record<string, number>): Record<string, number> {
 
 /** SHA-256 of the canonical form of everything that defines an ensemble: the same inputs give the same hash. */
 export function ensembleHash(spec: EnsembleSpec): string {
-  const { base, priors, n, sampler, seed, analysis, runSeed, tEnd, qTarget, probabilities, quantileLevels, bootstrap: b, confidence } = spec;
-  return sha256Hex(canonicalString({ base, priors, n, sampler, seed, analysis, runSeed, tEnd: tEnd ?? null, qTarget, probabilities, quantileLevels, bootstrap: b, confidence }));
+  const { base, priors, n, sampler, seed, analysis, runSeed, tEnd, flatTop, qTarget, probabilities, quantileLevels, bootstrap: b, confidence } = spec;
+  return sha256Hex(canonicalString({ base, priors, n, sampler, seed, analysis, runSeed, tEnd: tEnd ?? null, flatTop, qTarget, probabilities, quantileLevels, bootstrap: b, confidence }));
 }
 
 // ---- reports -----------------------------------------------------------------------------------------------------

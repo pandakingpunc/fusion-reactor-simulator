@@ -35,6 +35,7 @@ const CLI = defineCli({
     seed: { type: 'int', default: 1, min: 0, max: 4294967295, help: 'sampled scan: seed of the design' },
     'run-seed': { type: 'int', min: 0, max: 4294967295, help: 'use this random seed in every shot (default: the preset seed)' },
     't-end': { type: 'number', min: 1e-6, metavar: 'S', help: 'override the shot duration [s]' },
+    'flat-top': { type: 'string', default: 'frame', choices: ['frame', 'time'], help: 'weighting of the flat-top means: frame (the published definition) or time (unbiased by the extra frames at ELMs)' },
     threads: { type: 'int', min: 1, help: 'worker threads (default: cores - 1)' },
     timeout: { type: 'number', min: 1, metavar: 'S', help: 'fail a shot that runs longer than S seconds' },
     'max-runs': { type: 'int', default: 10000, min: 1, help: 'refuse scans with more shots' },
@@ -58,7 +59,7 @@ async function main(): Promise<void> {
     if (grid && args.points !== undefined) throw new RangeError('--points is for a sampled scan; the axes with N define a grid');
     spec = {
       preset: args.preset, base: presetConfig(args.preset), axes, mode: grid ? 'grid' : (args.sampler as ScanSpec['mode']), points: args.points, seed: args.seed,
-      runSeed: args['run-seed'], tEnd: args['t-end'], maxRuns: args['max-runs'],
+      runSeed: args['run-seed'], tEnd: args['t-end'], flatTop: args['flat-top'] as ScanSpec['flatTop'], maxRuns: args['max-runs'],
     };
     plan = planScan(spec);
   } catch (e) {

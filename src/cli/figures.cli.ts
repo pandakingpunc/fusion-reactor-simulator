@@ -23,7 +23,7 @@ import { join, resolve } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { nodeFontSet } from '../plot/fontsNode';
 import { CaptionBlock, UnknownFigureError, captionBlock, mergeCaptions, selectFigures } from '../plot/registry';
-import { FigTask, FigTaskResult, PAPER_FIGURES, PAPER_FIGURE_IDS, PaperCtx, PaperParams, RunSummary, poolTasks, runIter15 } from '../plot/figures/paper';
+import { FigTask, FigTaskResult, PAPER_FIGURES, PAPER_FIGURE_IDS, PaperCtx, PaperParams, RunSummary, poolTasks, runIter15, solverCounters, solverCountersLine } from '../plot/figures/paper';
 import { defaultThreads, runPool } from './pool';
 import { defineCli, parseArgsOrExit } from './args';
 import {
@@ -74,7 +74,7 @@ async function generate(o: GenOptions): Promise<GenResult> {
 
   // ---- main thread: ITER 1.5D
   const iter = needs.has('iter15') ? await runIter15({ onProgress: (p) => process.stdout.write(`  ITER15 ${p}%\r`), yieldToLoop: tick }) : null;
-  if (iter) console.log(`\n  ITER15 done in ${(iter.ms / 1000).toFixed(1)} s (${iter.sim.nSteps} steps, ${iter.model.eqUpdates} GS updates); background ${nDone}/${tasks.length}`);
+  if (iter) console.log(`\n  ITER15 done in ${(iter.ms / 1000).toFixed(1)} s (${iter.sim.nSteps} steps; ${solverCountersLine(solverCounters(iter.model))}); background ${nDone}/${tasks.length}`);
 
   const res = await poolP;
   const runs = new Map<string, RunSummary>();

@@ -21,10 +21,10 @@
  * APPROXIMATION: 0D. Profiles are fixed, n∝(1−ρ²)^αn, T∝(1−ρ²)^αT; pedestal, Shafranov shift,
  * turbulence and MHD enter only through the τ_E scaling and the threshold events (ELM/sawtooth/NTM/disruption).
  */
-import { Geometry, plasmaVolume, plasmaSurface, crossSectionArea, q95ForMethod, profileIntegral, profileIntegralSplit } from '../geometry';
+import { Geometry, plasmaVolume, plasmaSurface, crossSectionArea, boundaryShape, arealElongation, q95ForMethod, profileIntegral, profileIntegralSplit } from '../geometry';
 import { FUEL_CHANNELS, FUEL_SPECIES, beamTargetReactivity, beamTargetDensity, burnPerReaction, pairDensity } from '../reactivity';
 import { bremsstrahlung, synchrotronTotal, coolingRate, meanCharge, RHO_CORE } from '../radiation';
-import { tauIPB98y2, tauITER89P, tauISS04, tauSTValovic, pLH_threshold, equilibrationRate, stellaratorHISS04 } from '../transport';
+import { tauHmode, tauITER89P, tauISS04, pLH_threshold, equilibrationRate, stellaratorHISS04 } from '../transport';
 import { resistivity, ohmicPower, criticalEnergy, ionHeatingFraction, slowingDownTime, nbiShineThrough, fastIonEnergyTime, fastPoolMix, FastSpecies } from '../heating';
 import { greenwaldDensity, betaToroidal, betaNormalized, betaPoloidal, lineAverageFactor } from '../limits';
 import { disruptionReport, DisruptionCause, DISRUPTION_LABELS, DISRUPTION_FIXES } from '../disruption';
@@ -40,6 +40,13 @@ const IDX = { We: 0, Wi: 1, na: 2, nb: 3, nHe: 4, nZ: 5, Wa: 6, Ip: 7, Efus: 8, 
 const NSTATE = 16;
 /** ELM-averaged share of the transport loss W/τ_E (Loarte et al. 2003: 20–40 % of P_SOL) */
 const ELM_POWER_FRACTION = 0.3;
+/**
+ * Density collapse: the shot ends when the volume-averaged electron density has fallen below this fraction of the commanded target
+ * (fuelling lost, e.g. a maximum fuelling rate of 0): with the heating on and no particle source τ_E ∝ n^0.5 shrinks with n and the density
+ * falls to zero in finite time, T_e to 10⁴ keV (W7-X without fuelling: n_e = 2e15 m⁻³, T_e = 1.7 MeV at 0.66 s). The plasma starts at 0.3 of the
+ * target, a working density controller holds it within some tens of percent of it, and a lowered target lowers the reference with it.
+ */
+const DENSITY_COLLAPSE_FRACTION = 0.1;
 /** upper bound of the temperatures at which the rates are evaluated [keV] (see temps()) */
 const T_EVAL_MAX_KEV = 1e4;
 
@@ -112,6 +119,10 @@ export class MagneticModel implements SimModel {
 
   private cfg: MagneticConfig;
   private g: Geometry;
+  /** boundary (LCFS) shape of V, S, A: profiles.lcfsKappa/lcfsDelta where given, else g (geometry.boundaryShape) */
+  private gB: Geometry;
+  /** geometry of the ITPA20 scalings: areal elongation and average LCFS triangularity */
+  private gITPA: Geometry;
   /** n̄/⟨n⟩ (from the profile exponent α_n) */
   private fLine: number;
   private V: number;
@@ -159,9 +170,13 @@ export class MagneticModel implements SimModel {
     this.method = cfg.method;
     this.g = cfg.geometry;
     this.isStell = cfg.method === 'stellarator';
-    this.V = plasmaVolume(this.g);
-    this.S = plasmaSurface(this.g);
-    this.A = crossSectionArea(this.g);
+    // volume, surface and cross-section of the boundary (LCFS) Miller shape; q95 and the scalings keep the nominal shape
+    this.gB = boundaryShape(cfg);
+    this.V = plasmaVolume(this.gB);
+    this.S = plasmaSurface(this.gB);
+    this.A = crossSectionArea(this.gB);
+    // ITPA20 scalings: areal elongation κ_a = V/(2π² R a²) and the average LCFS triangularity (Verdoolaege et al. 2021)
+    this.gITPA = { R: this.g.R, a: this.g.a, kappa: arealElongation(this.gB), delta: this.gB.delta };
     this.eps = this.g.a / this.g.R;
     this.fLine = lineAverageFactor(cfg.transport.alpha_n);
     const fs = FUEL_SPECIES[cfg.fuel];
@@ -345,15 +360,15 @@ export class MagneticModel implements SimModel {
     return { P_brems, P_line, P_sync, P_rad: P_brems + P_line + P_sync, P_rad_core };
   }
 
-  /** τ_E scaling; IPB98(y,2), ITER89-P, ST and ISS04 are fitted to the line-averaged density: n̄ = f_line ⟨n_e⟩ */
+  /** τ_E scaling; IPB98(y,2), ITPA20, ITER89-P, ST and ISS04 are fitted to the line-averaged density: n̄ = f_line ⟨n_e⟩ */
   private tauE(neVol: number, P_loss: number, hmode: boolean): number {
     const c = this.cfg;
     const ne = this.fLine * neVol;
     if (this.isStell) return tauISS04(this.g, c.B0, ne, P_loss, c.stellarator.iota23, this.ctrl.H_ISS04);
     const Ip = Math.max(this.Ip0 / 1e6, 0.05);
     if (hmode) {
-      const base = c.scaling === 'ST_Valovic' ? tauSTValovic(this.g, Ip, c.B0, ne, P_loss, this.M) : tauIPB98y2(this.g, Ip, c.B0, ne, P_loss, this.M);
-      return this.ctrl.H98 * base;
+      const itpa = c.scaling === 'ITPA20' || c.scaling === 'ITPA20-IL';
+      return this.ctrl.H98 * tauHmode(c.scaling, itpa ? this.gITPA : this.g, Ip, c.B0, ne, P_loss, this.M);
     }
     return c.H89 * tauITER89P(this.g, Ip, c.B0, ne, P_loss, this.M);
   }
@@ -611,7 +626,7 @@ export class MagneticModel implements SimModel {
     let q_div = 0;
     if (this.isStell) q_div = divertorHeatFluxStellarator(this.g, c.B0, c.stellarator.iota23, D.P_SOL, c.divertor.f_rad_div);
     else q_div = divertorHeatFlux(this.g, Math.max(y[IDX.Ip], 1e5), D.P_SOL, c.divertor.f_rad_div, c.divertor.flux_expansion).q_div_MWm2;
-    const nw = neutronWallLoad(this.g, D.P_neutron, 1).load_MWm2;
+    const nw = neutronWallLoad(this.gB, D.P_neutron, 1).load_MWm2;
     const na = y[IDX.na], nb = y[IDX.nb];
     return {
       Ti: D.Ti, Te: D.Te, Ti0: D.T0, ne: D.ne / 1e20, nbar: nbar / 1e20, nG_frac: nbar / nG, fHe: y[IDX.nHe] / D.ne,
@@ -742,6 +757,12 @@ export class MagneticModel implements SimModel {
         // Stellarator: disruption yok; radyatif çöküş (Sudo limiti) plazmayı söndürür
         if (dg.nG_frac > 1.0 && dg.P_rad > dg.P_heat && t > 0.5 && dg.Te < 0.5) { cause = 'radiative_collapse'; diag = `n/n_Sudo = ${dg.nG_frac.toFixed(2)} and P_rad > P_heat — radiative collapse (soft extinction, not a disruption)`; }
       }
+      // fuelling lost: the density has collapsed against the commanded target (both kinds of device)
+      if (cause === 'none' && dg.ne * 1e20 < DENSITY_COLLAPSE_FRACTION * this.nTarget(t)) {
+        cause = 'density_collapse';
+        diag = `n_e = ${(dg.ne * 1e20).toExponential(1)} m⁻³ is below ${(DENSITY_COLLAPSE_FRACTION * 100).toFixed(0)} % of the target ${this.nTarget(t).toExponential(1)} m⁻³, ` +
+          `T_e ${dg.Te.toFixed(1)} keV, T_i ${dg.Ti.toFixed(2)} keV, fuelling rate limit ${this.ctrl.fuelRate_1e20s} × 10²⁰ s⁻¹`;
+      }
       if (cause !== 'none') {
         this.disruptCause = cause; this.tDisrupt = t; this.Wd = W;
         this.phase = this.isStell ? 'current_quench' : 'thermal_quench';
@@ -750,7 +771,7 @@ export class MagneticModel implements SimModel {
         // the flag would stay set through the quench frames (P_α = 0 there) and the report's ignition time would
         // count them. The 1.5D model clears it at its disruption onset as well (profiles/events/disruption.ts).
         this.ignited = false;
-        ev.push({ t, kind: 'disruption', msg: `${this.isStell ? 'RADIATIVE COLLAPSE' : 'DISRUPTION'}: ${DISRUPTION_LABELS[cause]} — ${diag}` });
+        ev.push({ t, kind: 'disruption', msg: `${this.isStell ? (cause === 'density_collapse' ? 'DENSITY COLLAPSE' : 'RADIATIVE COLLAPSE') : 'DISRUPTION'}: ${DISRUPTION_LABELS[cause]} — ${diag}` });
         this.diagText = diag;
       }
     } else if (this.phase === 'thermal_quench') {
@@ -762,7 +783,7 @@ export class MagneticModel implements SimModel {
       const done = this.isStell ? W < 0.02 * this.Wd || t - this.tDisrupt > 0.2 : y[IDX.Ip] < 0.03 * this.Ip0;
       if (done) {
         this.phase = 'ended';
-        const rep = disruptionReport({ cause: this.disruptCause, t: this.tDisrupt, g: this.g, Ip_MA: this.Ip0 / 1e6, W_th_J: this.Wd, B0: c.B0 });
+        const rep = disruptionReport({ cause: this.disruptCause, t: this.tDisrupt, g: this.gB, Ip_MA: this.Ip0 / 1e6, W_th_J: this.Wd, B0: c.B0 });
         this.terminated = {
           t, natural: false, reason: DISRUPTION_LABELS[this.disruptCause],
           diagnosis: `${DISRUPTION_LABELS[this.disruptCause]} — ${this.diagText}, t = ${this.tDisrupt.toFixed(2)} s. ${this.isStell ? '' : `Thermal quench ${rep.tau_TQ_ms.toFixed(1)} ms, current quench ${rep.tau_CQ_ms.toFixed(0)} ms; halo current I_h/I_p·TPF = ${rep.halo_TPF_product.toFixed(2)}; runaway electron avalanche e^${rep.runaway_avalanche_efolds.toFixed(0)} → ~${rep.runaway_current_MA.toFixed(1)} MA; wall deposition ${rep.wall_energy_density_MJm2.toFixed(1)} MJ/m².`}`,
@@ -815,7 +836,7 @@ export class MagneticModel implements SimModel {
 
   report(hist: HistoryFrame[], events: SimEvent[]): ShotReport {
     return buildMagneticReport({
-      cfg: this.cfg, method: this.method, g: this.g, V: this.V, magnetInfo: this.magnetInfo,
+      cfg: this.cfg, method: this.method, g: this.gB, V: this.V, magnetInfo: this.magnetInfo,
       terminated: this.terminated, tDisrupt: this.tDisrupt, isStell: this.isStell,
     }, hist, events);
   }

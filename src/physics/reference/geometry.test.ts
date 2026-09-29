@@ -10,7 +10,7 @@
  * They reduce to the ellipse (π a² κ, 2π² R0 a² κ) for δ = 0.
  */
 import { describe, expect, it } from 'vitest';
-import { Geometry, crossSectionArea, plasmaSurface, plasmaVolume, poloidalField, poloidalPerimeter, profileIntegral, peakFromAverage } from '../geometry';
+import { Geometry, arealElongation, boundaryShape, crossSectionArea, plasmaSurface, plasmaVolume, poloidalField, poloidalPerimeter, profileIntegral, peakFromAverage } from '../geometry';
 import { millerBoundary, shapeIntegrals } from '../equilibrium/miller';
 import { PRESETS } from '../presets';
 import type { MagneticConfig } from '../types';
@@ -61,47 +61,60 @@ describe('Miller shape: closed forms vs numerical integration', () => {
   });
 });
 
-describe('0D geometry formulas', () => {
-  it('δ = 0: volume and cross-section area are exact; the Ramanujan perimeter is accurate to 1e-6', () => {
+describe('0D geometry: volume, surface and cross-section are the Miller boundary integrals (v4.0)', () => {
+  it('δ = 0: volume and cross-section area are the ellipse formulas, exactly; the Ramanujan perimeter is accurate to 1e-6', () => {
     forAll(shape, (s) => {
       const g = { ...toGeo(s), delta: 0 }, m = millerIntegrals(g);
+      expect(rel(plasmaVolume(g), 2 * Math.PI ** 2 * g.R * g.a ** 2 * g.kappa)).toBeLessThan(1e-15);
       expect(rel(plasmaVolume(g), m.volume)).toBeLessThan(1e-12);
       expect(rel(crossSectionArea(g), m.area)).toBeLessThan(1e-12);
       expect(rel(poloidalPerimeter(g), m.perimeter)).toBeLessThan(1e-6);
     }, { runs: 60 });
   });
 
-  it('δ = 0: the surface uses the quadratic-mean perimeter 2πa√((1+κ²)/2), ≤ 6 % above the exact ellipse for κ ≤ 3', () => {
-    forAll(shape, (s) => {
-      const g = { ...toGeo(s), delta: 0 }, m = millerIntegrals(g);
-      const ratio = plasmaSurface(g) / m.surface;
-      expect(ratio).toBeGreaterThanOrEqual(1 - 1e-12); // RMS ≥ exact perimeter
-      expect(ratio).toBeLessThan(1.06); // 1.6 % at κ = 1.7, 5.0 % at κ = 3
-    }, { runs: 60 });
-  });
-
-  it('δ ≠ 0: the volume omits exactly the Miller triangularity factor (and overestimates it for δ ≥ 0)', () => {
+  it('every shape (κ ≤ 3, −0.6 ≤ δ ≤ 0.8): volume, surface and cross-section area equal the boundary integrals to 1e-9', () => {
     forAll(shape, (s) => {
       const g = toGeo(s), m = millerIntegrals(g);
-      expect(rel(plasmaVolume(g) * volumeFactor(Math.asin(g.delta), g.a / g.R), m.volume)).toBeLessThan(1e-12);
-      if (g.delta >= 0) expect(plasmaVolume(g)).toBeGreaterThanOrEqual(m.volume * (1 - 1e-12));
+      expect(rel(plasmaVolume(g), m.volume)).toBeLessThan(1e-9);
+      expect(rel(plasmaSurface(g), m.surface)).toBeLessThan(1e-9);
+      expect(rel(crossSectionArea(g), m.area)).toBeLessThan(1e-9);
+    }, { runs: 80, label: 'Miller integrals' });
+  });
+
+  it('positive triangularity lowers the volume against the ellipse of the same κ (Miller factor 1 − x²/8 − (a/R) x/4 + … < 1 for x = arcsin δ > 0)', () => {
+    forAll(shape, (s) => {
+      const g = toGeo(s), ell = 2 * Math.PI ** 2 * g.R * g.a ** 2 * g.kappa;
+      if (g.delta > 1e-3) expect(plasmaVolume(g)).toBeLessThan(ell);
     }, { runs: 60 });
   });
 
-  // BUG(ws2a): geometry.ts documents the volume approximation as "~3 %", but measured against the
-  // Miller boundary of the same (κ, δ) it overestimates the volume by 3.6 % (JET), 4.2 % (ITER, DEMO),
-  // 8.6 % (SPARC), 8.9 % (DIII-D), 9.7 % (JT-60SA) and 14.3 % (MAST-U), and the surface by 4–18 %.
-  // Volume enters W = 3/2 nTV and P_fus; the surface enters P_LH. Either the comment or the formula
-  // (the closed form above is exact) needs fixing; for ITER, κ95 = 1.7 in the ellipse formula happens
-  // to reproduce the real ITER volume (≈ 830 m³), which may be intended.
-  it.fails('volume and surface agree with the Miller shape to the documented ~3 % for every magnetic preset (BUG(ws2a))', () => {
+  it('the surface of the W7-X preset (a circle) and its volume are those of the torus: 4π² R a and 2π² R a²', () => {
+    const w = (PRESETS.find((p) => p.id === 'W7X')!.cfg as MagneticConfig).geometry;
+    expect(plasmaVolume(w)).toBe(2 * Math.PI * Math.PI * w.R * w.a * w.a);
+    expect(rel(plasmaSurface(w), 4 * Math.PI ** 2 * w.R * w.a)).toBeLessThan(1e-14);
+  });
+
+  // ws2a pinned this as a bug: geometry.ts documented the ellipse volume as "~3 %" from the Miller shape, but it overestimated it by 3.6 %
+  // (JET), 4.2 % (ITER, DEMO), 8.6 % (SPARC), 8.9 % (DIII-D), 9.7 % (JT-60SA) and 14.3 % (MAST-U), the surface by 4–18 % (fixed in v4.0, ws2c).
+  it('volume and surface agree with the Miller shape of the same (κ, δ) for every magnetic preset (v3.0.0: up to 14 % and 18 % off)', () => {
+    let n = 0;
     for (const p of PRESETS) {
       const c = p.cfg as MagneticConfig;
       if (!c.geometry) continue;
+      n++;
       const m = millerIntegrals(c.geometry);
-      expect(rel(plasmaVolume(c.geometry), m.volume), `${p.id} volume`).toBeLessThan(0.03);
-      expect(rel(plasmaSurface(c.geometry), m.surface), `${p.id} surface`).toBeLessThan(0.03);
+      expect(rel(plasmaVolume(c.geometry), m.volume), `${p.id} volume`).toBeLessThan(1e-9);
+      expect(rel(plasmaSurface(c.geometry), m.surface), `${p.id} surface`).toBeLessThan(1e-9);
     }
+    expect(n).toBe(12);
+  });
+
+  it('the surface of a call is memoised on its shape: another shape in between does not corrupt it', () => {
+    const a: Geometry = { R: 6.2, a: 2, kappa: 1.85, delta: 0.49 }, b: Geometry = { R: 1.85, a: 0.57, kappa: 1.97, delta: 0.54 };
+    const sa = plasmaSurface(a), sb = plasmaSurface(b);
+    expect(plasmaSurface(a)).toBe(sa);
+    expect(plasmaSurface(b)).toBe(sb);
+    expect(sa).not.toBe(sb);
   });
 
   it('mean poloidal field is μ0 I_p / L_pol (Ampère)', () => {
@@ -109,6 +122,57 @@ describe('0D geometry formulas', () => {
       const g = toGeo(s);
       expect(rel(poloidalField(g, I) * poloidalPerimeter(g), 4e-7 * Math.PI * I)).toBeLessThan(1e-9);
     }, { runs: 50 });
+  });
+});
+
+describe('boundary shape of the 0D model (boundaryShape)', () => {
+  const iter = PRESETS.find((p) => p.id === 'ITER')!.cfg as MagneticConfig;
+
+  it('is the geometry itself unless the configuration carries an LCFS shape (profiles.lcfsKappa / lcfsDelta), field by field', () => {
+    const g: Geometry = { R: 3, a: 1, kappa: 1.7, delta: 0.3 };
+    expect(boundaryShape({ geometry: g })).toBe(g);
+    expect(boundaryShape({ geometry: g, profiles: {} })).toBe(g);
+    expect(boundaryShape({ geometry: g, profiles: { lcfsKappa: 1.9 } })).toEqual({ R: 3, a: 1, kappa: 1.9, delta: 0.3 });
+    expect(boundaryShape({ geometry: g, profiles: { lcfsDelta: 0.5 } })).toEqual({ R: 3, a: 1, kappa: 1.7, delta: 0.5 });
+    // a blank (null, as a JSON round trip of the wizard's emptied input gives) is not a value
+    expect(boundaryShape({ geometry: g, profiles: { lcfsKappa: null as unknown as undefined } })).toBe(g);
+  });
+
+  // The LCFS values of a preset belong to its 95 % shape (profiles.lcfsRef95): an edited κ or δ scales them, so the 0D volume, surface and
+  // area respond to it as q95 and the scalings do. Without a reference the LCFS values are absolute (the 1.5D reading).
+  it('with a 95 % reference the LCFS shape scales with κ and δ and equals the given values, exactly, at the reference shape', () => {
+    const profiles = { lcfsKappa: 1.85, lcfsDelta: 0.49, lcfsRef95: { kappa: 1.7, delta: 0.33 } };
+    expect(boundaryShape({ geometry: { R: 6.2, a: 2, kappa: 1.7, delta: 0.33 }, profiles })).toEqual({ R: 6.2, a: 2, kappa: 1.85, delta: 0.49 });
+    const g = boundaryShape({ geometry: { R: 6.2, a: 2, kappa: 2.04, delta: 0.165 }, profiles });
+    expect(g.kappa).toBeCloseTo(1.85 * 1.2, 14);
+    expect(g.delta).toBeCloseTo(0.49 * 0.5, 14);
+    // an edited LCFS value alone still counts (times the 95 % ratio, 1 at the reference)
+    expect(boundaryShape({ geometry: { R: 6.2, a: 2, kappa: 1.7, delta: 0.33 }, profiles: { ...profiles, lcfsKappa: 2.0 } }).kappa).toBe(2.0);
+    // a value that is not given is the geometry's own, unscaled
+    expect(boundaryShape({ geometry: { R: 6.2, a: 2, kappa: 1.9, delta: 0.4 }, profiles: { lcfsKappa: 1.85, lcfsRef95: profiles.lcfsRef95 } }).delta).toBe(0.4);
+    // a reference that cannot scale (δ95 = 0, κ95 <= 0, not a number) leaves that value absolute
+    const gd = { R: 6.2, a: 2, kappa: 1.7, delta: 0.2 };
+    expect(boundaryShape({ geometry: gd, profiles: { lcfsDelta: 0.49, lcfsRef95: { kappa: 1.7, delta: 0 } } }).delta).toBe(0.49);
+    expect(boundaryShape({ geometry: gd, profiles: { lcfsKappa: 1.85, lcfsRef95: { kappa: 0, delta: 0.33 } } }).kappa).toBe(1.85);
+    expect(boundaryShape({ geometry: gd, profiles: { lcfsKappa: 1.85, lcfsRef95: { kappa: NaN, delta: 0.33 } } }).kappa).toBe(1.85);
+  });
+
+  // ITER design values: plasma volume 837 m³, plasma surface 678 m² (ITER Physics Basis, Nucl. Fusion 39 (1999) 2137, ch. 1, design parameters).
+  // The Miller boundary of the LCFS shape (κ = 1.85, δ = 0.49) is within 1 % of both; the 95 % shape (1.70, 0.33) is 4–5 % low
+  // and the v3.0.0 ellipse formula with κ95 hit the volume only by the cancellation of two errors (κ95 < κ_LCFS, no triangularity factor).
+  it('the ITER LCFS shape reproduces the design plasma volume (837 m³) and surface (678 m²) to 1 %; the 95 % shape does not', () => {
+    const gB = boundaryShape(iter);
+    expect(gB).toEqual({ R: 6.2, a: 2, kappa: 1.85, delta: 0.49 });
+    expect(Math.abs(plasmaVolume(gB) / 837 - 1)).toBeLessThan(0.01);
+    expect(Math.abs(plasmaSurface(gB) / 678 - 1)).toBeLessThan(0.01);
+    expect(Math.abs(plasmaVolume(iter.geometry) / 837 - 1)).toBeGreaterThan(0.04);
+    expect(Math.abs(plasmaSurface(iter.geometry) / 678 - 1)).toBeGreaterThan(0.03);
+  });
+
+  it('the areal elongation V/(2π² R a²) of the ITER LCFS shape is the 1.70 of the ITPA scaling databases within 2 %', () => {
+    // κ_a = 1.7 in the ITER point of Verdoolaege et al. 2021 and in the IPB98(y,2) database definition
+    expect(Math.abs(arealElongation(boundaryShape(iter)) / 1.7 - 1)).toBeLessThan(0.02);
+    expect(arealElongation({ R: 5, a: 1, kappa: 1.6, delta: 0 })).toBeCloseTo(1.6, 14);
   });
 });
 

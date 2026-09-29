@@ -60,9 +60,10 @@ describe('heating.autoOff (ignition test)', { timeout: 60_000 }, () => {
     expect(r.atIgnition.length).toBeGreaterThan(0);
     for (const d of r.atIgnition) {
       // P_alpha is the charged-product heating only: at most what the products bring in (the pool
-      // lags a rising P_charged), and the beams are a separate term, still on during the ramp-down.
-      // (Before the pool split P_alpha included the beams and IGNITION was logged with the NBI on.)
-      expect(d.P_alpha).toBeLessThanOrEqual(1.02 * d.P_charged);
+      // lags a rising P_charged and trails a falling one: 2.9 % above it in the ramp-down of the heating), and the
+      // beams are a separate term, still on during the ramp-down (about 25 % of P_charged: with them in P_alpha this
+      // bound, 5 %, fails). (Before the pool split P_alpha included the beams and IGNITION was logged with the NBI on.)
+      expect(d.P_alpha).toBeLessThanOrEqual(1.05 * d.P_charged);
       expect(d.P_beam_heat).toBeGreaterThan(0);
       expect(d.P_alpha).toBeGreaterThanOrEqual(d.P_rad + d.P_transport);
     }

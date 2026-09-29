@@ -8,7 +8,7 @@ import { Geometry, crossSectionArea } from './geometry';
 
 export type DisruptionCause =
   | 'density_limit' | 'beta_limit' | 'q95_limit' | 'radiative_collapse'
-  | 'tungsten_accumulation' | 'vde' | 'ntm_locked_mode' | 'magnet_quench' | 'none';
+  | 'tungsten_accumulation' | 'vde' | 'ntm_locked_mode' | 'magnet_quench' | 'density_collapse' | 'none';
 
 export interface DisruptionReport {
   cause: DisruptionCause;
@@ -86,6 +86,7 @@ export const DISRUPTION_LABELS: Record<DisruptionCause, string> = {
   vde: 'Vertical displacement event (VDE)',
   ntm_locked_mode: 'NTM grew and locked (locked mode)',
   magnet_quench: 'Magnet quench — shot aborted',
+  density_collapse: 'Density collapse — fuelling lost',
   none: '—',
 };
 
@@ -98,5 +99,6 @@ export const DISRUPTION_FIXES: Record<DisruptionCause, string> = {
   vde: 'Reduce elongation or strengthen vertical position control.',
   ntm_locked_mode: 'Keep β_N below the NTM threshold or stabilize the island with ECCD.',
   magnet_quench: 'Reduce B_T below the magnet technology limit or select HTS (REBCO).',
+  density_collapse: 'Raise the maximum fuelling rate or fuel with pellets instead of gas (the density controller cannot hold the target), or lower the target density; a heated plasma with no particle source loses its density and the temperature runs away.',
   none: '',
 };

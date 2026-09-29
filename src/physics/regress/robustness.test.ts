@@ -70,9 +70,11 @@ describe('0D magnetic model: current quench of a cold, radiating plasma', { time
   });
 });
 
-describe('ITER with p-¹¹B fuel (golden case ITER-pB11)', { timeout: 60_000 }, () => {
+describe('ITER with p-¹¹B fuel at the former density target of the golden case ITER-pB11', { timeout: 60_000 }, () => {
+  // 1.0e20 m⁻³ is the volume-average target the ITER preset had before v4.0 re-based it to n̄/n_G = 0.85 (0.914e20), with which the
+  // case collapses at 28 s; at 0.914e20 it runs to the scheduled end (regress/pb11Collapse.test.ts)
   it('ends in a radiative collapse whose thermal and current quench complete', () => {
-    const sim = new Simulation({ ...ITER, fuel: 'pB11', t_end: 100 });
+    const sim = new Simulation({ ...ITER, fuel: 'pB11', t_end: 100, n_target: 1.0e20 });
     sim.runAll();
     expect(Number.isFinite(sim.t)).toBe(true);
     const term = sim.model.terminated;

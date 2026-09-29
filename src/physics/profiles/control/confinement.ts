@@ -2,8 +2,9 @@
  * Energy confinement of the 1.5D model: the loss power, the scaling-law τ_E and the controller that
  * ties the transport amplitude to it.
  *
- *  - Scaling law: IPB98(y,2) (ITER Physics Basis, Nucl. Fusion 39 (1999) 2175) or the spherical-
- *    tokamak scaling after Valovič et al. (Nucl. Fusion 51 (2011) 073045) in H-mode, times H98;
+ *  - Scaling law: IPB98(y,2) (ITER Physics Basis, Nucl. Fusion 39 (1999) 2175), the spherical-
+ *    tokamak scaling after Valovič et al. (Nucl. Fusion 51 (2011) 073045) or the ITPA20 / ITPA20-IL
+ *    scalings (Verdoolaege et al., Nucl. Fusion 61 (2021) 076006; MagneticConfig.scaling) in H-mode, times H98;
  *    ITER89-P (Yushmanov et al., Nucl. Fusion 30 (1990) 1999) times H89 in L-mode (transport.ts),
  *    evaluated at the line-averaged density and the loss power P_L = P_heat − P_rad,core − dW/dt
  *    (lossPower). NTM islands degrade it by the belt-model factor (events/ntm.ts).
@@ -15,7 +16,7 @@
  *    at which the scaling is evaluated) and C_χ = 1.
  */
 import type { Geometry } from '../../geometry';
-import { tauIPB98y2, tauITER89P, tauSTValovic } from '../../transport';
+import { tauHmode, tauITER89P } from '../../transport';
 import type { ProfileContext } from '../context';
 import type { ProfileState } from '../state';
 import { ntmConfinementFactor } from '../events/ntm';
@@ -36,7 +37,8 @@ export function lossPower(ctx: ProfileContext, P_heat: number, P_rad_core: numbe
 export function scalingTauE(ctx: ProfileContext, Ip_MA: number, nbar: number, P_loss: number): number {
   const c = ctx.cfg, g = ctx.tg;
   const gS: Geometry = { R: g.R0, a: g.a, kappa: ctx.kappaA, delta: ctx.geomB.delta };
-  if (ctx.hmode) return ctx.ctrl.H98 * (c.scaling === 'ST_Valovic' ? tauSTValovic(gS, Ip_MA, g.B0, nbar, P_loss, ctx.M) : tauIPB98y2(gS, Ip_MA, g.B0, nbar, P_loss, ctx.M));
+  // gS carries the areal elongation and the LCFS triangularity, which is what the ITPA20 scalings are written for as well
+  if (ctx.hmode) return ctx.ctrl.H98 * tauHmode(c.scaling, gS, Ip_MA, g.B0, nbar, P_loss, ctx.M);
   return c.H89 * tauITER89P(gS, Math.max(Ip_MA, 0.05), g.B0, nbar, P_loss, ctx.M);
 }
 

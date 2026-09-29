@@ -109,7 +109,11 @@ export function crossSection(ch: keyof typeof BH_SIGMA, E_cm_keV: number): numbe
  *   <σv>_bt = ∫ σ(E_cm) v_b(E) f(E) dE / ∫ f(E) dE ,  E_cm = E_lab · m_t/(m_b + m_t)
  * The target is the second reactant of the channel: species a in the a+a channels (D-D, the D-D side branches of D-³He)
  * (E_cm = E_lab/2), species b in the others. For the target density see beamTargetDensity.
- * APPROXIMATION: the target ions are at rest (E_b ≫ T_i), the beam is isotropic, 48-point log grid.
+ * APPROXIMATION: the target ions are at rest (E_b ≫ T_i), the beam is isotropic, 48-point log grid (1500 points for p-¹¹B:
+ * its cross-section has the 148 keV resonance of width Γ ≈ 5 keV, 3 % of the beam energy at the resonance, which the 48 cells
+ * of a decade-wide range do not resolve: 31 % error at E_0 = 200 keV; the midpoint rule with 1500 cells is within 0.1 % of
+ * a 2000-interval Simpson reference, reference/reactivity.test.ts). Neither model calls it for p-¹¹B today (no beam-target
+ * fusion is booked for that fuel), so the finer grid costs nothing at run time.
  * Returns an array of m³/s per channel (in FUEL_CHANNELS order).
  */
 export function beamTargetReactivity(fuel: FuelType, E0_lab_keV: number, Ec_keV: number, Ti_keV: number): number[] {
@@ -119,7 +123,7 @@ export function beamTargetReactivity(fuel: FuelType, E0_lab_keV: number, Ec_keV:
   const keys: Record<FuelType, (keyof typeof BH_SIGMA | 'pB11')[]> = { DT: ['DT'], DD: ['DD_pT', 'DD_nHe3'], DHe3: ['DHe3', 'DD_pT', 'DD_nHe3'], pB11: ['pB11'] };
   const Emin = Math.max(1.5 * Ti_keV, 1);
   if (E0_lab_keV <= Emin) return chans.map(() => 0);
-  const N = 48;
+  const N = fuel === 'pB11' ? 1500 : 48;
   const lnMin = Math.log(Emin), lnMax = Math.log(E0_lab_keV);
   const num = chans.map(() => 0);
   let den = 0;
@@ -267,7 +271,7 @@ export interface FuelChannel {
    * Charged products and their birth energies (Σ E = Echarged). The Stix critical energy of the fast-product pool,
    * the ion-heating fraction G and the slowing-down time are computed per product and power-weighted.
    * The energies follow from two-body kinematics (E_1 = Q m_2/(m_1+m_2)); the 3 α of p-¹¹B share equally
-   * (APPROXIMATION: the real α spectrum is broad). The D-T α has the literature's 3.5 MeV (Echarged).
+   * (APPROXIMATION: the real α spectrum is broad). The D-T α has 3.561 MeV, see DT_ALPHA_MEV.
    */
   products: ChargedProduct[];
   /**
@@ -276,6 +280,16 @@ export interface FuelChannel {
    */
   ash: number;
 }
+
+/**
+ * D + T → ⁴He + n, reactants at rest: Q = 17.589 MeV (AME2020 atomic masses, Huang et al. and Wang et al., Chin. Phys. C 45
+ * (2021) 030002 and 030003) shared by exact relativistic two-body kinematics, T_n = Q (Q + 2 m_α)/(2 (m_n + m_α + Q)):
+ * 14.028 MeV for the neutron and 3.561 MeV for the ⁴He nucleus (T_α = Q − T_n; nuclear masses = atomic masses minus the
+ * electrons). The round 3.5 + 14.1 MeV of the textbooks (sum 17.6 MeV) and the 3.52 + 14.07 MeV of the integer mass-number
+ * rule Q/5 : 4Q/5 are 1.7 % and 1.2 % below the alpha energy: v3.0.0 used 3.5 + 14.1, so its P_charged + P_neutron
+ * was 1.000625 P_fusion and its alpha heating 1.7 % low. reference/reactivity.test.ts recomputes the split from the masses.
+ */
+const DT_ALPHA_MEV = 3.561, DT_NEUTRON_MEV = 14.028;
 
 // charged products (nuclear masses, amu — CODATA 2018)
 const ALPHA = (E_MeV: number): ChargedProduct => ({ name: 'He4', A: 4.001506, Z: 2, E_MeV });
@@ -294,7 +308,7 @@ const DD_NHE3: FuelChannel = { name: 'D+D→n+He3', Etot_MeV: 3.27, Echarged_MeV
  * branches (D-T, D-³He) is not tracked — the products are assumed to be pumped out without returning as fuel.
  */
 export const FUEL_CHANNELS: Record<FuelType, FuelChannel[]> = {
-  DT: [{ name: 'D+T', Etot_MeV: 17.589, Echarged_MeV: 3.5, Eneutron_MeV: 14.1, sameSpecies: false, sigmav: sigmav.DT, products: [ALPHA(3.5)], ash: 1 }],
+  DT: [{ name: 'D+T', Etot_MeV: 17.589, Echarged_MeV: DT_ALPHA_MEV, Eneutron_MeV: DT_NEUTRON_MEV, sameSpecies: false, sigmav: sigmav.DT, products: [ALPHA(DT_ALPHA_MEV)], ash: 1 }],
   DD: [DD_PT, DD_NHE3],
   DHe3: [
     { name: 'D+He3', Etot_MeV: 18.35, Echarged_MeV: 18.35, Eneutron_MeV: 0, sameSpecies: false, sigmav: sigmav.DHe3, products: [ALPHA(3.67), PROTON(14.68)], ash: 1 },

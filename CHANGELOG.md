@@ -19,8 +19,8 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 - `validate --json`: machine-readable results (preset, metric, value, expected range, pass); capture
   it with `npm run -s validate -- --json`, since plain `npm run` prints a banner to stdout.
 - Strict command-line flag parser (`src/cli/args.ts`) with generated `--help` for all CLIs.
-- Shared flat-top averaging helper `src/physics/analysis/flatTop.ts` (frame weighting by default,
-  optional time weighting).
+- Shared flat-top averaging helper `src/physics/analysis/flatTop.ts` (trapezoidal time weighting by
+  default since v4.0; the frame weighting of v3.0.0 is the option `weighting: 'frame'`).
 - Tests for the flag parser, worker pool, CLI exit codes, flat-top averaging and the golden
   comparator and snapshot content (95 tests in total).
 - 1.5D profile model: the model is split into focused modules (state layout, shared context,
@@ -50,11 +50,11 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   the added keys and the removed keys under their own labels. Before, the first moved keys were
   printed behind "N keys added" and read as the added ones.
 - Validation: literature checks for the v4.0 physics. `MASTU.q95` (first MAST-U campaign 5 < q95 <
-  10, Berkery et al., PPCF 65 (2023) 045001; the preset is a documented known failure because of
-  its geometry), `DIIID.Palpha` (the charged D-D products are bounded by the record D-D gain Q_DD =
+  10, Berkery et al., PPCF 65 (2023) 045001; a documented known failure until the preset became a
+  first-campaign scenario, see below), `DIIID.Palpha` (the charged D-D products are bounded by the record D-D gain Q_DD =
   0.0015, Lazarus et al., Nucl. Fusion 37 (1997) 7), `ITER/JET/SPARC/DEMO.alphaShare` (P_alpha/P_fus
-  at most the 0.200 alpha share of D-T) and `ITER.nG` (line-averaged Greenwald fraction); the model
-  values in the known-failure texts are refreshed (35 checks pass, 7 are known failures).
+  at most the alpha share of D-T, 0.2025 = 3.561/17.589 MeV plus 5 % slack) and `ITER.nG` (line-averaged
+  Greenwald fraction); the model values in the known-failure texts are refreshed.
 - Exit-status stress test of the spawned validate and golden CLIs (16 runs, in `npm test`, about 3 s;
   a tripwire for the intermittent Windows exit code 0xC0000005 seen once) and the opt-in soak
   `npm run stress:exit -- 300 8`; tests of the worker pool shutdown on every path and of the golden
@@ -170,6 +170,41 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 - Tests of the persistence layer: the share codec (21 presets x 200 random edits), the archive on
   fake-indexeddb, the router, verification (including a real worker replay) and the archive, import,
   share and embed views through the application.
+- Deterministic simulation kernel: any `advance()` schedule gives bitwise the same frames, events and
+  report as `runAll()` (the wall-clock chunking used to truncate integrator steps: ITER Q_sci_max 15.935
+  against 15.854 chunked), `rewindTo()` restores the exact model state in 0D and 1.5D, every
+  `applyControl()` is logged and replays bitwise, sampling grids and user breakpoints are honoured, and
+  `runFingerprint()` (pure-TypeScript SHA-256 over a canonical serialisation) identifies a run. Integrator:
+  the array form of `nonNegative` clamps exactly the listed components, non-finite trial stages are
+  rejected, a NaN step size is never accepted at dtMin, `snapshot()`/`restore()` continue bitwise.
+- Web UI foundation: an external state store with worker protocol v2 (frame batching, runs that cannot be
+  integrated are refused, a NaN state stops the run), a typed i18n scaffold `t(key, params)` with English
+  and Turkish dictionaries (the report and comparison screens are translated), the run screen split into
+  panels, an error boundary that contains drawing errors, and jsdom component tests with an in-process fake
+  worker. The wizard blocks RUN while a required number field is empty, and a blank field unsets the value
+  instead of reverting to the preset; rewinding a completed run no longer re-archives it.
+- Publication engine: a pure-TypeScript TrueType parser and subsetter, the STIX Two fonts embedded in the PDF
+  figures (rho, beta, alpha, tau and Delta no longer vanish), `hmtx` text layout, mathtext and axis fixes
+  (tick labels keep every digit, SVG and PDF place every glyph of fractions and accents alike), a figure
+  registry with pooled verification and POPCON, a provenance manifest and `npm run figures:check`.
+- Reference and property tests of the 0D physics: a seeded property-testing helper with shrinking, reference
+  packs typed in from the publications (Bosch-Hale, Nevins-Swain and beam-target reactivity; confinement
+  scalings, Martin 2008; bremsstrahlung, Albajar-Fidone synchrotron, Mavrin 2018 line cooling; geometry,
+  heating, limits, disruption), conservation invariants of short preset runs (power diagnostics add up, the
+  thermal energy ledger closes, fuel and ash inventories), property tests of the numerics, a wizard smoke
+  test over every option combination, and `npm run mutation-smoke` (15 seeded mutants of the physics, all
+  killed). Known defects were pinned as `it.fails` tests that flip when the bug is fixed; the ones fixed in
+  v4.0 (integrator, ELM frames, blank defaults, D-T energies, p-11B quadrature, Miller volume and surface,
+  W7-X density collapse) are plain tests now.
+- Grad-Shafranov solver: `Equilibrium.warnings` and a public force-balance evaluator (the residual of the
+  pressure balance a table-mode state leaves), a Solov'ev flux-contour boundary and faster psi evaluation,
+  Anderson-accelerated Picard iteration (`numerics`), a banded LU that skips structural zeros, a grid cache
+  capped at 64 MB per worker, and tests against the exact nonlinear Solov'ev solution, force balance,
+  convergence and failures.
+- `MagneticConfig.scaling` accepts `'ITPA20'` and `'ITPA20-IL'` next to `'IPB98y2'` (default) and
+  `'ST_Valovic'`, in the 0D model, POPCON and the 1.5D confinement controller (`tauHmode()` in
+  `transport.ts`); see Changed for the variables they take.
+- 0D disruption cause `density_collapse` ('Density collapse - fuelling lost'); see Fixed.
 
 ### Changed
 - The Report's JSON button writes `<name>_run.json` (the run file above) instead of
@@ -255,11 +290,82 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   `src/physics/**`.
 - ITPA20 and ITPA20-IL confinement scaling coefficients verified against Verdoolaege et al., Nucl.
   Fusion 61 (2021) 076006 (eq. 5, eq. 7, tables 10 and 16): all agree with the printed values (the
-  ITPA20-IL n exponent is 0.15 in the code, 0.147 in the paper) and the published ITER predictions
-  (3.07 s / 2.90 s) are reproduced to 0.4 %. The Sauter (2016) q95 constants remain checked against
-  secondary sources only.
+  ITPA20-IL n exponent was rounded to 0.15, it is the printed 0.147 since ws2c) and the published
+  ITER predictions (3.07 s / 2.90 s) are reproduced to 0.4 %. The Sauter (2016) q95 constants remain
+  checked against secondary sources only.
 - Removed the unused `checkLimits`, `LimitCheck` and `LimitInputs` from `src/physics/limits.ts` (no
   model called them: limits are checked in `postStep()`).
+- 0D magnetic model (physics consistency pass): the charged fusion products and the NBI ions slow down in
+  separate pools, each with its own Stix critical energy, ion heating fraction and energy-content time;
+  P_alpha is the heating by the charged products alone and the new `P_beam_heat` shows the beams (ITER no
+  longer logs IGNITION with 50 MW of heating on, its spurious ignition time 385.6 s is 0; DIII-D P_alpha is
+  0.0023 MW instead of 11.7 MW; JET fast-ion energy 6.2 -> 1.6 MJ). Ignition is P_alpha >= P_rad + W/tau_E with
+  hysteresis and no Q >= 5 guard. beta_T and beta_N include the pressure of the fast particles, and NTMs are
+  seeded from the thermal beta_N.
+- 0D: the loss power for tau_E and the L-H test is P_L = P_heat - P_rad,core - dW/dt (core radiation from
+  rho < 0.6, a smoothed dW/dt); the Greenwald fraction, the Martin 2008 L-H threshold (with the Ryter 2014
+  low-density branch) and the tau_E scalings use the line-averaged density n = f_line <n_e>; the ELM-averaged
+  power and particle exhaust are 0.3 of the transport loss W/tau_E; electron-ion equilibration runs over all
+  ions with the computed Coulomb logarithm; blanket energy multiplication applies to the neutron power only
+  and only with a blanket (JET no longer gets +18 %); spherical tokamaks use the low-aspect-ratio q95 of
+  Sauter (2016) (MAST-U 34 -> 18); stellarator confinement is an explicit `H_ISS04` x tau_ISS04
+  (`stellarator.f_ren` stays as a deprecated alias); T_max and the design score ignore the start-up transient.
+  Together with the fixes below ITER flat-top Q went 14.0 -> 10.1 and P_fus 715 -> 523 MW, and the ITER-pB11
+  shot radiatively collapsed at 28 s instead of surviving on an ELM-power artefact (a marginal power balance:
+  with the ITER density re-base below it runs to the scheduled end again).
+- 0D diagnostics `P_beam_heat`, `P_transport` (W/tau_E), `P_ELM`, `P_loss`, `dWdt`, `P_rad_core`, `P_ei`,
+  `betaN_th`, `W_alpha`, `W_beam`, `ignited`, `nbar`; `P_cond` is now the continuous conduction W/tau_E - P_ELM.
+- MagLIF stagnation lasts about 2 ns (the dwell time scales with t_c/CR) instead of 30 ns: Z D-D yield
+  3e15 -> 2e14 (the reference is 1.1e13); FRC and mirror thermal energy account for n_i != n_e.
+- Confinement scalings as data (`ConfinementScalingParams`: IPB98(y,2), ITPA20, ITPA20-IL); the existing scalings
+  are bitwise unchanged.
+- Grad-Shafranov table mode meets I_p through FF' alone: p' used to be rescaled with FF', so the reported p,
+  beta_p and W_th were 9-25 % out of force balance while `converged` was true. beta0 has a closed form (beta0 > 1
+  is allowed), the exterior is filled with bounded values, the axis search is saddle-free, and
+  `Equilibrium.warnings` names an unreachable target or a current table that needs a rescaling above 10 %.
+  Moves the nine 1.5D golden cases.
+- Flat-top averages (the shot report, the golden flat-top, the validation table, the figures) are the
+  trapezoidal time average of the last 30 % of the shot, no longer the mean over the frames of that window: the
+  extra frames recorded at ELM and sawtooth crashes weighted the crash states. The headline numbers of the ELM
+  tokamaks move by 0.1 % or less (ITER Q 10.130 -> 10.134); the largest moves are in the pulsed and marginal cases
+  (GF, FRXL P_fus -2 %, ITER-pB11 Q +2 %).
+- D + T -> 4He + n: the 4He nucleus has 3.561 MeV and the neutron 14.028 MeV (exact two-body kinematics of
+  Q = 17.589 MeV, AME2020 masses), not 3.5 + 14.1 MeV = 17.6 MeV: the alpha heating per reaction was 1.7 % low
+  and P_charged + P_neutron was 1.000625 P_fusion. ITER Q 10.13 -> 10.55, DEMO Q +1.2 %; the alpha share of
+  the fusion power is 0.2025.
+- Plasma volume, surface and cross-section area are the exact integrals of the Miller boundary of the same
+  (kappa, delta): closed forms for the volume and the area, quadrature for the surface. The ellipse formulas
+  overestimated the volume by 3.6 % (JET) to 14 % (MAST-U) and the surface by 4-18 %, against a documented "about
+  3 %". ITER and DEMO carry their LCFS shape (kappa 1.85, delta 0.49 and 0.5) in `profiles.lcfsKappa/lcfsDelta`,
+  which now also sets the 0D volume and surface: 842 m3 and 683 m2 for ITER against the design 837 m3 and 678 m2,
+  the same shape as ITER15; the presets' kappa, delta stay the 95 % values of q95 and the scalings, and the new
+  `profiles.lcfsRef95` (the 95 % shape the LCFS values belong to) makes the 0D volume, surface and area follow an
+  edited kappa or delta in that ratio, so no override is hidden in the 1.5D-only fields. The DEMO LCFS shape is
+  the PROCESS conversion of kappa95 = 1.65, delta95 = 0.33 (kappa95 = kappa/1.12, delta95 = delta/1.5), an
+  approximation: +8.3 % volume, -3 % P_fus and Q against the 95 % shape. ITER Q
+  10.55 -> 9.97, SPARC 0D Q 6.6 -> 7.5, JT-60SA and DIII-D +10 %. The 1.5D neutron wall load uses the same
+  surface (ITER15 0.50 -> 0.53 MW/m2), and the 0D shot and disruption reports take the boundary shape like the
+  1.5D reports.
+- ITPA20 and ITPA20-IL take the areal elongation kappa_a = V/(2 pi^2 R a^2) and the average LCFS triangularity of
+  Verdoolaege et al. (2021), not the 95 % values of the presets (delta 0.33 instead of 0.48 would lower tau_E by
+  3.8 % and 5.8 %); the ITPA20-IL n exponent is the printed 0.147, not 0.15 (0.7 % in tau_E). With H98 = 1 the
+  ITER preset does not sustain its burn under either scaling (tau_E about 15 % below IPB98(y,2)).
+- Low-density branch of the L-H threshold: below Ryter's density minimum (eq. 3 of Nucl. Fusion 54 (2014) 083003)
+  the threshold rises as (n_min/n)^2, the penalty of the SPARC design studies (Hughes et al., J. Plasma Phys. 86
+  (2020) 865860504), no longer as n_min/n. Neither Martin (2008) nor Ryter gives the exponent. Only ramp-ups that
+  start below n_min move: their first L-H transition comes 0.06 s (JT-60SA) to 0.3 s (DEMO15) later than with
+  n_min/n, and 0.13 s (DIII-D) to 0.6 s (DEMO15, JET 0.27 s) later than with Martin's law alone; ITER, ITER15,
+  DEMO and MAST-U (heating-ramp limited or above n_min) move by 0.02 s at most.
+- ITER (0D) `n_target` 1.0e20 -> 0.914e20 and DEMO (0D) 0.75e20 -> 0.711e20: the target of the 0D model is the
+  volume average, the design points are the line-averaged n/n_G = 0.85 (ITER) and 1.2 (EU-DEMO 2018 baseline,
+  Siccinio et al. 2022; their table 1 writes it as the angle-bracket <n>/n_GW, which may mean the volume average:
+  read that way, the 0D DEMO shot exceeds its Greenwald limit 1.3 and disrupts at 81 s), which the flat tops now
+  reach to 2.5 % (0.84 and 1.17; before 0.92 and 1.24). The 1.5D
+  presets already regulate the line average and keep their targets. The ITER-pB11 golden case, whose power balance
+  is marginal (1.0e20 collapses at 28 s, 0.85e20 survives), now runs to the scheduled end.
+- MAST-U preset: the first-campaign scenario (R 0.8 m, a 0.5 m, kappa 2.1, delta 0.47, 0.75 MA, 0.55 T, 2 MW of NBI
+  absorbed; Harrison et al. 2024, Imada et al. 2024) instead of the machine's design-maximum shape: q95 18.2 -> 6.4
+  (the published band is 5-10, so the `MASTU.q95` known failure is gone) and MASTU15 (1.5D) q95 17.6 -> 6.4.
 
 ### Fixed
 - `npm run bench:convergence`: the time-step series (dtMax) failed with "this model has no internal time step
@@ -318,13 +424,33 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 - Rewinding a 1.5D shot to the frame before a failed step now also removes the failure's end event
   (the event list is truncated by the kernel's event count, not by time).
 - A saved Turkish interface language is applied before the first render (no English flash).
+- 0D: D-D fuel with `fuelFracA` < 1 no longer underestimates the fusion power (up to 4x at 0.5; the D-D thermal
+  rate is 0.5 (n_a + n_b)^2, POPCON too); D-3He includes its D(d,p)T and D(d,n)3He side reactions and produces
+  neutrons; ICF burns the selected fuel and Q_eng = G x driver efficiency x thermal efficiency (the driver
+  coupling was counted twice: NIF Q_eng 0.016 -> 0.060; new optional `driverEff`/`thermalEff`); a tandem mirror is
+  always better confined than a simple one (Pastukhov end-plug factor, new optional `plugPotential`);
+  `heating.autoOff` (the ignition test) works: the external heating ramps off at Q >= 5 and an event is logged.
+- 0D: sawtooth crashes no longer remove energy and particles twice; a trial stage with W < 0 conducts nothing (it
+  held the current quench at 2e-5 s steps); rates stay finite for any finite state (a bounded evaluation
+  temperature), so a stiff step into a thermal quench is rejected instead of giving a NaN step size; the
+  once-only warning flags survive a rewind.
+- Bosch-Hale reference corrected to Nucl. Fusion 32 (1992) 611.
+- p-11B beam-target reactivity: the quadrature resolves the 148 keV resonance (it was 31 % off with 48 cells; 1500
+  cells for this fuel). Neither model calls it for p-11B, so no simulated number moves.
+- 0D: a shot whose fuelling is lost ends with 'Density collapse - fuelling lost' when n_e falls below 10 % of the
+  commanded target. With "Max. fueling rate" = 0 the heating stayed on with no particle source, tau_E shrank with
+  n and the density fell to zero in finite time: W7-X reached T_e = 1.7 MeV at 0.66 s, stalled the integrator at
+  dtMin and overflowed to NaN after 30 s of wall time (now it ends at 0.50 s at 8.5 keV in 32 steps). The 1.5D
+  model is not changed.
 
 Physics results are unchanged by the 1.5D changes above: a full-precision dump of all 21 presets
 was byte-identical before and after them. The frame fix of the ELM presets is the exception (see
 Changed), and so are the 1.5D physics changes (loss power, fusion and NBI sources, fast ions,
 ignition, cell volumes): they move the nine 1.5D golden cases (ITER15 flat-top Q 9.74 -> 10.3, P_fus
 490 -> 520 MW; DEMO15 Q 22.7 -> 23.3; SPARC15 Q 6.09 -> 6.32; DIIID15 neutron yield x4.1; MASTU15,
-a documented poor case, changes by tens of per cent) and no 0D golden case.
+a documented poor case, changes by tens of per cent) and no 0D golden case. The 0D physics changes of the
+same release (ws2b, ws2c) move every 0D magnetic golden case; `test/golden/CHANGES.md` names the cause of every
+moved case.
 
 ## [3.0.0] — 2026-09-23
 

@@ -99,6 +99,7 @@ const SRC = {
   berkery2023: 'J.W. Berkery et al., "Operational space and performance limiting events in the first physics campaign of MAST-U", Plasma Phys. Control. Fusion 65 (2023) 045001',
   harrisonSuperX2024: 'J.R. Harrison et al., "Benefits of the Super-X divertor configuration for scenario integration on MAST Upgrade", Plasma Phys. Control. Fusion 66 (2024) 065019',
   lazarus1997: 'E.A. Lazarus et al., "Higher fusion power gain with profile control in DIII-D tokamak plasmas", Nucl. Fusion 37 (1997) 7–12',
+  imada2024: 'K. Imada et al., "Observation of a new pedestal stability regime in MAST Upgrade H-mode plasmas", Nucl. Fusion 64 (2024) 086002',
 } as const;
 
 const DOI = {
@@ -124,6 +125,7 @@ const DOI = {
   ipb1999ch1: '10.1088/0029-5515/39/12/301',
   berkery2023: '10.1088/1361-6587/acb464',
   harrisonSuperX2024: '10.1088/1361-6587/ad4058',
+  imada2024: '10.1088/1741-4326/ad5219',
   lazarus1997: '10.1088/0029-5515/37/1/I11',
 } as const satisfies Record<keyof typeof SRC, string>;
 
@@ -159,35 +161,33 @@ export function widen(tolerance: PolicyTolerance, [lo, hi]: readonly [number, nu
 }
 
 /**
- * P_alpha / P_fusion of a D-T tokamak preset. The alpha particles carry 3.52 MeV of the 17.59 MeV released by
- * D + T → ⁴He + n, a share of 0.200, and P_alpha is the heating by the charged products alone (the injected
- * beams are P_beam_heat, a separate diagnostic), so the share cannot exceed it. v3 booked the beam heating as
- * P_alpha and read 0.24 for ITER.
+ * P_alpha / P_fusion of a D-T tokamak preset. The alpha particles carry 3.561 MeV of the 17.589 MeV released by
+ * D + T → ⁴He + n (exact two-body kinematics of the AME2020 masses, reactivity.ts), a share of 0.2025, and P_alpha is
+ * the heating by the charged products alone (the injected beams are P_beam_heat, a separate diagnostic), so the share
+ * cannot exceed it. v3 booked the beam heating as P_alpha and read 0.24 for ITER.
  */
 const ALPHA_SHARE = (preset: string): ReferenceCheck => ({
   id: `${preset}.alphaShare`, preset, metric: 'P_alpha / P_fusion (flat-top)', path: 'derived.alphaShare', value: 0.2, unit: '',
-  ref: 'ITER Physics Basis ch. 1, 1999', source: SRC.ipb1999ch1, doi: DOI.ipb1999ch1, accept: [0, 0.21], tolerance: 'stated', kind: 'sanity',
-  basis: 'a bound from the energetics of D + T → ⁴He (3.52 MeV) + n (14.07 MeV): the alphas carry 3.52/17.59 = 0.200 of the fusion power ' +
-    'and P_alpha, the deposited heating of the charged products alone, cannot exceed it; +5 % of slack because P_alpha = W_α/τ lags a ' +
+  ref: 'ITER Physics Basis ch. 1, 1999', source: SRC.ipb1999ch1, doi: DOI.ipb1999ch1, accept: [0, 0.213], tolerance: 'stated', kind: 'sanity',
+  basis: 'a bound from the energetics of D + T → ⁴He (3.561 MeV) + n (14.028 MeV): the alphas carry 3.561/17.589 = 0.2025 of the fusion power ' +
+    'and P_alpha, the deposited heating of the charged products alone, cannot exceed it; +5 % of slack (0.2126, rounded up to 0.213) because P_alpha = W_α/τ lags a ' +
     'P_fus that is not exactly steady on the flat top. Guards the v3 bookkeeping that counted the NBI heating in P_alpha (0.24 for ITER)',
 });
 
 /**
  * q95 of MAST Upgrade against its first physics campaign (Berkery 2023: almost all operation between 5 < q95 < 10).
- * `model` opens the known-failure text with the preset's value; the numbers of the rest are recomputed by
- * mastuQ95.test.ts, so they cannot drift from the fit.
+ * Until v4.0 the preset had the design-maximum shape (R 0.85 m, a 0.65 m, κ 2.5, B0 0.75 T, I_p 1 MA: q95 = 18.2 by the fit) and the check was a
+ * documented known failure; since v4.0 the preset is a first-campaign scenario (v4checks.test.ts recomputes its q95 from the fit).
  */
-const MASTU_Q95 = (preset: 'MASTU', model: string): ReferenceCheck => ({
+const MASTU_Q95 = (preset: 'MASTU'): ReferenceCheck => ({
   id: `${preset}.q95`, preset, metric: 'q95 (flat-top)', path: 'flatTop.q95', value: 7.5, band: [5, 10], unit: '',
-  ref: 'Berkery 2023', source: `${SRC.berkery2023}; shape, field and current of the campaign: ${SRC.harrisonSuperX2024}`, doi: DOI.berkery2023,
+  ref: 'Berkery 2023', source: `${SRC.berkery2023}; shape, field and current of the campaign: ${SRC.harrisonSuperX2024}; ${SRC.imada2024}`, doi: DOI.berkery2023,
   accept: [5, 10], tolerance: 'stated', kind: 'validation',
   basis: 'first physics campaign of MAST-U (I_p 450–1000 kA, B0 0.42–0.64 T; Harrison et al. 2024, Super-X paper): almost all operation between 5 < q95 < 10, ' +
     'the band, whose mid-point is the value. The accepted range is the band itself, a bound on both sides: q95 follows from I_p, B0 and ' +
-    'the shape through the low-aspect-ratio fit of Sauter (2016), no reduced-model energy balance enters, so nothing is widened',
-  knownFailure: `${model}. The fit is not the cause: for the typical shape of the campaign (R ≈ 0.8 m, a ≈ 0.5 m, κ = 2.0–2.2, ` +
-    'Harrison et al. 2024, Super-X paper) at the preset\'s B0 = 0.75 T and I_p = 1 MA it gives 6.6, inside the ' +
-    'band, and 3.1–13.6 over the field, current and shape ranges of the campaign. The preset\'s larger minor radius (a = 0.65 m) and ' +
-    'elongation (κ = 2.5) raise q95 by a factor 2.7',
+    'the shape through the low-aspect-ratio fit of Sauter (2016), no reduced-model energy balance enters, so nothing is widened. The preset is a scenario of the ' +
+    'campaign (R 0.8 m, a 0.5 m, κ 2.1, δ 0.47, 0.75 MA, 0.55 T; Harrison 2024 and Imada et al. 2024, whose EFIT q95 of three such discharges is 6.3–6.7): the ' +
+    'fit gives 6.4 for it. With the design-maximum shape of the machine (R 0.85 m, a 0.65 m, κ 2.5) it gave 18.2',
 });
 
 const r3 = (x: number) => Math.round(x * 1000) / 1000;
@@ -218,8 +218,9 @@ export const REFERENCE_CHECKS: readonly ReferenceCheck[] = [
   {
     id: 'ITER.nG', preset: 'ITER', metric: 'n̄/n_G (flat-top)', path: 'flatTop.nG_frac', value: 0.85, unit: '',
     ref: 'Shimada 2007', source: SRC.shimada2007, doi: DOI.shimada2007, accept: [0.6, 1.0], tolerance: 'stated', kind: 'benchmark',
-    basis: 'inductive scenario n̄/n_G = 0.85 with n̄ the line-averaged density, which is the density of the 0D model since v4.0 (the preset\'s ' +
-      '1.0e20 m⁻³ volume-average target is 1.1e20 m⁻³ on the line); up to the Greenwald limit, down to −30 %',
+    basis: 'inductive scenario n̄/n_G = 0.85 with n̄ the line-averaged density (Shimada 2007; Casper et al., Nucl. Fusion 54 (2014) 013005: densities at 85 % ' +
+      'of the Greenwald limit), which is the density of the 0D model since v4.0. The target of the preset is the volume average 0.914e20 m⁻³, 1.015e20 m⁻³ on the line ' +
+      '(0.85 n_G; the flat top reaches 0.84); up to the Greenwald limit, down to −30 %',
   },
   ALPHA_SHARE('ITER'),
   // ─── JET DTE2 (0D) ───────────────────────────────────────────────────────────────────────────
@@ -272,7 +273,7 @@ export const REFERENCE_CHECKS: readonly ReferenceCheck[] = [
       'the preset is not one of those discharges. Not circular: the preset confines with the spherical-tokamak scaling of Valovič, ' +
       'and H98 is IPB98(y,2) evaluated independently',
   },
-  MASTU_Q95('MASTU', 'the low-aspect-ratio fit of Sauter (2016) gives q95 = 18.2 for the preset (R = 0.85 m, a = 0.65 m, κ = 2.5, δ = 0.5)'),
+  MASTU_Q95('MASTU'),
   // ─── Wendelstein 7-X (0D) ────────────────────────────────────────────────────────────────────
   {
     id: 'W7X.Ti0', preset: 'W7X', metric: 'T_i(0) (flat-top)', path: 'flatTop.Ti0', value: 1.5, uncertainty: 0.2, unit: 'keV',

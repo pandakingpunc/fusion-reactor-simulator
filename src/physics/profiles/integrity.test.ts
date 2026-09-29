@@ -205,8 +205,14 @@ describe('Grad–Shafranov updates during a shot', () => {
 
   // ws4's solver converges MASTU15 tables that carry half of I_p on the new surfaces (c = 2.07, 1.95);
   // taking them ended the shot in a β-limit disruption at 1.06 s instead of the scheduled end
-  it('MASTU15: current tables mapped through a stale geometry are held back, the shot ends as scheduled', () => {
-    const sim = new Simulation({ ...MASTU, fidelity: '1.5D' });
+  // (The preset was the machine's design-maximum shape until v4.0 moved it to a first-campaign scenario (R 0.8 m, a 0.5 m,
+  // κ 2.1, 0.75 MA, 0.55 T), whose equilibria do not need such rescalings: this test keeps the former, harder shape.)
+  it('MASTU15 (design-maximum shape): current tables mapped through a stale geometry are held back, the shot ends as scheduled', () => {
+    const design: MagneticConfig = {
+      ...MASTU, fidelity: '1.5D', geometry: { R: 0.85, a: 0.65, kappa: 2.5, delta: 0.5 }, B0: 0.75, Ip_MA: 1.0,
+      heating: { ...MASTU.heating, P_NBI_MW: 5 },
+    };
+    const sim = new Simulation(design);
     const r = sim.runAll();
     const m = sim.model as ProfileModel;
     expect(r.termination.reason).toBe('Scheduled end');
@@ -551,7 +557,10 @@ describe('checkpoints and replays', () => {
 
   // density limit → thermal and current quench: the quench phases patch the last diagnostics in
   // place, so a checkpoint must carry all of them
-  const disrupting = (): MagneticConfig => ({ ...JET_15D, t_end: 3, n_target: JET_15D.n_target * 3 });
+  // (the factor 3.4 of the target puts the step of the disruption onset off the output grid with the breakpoints below; the factors
+  // 2.6 to 3.6 all disrupt at the density limit at 1.2 to 1.6 s, only some of them end the onset step off the grid: it depends on the
+  // step sizes of the run, so a change of the physics can move it: pick the factor again then; it was 3 before v4.0's D-T energies)
+  const disrupting = (): MagneticConfig => ({ ...JET_15D, t_end: 3, n_target: JET_15D.n_target * 3.4 });
   // User breakpoints every 2.9 ms end steps off the output grid (3.75 ms): the step of the disruption onset then
   // ends at a time that is not an output time and is recorded as an irregular frame. Without them the
   // Δt of the density ramp is longer than the output interval, every step is cut at an output time and the onset

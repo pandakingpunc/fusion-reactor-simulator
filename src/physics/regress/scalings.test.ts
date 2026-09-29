@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  CONFINEMENT_SCALINGS, IPB98Y2_PARAMS, ITPA20_IL_PARAMS, ITPA20_PARAMS, pLH_Martin, tauFromParams, tauIPB98y2, tauISS04, tauITER89P,
+  CONFINEMENT_SCALINGS, IPB98Y2_PARAMS, ITPA20_IL_PARAMS, ITPA20_PARAMS, pLH_Martin, tauFromParams, tauHmode, tauIPB98y2, tauISS04, tauITER89P,
   tauITPA20, tauITPA20IL, tauSTValovic,
 } from '../transport';
 
@@ -36,11 +36,21 @@ describe('ConfinementScalingParams', () => {
     expect(ITPA20_PARAMS.exponents.P).toBe(-0.669);
   });
 
-  it('ITPA20-IL = 0.067 I^1.29 B^−0.13 n19^0.15 P^−0.644 R^1.19 (1+δ)^0.56 κ_a^0.67 M^0.30', () => {
+  it('ITPA20-IL = 0.067 I^1.29 B^−0.13 n19^0.147 P^−0.644 R^1.19 (1+δ)^0.56 κ_a^0.67 M^0.30 (eq. 5 of Verdoolaege et al. 2021)', () => {
     const [Ip, B, n19, P, M] = [15, 5.3, 10, 100, 2.5];
-    const ref = 0.067 * Ip ** 1.29 * B ** -0.13 * n19 ** 0.15 * P ** -0.644 * 6.2 ** 1.19 * 1.33 ** 0.56 * 1.7 ** 0.67 * M ** 0.3;
+    const ref = 0.067 * Ip ** 1.29 * B ** -0.13 * n19 ** 0.147 * P ** -0.644 * 6.2 ** 1.19 * 1.33 ** 0.56 * 1.7 ** 0.67 * M ** 0.3;
     expect(tauITPA20IL(ITER_G, Ip, B, n19 * 1e19, P * 1e6, M) / ref).toBeCloseTo(1, 12);
     expect(ITPA20_IL_PARAMS.exponents.eps).toBe(0);
+    expect(ITPA20_IL_PARAMS.exponents.n19).toBe(0.147);
+  });
+
+  it('tauHmode dispatches on the scaling; the default IPB98(y,2) and ST_Valovic are bitwise the direct calls', () => {
+    const args = [15, 5.3, 1.0e20, 100e6, 2.5] as const;
+    expect(tauHmode('IPB98y2', ITER_G, ...args)).toBe(tauIPB98y2(ITER_G, ...args));
+    expect(tauHmode('ST_Valovic', ITER_G, ...args)).toBe(tauSTValovic(ITER_G, ...args));
+    expect(tauHmode('ITPA20', ITER_G, ...args)).toBe(tauITPA20(ITER_G, ...args));
+    expect(tauHmode('ITPA20-IL', ITER_G, ...args)).toBe(tauITPA20IL(ITER_G, ...args));
+    expect(new Set([tauHmode('IPB98y2', ITER_G, ...args), tauHmode('ITPA20', ITER_G, ...args), tauHmode('ITPA20-IL', ITER_G, ...args)]).size).toBe(3);
   });
 
   it('for ITER all three H-mode scalings agree within a factor 1.5', () => {

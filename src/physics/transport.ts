@@ -40,23 +40,34 @@ export const IPB98Y2_PARAMS: ConfinementScalingParams = {
 };
 
 /**
- * ITPA20 — regression of the updated ITPA H-mode database (DB5.2.3): Verdoolaege et al., Nucl. Fusion 61 (2021) 076006.
- * The coefficients agree with the UKAEA PROCESS documentation (confinement time, i_confinement_time = 49 and 50),
- * which cites the paper. The ITPA20-IL set is also quoted with its uncertainties in secondary quotations of the paper
- * (0.067 ± 0.060, I_p^1.29±0.17, B^−0.13±0.17, n̄^0.15±0.10, P^−0.644±0.060, R^1.19±0.29, (1+δ)^0.56±0.35, κ^0.67±0.65,
- * M^0.30±0.17; τ_E,th(ITER) = 2.79 ± 0.44 s). This implementation gives 2.73 s at the ITER point (I_p 15 MA, B 5.3 T,
- * n̄ 10.1e19 m⁻³, P_L 87 MW, R 6.2 m, κ_a 1.7, δ 0.33, M 2.5).
+ * ITPA20 — regression of the updated ITPA H-mode database (DB5.2.3-STD5, ELMy H-modes): Verdoolaege et al., Nucl. Fusion 61
+ * (2021) 076006, eq. (7) = WLS estimates of table 16, printed to 2–3 digits. The coefficients also agree with the UKAEA PROCESS
+ * documentation (confinement time, i_confinement_time = 49 and 50). Variables (the definitions of tauFromParams): I_p [MA],
+ * B_t [T], the line-averaged n̄_e [10¹⁹ m⁻³], the thermal loss power through the LCFS P_l,th [MW], R_geo, the AVERAGE LCFS
+ * triangularity δ (ITER 0.48; the presets carry the 95 %-surface δ95 = 0.33 in `geometry.delta`, which would lower τ_E by 3.8 %
+ * for ITPA20 and 5.8 % for ITPA20-IL: callers pass the LCFS value, `profiles.lcfsDelta ?? geometry.delta` in boundaryShape),
+ * the areal elongation κ_a = V/(2π² R a²) (arealElongation), ε = a/R and M_eff [amu]. At the paper's ITER point (I_p 15 MA,
+ * B_t 5.3 T, n̄_e 10.3e19 m⁻³, P_l,th 87 MW, R 6.2 m, δ 0.48, κ_a 1.7, ε 0.32, M 2.5) the paper predicts 3.07 s
+ * (2.79 s at P_l,th = 100 MW); this implementation gives 3.07 s (validation/primarySources.test.ts reproduces both to 1.5 %).
  */
 export const ITPA20_PARAMS: ConfinementScalingParams = {
   C: 0.053, exponents: { Ip: 0.98, B: 0.22, n19: 0.24, P: -0.669, R: 1.71, kappa: 0.8, eps: 0.35, M: 0.2, onePlusDelta: 0.36 },
   ref: 'G. Verdoolaege et al., Nucl. Fusion 61 (2021) 076006 (ITPA20)',
 };
 
-/** ITPA20-IL — the ITER-like subset of the same study (no ε exponent): Verdoolaege et al. 2021 */
+/**
+ * ITPA20-IL — the ITER-like subset of the same study (ELMy H-modes under ITER-like constraints, no ε exponent): Verdoolaege et al.
+ * 2021, eq. (5) = WLS estimates of table 10 (n̄_e exponent 0.147, table 10: 0.1473). At the paper's ITER point (see ITPA20) the paper
+ * predicts 2.90 s (2.65 s at P_l,th = 100 MW); this implementation gives 2.90 s. The first v4 implementation (ws2b) rounded the n̄_e
+ * exponent to 0.15 (+0.7 % in τ_E at n̄ = 10²⁰ m⁻³), the value of secondary quotations.
+ */
 export const ITPA20_IL_PARAMS: ConfinementScalingParams = {
-  C: 0.067, exponents: { Ip: 1.29, B: -0.13, n19: 0.15, P: -0.644, R: 1.19, kappa: 0.67, eps: 0, M: 0.3, onePlusDelta: 0.56 },
+  C: 0.067, exponents: { Ip: 1.29, B: -0.13, n19: 0.147, P: -0.644, R: 1.19, kappa: 0.67, eps: 0, M: 0.3, onePlusDelta: 0.56 },
   ref: 'G. Verdoolaege et al., Nucl. Fusion 61 (2021) 076006 (ITPA20-IL)',
 };
+
+/** The H-mode scalings a magnetic configuration can select (MagneticConfig.scaling); IPB98(y,2) is the default */
+export type HModeScaling = 'IPB98y2' | 'ITPA20' | 'ITPA20-IL' | 'ST_Valovic';
 
 export const CONFINEMENT_SCALINGS: Record<'IPB98y2' | 'ITPA20' | 'ITPA20-IL', ConfinementScalingParams> = {
   IPB98y2: IPB98Y2_PARAMS, ITPA20: ITPA20_PARAMS, 'ITPA20-IL': ITPA20_IL_PARAMS,
@@ -79,6 +90,20 @@ export function tauITPA20(g: Geometry, Ip_MA: number, B: number, n: number, P_W:
 /** ITPA20-IL (ITER-like subset) H-mode scaling (Verdoolaege et al. 2021) */
 export function tauITPA20IL(g: Geometry, Ip_MA: number, B: number, n: number, P_W: number, M: number): number {
   return tauFromParams(ITPA20_IL_PARAMS, g, Ip_MA, B, n, P_W, M);
+}
+
+/**
+ * H-mode τ_E of the selected scaling [s]; the inputs have the units of tauIPB98y2. For 'ITPA20' and 'ITPA20-IL' the geometry
+ * must carry the AREAL elongation κ_a = V/(2π² R a²) and the average LCFS triangularity (see ITPA20_PARAMS); the 0D model and the
+ * 1.5D confinement controller build it (arealElongation, boundaryShape / ProfileContext.kappaA, geomB).
+ */
+export function tauHmode(scaling: HModeScaling, g: Geometry, Ip_MA: number, B: number, n: number, P_W: number, M: number): number {
+  switch (scaling) {
+    case 'ST_Valovic': return tauSTValovic(g, Ip_MA, B, n, P_W, M);
+    case 'ITPA20': return tauITPA20(g, Ip_MA, B, n, P_W, M);
+    case 'ITPA20-IL': return tauITPA20IL(g, Ip_MA, B, n, P_W, M);
+    default: return tauIPB98y2(g, Ip_MA, B, n, P_W, M);
+  }
 }
 
 /**
@@ -142,8 +167,9 @@ export function pLH_Martin(n: number, B: number, S: number, M: number): number {
 }
 
 /**
- * Line-averaged density at which the L-H threshold is minimal [m^-3] — Ryter et al., Nucl. Fusion 54
- * (2014) 083003 (multi-machine scaling):
+ * Line-averaged density at which the L-H threshold is minimal [m^-3] — F. Ryter et al., Nucl. Fusion 54 (2014) 083003, eq. (3),
+ * the multi-machine scaling of the density minimum (ASDEX Upgrade, C-Mod, DIII-D, JET; as quoted by T. Eich et al., arXiv:2407.13539
+ * (2024), eq. (12), and in the SPARC POPCON tool):
  *  n̄_e,min [10^19 m^-3] = 0.7 · I_p[MA]^0.34 · B[T]^0.62 · a[m]^-0.95 · (R/a)^0.4
  */
 export function nLHmin(Ip_MA: number, B: number, a: number, R: number): number {
@@ -151,15 +177,33 @@ export function nLHmin(Ip_MA: number, B: number, a: number, R: number): number {
 }
 
 /**
+ * Exponent of the low-density branch of the L-H threshold: for n̄ < n̄_min, P_LH = P_Martin(n̄_min) · (n̄_min/n̄)^LH_LOW_DENSITY_EXPONENT.
+ * Neither source of the two ends of the branch gives it: Martin et al. (2008) is a fit of the HIGH-density branch only, and Ryter et
+ * al. (2014) supply n̄_min (their eq. 3) and show that the threshold rises below it (the low-density branch, from the ion heat channel:
+ * less electron-ion coupling), but no multi-machine law for the rise. The heuristic model built on that finding (R. Bilato, C. Angioni,
+ * G. Birkenmeier, F. Ryter, "Heuristic model for the power threshold of the L-H transition", Nucl. Fusion 2020, doi:10.1088/1741-4326/abb540,
+ * eq. 12: electron-ion equipartition and the L-mode τ_E scaling) does not give a power law either: its rise is an implicit relation in n̄.
+ * The exponent is that of the SPARC design studies: J.W. Hughes et
+ * al., "Projections of H-mode access and edge pedestal in the SPARC tokamak", J. Plasma Phys. 86 (2020) 865860504, add a penalty to the
+ * ITPA (Martin) threshold below n_min, implemented in the open-source POPCON tool cfspopcon (CFS, formulas/separatrix_conditions/
+ * threshold_power.py, "Added in low density branch from Ryter 2014") as (n_min/n)². APPROXIMATION: that penalty (the paper's text was
+ * not read, only the tool's source). v4.0-dev (ws2b) used the first power, the first Wave-1 assumption; the choice moves the first L-H
+ * transition of a ramp-up only where the plasma starts below n_min. Measured on the presets (exponent 0 = Martin only / 1 / 2): JET 0D
+ * 0.17 / 0.34 / 0.44 s, JET15 0.10 / 0.22 / 0.32 s, JT-60SA 0.06 / 0.44 / 0.50 s, DIII-D 0.05 / 0.10 / 0.18 s, SPARC15 1.37 / 1.50 / 1.57 s,
+ * DEMO15 14.25 / 14.55 / 14.85 s; the ITER, DEMO and SPARC 0D and ITER15 transitions (9.4, 16.25, 1.35 and 8.2 s) are set by the heating ramp
+ * and move by 0.02 s at most.
+ */
+export const LH_LOW_DENSITY_EXPONENT = 2;
+
+/**
  * L-H power threshold, including the low-density branch: Martin (2008) for n̄ ≥ n̄_min (bit-for-bit the same);
- * for n̄ < n̄_min the threshold rises again (Ryter 2014): P_LH = P_Martin(n̄_min) · n̄_min / n̄.
- * APPROXIMATION: the form of the low-density branch (∝ 1/n̄) — the compilation shows a rise but gives no general
- * scaling. n: LINE-averaged density [m^-3] (Martin's definition).
+ * for n̄ < n̄_min the threshold rises again: P_LH = P_Martin(n̄_min) · (n̄_min/n̄)^LH_LOW_DENSITY_EXPONENT (Ryter 2014 supply n̄_min and
+ * the rise; the exponent is the SPARC-study penalty, see LH_LOW_DENSITY_EXPONENT). n: LINE-averaged density [m^-3] (Martin's definition).
  */
 export function pLH_threshold(nbar: number, B: number, S: number, M: number, Ip_MA: number, a: number, R: number): number {
   const nmin = nLHmin(Ip_MA, B, a, R);
   if (nbar >= nmin) return pLH_Martin(nbar, B, S, M);
-  return pLH_Martin(nmin, B, S, M) * (nmin / Math.max(nbar, 1e17));
+  return pLH_Martin(nmin, B, S, M) * Math.pow(nmin / Math.max(nbar, 1e17), LH_LOW_DENSITY_EXPONENT);
 }
 
 /**

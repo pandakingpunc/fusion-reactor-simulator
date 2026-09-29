@@ -232,14 +232,20 @@ describe('beam-target reactivity vs an independent 2000-interval quadrature', ()
     }, { runs: 80, label: 'beam-target quadrature' });
   });
 
-  // BUG(ws2a): the 48-point grid cannot resolve the narrow 148 keV p-¹¹B resonance (Γ ≈ 5 keV):
-  // beamTargetReactivity('pB11', 200, 10, 0.5) is 31 % off the resolved integral. Latent today —
-  // neither the 0D nor the 1.5D model calls it for p-¹¹B — but the function advertises the channel.
-  it.fails('p-¹¹B agrees within the quadrature tolerance (BUG(ws2a): unresolved 148 keV resonance)', () => {
-    for (const [E0, Ec, Ti] of [[200, 10, 0.5], [170, 50, 1], [500, 100, 5]]) {
+  // The 48-point grid of the other fuels cannot resolve the narrow 148 keV p-¹¹B resonance (Γ ≈ 5 keV): with it
+  // beamTargetReactivity('pB11', 200, 10, 0.5) was 31 % off the resolved integral (ws2a). The function now integrates p-¹¹B
+  // on 1500 cells (fixed in v4.0, ws2c); neither the 0D nor the 1.5D model calls it for p-¹¹B — but the function advertises
+  // the channel, and the grid must resolve the resonance for beams from below to well above it.
+  it('p-¹¹B agrees within the quadrature tolerance, beam energies below, at and above the 148 keV (c.m.) resonance', () => {
+    for (const [E0, Ec, Ti] of [[200, 10, 0.5], [170, 50, 1], [500, 100, 5], [161, 30, 0.3], [1000, 200, 20]]) {
       const got = beamTargetReactivity('pB11', E0, Ec, Ti)[0], ref = reference('pB11', E0, Ec, Ti)[0];
-      expect(rel(got, ref), `E0 = ${E0} keV`).toBeLessThan(TOL.pB11);
+      expect(rel(got, ref), `E0 = ${E0} keV`).toBeLessThan(0.005);
     }
+    forAll(gen.record({ E0: gen.logFloat(100, 3000), Ec: gen.logFloat(5, 3000), Ti: gen.logFloat(0.05, 50) }), ({ E0, Ec, Ti }) => {
+      const got = beamTargetReactivity('pB11', E0, Ec, Ti)[0], ref = reference('pB11', E0, Ec, Ti)[0];
+      if (ref === 0) expect(got).toBe(0);
+      else expect(rel(got, ref)).toBeLessThan(0.005);
+    }, { runs: 40, label: 'p-11B beam-target quadrature' });
   });
 });
 
@@ -294,22 +300,25 @@ describe('reaction energy bookkeeping', () => {
     expect(rel(ch.Echarged_MeV, k.charged)).toBeLessThan(1e-3);
   });
 
-  // BUG(ws2a): FUEL_CHANNELS D-T has E_charged = 3.5 MeV (1.7 % below the 3.561 MeV kinematic value)
-  // and E_neutron = 14.1 MeV (0.5 % above 14.028 MeV), so the alpha heating per reaction is 1.7 % low.
+  // v3.0.0 had E_charged = 3.5 MeV (1.7 % below the 3.561 MeV kinematic value) and E_neutron = 14.1 MeV
+  // (0.5 % above 14.028 MeV), so the alpha heating per reaction was 1.7 % low (fixed in v4.0, ws2c).
   // A 0.1 % tolerance separates the exact split from the non-relativistic one (α 0.56 % off) and
   // from 3.52 + 14.07 (α 1.1 % off). Consistent values: 3.561 + 14.028 = 17.589 MeV = E_tot.
-  it.fails('D-T: neutron and alpha energies follow two-body kinematics within 0.1 % (BUG(ws2a): 3.5 + 14.1 MeV)', () => {
+  it('D-T: neutron and alpha energies follow two-body kinematics within 0.1 % (3.561 + 14.028 MeV)', () => {
     const ch = channel('D+T'), k = splitAtRest(Q['D+T'], nuclear(M.He4, 2));
     expect(rel(ch.Eneutron_MeV, k.neutron), 'E_neutron').toBeLessThan(1e-3);
     expect(rel(ch.Echarged_MeV, k.charged), 'E_charged').toBeLessThan(1e-3);
   });
 
-  // BUG(ws2a): D-T lists E_tot = 17.589 MeV but E_charged + E_neutron = 3.5 + 14.1 = 17.6 MeV, so the
-  // models create P_charged + P_neutron = 1.000625 P_fus (0.3 MW extra at ITER's 500 MW); constants.ts
-  // FUSION.DT has the same pair. The at-rest kinematic split of 17.589 MeV is 3.561 + 14.028 MeV
-  // (test above), which also closes this sum.
-  it.fails('E_charged + E_neutron = E_tot for every channel (BUG(ws2a): D-T sums to 17.6 MeV)', () => {
+  // v3.0.0 listed E_tot = 17.589 MeV but E_charged + E_neutron = 3.5 + 14.1 = 17.6 MeV, so the models created
+  // P_charged + P_neutron = 1.000625 P_fus (0.3 MW extra at ITER's 500 MW). The at-rest kinematic split of
+  // 17.589 MeV is 3.561 + 14.028 MeV (test above), which also closes this sum (fixed in v4.0, ws2c).
+  it('E_charged + E_neutron = E_tot for every channel (D-T: 3.561 + 14.028 = 17.589 MeV)', () => {
     for (const ch of all) expect(ch.Echarged_MeV + ch.Eneutron_MeV, ch.name).toBeCloseTo(ch.Etot_MeV, 9);
+  });
+
+  it('the birth energies of the charged products of every channel add up to E_charged (the fast-ion pool books them)', () => {
+    for (const ch of all) expect(ch.products.reduce((t, p) => t + p.E_MeV, 0), ch.name).toBeCloseTo(ch.Echarged_MeV, 9);
   });
 
   it('fuel species charges and masses are the nuclear ones', () => {

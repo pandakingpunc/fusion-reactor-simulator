@@ -179,7 +179,7 @@ describe('L–H threshold', () => {
     expect(high).toBeGreaterThan(0); // and the flat-top density on the Martin branch
   });
 
-  it('below the density of minimum threshold the threshold rises again: P_LH ≈ P_Martin(n_min) n_min / n̄ (JET15 at a tenth of its density)', () => {
+  it('below the density of minimum threshold the threshold rises again: P_LH = P_Martin(n_min) (n_min/n̄)² (JET15 at a tenth of its density)', () => {
     const cfg: MagneticConfig = { ...JET_15D, n_target: 0.1e20, t_end: 0.3 };
     const sim = new Simulation(cfg);
     sim.runAll();
@@ -192,7 +192,7 @@ describe('L–H threshold', () => {
     expect(nbar).toBeLessThan(0.5 * nmin);
     const martin = pLH_Martin(nbar, g.B0, g.surface, M) / 1e6;
     expect(h.d.P_LH).toBeGreaterThan(1.5 * martin);
-    expect(rel(h.d.P_LH, (pLH_Martin(nmin, g.B0, g.surface, M) / 1e6) * (nmin / nbar))).toBeLessThan(1e-9);
+    expect(rel(h.d.P_LH, (pLH_Martin(nmin, g.B0, g.surface, M) / 1e6) * (nmin / nbar) ** 2)).toBeLessThan(1e-9);
   });
 });
 

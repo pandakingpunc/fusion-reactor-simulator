@@ -47,6 +47,13 @@ export interface ProfileSettings {
   /** LCFS şekli (verilmezse geometry.kappa/delta) */
   lcfsKappa?: number;
   lcfsDelta?: number;
+  /**
+   * The 95 % surface shape (κ95, δ95) that lcfsKappa/lcfsDelta belong to (the ITER and DEMO presets: the nominal `geometry`). The 0D volume,
+   * surface and cross-section (geometry.boundaryShape) then scale with the configuration's own κ, δ: κ_LCFS = lcfsKappa · κ/κ95_ref,
+   * δ_LCFS = lcfsDelta · δ/δ95_ref, so an edited κ or δ moves them as it moves q95 and the scalings. Without it the LCFS values are absolute
+   * (the 1.5D model always reads them so).
+   */
+  lcfsRef95?: { kappa: number; delta: number };
   /** 'scaling': τ_E ölçeklemesiyle kısıtlanmış taşınım (doğrulanmış global dinamik, fiziksel profil şekli);
    *  'cgm': kritik-gradyan modeli (öngörücü, kalibrasyonsuz) */
   transportModel: 'scaling' | 'cgm';
@@ -101,7 +108,7 @@ export interface MagneticConfig {
   Ip_MA: number; // stellarator için 0 (bootstrap ihmal)
   fuel: FuelType;
   fuelFracA: number; // tür a oranı (D-T: n_D/(n_D+n_T))
-  n_target: number; // hedef hacim-ort. elektron yoğunluğu [m^-3]
+  n_target: number; // hedef elektron yoğunluğu [m^-3]: 0D hacim ortalaması ⟨n_e⟩; 1.5D çizgi ortalaması n̄ (control/fueling.ts)
   n_rampTime: number; // s
   heating: {
     P_NBI_MW: number; E_NBI_keV: number;
@@ -118,7 +125,12 @@ export interface MagneticConfig {
     seedSpecies?: ImpuritySpecies; seedConcentration?: number;
   };
   H98: number; H89: number;
-  scaling: 'IPB98y2' | 'ST_Valovic';
+  /**
+   * H-mode τ_E scaling (see transport.ts tauHmode): IPB98(y,2) (default), the spherical-tokamak scaling after Valovič, or the
+   * ITPA20 / ITPA20-IL scalings of Verdoolaege et al., Nucl. Fusion 61 (2021) 076006 (opt-in; they take the areal elongation and
+   * the average LCFS triangularity, `profiles.lcfsDelta ?? geometry.delta`, not the 95 % values). Stellarators use ISS04.
+   */
+  scaling: 'IPB98y2' | 'ITPA20' | 'ITPA20-IL' | 'ST_Valovic';
   stellarator: {
     iota23: number;
     /** @deprecated alias: if H_ISS04 is not given, τ_E = f_ren · H98 · τ_ISS04 (the old behaviour) */

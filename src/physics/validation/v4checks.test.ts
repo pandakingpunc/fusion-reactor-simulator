@@ -53,9 +53,11 @@ describe('alpha share P_alpha / P_fus of the D-T tokamak presets', () => {
       expect(evaluateCheck(c, 106.1 / 538.3).status, p).toBe('pass');
       expect(evaluateCheck(c, 172.9 / 715.5).status, p).toBe('fail');
     }
-    // the energy released by D + T → ⁴He + n: 3.52 of 17.59 MeV, and 5 % of slack
-    expect(3.52 / 17.59).toBeCloseTo(0.2, 3);
-    expect(check('ITER.alphaShare').accept).toEqual([0, 0.21]);
+    // the energy released by D + T → ⁴He + n: 3.561 of 17.589 MeV (exact two-body kinematics), and 5 % of slack
+    expect(3.561 / 17.589).toBeCloseTo(0.2025, 4);
+    expect(check('ITER.alphaShare').accept).toEqual([0, 0.213]);
+    expect(0.2025 * 1.05).toBeLessThan(0.213);
+    expect(0.2025 * 1.05).toBeGreaterThan(0.2125);
   });
 });
 
@@ -74,31 +76,43 @@ describe('MAST-U q95: published band 5–10 (Berkery 2023) and the preset', () =
   const g = MASTU.geometry;
   const q = (over: Partial<typeof g>, B0: number, Ip: number) => q95Sauter({ ...g, ...over }, B0, Ip);
 
-  it('the band is the accepted range, the value its mid-point; the preset is a documented known failure', () => {
+  it('the band is the accepted range, the value its mid-point; the preset is inside it since v4.0, so there is no known failure', () => {
     expect(c.band).toEqual([5, 10]);
     expect(c.accept).toEqual([5, 10]);
     expect(c.value).toBe(7.5);
-    expect(c.knownFailure).toBeDefined();
+    expect(c.knownFailure).toBeUndefined();
     expect(c.path).toBe('flatTop.q95');
   });
 
-  it('the numbers in the known-failure text are the fit\'s: preset 18.2, typical shape 6.6, campaign 3.1–13.6, factor 2.7', () => {
+  it('the preset is a scenario of the first campaign (R 0.8 m, a 0.5 m, κ 2.1, δ 0.47, 0.75 MA, 0.55 T) with q95 = 6.4 by the fit, inside the band and the EFIT 6.3–6.7', () => {
+    // Harrison et al. 2024 (typical R and a, κ 2.0–2.2, the 750 kA scenario) and Imada et al. 2024, table 1: discharges #45261, #45270, #45272 at
+    // 722–740 kA and 0.55–0.56 T with κ = 2.10–2.15 and an average δ of 0.45–0.49, EFIT q95 6.3–6.7
+    expect(MASTU.geometry).toEqual({ R: 0.8, a: 0.5, kappa: 2.1, delta: 0.47 });
+    expect(MASTU.B0).toBe(0.55);
+    expect(MASTU.Ip_MA).toBe(0.75);
     const preset = q({}, MASTU.B0, MASTU.Ip_MA);
-    expect(preset).toBeCloseTo(18.2, 1);
-    // typical R = 0.8 m, a = 0.5 m, κ = 2.0–2.2 of the campaign (Harrison et al. 2024) at the preset's B0 and I_p
-    const typical = q({ R: 0.8, a: 0.5, kappa: 2.1 }, MASTU.B0, MASTU.Ip_MA);
+    expect(preset).toBeCloseTo(6.4, 1);
+    expect(evaluateCheck(c, preset).status).toBe('pass');
+    // the fit at the discharges of Imada et al. (each with its own κ, δ, B and I_p) lands in their EFIT range within 10 %
+    for (const [kappa, delta, B0, Ip, efit] of [[2.15, 0.49, 0.55, 0.726, 6.5], [2.11, 0.46, 0.56, 0.725, 6.7], [2.13, 0.48, 0.56, 0.74, 6.3]] as const) {
+      expect(Math.abs(q({ kappa, delta }, B0, Ip) / efit - 1), `κ ${kappa}`).toBeLessThan(0.1);
+    }
+  });
+
+  it('the design-maximum shape the preset had until v3.0.0 (R 0.85 m, a 0.65 m, κ 2.5, 0.75 T, 1 MA) gave q95 = 18.2, a factor 2.7 above a campaign shape, and fails the check', () => {
+    const old = q95Sauter({ R: 0.85, a: 0.65, kappa: 2.5, delta: 0.5 }, 0.75, 1.0);
+    expect(old).toBeCloseTo(18.2, 1);
+    expect(evaluateCheck(c, old).status).toBe('fail');
+    const typical = q({ R: 0.8, a: 0.5, kappa: 2.1, delta: 0.5 }, 0.75, 1.0);
     expect(typical).toBeCloseTo(6.6, 1);
-    expect(typical).toBeGreaterThanOrEqual(5);
-    expect(typical).toBeLessThanOrEqual(10);
-    expect(preset / typical).toBeCloseTo(2.7, 1);
-    // the campaign's ranges: 450–1000 kA, B0 0.42–0.64 T, κ 2.0–2.2, δ 0.3–0.5 (the triangularity is not given in the paper: the preset's 0.5 and 0.3)
+    expect(old / typical).toBeCloseTo(2.7, 1);
+    // the campaign's ranges: 450–1000 kA, B0 0.42–0.64 T, κ 2.0–2.2, δ 0.3–0.5 (the triangularity is not given in the Super-X paper: 0.3 and 0.5 bracket 0.45–0.49)
     const all: number[] = [];
     for (const kappa of [2.0, 2.2]) for (const delta of [0.3, 0.5]) for (const B0 of [0.42, 0.64]) for (const Ip of [0.45, 1.0]) {
       all.push(q({ R: 0.8, a: 0.5, kappa, delta }, B0, Ip));
     }
     expect(Math.min(...all)).toBeCloseTo(3.1, 1);
     expect(Math.max(...all)).toBeCloseTo(13.6, 1);
-    for (const n of ['18.2', '6.6', '3.1–13.6', '2.7']) expect(c.knownFailure, n).toContain(n);
   });
 
   it('for a mid-range point of the campaign (750 kA, 0.53 T) the fit gives a q95 inside the published band', () => {

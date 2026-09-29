@@ -51,7 +51,7 @@ describe('separate alpha and beam pools (0D magnetic model)', { timeout: 60_000 
     // in the flat top the alpha pool is in steady state: deposited = born
     expect(Pa / Pch).toBeGreaterThan(0.97);
     expect(Pa / Pch).toBeLessThan(1.03);
-    expect(Pa).toBeLessThan(0.21 * Pfus);
+    expect(Pa).toBeLessThan(0.213 * Pfus); // the alphas carry 3.561/17.589 = 0.2025 of P_fus, +5 % of slack
     // the 33 MW, 1 MeV negative-ion beams heat through their own pool
     const Pb = flatTopMean(h, 'P_beam_heat');
     expect(Pb).toBeGreaterThan(25);

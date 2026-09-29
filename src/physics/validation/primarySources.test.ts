@@ -15,9 +15,9 @@
  * through the LCFS [MW], R_geo [m], the average LCFS triangularity δ, κ_a = V/(2π R_geo a²), ε = a/R_geo and
  * M_eff [amu]: the units and definitions of tauFromParams.
  *
- * The one entry that is not the printed number: the n̄_e exponent of ITPA20-IL is 0.15 in the code (the value
- * quoted for the published version and in the UKAEA PROCESS documentation), 0.147 in eq. (5) of the manuscript
- * (table 10: 0.1473); the two round to each other, and 0.003 in the exponent is 0.7 % in τ_E at n̄ = 10²⁰ m⁻³.
+ * Every coefficient of the code is the printed number of eq. (5) and (7). (ws2b rounded the n̄_e exponent of ITPA20-IL to 0.15,
+ * the value of secondary quotations and of the UKAEA PROCESS documentation; eq. (5) of the manuscript and table 10 give
+ * 0.147 / 0.1473, and since v4.0 the code has 0.147: 0.003 in the exponent is 0.7 % in τ_E at n̄ = 10²⁰ m⁻³.)
  *
  * The Sauter (2016) low-aspect-ratio q95 constants are not covered here: the primary paper (Fusion Eng. Des.
  * 112 (2016) 633, doi:10.1016/j.fusengdes.2016.04.033) could not be retrieved, only its transcriptions in the
@@ -42,11 +42,9 @@ describe('ITPA20 and ITPA20-IL against Verdoolaege et al. 2021 (eq. 5 and 7, tab
     expect(flat(ITPA20_PARAMS)).toEqual(ITPA20_PRINTED);
   });
 
-  it('ITPA20-IL is eq. (5) as printed, except for the n̄_e exponent, rounded to 0.15', () => {
-    const { n19, ...rest } = flat(ITPA20_IL_PARAMS);
-    const { n19: printed, ...restPrinted } = ITPA20_IL_PRINTED;
-    expect(rest).toEqual(restPrinted);
-    expect(Math.abs(n19 - printed)).toBeLessThan(0.005);
+  it('ITPA20-IL is eq. (5) as printed, the n̄_e exponent included (0.147)', () => {
+    expect(flat(ITPA20_IL_PARAMS)).toEqual(ITPA20_IL_PRINTED);
+    expect(ITPA20_IL_PARAMS.exponents.n19).toBe(0.147);
   });
 
   it('every printed number is the table estimate rounded to the printed digits', () => {
@@ -63,11 +61,17 @@ describe('ITPA20 and ITPA20-IL against Verdoolaege et al. 2021 (eq. 5 and 7, tab
   const ITER = { g: { R: 6.2, a: 2.0, kappa: 1.7, delta: 0.48 }, Ip: 15, B: 5.3, n: 10.3e19, M: 2.5 };
   const tau = (f: typeof tauITPA20, P_MW: number) => f(ITER.g, ITER.Ip, ITER.B, ITER.n, P_MW * 1e6, ITER.M);
 
-  it('reproduces the published ITER predictions to the rounding of the printed coefficients (1.5 %)', () => {
+  it('reproduces the published ITER predictions to the rounding of the printed coefficients (1.5 %; the header of transport.ts quotes 3.07 s and 2.90 s)', () => {
     expect(Math.abs(tau(tauITPA20, 87) / 3.07 - 1)).toBeLessThan(0.015);
     expect(Math.abs(tau(tauITPA20, 100) / 2.79 - 1)).toBeLessThan(0.015);
     expect(Math.abs(tau(tauITPA20IL, 87) / 2.90 - 1)).toBeLessThan(0.015);
     expect(Math.abs(tau(tauITPA20IL, 100) / 2.65 - 1)).toBeLessThan(0.015);
+  });
+
+  it('the 95 % triangularity of the presets (0.33) instead of the LCFS value (0.48) would lower τ_E by 3.8 % (ITPA20) and 5.8 % (ITPA20-IL)', () => {
+    const at = (f: typeof tauITPA20, delta: number) => f({ ...ITER.g, delta }, ITER.Ip, ITER.B, ITER.n, 87e6, ITER.M);
+    expect(1 - at(tauITPA20, 0.33) / at(tauITPA20, 0.48)).toBeCloseTo(0.038, 3);
+    expect(1 - at(tauITPA20IL, 0.33) / at(tauITPA20IL, 0.48)).toBeCloseTo(0.058, 3);
   });
 
   it('with the full-precision estimates of tables 10 and 16 the ITER predictions agree within 0.5 %', () => {

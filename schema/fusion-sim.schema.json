@@ -384,6 +384,15 @@
           "maximum": 1,
           "description": "Separatrix density over the volume-averaged electron density.",
           "default": 0.35
+        },
+        "edgeModel": {
+          "type": "string",
+          "enum": [
+            "legacy",
+            "twoPoint"
+          ],
+          "description": "Separatrix temperature of the 1.5D boundary. 'legacy': conduction-limited two-point T_sep (outboard share 0.6, clamped to 0.03-0.5 keV); 'twoPoint': T_sep of the edge model (Eich lambda_q, divertor spreading, outer-leg power share), guard band 5 eV - 2 keV. The edge diagnostics use the edge model either way.",
+          "default": "legacy"
         }
       },
       "additionalProperties": false,
@@ -838,6 +847,100 @@
               "exclusiveMinimum": 0,
               "maximum": 200,
               "description": "Poloidal flux expansion at the target."
+            },
+            "edge": {
+              "type": "object",
+              "properties": {
+                "outerShare": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 1,
+                  "description": "Share of P_sep carried by the outer target leg (default 2/3)."
+                },
+                "spreadingRatio": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 100,
+                  "description": "Divertor spreading S / lambda_q (default 1.22, i.e. lambda_int = 3 lambda_q)."
+                },
+                "S_mm": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 1000,
+                  "description": "Absolute divertor spreading S; overrides spreadingRatio. Unit: mm.",
+                  "x-unit": "mm"
+                },
+                "lambdaQ_mm": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 1000,
+                  "description": "Midplane heat-flux width; overrides the Eich regression #14. Unit: mm.",
+                  "x-unit": "mm"
+                },
+                "divertorLengthFraction": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 0.9,
+                  "description": "Length of the divertor leg over the connection length pi q95 R (default 0.3)."
+                },
+                "kappa0e": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 100000,
+                  "description": "Parallel electron conductivity (default 2000). Unit: W m^-1 eV^-7/2.",
+                  "x-unit": "W m^-1 eV^-7/2"
+                },
+                "sheathGamma": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 100,
+                  "description": "Sheath heat transmission coefficient (default 7)."
+                },
+                "lossFit": {
+                  "type": "string",
+                  "enum": [
+                    "stangeby1",
+                    "stangeby2",
+                    "body2025"
+                  ],
+                  "description": "Momentum and power loss fit against the target temperature (default 'stangeby1')."
+                },
+                "radiation": {
+                  "type": "string",
+                  "enum": [
+                    "prescribed",
+                    "lengyel"
+                  ],
+                  "description": "'prescribed' (default): the divertor radiates divertor.f_rad_div of the power; 'lengyel': the seed impurity radiates (Lengyel model)."
+                },
+                "seedEnrichment": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 1000,
+                  "description": "Seed concentration of the SOL relative to impurity.seedConcentration (default 1)."
+                },
+                "detachTt_eV": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 1000,
+                  "description": "Target electron temperature that defines the onset of detachment in the c_z requirement (default 5). Unit: eV.",
+                  "x-unit": "eV"
+                },
+                "targetTilt": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 100,
+                  "description": "1 / sin(beta) of the target plate (default 3)."
+                },
+                "strikeRadiusFraction": {
+                  "type": "number",
+                  "exclusiveMinimum": -1,
+                  "maximum": 1,
+                  "description": "Strike-point radius offset from R as a fraction of a (default 0.3)."
+                }
+              },
+              "additionalProperties": false,
+              "description": "Edge (SOL and divertor) model options; every property is optional and a missing one takes its default (src/physics/edge/params.ts)."
             }
           },
           "required": [

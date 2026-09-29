@@ -17,7 +17,7 @@
  * @packageDocumentation
  */
 import type {
-  BlanketType, FRCConfig, Fidelity, FuelingMethod, ICFConfig, MTFConfig, MagneticConfig, MagnetTech, Method, MirrorConfig, MuonConfig,
+  BlanketType, EdgeOptions, FRCConfig, Fidelity, FuelingMethod, ICFConfig, MTFConfig, MagneticConfig, MagnetTech, Method, MirrorConfig, MuonConfig,
   ProfileSettings, ReactorConfig,
 } from '../types';
 import { METHOD_LABELS } from '../types';
@@ -46,6 +46,9 @@ const SPECIES = keysOf<ImpuritySpecies>(IMPURITIES);
 const ABLATORS = keysOf<ICFConfig['ablator']>({ CH: 0, HDC: 0, Be: 0 });
 const SCALINGS = keysOf<MagneticConfig['scaling']>({ IPB98y2: 0, ITPA20: 0, 'ITPA20-IL': 0, ST_Valovic: 0 });
 const TRANSPORT_MODELS = keysOf<ProfileSettings['transportModel']>({ scaling: 0, cgm: 0 });
+const EDGE_MODELS = keysOf<NonNullable<ProfileSettings['edgeModel']>>({ legacy: 0, twoPoint: 0 });
+const EDGE_LOSS_FITS = keysOf<NonNullable<EdgeOptions['lossFit']>>({ stangeby1: 0, stangeby2: 0, body2025: 0 });
+const EDGE_RADIATIONS = keysOf<NonNullable<EdgeOptions['radiation']>>({ prescribed: 0, lengyel: 0 });
 const MAGNETIC_METHODS = keysOf<MagneticConfig['method']>({ tokamak: 0, spherical_tokamak: 0, stellarator: 0 });
 const ICF_METHODS = keysOf<ICFConfig['method']>({ icf_direct: 0, icf_indirect: 0 });
 const MTF_METHODS = keysOf<MTFConfig['method']>({ mtf_liner: 0, mtf_piston: 0, maglif: 0, zpinch_sfs: 0 });
@@ -128,6 +131,7 @@ const profileSettings = partial<ProfileSettings>({
   eccdEff: num({ min: 0, max: 10, def: PS.eccdEff, doc: 'Electron-cyclotron current-drive efficiency factor.' }),
   Tsep_keV: opt(num({ exMin: 0, max: 10, unit: 'keV', doc: 'Fixed separatrix temperature; the two-point model if absent.' })),
   nsepFrac: num({ exMin: 0, max: 1, def: PS.nsepFrac, doc: 'Separatrix density over the volume-averaged electron density.' }),
+  edgeModel: opt(oneOf(EDGE_MODELS, "Separatrix temperature of the 1.5D boundary. 'legacy': conduction-limited two-point T_sep (outboard share 0.6, clamped to 0.03-0.5 keV); 'twoPoint': T_sep of the edge model (Eich lambda_q, divertor spreading, outer-leg power share), guard band 5 eV - 2 keV. The edge diagnostics use the edge model either way.", 'legacy')),
 }, { doc: '1.5D profile-model settings (only used with fidelity "1.5D"); every property overrides the model default.' });
 
 type Heating = MagneticConfig['heating'];
@@ -209,6 +213,21 @@ const magneticShape: Shape<MagneticConfig> = {
   divertor: object<Divertor>({
     f_rad_div: fraction('Fraction of the power radiated in the divertor.'),
     flux_expansion: num({ exMin: 0, max: 200, doc: 'Poloidal flux expansion at the target.' }),
+    edge: opt(object<EdgeOptions>({
+      outerShare: opt(num({ exMin: 0, max: 1, doc: 'Share of P_sep carried by the outer target leg (default 2/3).' })),
+      spreadingRatio: opt(num({ exMin: 0, max: 100, doc: 'Divertor spreading S / lambda_q (default 1.22, i.e. lambda_int = 3 lambda_q).' })),
+      S_mm: opt(num({ exMin: 0, max: 1000, unit: 'mm', doc: 'Absolute divertor spreading S; overrides spreadingRatio.' })),
+      lambdaQ_mm: opt(num({ exMin: 0, max: 1000, unit: 'mm', doc: 'Midplane heat-flux width; overrides the Eich regression #14.' })),
+      divertorLengthFraction: opt(num({ exMin: 0, max: 0.9, doc: 'Length of the divertor leg over the connection length pi q95 R (default 0.3).' })),
+      kappa0e: opt(num({ exMin: 0, max: 1e5, unit: 'W m^-1 eV^-7/2', doc: 'Parallel electron conductivity (default 2000).' })),
+      sheathGamma: opt(num({ exMin: 0, max: 100, doc: 'Sheath heat transmission coefficient (default 7).' })),
+      lossFit: opt(oneOf(EDGE_LOSS_FITS, "Momentum and power loss fit against the target temperature (default 'stangeby1').")),
+      radiation: opt(oneOf(EDGE_RADIATIONS, "'prescribed' (default): the divertor radiates divertor.f_rad_div of the power; 'lengyel': the seed impurity radiates (Lengyel model).")),
+      seedEnrichment: opt(num({ exMin: 0, max: 1000, doc: 'Seed concentration of the SOL relative to impurity.seedConcentration (default 1).' })),
+      detachTt_eV: opt(num({ exMin: 0, max: 1000, unit: 'eV', doc: 'Target electron temperature that defines the onset of detachment in the c_z requirement (default 5).' })),
+      targetTilt: opt(num({ exMin: 0, max: 100, doc: '1 / sin(beta) of the target plate (default 3).' })),
+      strikeRadiusFraction: opt(num({ exMin: -1, max: 1, doc: 'Strike-point radius offset from R as a fraction of a (default 0.3).' })),
+    }, { doc: 'Edge (SOL and divertor) model options; every property is optional and a missing one takes its default (src/physics/edge/params.ts).' })),
   }, { doc: 'Divertor.' }),
   economics: object<Economics>({
     capital_MUSD_override: opt(num({ exMin: 0, max: 1e7, unit: 'MUSD', doc: 'Capital cost overriding the built-in estimate.' })),

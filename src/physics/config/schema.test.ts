@@ -70,6 +70,32 @@ describe('the v4.0 confinement and geometry options', () => {
   });
 });
 
+describe('the v4.0 edge model options', () => {
+  it('a configuration with every edge option and the twoPoint boundary validates', () => {
+    const c = preset('ITER15');
+    c.profiles.edgeModel = 'twoPoint';
+    c.divertor.edge = {
+      outerShare: 0.7, spreadingRatio: 1.5, S_mm: 1.2, lambdaQ_mm: 1.5, divertorLengthFraction: 0.35, kappa0e: 2000, sheathGamma: 7,
+      lossFit: 'body2025', radiation: 'lengyel', seedEnrichment: 2, detachTt_eV: 5, targetTilt: 3, strikeRadiusFraction: 0.3,
+    };
+    expect(validateConfig(c).issues.map(formatIssue)).toEqual([]);
+  });
+  it('an empty edge block and the legacy boundary validate (every option is optional)', () => {
+    const c = preset('ITER15');
+    c.profiles.edgeModel = 'legacy';
+    c.divertor.edge = {};
+    expect(validateConfig(c).ok).toBe(true);
+  });
+  it('the bounds contain what the edge model itself accepts (params.ts: a value outside its range falls back to the default)', () => {
+    expect(fieldInfo('tokamak', 'divertor.edge.outerShare')).toMatchObject({ kind: 'number', optional: true, exMin: 0, max: 1 });
+    expect(fieldInfo('tokamak', 'divertor.edge.divertorLengthFraction')).toMatchObject({ exMin: 0, max: 0.9 });
+    expect(fieldInfo('tokamak', 'divertor.edge.strikeRadiusFraction')).toMatchObject({ exMin: -1, max: 1 });
+    expect(fieldInfo('tokamak', 'divertor.edge.radiation')).toMatchObject({ kind: 'enum', values: ['prescribed', 'lengyel'] });
+    expect(fieldInfo('tokamak', 'divertor.edge.lossFit')).toMatchObject({ kind: 'enum', values: ['stangeby1', 'stangeby2', 'body2025'] });
+    expect(fieldInfo('tokamak', 'profiles.edgeModel')).toMatchObject({ kind: 'enum', optional: true, values: ['legacy', 'twoPoint'], def: 'legacy' });
+  });
+});
+
 describe('the wizard only offers values the schema accepts', () => {
   for (const method of METHODS) {
     it(method, () => {
@@ -172,6 +198,13 @@ const MUTANTS: Mutant[] = [
   m('blanket coverage above 1', 'ITER', set('blanket.coverage', 1.5), 'blanket.coverage', 'range'),
   m('divertor radiation fraction above 1', 'ITER', set('divertor.f_rad_div', 1.01), 'divertor.f_rad_div', 'range'),
   m('zero flux expansion', 'ITER', set('divertor.flux_expansion', 0), 'divertor.flux_expansion', 'range'),
+  m('edge model: outer leg share above 1', 'ITER', set('divertor.edge', { outerShare: 1.2 }), 'divertor.edge.outerShare', 'range'),
+  m('edge model: negative heat-flux width', 'ITER', set('divertor.edge', { lambdaQ_mm: -1 }), 'divertor.edge.lambdaQ_mm', 'range'),
+  m('edge model: unknown radiation mode', 'ITER', set('divertor.edge', { radiation: 'coronal' }), 'divertor.edge.radiation', 'enum'),
+  m('edge model: unknown loss fit', 'ITER', set('divertor.edge', { lossFit: 'stangeby3' }), 'divertor.edge.lossFit', 'enum'),
+  m('edge model: an unknown option', 'ITER', set('divertor.edge', { lambdaQ: 1 }), 'divertor.edge.lambdaQ', 'unknown_key', /lambdaQ_mm/),
+  m('edge model: options as a number', 'ITER', set('divertor.edge', 3), 'divertor.edge', 'type'),
+  m('unknown boundary edge model', 'ITER15', set('profiles.edgeModel', 'threePoint'), 'profiles.edgeModel', 'enum'),
   m('availability above 1', 'ITER', set('economics.availability', 1.2), 'economics.availability', 'range'),
   m('thermal efficiency of 1', 'ITER', set('economics.thermalEff', 1), 'economics.thermalEff', 'range'),
   m('negative discount rate', 'ITER', set('economics.discountRate', -0.01), 'economics.discountRate', 'range'),

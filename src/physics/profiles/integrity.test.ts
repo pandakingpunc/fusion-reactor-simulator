@@ -628,10 +628,12 @@ describe('checkpoints and replays', () => {
 
   // density limit → thermal and current quench: the quench phases patch the last diagnostics in
   // place, so a checkpoint must carry all of them
-  // (the factor 3.4 of the target puts the step of the disruption onset off the output grid with the breakpoints below; the factors
+  // (the factor 3 of the target puts the step of the disruption onset off the output grid with the breakpoints below; the factors
   // 2.6 to 3.6 all disrupt at the density limit at 1.2 to 1.6 s, only some of them end the onset step off the grid: it depends on the
-  // step sizes of the run, so a change of the physics can move it: pick the factor again then; it was 3 before v4.0's D-T energies)
-  const disrupting = (): MagneticConfig => ({ ...JET_15D, t_end: 3, n_target: JET_15D.n_target * 3.4 });
+  // step sizes of the run, so a change of the physics can move it: pick the factor again then; it was 3 before v4.0's D-T energies, 3.4 after them, and
+  // 3 again after the conservative remap of the state at the adoption of an equilibrium (lane ws6c: 2.6, 2.8, 3 and 3.6 give the irregular onset
+  // frame, 3.2 and 3.4 do not)
+  const disrupting = (): MagneticConfig => ({ ...JET_15D, t_end: 3, n_target: JET_15D.n_target * 3 });
   // User breakpoints every 2.9 ms end steps off the output grid (3.75 ms): the step of the disruption onset then
   // ends at a time that is not an output time and is recorded as an irregular frame. Without them the
   // Δt of the density ramp is longer than the output interval, every step is cut at an output time and the onset

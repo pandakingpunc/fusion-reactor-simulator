@@ -32,6 +32,7 @@
 import { GSFailure } from '../../equilibrium/gs';
 import type { Equilibrium, EquilibriumOptions, GSSolver } from '../../equilibrium/gs';
 import { SingularMatrixError } from '../../numerics/linalg';
+import { runSlices, type Slices } from '../../kernel/slices';
 import { GS_ACCEPT_RESIDUAL, GsAttempt, isUsableEquilibrium, solverErrorMessage } from '../eqguard';
 import { blend, equilibriumTables, mappingMismatch, psiNOfRho } from './tables';
 
@@ -119,9 +120,9 @@ export const MIN_FRACTION = 0.75;
  * `stop` is set for a failure that no smaller step changes (invalid input). Only the typed numerical failures are handled,
  * anything else is a bug and propagates.
  */
-function attempt(solver: GSSolver, o: EquilibriumOptions, stage: string, outer: number, fraction: number, attempts: OuterAttempt[]): { eq: Equilibrium | null; stop: boolean } {
+function* attempt(solver: GSSolver, o: EquilibriumOptions, stage: string, outer: number, fraction: number, attempts: OuterAttempt[]): Slices<{ eq: Equilibrium | null; stop: boolean }> {
   try {
-    const eq = solver.solve(o);
+    const eq = yield* solver.solveSlices(o);
     attempts.push({ stage, iterations: eq.iterations, residual: eq.residual, converged: eq.converged, outer, fraction });
     return { eq: acceptable(eq) ? eq : null, stop: false };
   } catch (e) {
@@ -145,8 +146,8 @@ function attempt(solver: GSSolver, o: EquilibriumOptions, stage: string, outer: 
  * that has to be returned, because the rest of the way could not be solved, is solved again at the default table
  * from its own ψ (converged already, so this is a residual evaluation and a post-processing, not a search).
  */
-function continuation(solver: GSSolver, startEq: Equilibrium, x: Float64Array, from: { p: Float64Array; jR: Float64Array },
-  to: { p: Float64Array; jR: Float64Array }, spec: ConsistentSpec, opts: ConsistentOptions, outer: number, attempts: OuterAttempt[]): { eq: Equilibrium; fraction: number } | null {
+function* continuation(solver: GSSolver, startEq: Equilibrium, x: Float64Array, from: { p: Float64Array; jR: Float64Array },
+  to: { p: Float64Array; jR: Float64Array }, spec: ConsistentSpec, opts: ConsistentOptions, outer: number, attempts: OuterAttempt[]): Slices<{ eq: Equilibrium; fraction: number } | null> {
   let s = 0, w = 1, psi = startEq.psi, halvings = 0;
   let last: { eq: Equilibrium; o: EquilibriumOptions } | null = null;
   const optionsAt = (s1: number): EquilibriumOptions => ({
@@ -159,7 +160,7 @@ function continuation(solver: GSSolver, startEq: Equilibrium, x: Float64Array, f
     const final = s1 === 1;
     const o = optionsAt(s1);
     const label = final ? `outer ${outer}` : `outer ${outer} · ${(100 * s1).toFixed(0)} %`;
-    const { eq, stop } = attempt(solver, final ? o : { ...o, psiLevels: CHEAP_LEVELS }, label, outer, s1, attempts);
+    const { eq, stop } = yield* attempt(solver, final ? o : { ...o, psiLevels: CHEAP_LEVELS }, label, outer, s1, attempts);
     if (stop) return null; // no step changes invalid input
     if (eq) {
       s = s1; psi = eq.psi; last = { eq, o };
@@ -171,7 +172,7 @@ function continuation(solver: GSSolver, startEq: Equilibrium, x: Float64Array, f
   }
   if (s >= 1) return last ? { eq: last.eq, fraction: 1 } : null; // the last part is the whole way: solved at the default table
   if (!last || s < MIN_FRACTION) return null;
-  const full = attempt(solver, { ...last.o, psiInit: last.eq.psi }, `outer ${outer} · ${(100 * s).toFixed(0)} % (full table)`, outer, s, attempts);
+  const full = yield* attempt(solver, { ...last.o, psiInit: last.eq.psi }, `outer ${outer} · ${(100 * s).toFixed(0)} % (full table)`, outer, s, attempts);
   return full.eq ? { eq: full.eq, fraction: s } : null;
 }
 
@@ -180,6 +181,15 @@ function continuation(solver: GSSolver, startEq: Equilibrium, x: Float64Array, f
  * `start` is the last accepted equilibrium, the state the iteration starts from.
  */
 export function solveConsistent(solver: GSSolver, start: Equilibrium, spec: ConsistentSpec, opts: ConsistentOptions): ConsistentResult {
+  return runSlices(solveConsistentSlices(solver, start, spec, opts));
+}
+
+/**
+ * solveConsistent() as a resumable computation (kernel/slices.ts): the same statements, and it yields where the
+ * solves yield (GSSolver.solveSlices: after each Picard iteration and inside the final surface trace of every solve).
+ * Between two yields it holds nothing but its local variables, `attempts` and the equilibria it has been handed.
+ */
+export function* solveConsistentSlices(solver: GSSolver, start: Equilibrium, spec: ConsistentSpec, opts: ConsistentOptions): Slices<ConsistentResult> {
   const attempts: OuterAttempt[] = [];
   const rescaled = (eq: Equilibrium) => eq.warnings.some((w) => w.code === 'table-current-rescaled');
   let eq = start;
@@ -198,7 +208,7 @@ export function solveConsistent(solver: GSSolver, start: Equilibrium, spec: Cons
     outerIterations: Math.min(outer, opts.maxOuter), attempts, hard: hardOf(attempts),
   });
   for (outer = 1; outer <= opts.maxOuter; outer++) {
-    const part = continuation(solver, eq, x, equilibriumTables(eq, x), target, spec, opts, outer, attempts);
+    const part = yield* continuation(solver, eq, x, equilibriumTables(eq, x), target, spec, opts, outer, attempts);
     const own = attempts[attempts.length - 1];
     if (!part) {
       if (!best) return done(false, own.error ?? `no convergence (residual ${own.residual.toExponential(1)} after ${own.iterations} iterations)`);

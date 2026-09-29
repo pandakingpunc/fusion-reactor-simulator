@@ -421,6 +421,18 @@ export interface SimModel {
    * may return t unchanged; Simulation then still records the terminal frame (see HistoryFrame).
    */
   step?(t: number, y: Float64Array, tMax: number): number;
+  /**
+   * Optional resumable form of step() (kernel/slices.ts): a generator that yields at the points where the kernel may
+   * suspend the step and returns the new time. It has the meaning of step() exactly, and step() is what running it to
+   * its end gives: same y, same state, bitwise (a model implements one body and derives the other form). Simulation
+   * uses it only when the caller of advance() passes `yieldWhen`, to return to that caller in the middle of a step; a model
+   * without it is stepped whole. Rules for the model: hold the step's state in the generator's locals and in the model's own
+   * fields (never in anything that is not restored by restoreInternal()/restoreCheckpoint() and reset by the step); while the
+   * step is suspended the kernel calls nothing on the model but the generator's next() and return(), and getControls(),
+   * terminated and currentDt, which must be readable; a step that is dropped (return()) is followed by rewindTo(), which
+   * restores the model from a checkpoint, so the model need not undo it. See the Simulation header, "Step atomicity".
+   */
+  stepSlices?(t: number, y: Float64Array, tMax: number): Generator<void, number, void>;
   /** son adımın önerdiği zaman adımı (UI gösterimi) */
   readonly currentDt?: number;
   /** İsteğe bağlı radyal profil anlık görüntüsü (1.5D) — geçmiş karelerine eklenir */

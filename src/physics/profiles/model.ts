@@ -35,6 +35,7 @@ import type { EqSnapshot, HistoryFrame, MagneticConfig, ProfileSettings, ShotRep
 import type { Equilibrium } from '../equilibrium/gs';
 import type { Geometry } from '../geometry';
 import { CrashHook, ProfileContext, StepConstants } from './context';
+import { runSlices, type Slices } from '../kernel/slices';
 import { CheckpointStore, Checkpointable, contextCheckpoint } from './checkpoint';
 import { composition } from './composition';
 import { FuelingControl } from './control/fueling';
@@ -119,10 +120,7 @@ export class ProfileModel implements SimModel {
     const ev = defaultEvents(modules.events);
     this.events = ev.list; this.elm = ev.elm; this.disruption = ev.disruption;
     this.coupling = new EquilibriumCoupling(ctx);
-    this.stepper = new CoupledStepper(ctx, this.physics, this.fueling, this.disruption, (t, dt, yOld, y) => {
-      acceptStep(ctx, this.fueling, this.physics, t, dt, yOld, y);
-      this.coupling.check(ctx, t + dt, y, (tu, yu) => this.updateEquilibrium(tu, yu));
-    }, this.events);
+    this.stepper = new CoupledStepper(ctx, this.physics, this.fueling, this.disruption, (t, dt, yOld, y) => this.acceptSlices(t, dt, yOld, y), this.events);
     this.checkpointParts = [contextCheckpoint(ctx), this.coupling, this.stepper, this.physics.transport, ...this.physics.sources, ...this.events];
     this.magnetInfo = checkMagnet(cfg.geometry, cfg.B0, cfg.magnet.tech, cfg.magnet.gap_m, cfg.magnet.coilThickness_m);
     this.coupling.initialize(ctx);
@@ -209,9 +207,31 @@ export class ProfileModel implements SimModel {
   /** The model advances with its own implicit stepper; it has no rhs() and Simulation builds no Dormand–Prince stepper for it. */
   step(t: number, y: Float64Array, tMax: number): number { return this.stepper.step(t, y, tMax); }
 
+  /**
+   * step() as a resumable computation (SimModel.stepSlices): the same statements, suspendable after every implicit attempt
+   * and inside the Grad–Shafranov update that follows an accepted step, which is where a step spends most of its time
+   * when it carries one (tens of milliseconds against the 1 to 5 of a step without).
+   */
+  stepSlices(t: number, y: Float64Array, tMax: number): Slices<number> { return this.stepper.stepSlices(t, y, tMax); }
+
+  /** Update after an accepted step (scalars, controllers, diagnostics), then the equilibrium update if the policy calls for it */
+  private *acceptSlices(t: number, dt: number, yOld: Float64Array, y: Float64Array): Slices<void> {
+    acceptStep(this.ctx, this.fueling, this.physics, t, dt, yOld, y);
+    yield* this.coupling.check(this.ctx, t + dt, y, (tu, yu) => this.updateEquilibriumSlices(tu, yu));
+  }
+
   /** Grad–Shafranov update from the profiles of y at time t; returns whether it was accepted */
   updateEquilibrium(t: number, y: Float64Array): boolean {
-    return this.coupling.update(this.ctx, t, y, (te, st) => { this.evaluateWorkArrays(te, st); });
+    return runSlices(this.coupling.update(this.ctx, t, y, (te, st) => { this.evaluateWorkArrays(te, st); }));
+  }
+
+  /**
+   * updateEquilibrium() as a resumable computation. A model whose updateEquilibrium() is overridden (an instrumented or
+   * stubbed one) is honoured: it is called as it is, as one unit.
+   */
+  *updateEquilibriumSlices(t: number, y: Float64Array): Slices<boolean> {
+    if (this.updateEquilibrium !== PLAIN_UPDATE) return this.updateEquilibrium(t, y);
+    return yield* this.coupling.update(this.ctx, t, y, (te, st) => { this.evaluateWorkArrays(te, st); });
   }
 
   takeEqSnapshot(): EqSnapshot | null {
@@ -313,3 +333,6 @@ export class ProfileModel implements SimModel {
     }, hist, events);
   }
 }
+
+/** the class's own updateEquilibrium(), against which updateEquilibriumSlices() recognises an override */
+const PLAIN_UPDATE = ProfileModel.prototype.updateEquilibrium;

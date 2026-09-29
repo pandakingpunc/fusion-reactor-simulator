@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PopconGrid, computePopcon } from '../physics/popcon';
-import { DEMO, ITER, MASTU, SPARC, W7X } from '../physics/presets';
+import { DEMO, ITER, MASTU, PRESETS, SPARC, W7X } from '../physics/presets';
+import { Simulation } from '../physics/simulation';
 import { MagneticConfig } from '../physics/types';
 import { FakePopconWorker } from './fakePopconWorker';
 import { createPopconHost, deviceTmax, fuelOptimumT, gridBuffers, popconAxes } from './popconHost';
@@ -30,10 +31,10 @@ describe('fuelOptimumT', () => {
 });
 
 describe('deviceTmax: the T axis follows the device', () => {
-  const LADDER = [5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 60, 80, 100, 150, 200, 300];
+  const LADDER = [2, 2.5, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 60, 80, 100, 150, 200, 300];
   const presets = { ITER, SPARC, DEMO, MASTU, W7X } as const;
 
-  it('is a rung of the ladder, from 5 to 300 keV, for every magnetic preset', () => {
+  it('is a rung of the ladder, from 2 to 300 keV, for every magnetic preset', () => {
     for (const [name, cfg] of Object.entries(presets)) {
       const T = deviceTmax(cfg);
       expect(LADDER, name).toContain(T);
@@ -41,10 +42,11 @@ describe('deviceTmax: the T axis follows the device', () => {
   });
 
   it('a small low-field device gets a short axis, a large or high-field one a long axis', () => {
-    expect(deviceTmax(MASTU)).toBeLessThanOrEqual(6);
-    expect(deviceTmax(W7X)).toBeLessThanOrEqual(6);
-    expect(deviceTmax(ITER)).toBeGreaterThanOrEqual(30);
-    expect(deviceTmax(DEMO)).toBeGreaterThan(deviceTmax(SPARC));
+    expect(deviceTmax(MASTU)).toBeLessThanOrEqual(4);
+    expect(deviceTmax(W7X)).toBeLessThanOrEqual(4);
+    expect(deviceTmax(ITER)).toBeGreaterThanOrEqual(12);
+    expect(deviceTmax(ITER)).toBeLessThanOrEqual(25);
+    expect(deviceTmax(DEMO)).toBeGreaterThanOrEqual(deviceTmax(ITER));
     expect(deviceTmax(SPARC)).toBeGreaterThan(deviceTmax(MASTU));
   });
 
@@ -64,8 +66,34 @@ describe('deviceTmax: the T axis follows the device', () => {
   it('does not fail on a degenerate configuration', () => {
     expect(deviceTmax({ ...ITER, B0: NaN })).toBe(40);
     expect(LADDER).toContain(deviceTmax({ ...ITER, Ip_MA: 0 }));
-    expect(deviceTmax({ ...ITER, geometry: { ...ITER.geometry, a: 0 } })).toBeGreaterThanOrEqual(5);
+    expect(deviceTmax({ ...ITER, geometry: { ...ITER.geometry, a: 0 } })).toBeGreaterThanOrEqual(2);
   });
+
+  it('follows the installed heating: more power widens the axis, none leaves the fuel floor', () => {
+    const heat = (k: number) => ({ ...ITER, heating: { ...ITER.heating, P_NBI_MW: ITER.heating.P_NBI_MW * k, P_ICRH_MW: ITER.heating.P_ICRH_MW * k, P_ECRH_MW: ITER.heating.P_ECRH_MW * k } });
+    expect(deviceTmax(heat(3))).toBeGreaterThanOrEqual(deviceTmax(ITER));
+    expect(deviceTmax(heat(0.2))).toBeLessThan(deviceTmax(ITER));
+    expect(LADDER).toContain(deviceTmax(heat(0)));
+    expect(deviceTmax(heat(0))).toBeGreaterThanOrEqual(0.15 * fuelOptimumT('DT'));
+  });
+});
+
+// the axis is a view of where the device operates: the run of every 0D magnetic preset has to sit in the middle of the
+// map, not in its bottom fifth (v4.0 review finding: 50 keV for ITER, 80 for DEMO, the shots at 10 and 15 keV)
+describe('deviceTmax: the operating region fills the axis', () => {
+  const ids = ['ITER', 'JET', 'SPARC', 'DIIID', 'JT60SA', 'MASTU', 'W7X', 'DEMO'];
+  it.each(ids)('%s: the peak T_i of the shot lies between 30 % and 95 % of the axis', (id) => {
+    const cfg = PRESETS.find((p) => p.id === id)!.cfg as MagneticConfig;
+    // the peak T_i is reached in the first seconds of the burn (DEMO: 15.38 keV at 60 s, 15.32 over the whole 2000 s)
+    const sim = new Simulation({ ...cfg, t_end: Math.min(cfg.t_end, 60) });
+    sim.runAll();
+    let peak = 0;
+    for (const f of sim.history) peak = Math.max(peak, f.d.Ti ?? 0);
+    const Tmax = deviceTmax(cfg);
+    expect(peak).toBeGreaterThan(0.5);
+    expect(peak / Tmax, `${id}: peak ${peak.toFixed(2)} keV of ${Tmax}`).toBeGreaterThanOrEqual(0.3);
+    expect(peak / Tmax, `${id}: peak ${peak.toFixed(2)} keV of ${Tmax}`).toBeLessThanOrEqual(0.95);
+  }, 60_000);
 });
 
 describe('popconAxes / gridBuffers', () => {

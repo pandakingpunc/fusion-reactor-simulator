@@ -10,8 +10,10 @@
  */
 import { computePopcon } from '../physics/popcon';
 import type { PopconGrid } from '../physics/popcon';
-import { greenwaldDensity, lineAverageFactor } from '../physics/limits';
-import { FUEL_CHANNELS, FuelType } from '../physics/reactivity';
+import { lineAverageFactor } from '../physics/limits';
+import { plasmaVolume } from '../physics/geometry';
+import { tauIPB98y2, tauISS04, tauSTValovic, stellaratorHISS04 } from '../physics/transport';
+import { FUEL_CHANNELS, FUEL_SPECIES, FuelType } from '../physics/reactivity';
 import type { MagneticConfig } from '../physics/types';
 import type { FromPopcon, PopconAxes, PopconStage, ToPopcon } from './popconProtocol';
 import { Schedule, defaultSchedule } from './schedule';
@@ -20,8 +22,10 @@ const MU0 = 1.25663706212e-6;
 const E_KEV = 1.602176634e-16;
 
 /** axis maxima are taken from this ladder (keV) */
-const T_LADDER = [5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 60, 80, 100, 150, 200, 300];
-const T_MIN = T_LADDER[0], T_MAX = T_LADDER[T_LADDER.length - 1];
+const T_LADDER = [2, 2.5, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 60, 80, 100, 150, 200, 300];
+const T_MAX = T_LADDER[T_LADDER.length - 1];
+/** the axis reaches this many times the temperature the installed heating alone holds (see deviceTmax) */
+const T_HEADROOM = 2.5;
 
 const optimum = new Map<FuelType, number>();
 /**
@@ -33,7 +37,7 @@ export function fuelOptimumT(fuel: FuelType): number {
   let best = optimum.get(fuel);
   if (best === undefined) {
     let top = 0;
-    best = T_MIN;
+    best = 1;
     for (let T = 1; T <= 1000; T *= 1.02) {
       const s = FUEL_CHANNELS[fuel].reduce((a, ch) => a + ch.sigmav(T) * ch.Etot_MeV, 0) / (T * T);
       if (s > top) { top = s; best = T; }
@@ -44,23 +48,38 @@ export function fuelOptimumT(fuel: FuelType): number {
 }
 
 /**
- * Upper end of the temperature axis for a device (a view heuristic, not physics): the temperature at which the
- * plasma pressure reaches the beta limit at 0.4 of the Greenwald density, i.e. how hot this device can get at a
- * typical density, from its field, current, minor radius and beta_N limit (Troyon: β_t = β_N · I_p / (100 a B));
- * a stellarator, which has no plasma current to scale with, is taken at a volume-average beta of 5 % and its own
- * target density. A fuel that burns only at high temperature widens the axis to 0.3 of its optimum. The result is
- * rounded up to a 1-2-5 style ladder between 5 and 300 keV. ITER: 50 keV, SPARC 30, JET 15, MAST-U 5.
- * The old axis was 0 to 40 keV for every device.
+ * Upper end of the temperature axis for a device (a view heuristic, not physics): about 2.5 times the temperature the
+ * installed heating alone would hold, T_aux = P_heat τ_E(P_heat) / (3 ⟨n⟩ V f_prof e) at the device's own density
+ * (τ_E the same scaling as the model uses; no alpha heating, no radiation). Alpha heating and the H-mode rise lift a
+ * real shot to 1.1 to 2 times T_aux (the peak T_i of every 0D magnetic preset: ITER 10.5 keV for T_aux 5.9, SPARC
+ * 9.4 for 6.1, DEMO 15.3 for 7.7, JET 5.0 for 3.1, MAST-U 1.4 for 0.9, W7-X 1.0 for 0.9), so the operating region
+ * fills the middle of the axis and the ignition optimum of D-T (about 14 keV) stays on the map for the large
+ * devices. Two bounds: the beta limit at the device's own density (Troyon: β_t = β_N · I_p / (100 a B); a stellarator,
+ * which has no plasma current to scale with, is taken at a volume-average beta of 5 %), which no shot can pass, and a
+ * floor of 0.15 of the fuel's ignition optimum, which widens the axis for a fuel that burns only at high
+ * temperature (p-11B). The result is rounded up to a 1-2-5 style ladder between 2 and 300 keV.
+ * ITER: 15 keV, SPARC 20, JET 8, DEMO 20, MAST-U and W7-X 2.5 to 3. The old axis was 0 to 40 keV for every device,
+ * and the first version of this function (the beta limit at 0.4 of the Greenwald density) gave ITER 50 and DEMO 80,
+ * with the operating region in the bottom fifth of the map.
  */
 export function deviceTmax(cfg: MagneticConfig): number {
-  const g = cfg.geometry, B0 = cfg.B0;
+  const g = cfg.geometry, n = cfg.n_target;
   const stell = cfg.method === 'stellarator';
-  const nG = greenwaldDensity(cfg.Ip_MA, g.a) / lineAverageFactor(cfg.transport.alpha_n);
-  const tokamak = !stell && cfg.Ip_MA > 0 && nG > 0;
-  const nRef = tokamak ? 0.4 * nG : cfg.n_target;
-  const betaT = tokamak ? (cfg.limits.betaN_limit * cfg.Ip_MA) / (100 * g.a * B0) : 0.05;
-  const Tbeta = (betaT * B0 * B0) / (2 * MU0) / (2 * nRef * E_KEV); // p = (n_e + n_i) T with n_i = n_e
-  const want = Math.max(Tbeta, 0.3 * fuelOptimumT(cfg.fuel));
+  const tokamak = !stell && cfg.Ip_MA > 0;
+  const betaT = tokamak ? (cfg.limits.betaN_limit * cfg.Ip_MA) / (100 * g.a * cfg.B0) : 0.05;
+  const Tbeta = (betaT * cfg.B0 * cfg.B0) / (2 * MU0) / (2 * n * E_KEV); // p = (n_e + n_i) T with n_i = n_e
+  const aN = cfg.transport.alpha_n, aT = cfg.transport.alpha_T;
+  const nLine = lineAverageFactor(aN) * n;
+  const fs = FUEL_SPECIES[cfg.fuel];
+  const M = cfg.fuelFracA * fs.a.A + (1 - cfg.fuelFracA) * fs.b.A;
+  const h = cfg.heating;
+  const P = (h.P_NBI_MW + h.P_ICRH_MW + h.P_ECRH_MW) * 1e6;
+  const tau = stell
+    ? tauISS04(g, cfg.B0, nLine, P, cfg.stellarator.iota23, stellaratorHISS04(cfg.stellarator, cfg.H98))
+    : (cfg.scaling === 'ST_Valovic' ? tauSTValovic : tauIPB98y2)(g, cfg.Ip_MA, cfg.B0, nLine, P, M) * cfg.H98;
+  const Wprof = ((1 + aN) * (1 + aT)) / (1 + aN + aT); // ⟨n T⟩ = Wprof ⟨n⟩⟨T⟩
+  const Taux = (P * tau) / (3 * n * E_KEV * plasmaVolume(g) * Wprof);
+  const want = Math.max(Math.min(T_HEADROOM * Taux, Tbeta), 0.15 * fuelOptimumT(cfg.fuel));
   if (!Number.isFinite(want)) return 40;
   return T_LADDER.find((T) => T >= want) ?? T_MAX;
 }

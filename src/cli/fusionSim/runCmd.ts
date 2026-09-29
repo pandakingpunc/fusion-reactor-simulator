@@ -1,9 +1,13 @@
 /// <reference types="node" />
 /**
  * `fusion-sim run`: one shot from a preset or a configuration file, written as JSON, CSV, NDJSON, NetCDF-3,
- * IMAS-like JSON or a text summary.
+ * IMAS-like JSON or a text summary. `--scenario FILE` drives the controls of the shot with a scenario (waveforms and
+ * triggers, src/physics/scenario.ts).
  */
 import { runShot } from '../../physics/config/run';
+import { ScenarioError, type ScenarioIssue } from '../../physics/kernel/errors';
+import { sha256Hex } from '../../physics/kernel/sha256';
+import { scenarioToJSON, validateScenario, type ScenarioSpec } from '../../physics/scenario';
 import { sourceFromSimulation, type RunMeta } from '../../io/table';
 import { writeCsv } from '../../io/csv';
 import { writeRunNdjson } from '../../io/ndjson';
@@ -11,7 +15,7 @@ import { writeRunNetcdf } from '../../io/netcdf3';
 import { writeImasJson } from '../../io/imas';
 import { defineCli, parseArgs } from '../args';
 import {
-  CONFIG_EPILOG, CONFIG_FLAGS, CliContext, CliInputError, emit, extensionOf, provenanceBlock, resolveConfig, runFailureOf, takeRepeated,
+  CONFIG_EPILOG, CONFIG_FLAGS, CliContext, CliInputError, emit, extensionOf, parseJsonFile, provenanceBlock, resolveConfig, runFailureOf, takeRepeated,
 } from './common';
 
 const FORMATS = ['json', 'csv', 'ndjson', 'netcdf', 'imas', 'text'] as const;
@@ -26,6 +30,7 @@ export const RUN_CLI = defineCli({
   flags: {
     ...CONFIG_FLAGS,
     format: { type: 'string', choices: FORMATS, help: 'json (report, averages, events, provenance), csv (time traces), ndjson (typed records), netcdf (CF arrays, needs --out), imas (IMAS-like JSON, magnetic runs), text (summary); default: from the --out extension, else json' },
+    scenario: { type: 'string', metavar: 'FILE', help: 'scenario JSON file (schema 1): waveforms of the controls and triggers on the diagnostics; the run stays deterministic and its fingerprint covers the scenario (json output: provenance.scenarioSha256 and the scenario itself)' },
     out: { type: 'string', metavar: 'FILE', help: 'write here instead of stdout (`-` is stdout)' },
     series: { type: 'list', metavar: 'KEY,…', help: 'diagnostics to include (`all` for every one); csv, ndjson, netcdf: default all; json: default none' },
     every: { type: 'int', min: 1, help: 'keep every N-th frame (csv, ndjson, imas)' },
@@ -41,6 +46,11 @@ function seriesKeys(series: string[] | undefined): { keys: string[] | undefined;
   if (series === undefined) return { keys: undefined, all: false };
   if (series.includes('all')) return { keys: undefined, all: true };
   return { keys: series, all: false };
+}
+
+/** Every problem of a scenario file with its path, as the message of a CliInputError (exit 2), like an invalid configuration. */
+export function scenarioProblems(file: string, issues: readonly ScenarioIssue[]): string {
+  return `${file}: invalid scenario (${issues.length} problem${issues.length === 1 ? '' : 's'}):\n${issues.map((i) => `  ${i.path ? `${i.path}: ` : ''}${i.message}`).join('\n')}`;
 }
 
 export function textSummary(cfgName: string, r: ReturnType<typeof runShot>): string {
@@ -72,13 +82,27 @@ export async function runCommand(argv: readonly string[], ctx: CliContext): Prom
   if (format === 'netcdf' && (args.out === undefined || args.out === '-') && ctx.io.stdout.isTTY) {
     throw new CliInputError('netcdf is a binary format: give --out FILE (or `--out -` to write it to a pipe)');
   }
+  // a scenario file is input: a problem in it (structure, an unknown control or diagnostic, a ramp grid too fine for the shot) is exit 2, before anything is written
+  let scenario: ScenarioSpec | undefined;
+  if (args.scenario !== undefined) {
+    const v = validateScenario(parseJsonFile(ctx.io, args.scenario));
+    if (!v.ok) throw new CliInputError(scenarioProblems(args.scenario, v.issues));
+    scenario = v.spec;
+  }
   let result: ReturnType<typeof runShot>;
   try {
-    result = runShot(cfg, { validate: false });
+    result = runShot(cfg, { validate: false, ...(scenario ? { simulation: { scenario } } : {}) });
   } catch (e) {
+    if (e instanceof ScenarioError) throw new CliInputError(scenarioProblems(args.scenario ?? 'scenario', e.issues));
     throw runFailureOf(e) ?? e;
   }
   const prov = provenanceBlock(ctx, cfg, preset);
+  // the scenario in force (null for none, and for an empty one, which is no scenario): it is part of the run's fingerprint
+  const inForce = result.sim.scenario;
+  if (inForce) {
+    prov.scenarioSha256 = sha256Hex(scenarioToJSON(inForce));
+    prov.fingerprint = result.sim.fingerprint(prov.version as string);
+  }
   const meta: RunMeta = {
     version: prov.version as string, ...(prov.git ? { commit: (prov.git as { sha: string }).sha } : {}), ...(preset ? { preset } : {}),
     fingerprint: prov.fingerprint as string, configSha256: prov.configSha256 as string,
@@ -88,7 +112,7 @@ export async function runCommand(argv: readonly string[], ctx: CliContext): Prom
   switch (format) {
     case 'json': {
       const doc: Record<string, unknown> = {
-        schema: 1, tool: 'fusion-sim run', provenance: prov, config: cfg,
+        schema: 1, tool: 'fusion-sim run', provenance: prov, config: cfg, ...(inForce ? { scenario: inForce } : {}),
         summary: {
           method: cfg.method, fidelity: (cfg as { fidelity?: string }).fidelity ?? '0D', endReason: result.report.termination.reason,
           natural: result.report.termination.natural, duration: result.report.duration, timeUnit: result.report.timeUnit, steps: result.steps, frames: result.frames,

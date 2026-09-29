@@ -44,6 +44,15 @@ report, the flat-top and burn-weighted averages, event counts, the resolved conf
 thins frames (the first and the last frame are always kept). NetCDF is binary: it needs `--out FILE` (or `--out -` on a pipe). The formats are described in
 `src/io/README.md`. IMAS-like JSON covers magnetic-confinement runs only.
 
+`--scenario FILE` drives the controls of the shot with a scenario (`src/physics/scenario.ts`, JSON schema 1): per-control
+piecewise-linear or step waveforms (`null` in a point is the configured value) and triggers on the recorded diagnostics
+(`{ "diag": "H_mode", "op": ">=", "value": 1, "set": { "P_ICRH_MW": 8 } }`, with hold time, start time, hysteresis and
+release). The file is checked before the run: every problem is listed with its path (an unknown property, a control or
+diagnostic the model does not have, a `rampStep` finer than 1e-6 or `t_end / 10000`) and the exit code is 2. The run stays
+deterministic and chunk invariant; the JSON output gains the normalised scenario (`scenario`) and `provenance.scenarioSha256`,
+and the run fingerprint covers the scenario (its free `name` excluded), so every output format names the run with its scenario.
+An empty scenario is no scenario.
+
 **Output is deterministic.** The provenance block holds the software version, the concept DOI, the git commit and
 dirty flag (null unless the package is the top level of its own git checkout: an installed copy under some project's node_modules never reports that project's commit), Node and V8 versions, the preset, the seed, the SHA-256 of the canonical
 configuration and the run fingerprint (`runFingerprint`); no path, user name, time or duration. The same

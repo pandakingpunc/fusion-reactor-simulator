@@ -16,6 +16,7 @@ import { runFingerprint } from '../../physics/kernel/fingerprint';
 import { canonicalString } from '../../physics/kernel/canonical';
 import { sha256Hex } from '../../physics/kernel/sha256';
 import { Simulation } from '../../physics/simulation';
+import { dropTemplate, mergeScenarios, interlockTemplate, scenarioToJSON } from '../../physics/scenario';
 import { parseCsv } from '../../io/csv';
 import { parseNdjson } from '../../io/ndjson';
 import { readNetcdf3 } from '../../io/netcdf3';
@@ -216,6 +217,70 @@ describe('run: configuration', () => {
     const bad = await cli(['run', '--preset', 'JET', '--set', 'method=nope', '--no-validate']);
     expect(bad.code).toBe(1);
     expect(bad.err).toMatch(/^fusion-sim run: the run failed: unknown confinement method 'nope'/);
+  });
+});
+
+describe('run: --scenario', () => {
+  const JET1 = { ...PRESETS.find((p) => p.id === 'JET')!.cfg, t_end: 1 } as never;
+  const spec = mergeScenarios(dropTemplate('P_NBI_MW', 0.5, 0), interlockTemplate('H_mode', '<', 1, { P_ICRH_MW: 0 }, { id: 'back in L-mode' }));
+  const files = { 'drop.json': scenarioToJSON(spec) };
+
+  it('runs the shot under the scenario: the same numbers as new Simulation(cfg, { scenario }), the scenario and its hash in the output', async () => {
+    const r = await cli(['run', ...SHORT, '--scenario', 'drop.json'], { files });
+    expect(r.code).toBe(0);
+    const doc = json(r.out);
+    const ref = new Simulation(JET1, { scenario: spec });
+    const rep = ref.runAll();
+    expect(doc.report.Q_sci_max).toBe(rep.Q_sci_max);
+    expect(doc.report.E_fusion_MJ).toBe(rep.E_fusion_MJ);
+    expect(doc.events).toMatchObject({ HL: expect.any(Number) }); // the drop ends H-mode, which the plain shot does not do
+    expect(json((await cli(['run', ...SHORT])).out).events.HL).toBeUndefined();
+    expect(doc.scenario).toEqual(ref.scenario);
+    expect(doc.provenance.scenarioSha256).toBe(sha256Hex(scenarioToJSON(ref.scenario!)));
+    // the fingerprint names the run by its inputs, the scenario included (and not the free name of the scenario)
+    expect(doc.provenance.fingerprint).toBe(ref.fingerprint(VERSION));
+    const plain = json((await cli(['run', ...SHORT])).out);
+    expect(doc.provenance.fingerprint).not.toBe(plain.provenance.fingerprint);
+    expect(Object.keys(doc.provenance).sort()).toEqual([...Object.keys(plain.provenance), 'scenarioSha256'].sort());
+    expect(plain.scenario).toBeUndefined();
+    const renamed = await cli(['run', ...SHORT, '--scenario', 'drop.json'], { files: { 'drop.json': scenarioToJSON({ ...spec, name: 'another label' }) } });
+    expect(json(renamed.out).provenance.fingerprint).toBe(doc.provenance.fingerprint);
+    expect((await cli(['run', ...SHORT, '--scenario', 'drop.json'], { files })).out).toBe(r.out); // deterministic
+  });
+  it('an empty scenario is no scenario: the provenance of the plain shot', async () => {
+    const r = await cli(['run', ...SHORT, '--scenario', 'empty.json'], { files: { 'empty.json': '{"schema":1}' } });
+    expect(r.code).toBe(0);
+    expect(json(r.out).provenance).toEqual(json((await cli(['run', ...SHORT])).out).provenance);
+    expect(json(r.out).scenario).toBeUndefined();
+  });
+  it('the other formats carry the fingerprint of the run with its scenario', async () => {
+    const r = await cli(['run', ...SHORT, '--scenario', 'drop.json', '--format', 'ndjson', '--every', '250'], { files });
+    expect(r.code).toBe(0);
+    expect(r.out).toContain(new Simulation(JET1, { scenario: spec }).fingerprint(VERSION));
+  });
+  it('a problem in the scenario file is an input error (exit 2), listed with its path, before anything runs', async () => {
+    const bad = await cli(['run', ...SHORT, '--scenario', 'bad.json'], { files: { 'bad.json': '{"schema":1,"rampStep":1e-20,"waveforms":{"P_NBI_MW":{"kind":"pwl","points":[[0,null],[1,5]]}},"trigers":[]}' } });
+    expect(bad.code).toBe(2);
+    expect(bad.out).toBe('');
+    expect(bad.err).toMatch(/bad\.json: invalid scenario \(\d+ problems?\):/);
+    expect(bad.err).toMatch(/rampStep: must be >= /);
+    expect(bad.err).toMatch(/trigers/);
+    // valid in itself, but not for this model (a control or a diagnostic it does not have) or for this shot (a ramp grid finer than t_end / 1e4)
+    const unknown = await cli(['run', ...SHORT, '--scenario', 'u.json'], { files: { 'u.json': '{"schema":1,"waveforms":{"no_such_control":{"kind":"step","points":[[0.1,1]]}}}' } });
+    expect(unknown.code).toBe(2);
+    expect(unknown.err).toMatch(/u\.json: invalid scenario \(1 problem\):\n  waveforms\.no_such_control: /);
+    const diag = await cli(['run', ...SHORT, '--scenario', 'd.json'], { files: { 'd.json': '{"schema":1,"triggers":[{"diag":"no_such_diag","op":">","value":1,"set":{"P_NBI_MW":0}}]}' } });
+    expect(diag.code).toBe(2);
+    expect(diag.err).toMatch(/triggers\[0\]\.diag: unknown diagnostic 'no_such_diag'/);
+    const fine = await cli(['run', ...SHORT, '--scenario', 'f.json'], { files: { 'f.json': '{"schema":1,"rampStep":1e-6,"waveforms":{"P_NBI_MW":{"kind":"pwl","points":[[0,null],[1,5]]}}}' } });
+    expect(fine.code).toBe(2);
+    expect(fine.err).toMatch(/rampStep: must be >= /);
+    const notJson = await cli(['run', ...SHORT, '--scenario', 'n.json'], { files: { 'n.json': 'not json' } });
+    expect(notJson.code).toBe(2);
+    expect(notJson.err).toMatch(/n\.json: not valid JSON/);
+    const missing = await cli(['run', ...SHORT, '--scenario', 'nowhere.json']);
+    expect(missing.code).toBe(2);
+    expect(missing.err).toMatch(/cannot read nowhere\.json/);
   });
 });
 

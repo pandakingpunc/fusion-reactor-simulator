@@ -79,7 +79,10 @@ describe('surfaceLevels', () => {
  */
 describe('outer-cell metrics of the default surface table', () => {
   const N = 50;
-  const mastu = { ...MASTU, fidelity: '1.5D' } as MagneticConfig;
+  // MASTU15 in the shape the numbers below (14 % on the plain table) were measured on: the machine's design-maximum shape, which the
+  // preset had until v4.0 moved it to a first-campaign scenario (R 0.8 m, a 0.5 m, kappa 2.1, 0.75 MA, 0.55 T; `mastuNow`)
+  const mastu = { ...MASTU, fidelity: '1.5D', geometry: { R: 0.85, a: 0.65, kappa: 2.5, delta: 0.5 }, B0: 0.75, Ip_MA: 1.0 } as MagneticConfig;
+  const mastuNow = { ...MASTU, fidelity: '1.5D' } as MagneticConfig;
   const sparc = PRESETS.find((p) => p.id === 'SPARC15')!.cfg as MagneticConfig;
   const build = (cfg: MagneticConfig, betaP: number, opts: { nSurf?: number; psiLevels?: ArrayLike<number>; nTheta?: number } = {}) => {
     const shape = { R: cfg.geometry.R, a: cfg.geometry.a, kappa: cfg.profiles?.lcfsKappa ?? cfg.geometry.kappa, delta: cfg.profiles?.lcfsDelta ?? cfg.geometry.delta };
@@ -96,8 +99,10 @@ describe('outer-cell metrics of the default surface table', () => {
   const cases: [string, MagneticConfig, number][] = [
     ['ITER15', ITER_15D, 0.5],
     ['SPARC15', sparc, 0.6],
-    ['MASTU15 at start-up (β_p 0.1)', mastu, 0.1],
-    ['MASTU15 at β_p 0.8', mastu, 0.8],
+    ['MASTU15 (design-maximum shape) at start-up (β_p 0.1)', mastu, 0.1],
+    ['MASTU15 (design-maximum shape) at β_p 0.8', mastu, 0.8],
+    ['MASTU15 (first-campaign preset) at start-up (β_p 0.1)', mastuNow, 0.1],
+    ['MASTU15 (first-campaign preset) at β_p 0.8', mastuNow, 0.8],
   ];
   for (const [name, cfg, betaP] of cases) {
     it(`${name}: g1, g2, V′, ∇ρ, q and ΔV of the outer faces and cells are within 0.5 % of the 401-surface table`, () => {

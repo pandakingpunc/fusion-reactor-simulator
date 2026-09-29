@@ -51,7 +51,14 @@ release). The file is checked before the run: every problem is listed with its p
 diagnostic the model does not have, a `rampStep` finer than 1e-6 or `t_end / 10000`) and the exit code is 2. The run stays
 deterministic and chunk invariant; the JSON output gains the normalised scenario (`scenario`) and `provenance.scenarioSha256`,
 and the run fingerprint covers the scenario (its free `name` excluded), so every output format names the run with its scenario.
-An empty scenario is no scenario.
+The hash of the scenario (the SHA-256 of its canonical JSON) is in every export: `provenance.scenarioSha256` (json), the provenance of the
+meta record (ndjson), a `# scenario_sha256` comment line (csv), the global attribute `simulation_scenario_sha256` (netcdf) and
+`code.scenario_sha256` (imas). A run without a scenario writes exactly what it wrote before.
+An empty scenario is no scenario. The study tools take the same file: `scan.cli.ts`, `uq.cli.ts` and `optimize.cli.ts` accept
+`--scenario FILE` (checked against the preset before any shot runs, exit 2 with every problem); every shot of a scan or an ensemble runs with it,
+it is part of the study's input hash and the JSON result carries its hash and normalised form (`scenario`), and `optimize` runs the
+optimised machine as a shot with it and reports the outcome next to the design (`scenarioCheck`). The JSON Schema of a scenario file
+is `schema/scenario.schema.json`.
 
 **Output is deterministic.** The provenance block holds the software version, the concept DOI, the git commit and
 dirty flag (null unless the package is the top level of its own git checkout: an installed copy under some project's node_modules never reports that project's commit), Node and V8 versions, the preset, the seed, the SHA-256 of the canonical

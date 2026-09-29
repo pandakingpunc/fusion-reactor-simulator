@@ -200,7 +200,7 @@ export interface TFCoilResult {
   totalMass_kg: number;
   /** smeared cross-section of the winding-pack region of one coil at the inboard leg [m^2] */
   A_wp_m2: number;
-  /** area of the cold surface of the coil set (both faces of the D shell) [m^2], for the static heat load */
+  /** area of the two toroidal shells that cover the coil set [m^2] (PROCESS `tfcryoarea`), for the static heat load of the cryoplant */
   coldSurface_m2: number;
   /** radial profile of the smeared stresses for plots */
   profile: StressPoint[];
@@ -340,6 +340,9 @@ export function verticalForceUpperHalf(B0: number, R: number, I_total: number, N
   return (0.5 * (B0 * R * I_total)) / (N * dr * dr) * bracket;
 }
 
+/** multiplier of the case mass, fitted in PROCESS to the ITER-FDR TF case mass of 450 tonnes */
+export const CASE_MASS_FACTOR = 2.2;
+
 /** distance of the outboard leg (and of the top of the coil) from the plasma boundary in units of the inboard plasma-to-coil gap */
 export const OUTER_GAP_FACTOR = 2.2;
 
@@ -426,13 +429,17 @@ export function tfCoil(inp: TFCoilInput): TFCoilResult {
   // height h of the D shape (between the straight-leg height and the maximum height of the coil)
   const W = ((Math.PI * 0.5 * (H_leg + H_max) * inp.R * inp.R * inp.B0 * inp.B0) / MU0) * Math.log(Math.max(R_outLeg / r_o, 1.0001));
 
-  // mass: winding pack region and a thin case (0.1 m) around it along the whole coil, plus the solid nose on the inboard leg
+  // Mass: the winding pack region (90 % of the toroidal pitch) along the whole coil; the case is a thin wall (0.1 m) around it plus the
+  // solid nose on the inboard leg, multiplied by 2.2 as in PROCESS (`superconducting_tf_coil_areas_and_masses`: "the 2.2 factor is used as a
+  // scaling factor to fit to the ITER-FDR value of 450 tonnes", CCFE note T&M/PKNIGHT/PROCESS/026).
   const dx_wp = ((2 * Math.PI * 0.5 * (r_i + r_o)) / N); // toroidal pitch at the mean winding-pack radius
   const A_wp_coil = dr_wp * dx_wp * 0.9;
   const tCase = 0.1;
   const A_thinCase = 2 * (dr_wp + dx_wp * 0.9) * tCase;
   const A_nose = (Math.PI * (r_i * r_i - r_c * r_c)) / N;
-  const coilMass = spec.rho_wp * A_wp_coil * L + spec.rho_struct * (A_thinCase * L + A_nose * H_leg);
+  const coilMass = spec.rho_wp * A_wp_coil * L + CASE_MASS_FACTOR * spec.rho_struct * (A_thinCase * L + A_nose * H_leg);
+  // area of the two toroidal shells that cover the coils (PROCESS `tfcryoarea` = 2 x coil length x 2 pi x the mean of the inboard and outboard leg radii)
+  const coldSurface = 2 * L * 2 * Math.PI * 0.5 * (0.5 * (r_c + r_o) + R_outLeg + 0.5 * dr_wp);
 
   notes.push('winding pack smeared as a full annulus (side case and wedge shape not resolved)');
   notes.push('CS/PF field and out-of-plane forces neglected (as PROCESS); the design values of the structure fraction, nose fraction and turn current are technology-typical');
@@ -445,6 +452,6 @@ export function tfCoil(inp: TFCoilInput): TFCoilResult {
     case: caseState, wp: wpState, front: frontState, plasmaCase_m: pc, tresca_MPa: governing.tresca_MPa, vonMises_MPa: governing.vonMises_MPa,
     limit_MPa: inp.limit_MPa, margin: 1 - governing.tresca_MPa / inp.limit_MPa, overstress: governing.tresca_MPa > inp.limit_MPa,
     E_wp_Pa: E_wp, W_J: W, coilLength_m: L, coilMass_kg: coilMass, totalMass_kg: coilMass * N, A_wp_m2: A_wp_coil,
-    coldSurface_m2: 2 * (dr_wp + dx_wp) * L * N, profile, notes,
+    coldSurface_m2: coldSurface, profile, notes,
   };
 }

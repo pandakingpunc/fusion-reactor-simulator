@@ -3,7 +3,7 @@
  * fractions of the table, and the heat load of an ITER-like magnet system.
  */
 import { describe, expect, it } from 'vitest';
-import { CRYO_COEFFS, CRYO_TEMPERATURE, DWELL_S, carnotFraction, cryoPlant } from './cryo';
+import { CRYO_COEFFS, CRYO_TEMPERATURE, carnotFraction, cryoPlant } from './cryo';
 import { MAGNET_TECH } from './magnets';
 
 const base = {
@@ -12,10 +12,31 @@ const base = {
 };
 
 describe('heat load (Slack, as in PROCESS power.py)', () => {
+  it('reproduces the reference values of the PROCESS unit test test_cryo (EU DEMO 2018 baseline data, both parametrised cases)', () => {
+    // tests/unit/models/test_power.py: qnuc is an input of 12920 W there, tfcryoarea = 0, the pulse length is t_plant_pulse_plasma_present
+    const a = cryoPlant({
+      tech: 'Nb3Sn', wattsPerWatt: 1, coldMass_kg: 47352637.039762333, tfShellArea_m2: 0, nuclearHeating_W: 12920, pfEnergy_J: 37429.525515086898e6,
+      pulseLength_s: 10364.426139387357, nCoils: 16, turnCurrent_A: 74026.751437500003,
+    });
+    expect(a.Q_static_W / 20361.633927097802).toBeCloseTo(1, 9);
+    expect(a.Q_ac_W / 3611.3456752656607).toBeCloseTo(1, 9);
+    expect(a.Q_leads_W / 16108.2211128).toBeCloseTo(1, 9);
+    expect(a.Q_misc_W / 23850.540321823562).toBeCloseTo(1, 9);
+    expect(a.Q_total_W / 76851.741036987034).toBeCloseTo(1, 9);
+    const b = cryoPlant({
+      tech: 'Nb3Sn', wattsPerWatt: 1, coldMass_kg: 47308985.527808741, tfShellArea_m2: 0, nuclearHeating_W: 12920, pfEnergy_J: 37427.228965055205e6,
+      pulseLength_s: 364.42613938735633, nCoils: 16, turnCurrent_A: 74026.751437500003,
+    });
+    expect(b.Q_static_W / 20342.863776957758).toBeCloseTo(1, 9);
+    expect(b.Q_ac_W / 102701.82327748176).toBeCloseTo(1, 9);
+    expect(b.Q_misc_W / 68432.80867525778).toBeCloseTo(1, 9);
+    expect(b.Q_total_W / 220505.71684249729).toBeCloseTo(1, 9);
+  });
+
   it('sums static, nuclear, AC, lead and 45 % miscellaneous loads', () => {
     const r = cryoPlant(base);
     const Qs = 4.3e-4 * 1e7 + 2.0 * 2000;
-    const Qa = (1e3 * 7000) / (1200 + DWELL_S);
+    const Qa = (1e3 * 7000) / 1200;
     const Ql = 13.6e-3 * 18 * 68e3;
     expect(r.Q_static_W).toBeCloseTo(Qs, 6);
     expect(r.Q_nuclear_W).toBe(15e3);
@@ -49,7 +70,7 @@ describe('heat load (Slack, as in PROCESS power.py)', () => {
     expect(cryoPlant({ ...base, pulseLength_s: 6000 }).Q_ac_W).toBeLessThan(r.Q_ac_W);
     expect(cryoPlant({ ...base, turnCurrent_A: 30e3 }).Q_leads_W).toBeLessThan(r.Q_leads_W);
     expect(cryoPlant({ ...base, nuclearHeating_W: -5 }).Q_nuclear_W).toBe(0);
-    // the dwell time keeps a steady shot from dividing by a zero pulse length
+    // a zero pulse length must not divide by zero
     expect(isFinite(cryoPlant({ ...base, pulseLength_s: 0 }).Q_ac_W)).toBe(true);
   });
 

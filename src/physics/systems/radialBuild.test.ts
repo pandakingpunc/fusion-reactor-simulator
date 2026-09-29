@@ -70,6 +70,14 @@ describe('nuclear heating of the TF coil (PROCESS fit of Kovari 2016)', () => {
     expect(q).toBeCloseTo(9.062 * Math.exp(-2.83 * 1.5 - 0.583 * 3) * 4e6 * 0.5, 6);
   });
 
+  it('reproduces the reference of the PROCESS unit test test_nuclear_heating_magnets (EU DEMO 2018 baseline: x_b 2.337, x_s 4.056 tonne/m^2)', () => {
+    // tests/unit/models/blankets/test_ccfe_hcpb.py: total heating of the TF coils 0.044541749 MW for 1986.06 MW of fusion power and 19.65 kt of coils
+    const q = tfNuclearHeating_W(2.3374537748527975, 4.056, 19649856.627845347, 1986.0623241661431);
+    expect(q / 1e6 / 0.044541749095475737).toBeCloseTo(1, 3);
+    // the unit heating per GW of the same test
+    expect(tfNuclearHeating_W(2.3374537748527975, 4.056, 19649856.627845347, 1000) / 22427.165831352642).toBeCloseTo(1, 3);
+  });
+
   it('falls with every tonne per square metre of blanket and shield, the blanket about five times faster', () => {
     expect(tfHeatingAttenuation(0, 0)).toBe(1);
     expect(tfHeatingAttenuation(2, 3)).toBeLessThan(tfHeatingAttenuation(1, 3));

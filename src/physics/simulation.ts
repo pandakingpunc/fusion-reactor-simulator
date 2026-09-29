@@ -32,7 +32,18 @@
  *    controls and saveInternal() record are those of right after that step (a postStep that changes
  *    y or the state rhs reads, applyControl and a rewind all break it). This is bitwise the same as
  *    evaluating rhs again (SimModel.rhs is a function of t, y, the controls and the saveInternal()
- *    state) and saves one of seven evaluations; SimulationOptions.fsal switches it off.
+ *    state) and saves one of seven evaluations; SimulationOptions.fsal switches it off. A model whose
+ *    saveInternal() record changes at every step defeats it: the 0D magnetic model re-derives its ELM
+ *    particle-exhaust rate after every step of an ELM H-mode (MagneticModel.elmPartRate: JET refuses in
+ *    1238 of 1501 steps, 0.9 % of the evaluations saved). That is a model decision, not a kernel one.
+ *  - Scenario. SimulationOptions.scenario (scenario.ts: JSON waveforms and conditional triggers per
+ *    control key) is evaluated at every step boundary, after the replayed actuator entries: the
+ *    controls it changes are those of the next step, its corners are breakpoints (steps end on them),
+ *    its state is in every frame checkpoint (frame.sim.scenario) and comes back on a rewind, and it
+ *    enters runFingerprint(). Its changes are not logged in the actuator log (they are a function of
+ *    the scenario, the configuration and the recorded frames); a live applyControl() takes over the
+ *    keys of its patch from the waveforms for the rest of the run branch. Replaying an actuator log
+ *    needs the same scenario. A run without a scenario is bitwise what it was before scenarios.
  *  - Frame times. Each recorded frame is later than the one before, except that a shot ended by a
  *    step that made no progress in time (a model's own stepper giving up: 'Numerical failure') gets
  *    its terminal frame at the time of the last frame, with the same state; it carries the
@@ -50,6 +61,7 @@ import { ProfileModel, supportsProfiles } from './profiles/model';
 import { ModelContractError, UnknownMethodError } from './kernel/errors';
 import { runFingerprint } from './kernel/fingerprint';
 import { sameRecord } from './kernel/signature';
+import { isEmptyScenario, Scenario, T_EPS, type ScenarioSpec } from './scenario';
 
 /** Builds the model of a configuration; throws UnknownMethodError for an unknown method. */
 export function createModel(cfg: ReactorConfig): SimModel {
@@ -67,8 +79,6 @@ export function createModel(cfg: ReactorConfig): SimModel {
 
 /** Number of synchronisation intervals per run (see the file header). */
 export const SYNC_INTERVALS = 100;
-/** Time slack [model time unit] within which a step counts as having reached a breakpoint. */
-const T_EPS = 1e-12;
 /** Safety cap on the steps of one advance() call (the next call continues seamlessly). */
 const MAX_STEPS_PER_ADVANCE = 200000;
 /** Safety cap on the advance() calls of runAll(). */
@@ -92,6 +102,12 @@ export interface SimulationOptions {
    * is for tests and benchmarks.
    */
   fsal?: boolean;
+  /**
+   * A scenario: waveforms and conditional triggers that drive the model's control keys (scenario.ts;
+   * validated against the model's controls, ScenarioError when invalid). Part of the run's definition:
+   * runFingerprint() covers it, and so must a replay of an actuator log.
+   */
+  scenario?: ScenarioSpec;
   /** Builds the model instead of createModel() (plug-in models, tests of the kernel contract); runFingerprint() does not cover it. */
   modelFactory?: (cfg: ReactorConfig) => SimModel;
 }
@@ -112,6 +128,8 @@ export class Simulation {
   /** the Dormand–Prince stepper; null for a model with its own step() */
   private integ: DormandPrince | null;
   private readonly fsal: boolean;
+  /** the scenario engine; null for a run without a scenario (or with an empty one) */
+  private readonly scen: Scenario | null;
   /** the model's signature right after the last Dormand–Prince step (null: none yet, or FSAL off) */
   private stageSig: ModelSignature | null = null;
   private nextOut = 0;
@@ -137,7 +155,14 @@ export class Simulation {
     this.breaks = (opts.breakpoints ?? []).filter((b) => b > 0 && b < this.model.tEnd).sort((a, b) => a - b);
     // stable sort: a log from Simulation.actuatorLog is already in step order
     this.pending = (opts.actuatorLog ?? []).map((e) => ({ t: e.t, step: e.step, patch: { ...e.patch } })).sort((a, b) => a.step - b.step);
+    // validated in any case; one that does nothing is no scenario (no checkpoint state, the fingerprint of a run without one)
+    // (tEnd: a rampStep grid finer than t_end / MAX_RAMP_GRID would make the run endless and is refused)
+    const scen = opts.scenario ? new Scenario(opts.scenario, this.model.getControls(), { tEnd: this.model.tEnd }) : null;
+    this.scen = scen && !isEmptyScenario(scen.spec) ? scen : null;
+    // the waveforms in force at t = 0 are the controls of the first frame and the first step
+    if (this.scen) this.model.applyControl(this.scen.waveformsAt(0));
     this.record(true);
+    this.scen?.checkDiagnostics(Object.keys(this.history[0].d));
   }
 
   /** Replays a run from its configuration and actuator log, to completion. */
@@ -156,11 +181,13 @@ export class Simulation {
   get actuatorLog(): ActuatorEntry[] { return this.log.map((e) => ({ t: e.t, step: e.step, patch: { ...e.patch } })); }
   /** The user breakpoint schedule in force (sorted, inside (0, t_end)). */
   get breakpoints(): number[] { return [...this.breaks]; }
+  /** The scenario of the run (validated, normalised), or null. */
+  get scenario(): ScenarioSpec | null { return this.scen ? structuredClone(this.scen.spec) : null; }
 
   /** runFingerprint() of this run as it stands (configuration, seed, actuator log, breakpoints). */
   fingerprint(appVersion: string): string {
     const seed = (this.cfg as { seed?: number }).seed ?? 0;
-    return runFingerprint(this.cfg, seed, this.log, appVersion, this.breaks);
+    return runFingerprint(this.cfg, seed, this.log, appVersion, this.breaks, this.scen?.fingerprintForm());
   }
 
   /**
@@ -186,6 +213,7 @@ export class Simulation {
     };
     if (this.integ) cp.integ = this.integ.snapshot();
     if (this.model.saveCheckpoint) cp.model = this.model.saveCheckpoint();
+    if (this.scen) cp.scenario = this.scen.save();
     return cp;
   }
 
@@ -207,12 +235,33 @@ export class Simulation {
     }
   }
 
+  /**
+   * The scenario at the step boundary: its waveforms at the current time and the triggers on the last
+   * recorded frame. Controls that differ from the model's are written (the stage FSAL would reuse
+   * belongs to the old ones); nothing goes into the actuator log. What the triggers did is logged as events.
+   */
+  private applyScenario(): void {
+    const scen = this.scen;
+    if (!scen) return;
+    const i = this.history.length - 1;
+    const r = scen.step(this.t, { index: i, t: this.history[i].t, d: this.history[i].d });
+    for (const n of r.notes) this.events.push(n.value === undefined ? { t: this.t, kind: 'info', msg: n.msg } : { t: this.t, kind: 'info', msg: n.msg, value: n.value });
+    const cur = this.model.getControls();
+    let patch: Record<string, number> | null = null;
+    for (const k of Object.keys(r.patch)) if (!Object.is(cur[k], r.patch[k])) (patch ??= {})[k] = r.patch[k];
+    if (patch) {
+      this.model.applyControl(patch);
+      this.integ?.invalidate();
+    }
+  }
+
   /** One kernel step: integrate to the next breakpoint at most, then events and output. */
   private stepOnce(): void {
     this.applyPending();
+    this.applyScenario();
     const t0 = this.t;
     const tBreak = this.breakIdx < this.breaks.length ? this.breaks[this.breakIdx] : Infinity;
-    const tMax = Math.min(this.nextSync, this.nextOut, tBreak);
+    const tMax = Math.min(this.nextSync, this.nextOut, tBreak, this.scen ? this.scen.nextBreakpoint(t0) : Infinity);
     this.t = this.integ ? this.integrate(this.integ, t0, tMax) : this.model.step!(t0, this.y, tMax);
     this.steps++;
     const ev = this.model.postStep(this.t, this.t - t0, this.y);
@@ -309,6 +358,7 @@ export class Simulation {
       this.nextSync = cp.nextSync;
       this.breakIdx = cp.nextBreak;
       this.events = this.events.slice(0, cp.nEvents);
+      if (this.scen) { if (cp.scenario) this.scen.restore(cp.scenario); else this.scen.reset(); }
     } else {
       // a frame without a checkpoint (recorded by an older version): best effort, as before v4
       this.events = this.events.filter((e) => e.t <= f.t);
@@ -317,6 +367,7 @@ export class Simulation {
       this.nextSync = Math.min(this.t + this.syncDt, this.model.tEnd);
       this.breakIdx = this.breaks.findIndex((b) => b > this.t + T_EPS);
       if (this.breakIdx < 0) this.breakIdx = this.breaks.length;
+      this.scen?.reset();
     }
     this.log = this.log.filter((e) => e.step < this.steps);
     this.pendIdx = this.pending.findIndex((e) => e.step >= this.steps);
@@ -325,11 +376,13 @@ export class Simulation {
 
   /**
    * Live intervention: the patch takes effect at the current step boundary (the next step uses
-   * it) and is appended to the actuator log.
+   * it) and is appended to the actuator log. Its keys are taken over from the scenario's waveforms
+   * (the operator wins) for the rest of the run branch.
    */
   applyControl(patch: Record<string, number>): void {
     this.log.push({ t: this.t, step: this.steps, patch: { ...patch } });
     this.model.applyControl(patch);
+    this.scen?.override(Object.keys(patch));
     this.integ?.invalidate();
   }
 }

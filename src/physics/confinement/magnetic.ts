@@ -142,7 +142,21 @@ export class MagneticModel implements SimModel {
   private tNextELM = Infinity;
   private tNextSaw = 0.3;
   private elmDW = 0;
-  private elmPartRate = 0; // ELM'lerin ortalama parçacık atım hızı [1/s]
+  /**
+   * Mean fractional particle exhaust rate of the ELMs [1/s]. rhs() reads it (the ELM part of the
+   * τ_p, τ_He and impurity loss rates), postStep() re-derives it from the state after EVERY step of an
+   * ELM H-mode (f_ELM = P_ELM/ΔW from W and W/τ_E), and saveInternal() reports it, so the kernel's
+   * stage reuse (FSAL, Simulation) sees a changed right-hand side at every such step and refuses:
+   * JET, 1501 steps, 1238 refusals, 0.9 % of the rhs() evaluations saved (ITER 1.6 %, SPARC 2.0 %,
+   * DEMO 3.1 %; against 14 % for W7-X and the pulsed models, which have no such state).
+   * Making the rate a state variable of the integrator, or piecewise constant between crashes, would
+   * let FSAL work here, but it changes the physics numbers of every ELM preset, so it is a model
+   * decision and left as is; correctness does not depend on it (a refused reuse only costs one
+   * rhs() evaluation, bitwise the same result). The SimModel contract that FSAL relies on: rhs() may
+   * depend only on (t, y, the live controls, the saveInternal() record), and saveInternal() must be
+   * cheap and free of side effects (the kernel calls it twice per Dormand–Prince step).
+   */
+  private elmPartRate = 0;
   private tauW_accum = 1; // W birikim çarpanı
   private disruptCause: DisruptionCause = 'none';
   private tDisrupt = 0;
@@ -592,9 +606,11 @@ export class MagneticModel implements SimModel {
   }
 
   /**
-   * Re-evaluates the cache that diagnostics() reads (lastDiag) at a state that postStep() has just
-   * changed. rhs() also stores τ_E for the sawtooth timing later in postStep(), which must keep
-   * the value of the step's own last evaluation, so that one is put back.
+   * Re-evaluates the cache that diagnostics() reads (lastDiag) for the state and the mode flags that
+   * postStep() has just changed (an ELM crash of y; an L-H, H-L or NTM flip of hmode/ntm, which change τ_E
+   * and the ELM share of the transport loss without changing y). rhs() also stores τ_E for the sawtooth
+   * timing later in postStep(), which must keep the value of the step's own last evaluation, so that
+   * one is put back.
    */
   private refreshDiagnostics(t: number, y: Float64Array): void {
     const tauE = this.tauE_last;
@@ -667,16 +683,21 @@ export class MagneticModel implements SimModel {
     const c = this.cfg;
     const dg = this.diagnostics(t, y);
     const W = y[IDX.We] + y[IDX.Wi];
+    // The frame the kernel records after this call carries diagnostics(), which describes the state and
+    // the mode flags as they are when it is called, but reads the cache of the step's last rhs(). A
+    // crash that changes y, or a flip of the confinement mode (L-H, H-L) or of the NTM flag, makes that
+    // cache stale, so it is re-evaluated once, below, after all of them (refreshDiagnostics).
+    let stale = false;
 
     if (this.phase === 'normal') {
       // ---- L-H transition (Martin threshold, with P_L = P_heat − P_rad,core − dW/dt; hysteresis 0.7) ----
       if (!this.isStell) {
         const P_L = dg.P_loss;
         if (!this.hmode && P_L > dg.P_LH && t > 0.05) {
-          this.hmode = true; ev.push({ t, kind: 'LH', msg: `L→H transition: P_L ${P_L.toFixed(1)} MW > P_LH ${dg.P_LH.toFixed(1)} MW` });
+          this.hmode = true; stale = true; ev.push({ t, kind: 'LH', msg: `L→H transition: P_L ${P_L.toFixed(1)} MW > P_LH ${dg.P_LH.toFixed(1)} MW` });
           this.tNextELM = t + 0.05;
         } else if (this.hmode && P_L < 0.7 * dg.P_LH) {
-          this.hmode = false; ev.push({ t, kind: 'HL', msg: `H→L back-transition: P_L ${P_L.toFixed(1)} MW < 0.7·P_LH ${(0.7 * dg.P_LH).toFixed(1)} MW — τ_E collapsed` });
+          this.hmode = false; stale = true; ev.push({ t, kind: 'HL', msg: `H→L back-transition: P_L ${P_L.toFixed(1)} MW < 0.7·P_LH ${(0.7 * dg.P_LH).toFixed(1)} MW — τ_E collapsed` });
           this.tNextELM = Infinity; this.elmPartRate = 0;
         }
       }
@@ -697,9 +718,7 @@ export class MagneticModel implements SimModel {
           // ELM parçacık da atar (~%1 n; pedestal yoğunluğunun birkaç %'i — Loarte 2003)
           y[IDX.na] *= 1 - frac * 0.3; y[IDX.nb] *= 1 - frac * 0.3; y[IDX.nZ] *= 1 - frac * 0.6; y[IDX.nHe] *= 1 - frac * 0.3;
           ev.push({ t, kind: 'ELM', msg: `Type-I ELM: ΔW = ${(frac * W / 1e6).toFixed(2)} MJ`, value: frac * W / 1e6 });
-          // the frame recorded after this step must describe the post-crash y (SimModel.diagnostics), not the cached rhs() of the pre-crash state;
-          // evaluated here, before a scheduled end of the shot can switch the heating off below (phase 'ended')
-          this.refreshDiagnostics(t, y);
+          stale = true; // the frame recorded after this step must describe the post-crash y (SimModel.diagnostics)
           this.tNextELM = t + (1 / f) * (0.7 + 0.6 * this.rng.next());
         }
       } else { this.elmPartRate = 0; }
@@ -714,12 +733,17 @@ export class MagneticModel implements SimModel {
         // NTM seed: a sawtooth triggers an NTM if β_N > β_onset (Sauter 2002: β_N,onset ~ 2 in ITER).
         // The drive is the bootstrap current → the thermal β_N (fast ions carry no bootstrap current); the Troyon limit uses the total β_N.
         if (c.events.ntm && !this.ntm && dg.betaN_th > 0.7 * c.limits.betaN_limit) {
-          this.ntm = true; ev.push({ t, kind: 'NTM_onset', msg: `Sawtooth-seeded NTM (3/2) started: thermal β_N = ${dg.betaN_th.toFixed(2)} — τ_E is degrading` });
+          this.ntm = true; stale = true; ev.push({ t, kind: 'NTM_onset', msg: `Sawtooth-seeded NTM (3/2) started: thermal β_N = ${dg.betaN_th.toFixed(2)} — τ_E is degrading` });
         }
       }
       if (this.ntm && dg.betaN_th < 0.5 * c.limits.betaN_limit) {
-        this.ntm = false; ev.push({ t, kind: 'NTM_gone', msg: `NTM decayed: thermal β_N ${dg.betaN_th.toFixed(2)} below the marginal threshold` });
+        this.ntm = false; stale = true; ev.push({ t, kind: 'NTM_gone', msg: `NTM decayed: thermal β_N ${dg.betaN_th.toFixed(2)} below the marginal threshold` });
       }
+      // Evaluated before the burn logic and the limit checks below (they use `dg`, the diagnostics of the
+      // step, as before), and before a disruption or a scheduled end of the shot can change `phase`, which
+      // switches the heating off in rhs(). It changes no state of the run: rhs() overwrites the cache at the
+      // next step, and refreshDiagnostics() puts τ_E back for the sawtooth timing.
+      if (stale) this.refreshDiagnostics(t, y);
       // ---- W birikimi: ELM/sawtooth yoksa merkez birikimi (neoklasik pinch) ----
       this.tauW_accum = c.impurity.species === 'W' && (!c.events.elms || !c.events.sawteeth) ? 4 : 1;
 

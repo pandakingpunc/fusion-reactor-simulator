@@ -6,6 +6,7 @@ import { FuelType } from './reactivity';
 import { ImpuritySpecies } from './constants';
 import { DisruptionReport } from './disruption';
 import { IntegratorOptions, IntegratorSnapshot } from './integrator';
+import type { ScenarioState } from './scenario';
 
 export type Method =
   | 'tokamak' | 'spherical_tokamak' | 'stellarator'
@@ -412,6 +413,8 @@ export interface SimCheckpoint {
   terminated: TerminationInfo | null;
   /** SimModel.saveCheckpoint() at the frame, for models that implement it */
   model?: unknown;
+  /** state of the scenario engine at the frame (only for a run with a scenario, SimulationOptions.scenario; see scenario.ts) */
+  scenario?: ScenarioState;
 }
 
 /**

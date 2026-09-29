@@ -54,3 +54,19 @@ export class ModelContractError extends SimulationError {
     this.method = method;
   }
 }
+
+/** One problem of a scenario: where it is (a path such as `waveforms.P_NBI_MW.points[2][0]`) and what is wrong. */
+export interface ScenarioIssue {
+  path: string;
+  message: string;
+}
+
+/** A scenario (JSON, share link, editor) is not valid, or does not fit the model it is attached to. */
+export class ScenarioError extends SimulationError {
+  readonly issues: readonly ScenarioIssue[];
+  constructor(issues: readonly ScenarioIssue[]) {
+    const shown = issues.slice(0, 3).map((i) => (i.path ? `${i.path}: ${i.message}` : i.message)).join('; ');
+    super(`invalid scenario: ${shown}${issues.length > 3 ? ` (and ${issues.length - 3} more)` : ''}`);
+    this.issues = issues;
+  }
+}

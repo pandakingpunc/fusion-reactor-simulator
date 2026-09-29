@@ -7,6 +7,7 @@
  * A digest names a run by its outputs (every number of every history frame and every event), for
  * comparing two runs cheaply.
  */
+import type { ScenarioSpec } from '../scenario';
 import type { ActuatorEntry, HistoryFrame, ReactorConfig, SimEvent } from '../types';
 import { canonicalString } from './canonical';
 import { Sha256, sha256Hex, utf8Encode } from './sha256';
@@ -22,10 +23,13 @@ export const FINGERPRINT_SCHEMA = 1;
  * @param appVersion  simulator version (e.g. package.json version) — a new version may change results
  * @param breakpoints optional user breakpoint schedule (SimulationOptions.breakpoints); an empty or
  *                    missing schedule does not enter the payload
+ * @param scenario    optional scenario (SimulationOptions.scenario, in its normalised form without the
+ *                    free label: Scenario.fingerprintForm()); missing or null does not enter the payload
+ *                    either, so the fingerprint of a run without a scenario is what it was before
  */
 export function runFingerprint(
   cfg: ReactorConfig, seed: number, actuatorLog: readonly ActuatorEntry[], appVersion: string,
-  breakpoints?: readonly number[],
+  breakpoints?: readonly number[], scenario?: ScenarioSpec | null,
 ): string {
   const payload: Record<string, unknown> = {
     kind: 'fusion-simulator-run',
@@ -36,6 +40,7 @@ export function runFingerprint(
     actuatorLog: actuatorLog.map((e) => ({ t: e.t, step: e.step, patch: e.patch })),
   };
   if (breakpoints && breakpoints.length) payload.breakpoints = [...breakpoints];
+  if (scenario) payload.scenario = scenario;
   return sha256Hex(canonicalString(payload));
 }
 

@@ -10,11 +10,13 @@ import { Simulation } from '../simulation';
 import { MagneticConfig } from '../types';
 
 describe('0D ignition state at a disruption', { timeout: 60_000 }, () => {
-  // ITER at H98 = 1.6 ignites at 16 s with β_N about 2 and keeps heating up: β_N crosses the Troyon limit
+  // ITER at H98 = 1.6 ignites at 15 s with β_N about 2 and keeps heating up: β_N crosses the Troyon limit
   // 3.5 at about 22 s, while the plasma is still ignited (NTMs off: a seeded NTM would end the burn first).
-  // n_target is the 1.0e20 m⁻³ volume average the ITER preset had before v4.0 re-based it to n̄/n_G = 0.85 (0.914e20):
-  // this scenario was set up with it (ignition at 15.5 s, β-limit at 21.5 s; at 0.914e20 it needs H98 = 1.8).
-  const cfg: MagneticConfig = { ...ITER, n_target: 1.0e20, H98: 1.6, events: { ...ITER.events, ntm: false }, t_end: 60 };
+  // The preset's n_target (0.914e20, n̄/n_G = 0.85) is the density of the scenario. It was set up with 1.0e20 (the density before v4.0
+  // re-based it), until the density controller of v4.0-ws2d followed the ramp of n_target 6 % more closely: at 1.0e20 the L-H
+  // threshold of this heating (P_LH ~ n̄^0.717, P_L within 2 % of it at 9-10 s) is then missed, the plasma stays in L-mode and
+  // collapses radiatively at 29 s.
+  const cfg: MagneticConfig = { ...ITER, H98: 1.6, events: { ...ITER.events, ntm: false }, t_end: 60 };
   const sim = new Simulation(cfg);
   const report = sim.runAll();
   const tIgn = sim.events.find((e) => e.kind === 'ignition')?.t;

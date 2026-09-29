@@ -47,7 +47,7 @@ import type { ElmEvents } from './events/elm';
 import type { EquilibriumInitFailure, StepFailure } from './failures';
 import type { TransportGeometry } from './geometry1d';
 import type { GsAttempt } from './eqguard';
-import { currentProfiles, equilibriumCurrentScale } from './qprofile';
+import { currentProfiles, equilibriumCurrentScale, matchEdgeCurrent } from './qprofile';
 import { defaultSources, SourceModel } from './sources';
 import { acceptStep } from './solver/acceptStep';
 import { CoupledStepper } from './solver/coupledStep';
@@ -193,6 +193,7 @@ export class ProfileModel implements SimModel {
       acc += ((scale * g.PhiB * rm) / (Math.PI * Math.max(qm, 0.3))) * (r1 - r0);
       psi[i] = acc;
     }
+    matchEdgeCurrent(ctx, psi, scale, Ip0);
     s.NHe = 0;
     s.cZ = c.impurity.concentration;
     s.fA = c.fuelFracA;

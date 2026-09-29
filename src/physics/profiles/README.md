@@ -19,7 +19,7 @@ current equilibrium and transport geometry, work arrays, plasma and controller s
 | `geometry1d.ts` | the radial grid (uniform, or packed towards the edge: `GridSpec`, `buildGrid`, `cellIndex`, `faceValue`, …) and the transport geometry on it, ρ̂ = √(Φ/Φ_b), from equilibrium tables (`EquilibriumTables`) |
 | `fvsolver.ts` | implicit finite-volume solvers (heat, density, current) with the reference state and explicit rate of a TR-BDF2 stage, their right-hand sides (`residual`, `rate`) and error-estimate filter, `boundaryLoss` (P_bound), the Pereverzev–Corrigan term of the heat solve; the current diffusion in the Hinton–Hazeltine form with the moving-coordinate term |
 | `composition.ts` | quasi-neutral composition; He ash, impurity and fuel-mix inventories |
-| `qprofile.ts` | ψ → ψ′, q, enclosed current, ⟨j·B⟩; q95; the scale that makes the initial ψ carry I_p (`equilibriumCurrentScale`) |
+| `qprofile.ts` | ψ → ψ′, q, enclosed current, ⟨j·B⟩; q95; the scale that makes the initial ψ carry I_p (`equilibriumCurrentScale`) and the edge of its current follow the equilibrium's table (`matchEdgeCurrent`) |
 | `settings.ts` | the check of the step-control settings: `rtol`, `atol` and `dtMax` outside their domain are replaced by the default and reported |
 | `boundary/sol.ts` | separatrix values (two-point T_sep, n_sep), lagged P_SOL |
 | `sources/` | `SourceModel` plug-ins: `nbi`, `rf`, `fusion`, `radiation`, `exchange`; `current.ts` (σ_neo, bootstrap, ohmic); `deposition.ts` (profiles, NBI chord). `fusion` evaluates every channel of the fuel with the helpers the 0D model uses (`pairDensity`, `burnPerReaction`, the products of `FUEL_CHANNELS`) |
@@ -269,9 +269,19 @@ the last interior face came out above I_p and the outermost cell carried a negat
 5·10⁻⁴ I_p; the uniform grid's cell swallowed the mismatch). The profile is scaled by I_p over that enclosed current (`equilibriumCurrentScale`;
 1 when the table gives no usable value), so the shape is the equilibrium's, the current is the boundary current, q of the initial state is
 0.1 % higher, and every cell of the t = 0 profile is positive (`initialCurrent.test.ts`: ITER15, JET15, SPARC15, DEMO15 and DIIID15 with both
-grids, SPARC15 at nRho 30). MASTU15 keeps a negative outermost cell at t = 0 (the base has it on the uniform grid too): the last interval of its
-surface table, ρ̂ 0.886 → 1, is too coarse for a q that diverges at the X-point, and the enclosed current stays above I_p at the last interior face
-after the scaling (1.003 I_p on the packed grid); a finer table (`nSurf`) is the fix and belongs to the coupling lane.
+grids, SPARC15 at nRho 30).
+
+The scale fixes the total only. The q the initial ψ′ is built from diverges towards the X-point and the metric coefficients that turn ψ′ into an
+enclosed current (V′, g₂) are splined on the same surface table, so the enclosed current of the state differs from the table's own by up to 10⁻³ I_p
+at ρ̂ 0.9 and 3·10⁻⁴ I_p at the edge of the packed grid (5·10⁻³ on the uniform grid, whose last cells are wide): as much as the current of the outermost
+cell, which held 2.4 (ITER15) to 3.7 (SPARC15) times its neighbour's once the coupling lane's edge-clustered 101-surface table was in, and on the
+uniform grid SPARC15 had a negative cell again. `matchEdgeCurrent` therefore moves the slope of ψ at the faces from ρ̂ = 0.9 to 0.97 (smoothstep
+weight, `EDGE_CURRENT_RAMP`) from the q-based value to the one that carries the table's enclosed current, `scale · eq.prof.Ienc` linearly interpolated
+in ρ̂ (smooth and bounded at the edge, unlike q), and integrates ψ again from there. Inside ρ̂ = 0.9 nothing changes, to the bit; beyond 0.97 the state
+carries the table's current at every face and the outermost cell its share of it (2.6·10⁻⁴ I_p on ITER15 instead of 5.8·10⁻⁴). A table that is not
+finite or not increasing in ρ̂ leaves ψ as it was. MASTU15 keeps a slightly negative outermost cell on the packed grid (−5·10⁻⁵ I_p, −4·10⁻³ in the
+frame's units; it was −0.22 with the 51-surface table): the enclosed current of its own table decreases over the last three nodes (1.00136, 1.00133,
+1.00130 I_p, the noise of the line integral against an edge current of 10⁻⁴), and a clamp of the current would only hide that.
 
 **The plasma current as the boundary condition** (`control/plasmaCurrent.ts`). I_p enters the stages at their ends: I_p(t + γΔt) in the first stage
 of a TR-BDF2 step, I_p(t + Δt) in the second, I_p(t) of the old state in the explicit rate; the state scalar `Ip` holds the value at the end of the last

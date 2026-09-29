@@ -132,7 +132,7 @@ const withHeating = (b: MagneticConfig, h: Partial<MagneticConfig['heating']>): 
 
 /** DIII-D on 0.5 MW of neutral beam and no ECRH: far too little power to leave L-mode */
 const HMODE_BASE = withHeating(dd, { P_NBI_MW: 0.5, P_ECRH_MW: 0 });
-/** DIII-D with a 1.0e20 m⁻³ setpoint (0.88 n_G for 1.6 MA); the density overshoots it to about 1.14e20 = n_G and disrupts at 1.2 s */
+/** DIII-D with a 1.0e20 m⁻³ setpoint (0.88 n_G for 1.6 MA); the density overshoots it to about 1.13e20 = n_G and disrupts at about 1.15 s (1.2 s before the Miller volume of ws2c) */
 const DENSITY_BASE: MagneticConfig = { ...dd, n_target: 1.0e20 };
 /** DIII-D with 30 MW of beam power: beta-limit disruption at 0.4 s */
 const BETA_BASE = withHeating(dd, { P_NBI_MW: 30 });
@@ -179,8 +179,9 @@ export const MISSIONS: Mission[] = [
     ],
     goals: [{ metric: 'noDisruption', op: '>=', target: 1 }, { metric: 'nbarMax', op: '>=', target: 0.5 }],
     solution: () => ({ density: 0.7 }),
-    // a small trim of the density is not enough
-    control: { density: 1.05 },
+    // a trim of 2 % is not enough: the 0D density overshoot puts the threshold between 0.97e20 (survives) and 0.98e20
+    // (disrupts at 1.9 s); 1.05e20 is an isolated survivor of the same knife edge, which is why it is not the control
+    control: { density: 0.98 },
     terms: ['greenwald', 'disruption', 'ip'],
   },
   {

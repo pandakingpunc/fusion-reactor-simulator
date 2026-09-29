@@ -742,6 +742,10 @@ export class MagneticModel implements SimModel {
         this.disruptCause = cause; this.tDisrupt = t; this.Wd = W;
         this.phase = this.isStell ? 'current_quench' : 'thermal_quench';
         this.tNextELM = Infinity;
+        // The burn ends with the quench: the ignition logic above runs in the normal phase only, so without this
+        // the flag would stay set through the quench frames (P_α = 0 there) and the report's ignition time would
+        // count them. The 1.5D model clears it at its disruption onset as well (profiles/events/disruption.ts).
+        this.ignited = false;
         ev.push({ t, kind: 'disruption', msg: `${this.isStell ? 'RADIATIVE COLLAPSE' : 'DISRUPTION'}: ${DISRUPTION_LABELS[cause]} — ${diag}` });
         this.diagText = diag;
       }

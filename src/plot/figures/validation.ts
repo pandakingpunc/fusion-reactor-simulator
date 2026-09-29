@@ -13,7 +13,20 @@ export interface ValidationRow {
   refText: string;
   v0D?: number;
   v15D?: number;
+  /**
+   * Published uncertainty range of the reference (same unit as `ref`), drawn as a band around the row's
+   * reference (ratio 1). Values must come from the reference itself, never from model output.
+   */
+  refLo?: number;
+  refHi?: number;
+  /** interval of the simulated value (e.g. a 5-95 % UQ interval), same unit as `ref`, drawn as an error bar */
+  v0DLo?: number;
+  v0DHi?: number;
+  v15DLo?: number;
+  v15DHi?: number;
 }
+
+const fin = (v: number | undefined): v is number => v !== undefined && Number.isFinite(v) && v > 0;
 
 export function figValidation(rows: ValidationRow[]): Figure {
   const n = rows.length;
@@ -24,6 +37,28 @@ export function figValidation(rows: ValidationRow[]): Figure {
   ax.axvspan(0.5, 2, { color: C.grey, alpha: 0.1, label: '×2' });
   ax.axvspan(1 / 1.3, 1.3, { color: C.grey, alpha: 0.22, label: '±30%' });
   ax.axvline(1, { color: C.black, lw: 0.6, dash: 'solid' });
+  // published uncertainty of the reference: a band around ratio 1 in each row that has one
+  let bandLabel: string | undefined = 'reference range';
+  rows.forEach((r, k) => {
+    if (!fin(r.refLo) || !fin(r.refHi) || !fin(r.ref)) return;
+    const a = Math.min(r.refLo, r.refHi) / r.ref, b = Math.max(r.refLo, r.refHi) / r.ref;
+    ax.polygon([a, b, b, a], [ys[k] - 0.36, ys[k] - 0.36, ys[k] + 0.36, ys[k] + 0.36], { fill: C.sky, alpha: 0.55, lw: 0, z: 0, label: bandLabel });
+    bandLabel = undefined;
+  });
+  // intervals of the simulated values: horizontal error bars with end caps
+  const errBars = (lo: (r: ValidationRow) => number | undefined, hi: (r: ValidationRow) => number | undefined, v: (r: ValidationRow) => number | undefined, dy: (r: ValidationRow) => number, color: string) => {
+    const bx: number[] = [], by: number[] = [], cx: number[] = [], cy: number[] = [];
+    rows.forEach((r, k) => {
+      const a = lo(r), b = hi(r);
+      if (!fin(v(r)) || !fin(a) || !fin(b) || !fin(r.ref)) return;
+      const y = ys[k] + dy(r);
+      bx.push(a / r.ref, b / r.ref, NaN); by.push(y, y, NaN);
+      for (const e of [a, b]) { cx.push(e / r.ref, e / r.ref, NaN); cy.push(y - 0.07, y + 0.07, NaN); }
+    });
+    if (bx.length) { ax.plot(bx, by, { color, lw: 0.7 }); ax.plot(cx, cy, { color, lw: 0.7 }); }
+  };
+  errBars((r) => r.v0DLo, (r) => r.v0DHi, (r) => r.v0D, (r) => (r.v15D !== undefined ? 0.13 : 0), C.blue);
+  errBars((r) => r.v15DLo, (r) => r.v15DHi, (r) => r.v15D, (r) => (r.v0D !== undefined ? -0.13 : 0), C.vermilion);
   const x0: number[] = [], y0: number[] = [], x1: number[] = [], y1: number[] = [];
   rows.forEach((r, k) => {
     if (r.v0D !== undefined && Number.isFinite(r.v0D)) { x0.push(r.v0D / r.ref); y0.push(ys[k] + (r.v15D !== undefined ? 0.13 : 0)); }

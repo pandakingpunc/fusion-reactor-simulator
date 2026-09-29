@@ -33,6 +33,33 @@ export interface PaperParams {
 /** Flat-top summary of one pooled discharge */
 export interface RunSummary { id: string; ok: boolean; error?: string; report?: ShotReport; avg?: Record<string, number>; ms?: number }
 
+/**
+ * Counters of the solvers that ran inside a 1.5D discharge (ProfileModel getters): accepted
+ * Grad–Shafranov updates after the initial solve (`eqUpdates`; an update whose every retry stage failed
+ * is not counted here but in `eqRejected`), the accepted ones that needed a later stage of the retry
+ * ladder (`eqRetried`), and transport steps that were forced at the smallest time step without Picard
+ * convergence (`forcedSteps`).
+ */
+export interface SolverCounters { eqUpdates: number; eqRetried: number; eqRejected: number; forcedSteps: number }
+
+export function solverCounters(m: SolverCounters): SolverCounters {
+  return { eqUpdates: m.eqUpdates, eqRetried: m.eqRetried, eqRejected: m.eqRejected, forcedSteps: m.forcedSteps };
+}
+
+const times = (n: number) => (n === 1 ? 'once' : `${n} times`);
+
+/** caption sentence: what the equilibrium coupling and the transport step had to do in the discharge */
+export function solverCountersText(c: SolverCounters): string {
+  const upd = `The equilibrium was re-solved ${times(c.eqUpdates)} after the initial solve (accepted Grad–Shafranov updates; ${c.eqRetried} of them only after a retry stage) and ${c.eqRejected} update${c.eqRejected === 1 ? ' was' : 's were'} rejected`;
+  const forced = c.forcedSteps === 0 ? 'no transport step had to be forced' : `${c.forcedSteps} transport step${c.forcedSteps === 1 ? ' was' : 's were'} forced at the smallest time step without Picard convergence`;
+  return `${upd}; ${forced}.`;
+}
+
+/** one-line form of the counters for the run log */
+export function solverCountersLine(c: SolverCounters): string {
+  return `${c.eqUpdates} GS updates accepted (${c.eqRetried} after a retry), ${c.eqRejected} rejected, ${c.forcedSteps} forced transport steps`;
+}
+
 export interface MainRun {
   sim: Simulation; model: ProfileModel; report: ShotReport; avg: Record<string, number>;
   saw?: CrashRecord; elm?: CrashRecord; zoom: ElmZoom; ms: number;
@@ -192,7 +219,7 @@ export const PAPER_FIGURES: readonly Spec[] = [
       const last = profileFrame(sim.history)!;
       return {
         fig: figEquilibrium({ eq: model.eq, rho: last.prof!.rho, Te: last.prof!.Te, label: `ITER 1.5D, t = ${last.t.toFixed(0)} s` }),
-        caption: `Magnetic equilibrium. (a) Fixed-boundary Grad–Shafranov solution of the ITER 1.5D discharge at t = ${last.t.toFixed(0)} s (${model.eq.grid.NR}×${model.eq.grid.NZ} grid, Shortley–Weller boundary treatment) coloured by T_e; white: flux surfaces at ρ_tor = 0.2, 0.4, 0.6, 0.8, black: LCFS, +: magnetic axis (Shafranov shift ${(model.eq.shafranovShift * 100).toFixed(0)} cm). (b) Cerfon–Freidberg analytic single-null Solov'ev equilibrium (ε = 0.32, κ = 1.7, δ = 0.33) with separatrix, X-point and scrape-off layer; used for verification (Fig. 7a). (c) Safety factor, magnetic shear and exact trapped-particle fraction from flux-surface averages; q95 = ${model.eq.q95.toFixed(2)}, ℓ_i(3) = ${model.eq.li3.toFixed(2)}, β_p = ${model.eq.betaP.toFixed(2)}.`,
+        caption: `Magnetic equilibrium. (a) Fixed-boundary Grad–Shafranov solution of the ITER 1.5D discharge at t = ${last.t.toFixed(0)} s (${model.eq.grid.NR}×${model.eq.grid.NZ} grid, Shortley–Weller boundary treatment) coloured by T_e; white: flux surfaces at ρ_tor = 0.2, 0.4, 0.6, 0.8, black: LCFS, +: magnetic axis (Shafranov shift ${(model.eq.shafranovShift * 100).toFixed(0)} cm). (b) Cerfon–Freidberg analytic single-null Solov'ev equilibrium (ε = 0.32, κ = 1.7, δ = 0.33) with separatrix, X-point and scrape-off layer; used for verification (Fig. 7a). (c) Safety factor, magnetic shear and exact trapped-particle fraction from flux-surface averages; q95 = ${model.eq.q95.toFixed(2)}, ℓ_i(3) = ${model.eq.li3.toFixed(2)}, β_p = ${model.eq.betaP.toFixed(2)}. ${solverCountersText(solverCounters(model))}`,
       };
     },
   },

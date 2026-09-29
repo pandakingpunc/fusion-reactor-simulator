@@ -10,7 +10,7 @@ import { Ticks, linearTicks, logTicks } from './ticks';
 import { OKABE_ITO, colormap } from './colors';
 import { contourLines } from './contour';
 import { SvgOptions, toSVG } from './svg';
-import { PdfOptions, toPDF } from './pdf';
+import { PdfOptions, toPDF, toPDFDocument } from './pdf';
 import type { FontSet } from './fonts';
 
 export type Dash = number[] | 'solid' | 'dashed' | 'dotted' | 'dashdot';
@@ -654,4 +654,14 @@ export class Figure {
   get title(): string | undefined { return this.o.title; }
   toSVG(o: FigureRenderOptions & Omit<SvgOptions, 'title'>): string { const { fonts, ...rest } = o; return toSVG(this.render(fonts), { ...rest, title: this.o.title }); }
   toPDF(o: FigureRenderOptions & Omit<PdfOptions, 'title'>): Uint8Array { const { fonts, ...rest } = o; return toPDF(this.render(fonts), { ...rest, title: this.o.title }); }
+}
+
+/**
+ * One multi-page PDF from several figures (one page per figure, each page as large as its figure).
+ * The pages share one embedded font subset per face (see toPDFDocument); the document title is the
+ * given one or, when none is given, the title of the first figure.
+ */
+export function figuresToPDF(figs: readonly Figure[], o: FigureRenderOptions & PdfOptions): Uint8Array {
+  const { fonts, ...rest } = o;
+  return toPDFDocument(figs.map((f) => f.render(fonts)), { ...rest, title: rest.title ?? figs[0]?.title });
 }

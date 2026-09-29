@@ -239,3 +239,45 @@ describe('library build', { timeout: 300_000 }, () => {
     expect(node([join(ROOT, 'scripts', 'build-lib.mjs'), '--out'], { cwd: ROOT }).code).toBe(2);
   });
 });
+
+describe('build-lib root-URL plugin', { timeout: 120_000 }, () => {
+  const FIX = mkdtempSync(join(tmpdir(), 'fusion-lib-root-'));
+  afterAll(() => rmSync(FIX, { recursive: true, force: true }));
+
+  // Vite's asset plugin resolves `new URL('../../', import.meta.url)`; for a directory it follows package.json `main`.
+  // After the exports patch of package.json (main -> build/lib/index.cjs) and with an earlier build on disk that inlined
+  // the whole bundle as a data: URL and the compiled CLI died at start-up. Reproduced here on a fixture package.
+  it('the package root expression of provenance.ts survives a package.json with `main` and an existing bundle', () => {
+    mkdirSync(join(FIX, 'src', 'cli'), { recursive: true });
+    mkdirSync(join(FIX, 'out'), { recursive: true });
+    writeFileSync(join(FIX, 'package.json'), JSON.stringify({ name: 'fixture', version: '1.0.0', type: 'module', main: './out/index.cjs', module: './out/index.js' }));
+    writeFileSync(join(FIX, 'out', 'index.cjs'), 'module.exports = { earlier: "build" };\n');
+    writeFileSync(join(FIX, 'src', 'cli', 'provenance.ts'), "import { fileURLToPath } from 'node:url';\nexport const ROOT = fileURLToPath(new URL('../../', import.meta.url));\n");
+    writeFileSync(join(FIX, 'src', 'cli', 'entry.ts'), "import { ROOT } from './provenance';\nconsole.log(ROOT);\n");
+    const vite = pathToFileURL(join(ROOT, 'node_modules', 'vite', 'dist', 'node', 'index.js')).href;
+    const plugins = pathToFileURL(join(ROOT, 'scripts', 'build-lib.plugins.mjs')).href;
+    const p = join(FIX, 'root-url.mjs');
+    writeFileSync(p, `
+      import { build } from ${JSON.stringify(vite)};
+      import { rootUrlPlugin } from ${JSON.stringify(plugins)};
+      const code = async (plugins) => {
+        const out = await build({ root: ${JSON.stringify(FIX)}, configFile: false, logLevel: 'silent', publicDir: false, plugins,
+          build: { write: false, minify: false, lib: { entry: ${JSON.stringify(join(FIX, 'src', 'cli', 'entry.ts'))}, formats: ['es'], fileName: 'entry' }, rollupOptions: { external: [/^node:/] } } });
+        return [out].flat().flatMap((o) => o.output).map((c) => c.code ?? '').join(' ');
+      };
+      console.log(JSON.stringify({ plain: (await code([])).includes('data:'), patched: await code([rootUrlPlugin]) }));
+    `);
+    const r = node([p], { cwd: ROOT });
+    expect(r.err).toBe('');
+    expect(r.code).toBe(0);
+    const o = JSON.parse(r.out) as { plain: boolean; patched: string };
+    expect(o.patched).not.toMatch(/data:/);
+    expect(o.patched).toContain(`new URL("../../", import.meta["url"])`);
+    // the bundle the fixture protects against: the mechanism must still be there for the guard to mean something
+    if (!o.plain) console.warn('build-lib root-URL plugin: this Vite no longer inlines a directory URL through package.json main; the plugin may be removable');
+  });
+
+  it('the real provenance.ts still has the expression the plugin rewrites (the build fails loudly otherwise)', () => {
+    expect(readFileSync(join(ROOT, 'src', 'cli', 'provenance.ts'), 'utf8')).toContain("new URL('../../', import.meta.url)");
+  });
+});

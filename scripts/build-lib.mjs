@@ -20,6 +20,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, chmodSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { rootUrlPlugin } from './build-lib.plugins.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const MARKER = '.fusion-sim-lib';
@@ -51,8 +52,8 @@ function prepare(dir) {
 }
 
 const { build, createLogger } = await import('vite');
-// Vite cannot resolve `new URL('../../', import.meta.url)` of src/cli/provenance.ts at build time and says so; it is
-// resolved at run time on purpose (the package root next to the bundle), so that one message is dropped
+// Vite cannot resolve `new URL('../../', import.meta.url)` of src/cli/provenance.ts at build time and says so (unless rootUrlPlugin has rewritten it, see
+// build-lib.plugins.mjs); it is resolved at run time on purpose (the package root next to the bundle), so that one message is dropped
 const logger = createLogger('warn');
 const warn = logger.warn.bind(logger);
 const warnOnce = logger.warnOnce.bind(logger);
@@ -69,6 +70,7 @@ async function bundle(entries, format, { inline = false, external = [/^node:/] }
     logLevel: 'warn',
     customLogger: logger,
     publicDir: false,
+    plugins: [rootUrlPlugin],
     build: {
       outDir: OUT,
       emptyOutDir: false,

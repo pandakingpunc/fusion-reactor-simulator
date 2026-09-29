@@ -39,6 +39,7 @@
     "dev": "vite",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "build:lib": "node scripts/build-lib.mjs",
+    "check:bundle": "node scripts/check-bundle.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "coverage": "vitest run --coverage --testTimeout=30000",

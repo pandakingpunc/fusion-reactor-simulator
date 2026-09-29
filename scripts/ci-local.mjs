@@ -14,6 +14,9 @@ const steps = [
   ['unit tests', 'npx', ['vitest', 'run']],
   ['validation', 'npm', ['run', 'validate', '--', '--threads', '4']],
   ['golden regression', 'npm', ['run', 'golden', '--', '--threads', '4']],
+  // the main chunk is what a first visit waits for; the check reads dist/index.html, so it needs a build first
+  ['build', 'npm', ['run', 'build']],
+  ['main chunk within budget', 'npm', ['run', 'check:bundle']],
 ];
 
 const t0 = Date.now();

@@ -46,7 +46,8 @@ npm run dev        # user interface (Vite) → http://localhost:5173
 npm test           # unit, CLI and fast golden-regression tests (vitest)
 npm run validate   # 21 presets, 42 literature checks (7 documented known failures), on a worker pool (~45 s)
 npm run golden     # golden regression: 30 cases compared with test/golden (~12 s on 4 threads)
-npm run ci:local   # type check + schema check + tests + validate + golden, in sequence, stops at the first failure
+npm run ci:local   # type check + schema check + tests + validate + golden + build + bundle budget, in sequence, stops at the first failure
+npm run check:bundle  # after a build: fails when the main JS chunk is above 250 kB (85 kB gzip)
 npm run figures    # paper figures → docs/figures/*.svg|pdf + captions.md (~1 MB, ~55 s)
 npm run build      # type check + production build
 npm run build:lib  # the library and the fusion-sim command line -> build/lib (ESM + CommonJS, declarations)

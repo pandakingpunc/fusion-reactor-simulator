@@ -56,3 +56,7 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # The main chunk is what a first visit waits for (budget 250 kB, 85 kB gzip; scripts/check-bundle.mjs).
+      - name: Main chunk within budget
+        run: npm run check:bundle

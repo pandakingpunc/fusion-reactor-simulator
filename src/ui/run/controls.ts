@@ -1,5 +1,6 @@
 /** Canlı müdahale kaydırıcıları için bilinen kontrol anahtarlarının etiket/aralıkları. */
 import { MessageKey, Translate } from '../../i18n';
+import { DiagSpec } from '../../physics/types';
 import { fmtNum } from '../format';
 
 export interface CtrlDef {
@@ -63,6 +64,31 @@ export const sliderStep = (s: Slider) => (s.log ? 0.01 : s.step);
 
 /** KPI olarak öncelikli gösterilecek diagnostik anahtarları (mevcutsa) */
 export const KPI_PREF = ['Ti', 'Te', 'ne', 'P_fus', 'P_aux', 'P_rad', 'Q', 'tauE', 'betaN', 'q95', 'nG_frac', 'fHe', 'Zeff', 'rhoR', 'C', 'B', 'Yf', 'Rm', 'beta', 'Efus_MJ', 'Nn'];
+/** headline KPIs shown at once (the rest of KPI_PREF is for the methods that lack the first ones) */
+export const KPI_HEADLINE_MAX = 12;
+
+/**
+ * Power balance and energy content of a magnetic plasma, in a collapsible block under the headline KPIs.
+ * P_cond is the continuous conduction only in 0D (P_cond + P_ELM = P_transport); in 1.5D `P_cond` is
+ * W/τ_E, so the ELM-free split appears in 0D only. `dWdt_s` is the 1.5D name of the smoothed dW/dt.
+ */
+export const KPI_DETAIL = [
+  'P_alpha', 'P_beam_heat', 'P_rad_core', 'P_transport', 'P_cond', 'P_ELM', 'P_ei', 'P_loss', 'dWdt', 'dWdt_s', 'P_bound',
+  'W', 'Wf', 'W_alpha', 'W_beam', 'nbar', 'betaN_th', 'ignited',
+];
+/** yes/no diagnostics (0 or 1): shown as words, not as numbers */
+export const KPI_FLAGS: ReadonlySet<string> = new Set(['ignited']);
+
+export interface Kpi { key: string; spec: DiagSpec; v: number }
+
+/** The KPIs of a frame: the headline block and the power-balance block (only keys that have a spec and a value). */
+export function selectKpis(specs: readonly DiagSpec[], d: Record<string, number>): { headline: Kpi[]; detail: Kpi[] } {
+  const byKey = new Map(specs.map((s) => [s.key, s]));
+  const pick = (keys: readonly string[], exclude: ReadonlySet<string> = new Set()): Kpi[] =>
+    keys.filter((k) => byKey.has(k) && d[k] !== undefined && !exclude.has(k)).map((k) => ({ key: k, spec: byKey.get(k)!, v: d[k] }));
+  const headline = pick(KPI_PREF).slice(0, KPI_HEADLINE_MAX);
+  return { headline, detail: pick(KPI_DETAIL, new Set(headline.map((h) => h.key))) };
+}
 
 export const SPEEDS = [0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 100];
 

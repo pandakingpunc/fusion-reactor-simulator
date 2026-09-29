@@ -102,6 +102,8 @@ label.field .lbl .unit { font-family: var(--mono); }
 .kpi .v { font-family: var(--mono); font-size: 15px; }
 .kpi .u { font-size: 10px; color: var(--muted); margin-left: 5px; }
 .kpi .u:not(:empty)::before { content: '·'; margin-right: 3px; opacity: 0.6; }
+.kpi-more { margin-top: 8px; }
+.kpi-more > summary { cursor: pointer; margin-bottom: 6px; }
 .chart-wrap { position: relative; background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; }
 .chart-wrap canvas { display: block; width: 100%; }
 .chart-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; padding: 4px 8px; font-size: 11px; font-family: var(--mono); }

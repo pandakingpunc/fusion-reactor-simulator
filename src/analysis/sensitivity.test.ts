@@ -169,6 +169,38 @@ describe('Sobol indices of other analytic models', () => {
   });
 });
 
+describe('shift invariance of the estimators (regression: un-centred products)', () => {
+  // y = shift + 2 x1 + x2 + 0.5 x3 with x_i ~ U(0, 1): S_i = ST_i = c_i^2 / (4 + 1 + 0.25)
+  const coef = [2, 1, 0.5];
+  const truth = coef.map((c) => (c * c) / coef.reduce((a, b) => a + b * b, 0));
+  const dists: DistSpec[] = coef.map(() => ({ type: 'uniform', lo: 0, hi: 1 }));
+  const run = (shift: number, sampler: SamplerKind, seed: number, first: 'saltelli' | 'jansen', total: 'jansen' | 'sobol') =>
+    sobolIndicesOfFunction((x) => shift + coef[0] * x[0] + coef[1] * x[1] + coef[2] * x[2], dists, 256, { sampler, designSeed: seed, first, total, resamples: 0 });
+
+  it('a large constant offset of the output leaves every estimator unchanged (mc, lhs, sobol)', () => {
+    for (const sampler of ['mc', 'lhs', 'sobol'] as SamplerKind[]) {
+      for (const seed of [1, 2, 3]) {
+        for (const [first, total] of [['saltelli', 'sobol'], ['saltelli', 'jansen'], ['jansen', 'jansen']] as const) {
+          const a = run(0, sampler, seed, first, total), b = run(1000, sampler, seed, first, total);
+          for (let i = 0; i < 3; i++) {
+            expect(Math.abs(b.first[i] - a.first[i])).toBeLessThan(1e-8);
+            expect(Math.abs(b.total[i] - a.total[i])).toBeLessThan(1e-8);
+          }
+        }
+      }
+    }
+  });
+
+  it('with the offset 1000 the plain Monte Carlo first-order index stays near the truth at n = 256', () => {
+    let err = 0, cnt = 0;
+    for (let seed = 1; seed <= 20; seed++) {
+      const r = run(1000, 'mc', seed, 'saltelli', 'sobol');
+      for (let i = 0; i < 3; i++) { err += Math.abs(r.first[i] - truth[i]); cnt++; }
+    }
+    expect(err / cnt).toBeLessThan(0.08);
+  });
+});
+
 describe('Sobol indices from raw outputs', () => {
   it('drop the rows with a non-finite output and report how many were used', () => {
     const n = 256, d = 2;

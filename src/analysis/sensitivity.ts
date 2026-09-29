@@ -9,11 +9,12 @@
  * AB_i equals A except that column i is taken from B. The model is run on the (d + 2) n rows in the order
  * A, B, AB_1, ..., AB_d (block k occupies rows k n ... (k+1) n - 1).
  *
- * Estimators, with Var the variance and f0 the mean of the pooled outputs f(A) and f(B), all sums over the n rows j:
+ * Estimators, with Var the variance and f0 the mean of the pooled outputs f(A) and f(B), all sums over the n rows j and all outputs centred
+ * by f0 in the products (f -> f - f0; the Jansen forms are unaffected):
  *   first-order S_i, 'saltelli' (Saltelli et al. 2010, eq. (b) of table 2):  (1/n) Σ f(B)_j (f(AB_i)_j - f(A)_j) / Var
  *   first-order S_i, 'jansen'   (M. J. W. Jansen 1999, Comput. Phys. Commun. 117, 35):  1 - (1/2n) Σ (f(B)_j - f(AB_i)_j)^2 / Var
  *   total ST_i, 'jansen'  (default; Jansen 1999, recommended by Saltelli et al. 2010): (1/2n) Σ (f(A)_j - f(AB_i)_j)^2 / Var
- *   total ST_i, 'sobol'   (Sobol' 2001, Math. Comput. Simul. 55, 271; Saltelli et al. 2010, table 2):  1 - ((1/n) Σ f(A)_j f(AB_i)_j - f0^2) / Var
+ *   total ST_i, 'sobol'   (Sobol' 2001, Math. Comput. Simul. 55, 271; Saltelli et al. 2010, table 2):  1 - (1/n) Σ (f(A)_j - f0)(f(AB_i)_j - f0) / Var
  * S_i is the fraction of the output variance that varies with parameter i alone, ST_i the fraction that involves i at
  * all (main effect plus every interaction); ST_i >= S_i, and a large gap flags interactions.
  *
@@ -132,14 +133,16 @@ function estimate(blocks: Float64Array[], d: number, m: number, idx: Int32Array 
     const fAB = blocks[2 + i];
     let sB = 0, sJ1 = 0, sJT = 0, sAA = 0;
     for (let k = 0; k < m; k++) {
-      const a = at(fA, k), b = at(fB, k), ab = at(fAB, k);
+      // Centred outputs (the pooled mean f0 removed): the Saltelli first-order and Sobol' total estimators are products
+      // of outputs, whose sampling noise grows with f0 / sd when the outputs are not centred (SALib centres likewise).
+      const a = at(fA, k) - mean, b = at(fB, k) - mean, ab = at(fAB, k) - mean;
       sB += b * (ab - a);
       sJ1 += (b - ab) * (b - ab);
       sJT += (a - ab) * (a - ab);
       sAA += a * ab;
     }
     first.push(variance > 0 ? (fo === 'saltelli' ? sB / m : variance - sJ1 / (2 * m)) / variance : NaN);
-    total.push(variance > 0 ? (to === 'jansen' ? sJT / (2 * m) : variance - (sAA / m - mean * mean)) / variance : NaN);
+    total.push(variance > 0 ? (to === 'jansen' ? sJT / (2 * m) : variance - sAA / m) / variance : NaN);
   }
   return { first, total, mean, variance };
 }

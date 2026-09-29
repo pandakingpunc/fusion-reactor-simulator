@@ -79,6 +79,28 @@ describe('decimateIndices', () => {
     expect(kept.some((i) => i >= 5000 && i < 5600)).toBe(false);
   });
 
+  it('keeps both edge samples and the samples inside a short gap that lies in the middle of a bucket', () => {
+    // a monotone series has its bucket extremes at the bucket ends, so an edge sample in the middle of a
+    // bucket is kept only by the gap rule; the gap here is 4 samples wide, well off every bucket boundary
+    const n = 10000;
+    const t = linspace(0, 10, n);
+    const y = Float64Array.from(t, (x) => x);
+    for (let i = 5003; i <= 5006; i++) y[i] = NaN;
+    const idx = decimateIndices(t, [y], { maxPoints: 100 });
+    expect(idx.length).toBeLessThan(200);
+    for (const i of [5002, 5007]) expect(idx, `edge sample ${i}`).toContain(i);
+    // the gap is still a gap: no kept sample invents a finite value inside it
+    const kept = idx.filter((i) => i >= 5003 && i <= 5006);
+    for (const i of kept) expect(Number.isNaN(y[i])).toBe(true);
+    // a gap that opens at the start of the series, and one that closes at its end
+    const y2 = Float64Array.from(t, (x) => x);
+    y2[0] = NaN; y2[1] = NaN;
+    y2[n - 2] = NaN;
+    const idx2 = decimateIndices(t, [y2], { maxPoints: 100 });
+    expect(idx2).toContain(2);
+    expect(idx2).toContain(n - 3);
+  });
+
   it('handles a series that is not ordered in time (a rewound history) by index buckets, and constant time', () => {
     const n = 5000;
     const t = Float64Array.from({ length: n }, (_, i) => (i < 2500 ? i : 4999 - i)); // goes up, then back down

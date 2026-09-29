@@ -111,6 +111,24 @@ describe('figViolin', () => {
     expect(svgOf(fig)).not.toMatch(/NaN|Infinity/);
   });
 
+  it('a reference that is not positive on a log axis is not drawn (no NaN in the SVG or the PDF); on a linear axis it is', () => {
+    const samples = [1, 2, 3, 4, 5, 6];
+    // the PDF content streams are compressed or not; the text of the file is checked as latin1 either way
+    const pdfText = (f: ReturnType<typeof figViolin>) => Buffer.from(f.toPDF({ fonts, version: 'test', configHash: 'test' })).toString('latin1');
+    for (const ref of [0, -3, -1e-9]) {
+      const fig = figViolin([{ label: 'y', log: true, groups: [{ name: 'g', samples }], ref, refLabel: 'ref' }]);
+      expect(svgOf(fig), `log ref ${ref}`).not.toMatch(/NaN|Infinity/);
+      expect(pdfText(fig), `log ref ${ref}`).not.toMatch(/NaN|Infinity/);
+      expect(svgOf(fig)).not.toContain('<tspan>ref</tspan>'); // no legend entry for a line that is not drawn
+      expect(fig.axes[0].opts.ylim![0]).toBeGreaterThan(0); // the axis range is not pulled to the reference
+    }
+    const ok = figViolin([{ label: 'y', log: true, groups: [{ name: 'g', samples }], ref: 3, refLabel: 'ref' }]);
+    expect(svgOf(ok)).toContain('<tspan>ref</tspan>');
+    const lin = figViolin([{ label: 'y', groups: [{ name: 'g', samples }], ref: -3, refLabel: 'ref' }]);
+    expect(svgOf(lin)).toContain('<tspan>ref</tspan>');
+    expect(lin.axes[0].opts.ylim![0]).toBeLessThan(-3);
+  });
+
   it('a reference outside the ensemble stays on the axis; no panels renders an empty axes; layout grows with the rows', () => {
     const fig = figViolin([{ label: 'x', groups: [{ name: 'g', samples: Q }], ref: 100 }]);
     expect(fig.axes[0].opts.ylim![1]).toBeGreaterThanOrEqual(100);

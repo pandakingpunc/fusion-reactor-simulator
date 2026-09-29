@@ -143,11 +143,13 @@ export function figViolin(panels: readonly ViolinPanel[], o: ViolinOptions = {})
         ax.plot([x], [q50], { marker: 'o', ms: 2.8, color: C.black, mfc: '#ffffff', lw: 0, z: 4 });
       }
     });
-    if (p.ref !== undefined && Number.isFinite(p.ref)) ax.axhline(p.ref, { color: C.vermilion, lw: 0.8, dash: 'dashed', label: p.refLabel ?? 'reference' });
+    // a reference on a log axis has to be positive (the same condition as for the y range below)
+    const refOk = p.ref !== undefined && Number.isFinite(p.ref) && (!p.log || p.ref > 0);
+    if (refOk) ax.axhline(p.ref!, { color: C.vermilion, lw: 0.8, dash: 'dashed', label: p.refLabel ?? 'reference' });
     const ns = sorted.map((s) => s.length);
     // y range: the samples and the reference value (a reference outside the ensemble stays on the axis)
     const all = sorted.flatMap((s) => (s.length ? [s[0], s[s.length - 1]] : []));
-    if (p.ref !== undefined && Number.isFinite(p.ref) && (!p.log || p.ref > 0)) all.push(p.ref);
+    if (refOk) all.push(p.ref!);
     let ylim: [number, number] | undefined;
     if (all.length) {
       const a = Math.min(...all), b = Math.max(...all);
@@ -158,7 +160,7 @@ export function figViolin(panels: readonly ViolinPanel[], o: ViolinOptions = {})
       ylim, xlim: [0.4, ng + 0.6], xticks: p.groups.map((_, i) => i + 1), xticklabels: p.groups.map((g) => g.name), yscale: p.log ? 'log' : 'linear',
       ylabel: fmtUnit(p.label, p.unit),
     }).panelLabel(`(${String.fromCharCode(97 + (pi % 26))})`);
-    if (p.ref !== undefined && Number.isFinite(p.ref) && p.refLabel) ax.legend({ loc: 'upper right', size: 6.5 });
+    if (refOk && p.refLabel) ax.legend({ loc: 'upper right', size: 6.5 });
     if (ns.length && ns.every((n) => n === ns[0])) ax.text(0.97, 0.03, `$n$ = ${ns[0]}`, { coords: 'axes', anchor: 'end', size: 6.5, color: C.grey });
   });
   return fig;

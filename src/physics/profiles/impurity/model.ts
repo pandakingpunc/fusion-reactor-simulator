@@ -458,21 +458,23 @@ export class ImpurityModel implements SourceModel {
   // ---------------------------------------------------------------------------------------------------- checkpoint
 
   save(rec: CheckpointRecord, aux: CheckpointAux): void {
-    rec.imp_tNeo = this.tNeo; rec.imp_ash = this.ashTotal; rec.imp_pumped = this.pumped; rec.imp_elmOut = this.elmOut; rec.imp_Wsrc = this.lastWsrc;
-    for (let k = 0; k < this.nSp; k++) { rec[`imp_Nsrc${k}`] = this.Nsrc[k]; rec[`imp_Nout${k}`] = this.Nout[k]; rec[`imp_N0${k}`] = this.N0[k]; rec[`imp_out${k}`] = this.lastOut[k]; rec[`imp_m${k}`] = this.mult[k]; rec[`imp_remap${k}`] = this.Nremap[k]; }
-    aux.impNeo = this.neo.map((t) => ({ D: t.D.slice(), K: t.K.slice(), H: t.H.slice() }));
+    rec.impurity_tNeo = this.tNeo; rec.impurity_ash = this.ashTotal; rec.impurity_pumped = this.pumped; rec.impurity_elmOut = this.elmOut; rec.impurity_Wsrc = this.lastWsrc;
+    for (let k = 0; k < this.nSp; k++) { rec[`impurity_Nsrc${k}`] = this.Nsrc[k]; rec[`impurity_Nout${k}`] = this.Nout[k]; rec[`impurity_N0${k}`] = this.N0[k]; rec[`impurity_out${k}`] = this.lastOut[k]; rec[`impurity_m${k}`] = this.mult[k]; rec[`impurity_remap${k}`] = this.Nremap[k]; }
+    aux.impurity_neo = this.neo.map((t) => ({ D: t.D.slice(), K: t.K.slice(), H: t.H.slice() }));
+    // An adoption can precede the next advance or crash. Preserve the old immutable geometry so that syncGeometry books its pending content change after rewind.
+    aux.impurity_tgSeen = this.tgSeen;
   }
 
   restore(rec: Readonly<CheckpointRecord>, aux: Readonly<CheckpointAux> | undefined): void {
-    this.tNeo = recNum(rec, 'imp_tNeo', NEVER);
-    this.ashTotal = recNum(rec, 'imp_ash', 0); this.pumped = recNum(rec, 'imp_pumped', 0);
-    this.elmOut = recNum(rec, 'imp_elmOut', 0); this.lastWsrc = recNum(rec, 'imp_Wsrc', 0);
+    this.tNeo = recNum(rec, 'impurity_tNeo', NEVER);
+    this.ashTotal = recNum(rec, 'impurity_ash', 0); this.pumped = recNum(rec, 'impurity_pumped', 0);
+    this.elmOut = recNum(rec, 'impurity_elmOut', 0); this.lastWsrc = recNum(rec, 'impurity_Wsrc', 0);
     for (let k = 0; k < this.nSp; k++) {
-      this.Nsrc[k] = recNum(rec, `imp_Nsrc${k}`, 0); this.Nout[k] = recNum(rec, `imp_Nout${k}`, 0);
-      this.N0[k] = recNum(rec, `imp_N0${k}`, 0); this.lastOut[k] = recNum(rec, `imp_out${k}`, 0); this.mult[k] = recNum(rec, `imp_m${k}`, 1); this.Nremap[k] = recNum(rec, `imp_remap${k}`, 0);
+      this.Nsrc[k] = recNum(rec, `impurity_Nsrc${k}`, 0); this.Nout[k] = recNum(rec, `impurity_Nout${k}`, 0);
+      this.N0[k] = recNum(rec, `impurity_N0${k}`, 0); this.lastOut[k] = recNum(rec, `impurity_out${k}`, 0); this.mult[k] = recNum(rec, `impurity_m${k}`, 1); this.Nremap[k] = recNum(rec, `impurity_remap${k}`, 0);
     }
-    this.tgSeen = this.ctx.tg; // the context part of the checkpoint restored its equilibrium first
-    const saved = aux?.impNeo as { D: Float64Array; K: Float64Array; H: Float64Array }[] | undefined;
+    this.tgSeen = (aux?.impurity_tgSeen as TransportGeometry | null | undefined) ?? this.ctx.tg;
+    const saved = aux?.impurity_neo as { D: Float64Array; K: Float64Array; H: Float64Array }[] | undefined;
     if (saved && saved.length === this.nSp) {
       saved.forEach((t, k) => { this.neo[k].D.set(t.D); this.neo[k].K.set(t.K); this.neo[k].H.set(t.H); });
     } else this.tNeo = NEVER; // a record from elsewhere: the table is rebuilt at the next step

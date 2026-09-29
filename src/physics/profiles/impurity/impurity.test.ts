@@ -577,6 +577,30 @@ describe('the MHD event models reach every species (call sites of elm.ts, sawtoo
 });
 
 describe('FACIT table, checkpoint', () => {
+  it('a checkpoint between geometry adoption and the next impurity call keeps the pending particle-balance booking', () => {
+    const h = harness({ impurityTransport: 'facit' });
+    h.analytic(1.0); h.ctx.lastDiag.tauE = 2.0;
+    for (let n = 0; n < 10; n++) h.imp.accepted(h.ctx, n * 0.5, 0.5, h.st, h.st);
+    const old = h.ctx.tg;
+    const dV = Float64Array.from(old.dV, (x, i) => x * (1 + 0.02 * Math.sin(i)));
+    h.ctx.adoptGeometry({ eq: h.ctx.eq, tg: { ...old, dV } });
+    const before = Float64Array.from(h.y);
+    const rec: Record<string, number> = {}, aux: Record<string, unknown> = {};
+    h.imp.save(rec, aux);
+    expect(Object.keys(rec).every((key) => key.startsWith('impurity_'))).toBe(true);
+    expect(Object.keys(aux).every((key) => key.startsWith('impurity_'))).toBe(true);
+    h.imp.accepted(h.ctx, 5, 0.5, h.st, h.st);
+    h.y.set(before);
+    h.imp.restore(rec, aux);
+    expect(h.imp.Nremap[1]).toBe(0);
+    const b = h.imp.block(h.st.s, 1);
+    let pending = 0;
+    for (let i = 0; i < h.N; i++) pending += b[i] * (dV[i] - old.dV[i]);
+    expect(Math.abs(pending) / h.imp.N0[1]).toBeGreaterThan(1e-6);
+    h.imp.accepted(h.ctx, 5, 0.5, h.st, h.st);
+    expect(h.imp.Nremap[1] / pending).toBeCloseTo(1, 12);
+  });
+
   it('the FACIT table is refreshed every NEO_REFRESH seconds of plasma time, not every step, and is what the convection is formed from', () => {
     const h = harness({ impurityTransport: 'facit' });
     h.ctx.lastDiag.tauE = 2.0;

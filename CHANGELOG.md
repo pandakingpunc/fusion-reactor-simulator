@@ -252,6 +252,26 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   `fusion-sim run --scenario FILE` runs a shot under a scenario file: every problem of the file is listed with its path
   (exit 2), the JSON output carries the normalised scenario and `provenance.scenarioSha256`, and the run fingerprint of
   every format covers the scenario.
+- Systems-lite engineering package `src/physics/systems/` (v4.0): TF coil, central-solenoid flux budget, cryoplant, radial
+  build with neutron attenuation, TBR fit and the PROCESS 1990 cost accounts; `src/physics/engineering.ts` is now a
+  facade over it with the v3 API unchanged (`MAGNET_TECH`, `checkMagnet`, `economics`, `neutronWallLoad`,
+  `tritiumBreedingRatio`). The shot report of the magnetic models runs it on the flat-top means (`assessSystems`).
+  Optional configuration block `MagneticConfig.systems` (`pulseLength_s`, `tf`, `cs`, `blanket`; every field
+  optional), in the runtime validation and in `schema/fusion-sim.schema.json`. The library barrel exports the models as
+  `@experimental` (`assessSystems`, `systemsReportKeys`, `tfCoil`, `fluxBudget`, `cryoPlant`, `plantPulseLength_s`,
+  `radialBuild`, `tritiumBreedingRatio`, `costContext`, `costAccounts`, `costOfElectricity` and their types) and
+  `SystemsConfig` as a `@public` type.
+- New keys in the engineering table of the magnetic shot report: TF coils, TF winding pack J, TF case and winding-pack
+  Tresca stress, TF stress margin, TF vertical tension per coil, TF mass, CS flux swing, Flux required, Flux margin
+  (tokamaks), TF nuclear heating, Cryo heat load, Cryoplant power, Cryo pulse length (superconducting coils), Inboard
+  blanket and Inboard shield+vessel (with a blanket). The central-solenoid budget is the plasma inductance, the Ejima
+  resistive start-up and the burn flux against the flux the solenoid can swing; it takes measured `V_loop` and `psi_used`
+  from the history where a model provides them. It is reported for every tokamak but checked (warning) only when a
+  design gives `systems.cs`, because the radial build of the presets does not resolve the solenoid (all preset tokamaks
+  show a negative flux margin).
+- PROCESS 1990 cost accounts (21-26, 9) and the cost of electricity as library functions (`costAccounts`,
+  `costOfElectricity`), verified against the PROCESS unit-test values; a first-of-a-kind educational estimate that is not
+  part of the shot report (its Capital cost stays the Sheffield-Milora scaling).
 
 ### Changed
 - The Report's JSON button writes `<name>_run.json` (the run file above) instead of
@@ -437,6 +457,24 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   0.9 % of the right-hand-side evaluations saved, ITER 1.6 %, SPARC 2.0 %, DEMO 3.1 %, against 14 % for models without
   such state); making it a state variable or piecewise constant between crashes would fix that but moves every ELM
   preset (see `confinement/magnetic.ts` and the FSAL paragraph of `simulation.ts`).
+- TF coil stress: the thin-ring estimate is replaced by the Tresca stress of a PROCESS-style three-layer plane-stress
+  analysis of the inboard leg with the vertical tension of the coil (Kovari et al., Fusion Eng. Des. 104 (2016) 9): ITER
+  82 -> 489 MPa (limit 660), DEMO 133 -> 745 MPa (over the 660 MPa limit, a new warning), SPARC 197 -> 1024 MPa (over its
+  800 MPa limit, a new warning); the preset inboard legs of SPARC (0.5 m) and DEMO (1.0 m) are thin (the same model gives
+  571 MPa for the 1.4 m leg of the PROCESS DEMO build), so both presets carry the warning until the presets are
+  reviewed. The magnetic energy is the toroidal-cavity integral with the D-shaped coil height of the boundary shape (ITER
+  37.69 -> 41.77 GJ against 41 GJ built).
+- Cryogenic plant power: the Slack heat load of PROCESS (static, pulsed-field, current leads, TF nuclear heating) times the
+  technology's `cryo_W_per_W` replaces the flat 5 MW of the recirculating power (ITER cryoplant 32.6 MW, ITER net
+  electric power 40 -> 13 MW, Q_eng 1.22 -> 1.06, DEMO net 452 -> 427 MW, SPARC net -22 -> -45 MW). The pulsed-field
+  part is spread over the design pulse of the plant (`systems.pulseLength_s`, default 1055 s, the PROCESS plasma-pulse
+  times), never over the simulated time, so the cryoplant of a machine does not change with `t_end` or with the time of
+  an abort. The TF nuclear heating is the PROCESS fit for a DEMO breeding blanket (scaled with the fusion power); for
+  a build without a blanket (SPARC: 476 kW) it is an extrapolation and the report says so.
+- TBR follows Shimwell et al., Fusion Eng. Des. 104 (2016) 34, as a function of the 6Li enrichment and the blanket depth
+  of the new radial build (ITER 1.199 -> 1.125, DEMO 1.199 -> 1.143).
+- Golden re-recorded for the engineering block of the 19 magnetic cases (`scalars.engineering.*`, `Q_eng`, and the warning
+  count of SPARC and DEMO); no plasma quantity moved. `test/golden/CHANGES.md` lists every headline move.
 
 ### Fixed
 - `npm run bench:convergence`: the time-step series (dtMax) failed with "this model has no internal time step

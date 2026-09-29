@@ -181,8 +181,8 @@ export class Simulation {
   get actuatorLog(): ActuatorEntry[] { return this.log.map((e) => ({ t: e.t, step: e.step, patch: { ...e.patch } })); }
   /** The user breakpoint schedule in force (sorted, inside (0, t_end)). */
   get breakpoints(): number[] { return [...this.breaks]; }
-  /** The scenario of the run (validated, normalised), or null. */
-  get scenario(): ScenarioSpec | null { return this.scen ? structuredClone(this.scen.spec) : null; }
+  /** The scenario of the run (validated, normalised; a copy), or null. A ScenarioSpec is plain JSON, so a JSON round trip is its deep copy (structuredClone is not in the ECMAScript library the core is compiled against). */
+  get scenario(): ScenarioSpec | null { return this.scen ? JSON.parse(JSON.stringify(this.scen.spec)) as ScenarioSpec : null; }
 
   /** runFingerprint() of this run as it stands (configuration, seed, actuator log, breakpoints). */
   fingerprint(appVersion: string): string {

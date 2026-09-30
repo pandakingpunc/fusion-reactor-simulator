@@ -91,6 +91,10 @@ export const SPARC = defaultMagnetic({
   impurity: { species: 'W', concentration: 1.5e-5, wallReflectivity: 0.7, W_source_frac: 0 },
   magnet: { tech: 'REBCO', gap_m: 0.22, coilThickness_m: 0.325 }, blanket: { type: 'none', li6_enrichment: 0.075, coverage: 0 },
   transport: { tau_p_over_tau_E: 3, tau_He_over_tau_E: 5, alpha_n: 0.3, alpha_T: 1.5 },
+  // systems.pulseLength_s is the FULL plant pulse of the machine (the semantics of the key, types.ts: the pulsed-field energy of the PF
+  // system and CS is spread over the whole discharge in the cryoplant load), here the 31 s TSC discharge above. The "about 10 s" of the
+  // design-pulse task is the flat top (the burn, Creely section 3), which the model runs as t_end 10 s; the ramps belong to the plant
+  // pulse because the cryoplant load and the flux swing cover them.
   systems: { pulseLength_s: 31, tf: { nCoils: 18 }, cs: { outerRadius_m: 0.681, thickness_m: 0.276, height_m: 3.8 } },
   t_end: 10, seed: 3,
 });

@@ -1,7 +1,7 @@
 /**
  * The EPED1-type pedestal and the Loarte ELM energy loss (profiles/pedestal/): the KBM width and the peeling–ballooning height as pure
  * functions against the numbers of the papers they come from, the shape of the ELM crash, and the model in short shots (defaults untouched,
- * the ELM at the limit, rewind and chunking bitwise, ITER15 against the published EPED prediction and its grid convergence).
+ * the ELM at the limit, rewind and chunking bitwise, ITER15 against the published EPED prediction at the ELM onset and its grid convergence).
  *
  * Published numbers used here (all read from the documents named in eped1.ts and loarte.ts):
  *  - Snyder 2009 (Nucl. Fusion 49 085035), quoted by Saarelma et al., Nucl. Fusion 52 (2012) 103020: ITER 15 MA pedestal pressure 92 kPa;
@@ -609,28 +609,53 @@ describe('settings of the pedestal model that are outside their domain are repla
 
 describe('ITER15 with the pedestal model against the published EPED prediction', () => {
   const T_END = 50, T0 = 34;
-  /** flat-top window averages of the ITER15 shot to T_END with the model on (both options), at nRho radial cells */
-  async function iter15(nRho: number): Promise<Record<string, number>> {
-    const sim = new Simulation({ ...ITER_15D, t_end: T_END, profiles: { ...ITER_15D.profiles, ...EPED_LOARTE, nRho } });
+  /**
+   * Flat-top window averages of the ITER15 shot to T_END at nRho radial cells, `profiles` over the preset (the model on: both options).
+   *
+   * Acceptance and its documented gaps (review findings 1 and 2). EPED predicts the fully developed pedestal at the ONSET of the ELM
+   * (Snyder, APS-DPP 2010), so the primary quantity is `ped_p_elm` / `ped_Tp_elm` (the pedestal top kept at the last ELM onset) against the
+   * published EPED H-mode branch of Snyder, ITER School 2015 at the density of the shot (`epedIter`), not the flat-top `Tped`, which averages
+   * the whole ELM cycle and follows the crash depth (with `'eped1'` alone and the default-size crash the same mean is 6.2 keV against 4.96
+   * here). The T_e at the onset is 6.9 keV: T_i < T_e and n_i < n_e in the model, EPED's convention is T_p = p/(2 n_e e).
+   * GAP KEPT AND DOCUMENTED: the reduced P-B height of eped1.ts extrapolates past its DIII-D anchor and sits +21 % in p (and +15 % in T_p)
+   * over that branch at this density (87 against 72 kPa; the accuracy limit of the module, eped1.ts header and the README), so the onset band
+   * is 25 % and not the 15 % of the task - the gap is documented here, not tuned away.
+   * GAP CLOSED (finding 1): the flat-top `T_ped` window is narrowed to 8 % of the published T_p at the density of the shot (5.04 keV; the
+   * task's 4.5 to 5 keV is the same prediction at the EPED baseline density n_ped = 7e19 m^-3, where the model-on mean of 4.96 keV also sits)
+   * because at 15 % the window does not discriminate the model - the fixed pedestal gives 4.47 keV (the probe of the review at 947f38b), 11 %
+   * below the published value - so this test runs the EPED-off baseline too and requires it to fail the window that the model meets.
+   */
+  async function iter15(nRho: number, profiles: Partial<ProfileSettings> = EPED_LOARTE): Promise<Record<string, number>> {
+    const sim = new Simulation({ ...ITER_15D, t_end: T_END, profiles: { ...ITER_15D.profiles, ...profiles, nRho } });
     await runAllYielding(sim);
     const fr = sim.history.filter((h) => h.t >= T0);
     const out: Record<string, number> = { ELMs: sim.events.filter((e) => e.kind === 'ELM' && e.t >= T0).length };
-    for (const k of ['Tped', 'ped_Te_elm', 'ped_p_elm', 'ped_p_lim', 'ped_width_psi', 'ped_ne', 'Zeff', 'ped_Tp_elm']) out[k] = fr.reduce((s, h) => s + h.d[k], 0) / fr.length;
+    // a shot with the fixed pedestal has no ped_* diagnostics: only the keys the run has
+    for (const k of ['Tped', 'ped_Te_elm', 'ped_p_elm', 'ped_p_lim', 'ped_width_psi', 'ped_ne', 'Zeff', 'ped_Tp_elm']) {
+      const v = fr.map((h) => h.d[k]).filter((x) => Number.isFinite(x));
+      if (v.length) out[k] = v.reduce((s, x) => s + x, 0) / v.length;
+    }
     return out;
   }
 
-  it('T_ped within 15 % of the published 4 to 5 keV, the pressure at ELM onset within 30 % of the published curve at the density of the shot, and 50 vs 100 cells within 2 %', async () => {
-    const a = await iter15(50), b = await iter15(100);
-    // T_ped: the flat-top mean of T_e at the pedestal top, the metric of the validation table (reference 4.5 ± 0.5 keV, EPED)
-    expect(Math.abs(a.Tped / 4.75 - 1)).toBeLessThan(0.15);
+  it('the pedestal at the ELM onset within 25 % of the published branch at the density of the shot, the T_ped window narrowed to fail the fixed pedestal, and 50 vs 100 cells within 2 %', async () => {
+    const a = await iter15(50), b = await iter15(100), off = await iter15(50, {});
+    // EPED gives the pressure at the density it is given: the published H-mode branch at n_ped Z_eff^{1/2} of this shot
+    const pEped = epedIter(a.ped_ne * 10 * Math.sqrt(a.Zeff));
+    // the same published pedestal in EPED's convention T_p = p/(2 n_e e), the temperature the 4.5 to 5 keV band is quoted as
+    const Teped = (pEped * 1e3) / (2 * a.ped_ne * 1e20 * KEV);
+    // the pedestal at the onset of the ELM, the quantity EPED predicts: pressure and temperature within 25 % (the documented +21 %/+15 % gap)
+    expect(Math.abs(a.ped_p_elm / pEped - 1)).toBeLessThan(0.25);
+    expect(Math.abs(a.ped_Tp_elm / Teped - 1)).toBeLessThan(0.25);
     // the ELM-averaged pedestal is below the limit; the pedestal at the onset of the ELM is at it
     expect(a.ped_p_elm / a.ped_p_lim).toBeGreaterThan(0.98);
     expect(a.ped_p_elm / a.ped_p_lim).toBeLessThan(1.15);
-    // EPED gives the pressure at the density it is given: the published H-mode branch at n_ped Z_eff^{1/2} of this shot
-    const pEped = epedIter(a.ped_ne * 10 * Math.sqrt(a.Zeff));
-    expect(Math.abs(a.ped_p_elm / pEped - 1)).toBeLessThan(0.3);
     // the width of the pedestal, published ≈ 0.04 (0.6 to 0.7 for β_N,ped)
     expect(Math.abs(a.ped_width_psi / 0.04 - 1)).toBeLessThan(0.15);
+    // T_ped: the flat-top mean of T_e at the pedestal top (secondary smoke metric), within 8 % of the published T_p at the density of the
+    // shot; the same window must fail the fixed pedestal (this test's EPED-off run) to discriminate the model (review finding 1)
+    expect(Math.abs(a.Tped / Teped - 1)).toBeLessThan(0.08);
+    expect(Math.abs(off.Tped / Teped - 1)).toBeGreaterThan(0.08);
     // grid convergence between 50 and 100 cells
     expect(a.ELMs).toBeGreaterThan(30);
     for (const k of ['Tped', 'ped_Te_elm', 'ped_p_elm', 'ped_p_lim']) expect(Math.abs(b[k] / a[k] - 1), k).toBeLessThan(0.02);

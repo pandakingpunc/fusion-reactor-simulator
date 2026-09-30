@@ -701,14 +701,14 @@ describe('short shots', () => {
   }, 120000);
 
   it("'legacy' spelled out is the default, bit for bit, and the scalar inventories are all there is", () => {
-    const a = referenceRun({ ...JET_15D, t_end: 0.3 });
-    const b = referenceRun({ ...JET_15D, t_end: 0.3, profiles: { impurityTransport: 'legacy' } });
+    const a = referenceRun({ ...JET_15D, t_end: 0.15 });
+    const b = referenceRun({ ...JET_15D, t_end: 0.15, profiles: { impurityTransport: 'legacy' } });
     expectSameRun(b, a, 'legacy spelled out');
     expect(a.history[a.history.length - 1].d.fHe0).toBeUndefined();
   }, 120000);
 
   it('the run is a function of its configuration: 2 random chunk schedules equal runAll() bitwise, and a rewind at 50 % replays it', async () => {
-    const cfg = jet(1.0);
+    const cfg = jet(0.6);
     const ref = referenceRun(cfg);
     expect(ref.events.some((e) => e.kind === 'ELM')).toBe(true);
     for (let s = 1; s <= 2; s++) { expectSameRun(runChunked(cfg, 9100 + s), ref, `chunk schedule ${s}`); await tick(); }

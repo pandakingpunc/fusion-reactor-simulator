@@ -31,7 +31,10 @@
  *    which the predictor sees, and the feed-forward of the present losses takes the place of the integral action (no droop).
  *
  * The overshoot that is left is that of the lag itself: after a drop of the loss rate the actuator still delivers the old flow for
- * about tau_act, which no command can undo (a valve closed at once still leaves the flow decaying as exp(-t/tau_act)).
+ * about tau_act, which no command can undo (a valve closed at once still leaves the flow decaying as exp(-t/tau_act)), together with the
+ * discrete ELM and sawtooth exhaust. A stochastic near-limit band therefore remains: a set-point whose line average is within about 2 % of
+ * n_G can still touch the limit, seed- and schedule-dependent (regress/densityControl.test.ts pins the documented outcomes). The
+ * controller removes the systematic overshoot, not the band: a set-point near n_G is not guaranteed safe.
  */
 export interface FuelCommandInput {
   /** commanded density [m^-3] and its rate of change (the ramp of the set-point) [m^-3 s^-1] */

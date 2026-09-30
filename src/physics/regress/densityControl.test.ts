@@ -5,6 +5,12 @@
  * 14 % and the recovery of the underdamped fuelling loop overshot the set-point by 4.5 % onto the Greenwald limit (disruption at 1.9 s),
  * and 1.05e20 survived by luck. n_target of the 0D model is the VOLUME average; the Greenwald fraction uses the line average
  * n̄ = f_line <n_e> (f_line = 1.110 at alpha_n = 0.3), so n_G = 1.1345e20 of DIII-D at 1.6 MA is reached by a set-point of 1.022e20.
+ *
+ * The controller removes that systematic ramp overshoot (about 4.5 % to about 1 %; flat-top n_e/n_target 0.999 to 1.003), but the
+ * near-limit band is NOT clean: within about 2 % of n_G in the line average the outcome is stochastic and non-monotone in n_target, and
+ * seed- and schedule-dependent (at t_end 4, seed 2 disrupts at 1.01e20 while 1.02e20 survives, and seed 11 disrupts at 1.02e20 while
+ * 1.04e20 survives). A set-point near n_G is therefore not guaranteed safe; the tests below pin this documented boundary behaviour
+ * (they fail if the controller regresses, and a physics change that moves the boundary has to re-pin them deliberately).
  */
 import { describe, expect, it } from 'vitest';
 import { Simulation } from '../simulation';
@@ -26,7 +32,7 @@ describe('the density limit in n_target (DIII-D, 1.6 MA)', { timeout: 60_000 }, 
   const fLine = lineAverageFactor(DIIID.transport.alpha_n);
   const at = (n1e20: number) => run({ ...DIIID, n_target: n1e20 * 1e20, t_end: 3 });
 
-  it('set-points below n_G survive and stay within 3 % of their own line average', () => {
+  it('set-points below n_G survive and stay within 3 % of their own line average (0.90 to 1.00e20, seed 11, t_end 3)', () => {
     for (const n of [0.9, 0.96, 1.0]) {
       const r = at(n);
       const set = (n * 1e20 * fLine) / nG;
@@ -35,7 +41,7 @@ describe('the density limit in n_target (DIII-D, 1.6 MA)', { timeout: 60_000 }, 
     }
   });
 
-  it('set-points above n_G disrupt on the density limit, all of them: no survivor in the band above the limit', () => {
+  it('set-points whose line average is above n_G disrupt on the density limit at this seed and schedule (1.04 to 1.1e20, seed 11, t_end 3): the 1.01-1.03 band is stochastic, pinned per seed below', () => {
     for (const n of [1.04, 1.07, 1.1]) expect(at(n).cause, `n_target ${n}e20 (n̄/n_G ${((n * 1e20 * fLine) / nG).toFixed(3)})`).toBe('density_limit');
   });
 });

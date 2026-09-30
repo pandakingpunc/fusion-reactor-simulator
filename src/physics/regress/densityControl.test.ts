@@ -22,9 +22,12 @@ function run(cfg: MagneticConfig) {
   const sim = new Simulation(cfg);
   sim.runAll();
   const disruption = (sim.model.report(sim.history, sim.events) as { termination: { disruption?: { cause: string } } }).termination.disruption;
-  let peak = 0;
-  for (const f of sim.history) peak = Math.max(peak, (f.d as Record<string, number>).nG_frac);
-  return { sim, cause: disruption?.cause, peakFrac: disruption ? Infinity : peak };
+  let peak = 0, peakNe = 0;
+  for (const f of sim.history) {
+    peak = Math.max(peak, (f.d as Record<string, number>).nG_frac);
+    peakNe = Math.max(peakNe, ((f.d as Record<string, number>).ne * 1e20) / cfg.n_target);
+  }
+  return { sim, cause: disruption?.cause, peakFrac: disruption ? Infinity : peak, peakNe };
 }
 
 describe('the density limit in n_target (DIII-D, 1.6 MA)', { timeout: 60_000 }, () => {
@@ -43,6 +46,36 @@ describe('the density limit in n_target (DIII-D, 1.6 MA)', { timeout: 60_000 }, 
 
   it('set-points whose line average is above n_G disrupt on the density limit at this seed and schedule (1.04 to 1.1e20, seed 11, t_end 3): the 1.01-1.03 band is stochastic, pinned per seed below', () => {
     for (const n of [1.04, 1.07, 1.1]) expect(at(n).cause, `n_target ${n}e20 (n̄/n_G ${((n * 1e20 * fLine) / nG).toFixed(3)})`).toBe('density_limit');
+  });
+});
+
+describe('the near-limit band in n_target (DIII-D, seeded pins at t_end 4)', { timeout: 60_000 }, () => {
+  // The boundary is stochastic and NON-monotone in n_target (ELM/sawtooth exhaust, actuator lag, and the event schedule that the step
+  // grid of one t_end fixes), so every case below pins ONE documented outcome of ONE seed at ONE t_end - the honest contract of the
+  // controller, not a safety guarantee. Re-measured at HEAD (t_end 4): seed 2 disrupts at 1.01e20 (t = 1.79 s) while 1.02e20 survives
+  // (peak n_bar/n_G 0.999), seed 11 disrupts at 1.02e20 (t = 1.95 s) while 1.04e20 survives (peak 0.997). A controller regression or a
+  // physics change that moves the boundary fails these on purpose: re-pin them deliberately, never retune the physics to hide a move.
+  const at = (n1e20: number, seed: number) => run({ ...DIIID, n_target: n1e20 * 1e20, t_end: 4, seed });
+
+  it('the near-limit band (0.988 to 1.018 n_G in the line average) is non-monotone per seed: 1.01e20 disrupts while 1.02e20 survives at seed 2, the mirror image at seed 11', () => {
+    expect(at(1.01, 2).cause, 'seed 2, n_target 1.01e20 (0.988 n_G)').toBe('density_limit');
+    const s2 = at(1.02, 2);
+    expect(s2.cause, 'seed 2, n_target 1.02e20 (0.998 n_G)').toBeUndefined();
+    expect(s2.peakFrac, 'seed 2, n_target 1.02e20 peaks below n_G').toBeLessThan(1);
+    expect(at(1.02, 11).cause, 'seed 11, n_target 1.02e20 (0.998 n_G)').toBe('density_limit');
+    const s11 = at(1.04, 11);
+    expect(s11.cause, 'seed 11, n_target 1.04e20 (1.018 n_G)').toBeUndefined();
+    expect(s11.peakFrac, 'seed 11, n_target 1.04e20 peaks below n_G').toBeLessThan(1);
+  });
+
+  it('the systematic ramp overshoot is gone at moderate set-points: peak n_e/n_target below 1.03 (the old loop added about 4.5 %)', () => {
+    for (const seed of [2, 11]) {
+      for (const n of [0.96, 1.0]) {
+        const r = at(n, seed);
+        expect(r.cause, `seed ${seed}, n_target ${n}e20`).toBeUndefined();
+        expect(r.peakNe, `seed ${seed}, n_target ${n}e20 (peak n_e/n_target)`).toBeLessThan(1.03);
+      }
+    }
   });
 });
 

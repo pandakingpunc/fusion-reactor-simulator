@@ -1,7 +1,7 @@
 /**
  * The 0D L-H transition near its threshold (lane ws2d): a plasma that is marginal is not monotonic in the density, and that is what the
  * ohmic power does (see the comment at the transition in confinement/magnetic.ts); away from the margin the outcome is monotonic.
- * DIII-D (2 MA, 2.2 T), beams only, 3 s.
+ * DIII-D (1.6 MA, 2.2 T), beams only, 3 s.
  */
 import { describe, expect, it } from 'vitest';
 import { Simulation } from '../simulation';
@@ -20,7 +20,7 @@ function shot(n1e20: number, P_NBI_MW: number) {
   };
 }
 
-describe('L-H threshold versus density, DIII-D 2 MA', { timeout: 90_000 }, () => {
+describe('L-H threshold versus density, DIII-D 1.6 MA', { timeout: 90_000 }, () => {
   it('with no heating the plasma stays in L-mode and P_L/P_LH rises with the density: the ohmic power grows as the plasma cools', () => {
     const r = [0.3, 0.7, 1.0].map((n) => shot(n, 0));
     for (const x of r) expect(x.H).toBe(0);

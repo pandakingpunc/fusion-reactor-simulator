@@ -174,6 +174,11 @@ describe('the density mission text', () => {
     expect(eduEn['mis.density.brief']).toContain('1.25e20');
     expect(eduEn['mis.density.brief']).toContain('volume-average');
     expect(eduEn['mis.density.brief']).toContain('line-averaged');
+    // the current the brief quotes is the 1.6 MA of the preset (n_G = 1.1345e20; 2.0 MA would give 1.42e20)
+    expect(eduEn['mis.density.brief']).toContain('1.6 MA');
+    expect(eduEn['mis.density.brief']).not.toContain('2.0 MA');
+    expect(eduTr['mis.density.brief']).toContain('1,6 MA');
+    expect(eduTr['mis.density.brief']).not.toContain('2,0 MA');
     expect(eduTr['mis.density.brief']).toContain('1,25e20');
     expect(eduTr['mis.density.brief']).toContain('hacim ortalamalı');
     expect(eduTr['mis.density.brief']).toContain('çizgi ortalamalı');

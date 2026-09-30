@@ -4,7 +4,7 @@
  * Before v4.0-ws2d the density limit was a knife edge in n_target: DIII-D at 0.97e20 survived, at 0.98e20 an NTM dipped the density by
  * 14 % and the recovery of the underdamped fuelling loop overshot the set-point by 4.5 % onto the Greenwald limit (disruption at 1.9 s),
  * and 1.05e20 survived by luck. n_target of the 0D model is the VOLUME average; the Greenwald fraction uses the line average
- * n̄ = f_line <n_e> (f_line = 1.110 at alpha_n = 0.3), so n_G = 1.1345e20 of DIII-D at 2 MA is reached by a set-point of 1.022e20.
+ * n̄ = f_line <n_e> (f_line = 1.110 at alpha_n = 0.3), so n_G = 1.1345e20 of DIII-D at 1.6 MA is reached by a set-point of 1.022e20.
  */
 import { describe, expect, it } from 'vitest';
 import { Simulation } from '../simulation';
@@ -21,7 +21,7 @@ function run(cfg: MagneticConfig) {
   return { sim, cause: disruption?.cause, peakFrac: disruption ? Infinity : peak };
 }
 
-describe('the density limit in n_target (DIII-D, 2 MA)', { timeout: 60_000 }, () => {
+describe('the density limit in n_target (DIII-D, 1.6 MA)', { timeout: 60_000 }, () => {
   const nG = greenwaldDensity(DIIID.Ip_MA, DIIID.geometry.a);
   const fLine = lineAverageFactor(DIIID.transport.alpha_n);
   const at = (n1e20: number) => run({ ...DIIID, n_target: n1e20 * 1e20, t_end: 3 });

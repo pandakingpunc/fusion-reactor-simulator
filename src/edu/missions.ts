@@ -134,7 +134,7 @@ const withHeating = (b: MagneticConfig, h: Partial<MagneticConfig['heating']>): 
 const HMODE_BASE = withHeating(dd, { P_NBI_MW: 0.5, P_ECRH_MW: 0 });
 /**
  * DIII-D with a 1.25e20 m⁻³ setpoint. The setpoint of the 0D model is the volume-average density, the Greenwald limit (n_G = 1.13e20 m⁻³
- * at 2.0 MA) is on the line average, which is 11 % higher for the profile of this shot: the shot is fuelled to n̄/n_G = 1.22 and disrupts
+ * at 1.6 MA) is on the line average, which is 11 % higher for the profile of this shot: the shot is fuelled to n̄/n_G = 1.22 and disrupts
  * at about 1 s. (Until v4.0-ws2d the setpoint was 1.0e20, 0.98 n_G, and the underdamped fuelling loop overshot it onto the limit; the
  * controller no longer does, so a setpoint has to be beyond the limit to disrupt, and the threshold is clean: about 1.02e20.)
  */

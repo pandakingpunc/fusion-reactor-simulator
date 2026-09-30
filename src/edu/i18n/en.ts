@@ -109,7 +109,7 @@ export const eduEn = {
   'mis.hmode.answer': '6 MW of beam power is well above the threshold; the plasma turns to H-mode early in the ramp and stays there. Fuelling more does not help: the threshold power grows with the density.',
 
   'mis.density.title': 'Stay below the density limit',
-  'mis.density.brief': 'The same DIII-D shot is fuelled to a setpoint of 1.25e20 m⁻³, the volume-average density. The Greenwald density for its 2.0 MA is about 1.1e20 m⁻³ and limits the line-averaged density n̄, which is about 11 % above the volume average of this profile: the shot is fuelled well beyond the limit. Change the shot so that it runs to the end without a density-limit disruption, and still reaches at least 0.5e20 m⁻³: an empty plasma is no answer.',
+  'mis.density.brief': 'The same DIII-D shot is fuelled to a setpoint of 1.25e20 m⁻³, the volume-average density. The Greenwald density for its 1.6 MA is about 1.1e20 m⁻³ and limits the line-averaged density n̄, which is about 11 % above the volume average of this profile: the shot is fuelled well beyond the limit. Change the shot so that it runs to the end without a density-limit disruption, and still reaches at least 0.5e20 m⁻³: an empty plasma is no answer.',
   'mis.density.hint1': 'The Greenwald density n_G = I_p / (π a²) grows with the plasma current. The live values show n̄/n_G, which has to stay below 1.',
   'mis.density.hint2': 'Either fuel less or carry more current. Lowering the density is the simplest.',
   'mis.density.lesson': 'Past n_G the edge radiates and cools until the current channel shrinks and the plasma disrupts. Density and current are tied together.',

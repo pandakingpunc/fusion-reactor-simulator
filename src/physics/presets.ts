@@ -94,7 +94,7 @@ export const SPARC = defaultMagnetic({
   systems: { pulseLength_s: 31, tf: { nCoils: 18 }, cs: { outerRadius_m: 0.681, thickness_m: 0.276, height_m: 3.8 } },
   t_end: 10, seed: 3,
 });
-// DIII-D: R=1.67, a=0.67, κ=1.8, δ=0.5, B=2.2 T, Ip=2.0 MA, 20 MW NBI (80 keV), D-D
+// DIII-D: R=1.67, a=0.67, κ=1.8, δ=0.5, B=2.2 T, Ip=1.6 MA, 20 MW NBI (80 keV), D-D
 export const DIIID = defaultMagnetic({
   geometry: { R: 1.67, a: 0.67, kappa: 1.8, delta: 0.5 }, B0: 2.2, Ip_MA: 1.6,
   fuel: 'DD', fuelFracA: 1.0, n_target: 0.6e20, n_rampTime: 1,

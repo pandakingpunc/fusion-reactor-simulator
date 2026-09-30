@@ -109,7 +109,7 @@ export const eduTr: EduDict = {
   'mis.hmode.answer': '6 MW demet gücü eşiğin çok üzerindedir; plazma rampanın başında H-moduna geçer ve orada kalır. Daha çok yakıtlamak işe yaramaz: eşik gücü yoğunlukla artar.',
 
   'mis.density.title': 'Yoğunluk sınırının altında kal',
-  'mis.density.brief': 'Aynı DIII-D atışı 1,25e20 m⁻³ hedef yoğunluğuna, yani hacim ortalamalı yoğunluğa yakıtlanıyor. 2,0 MA akımı için Greenwald yoğunluğu yaklaşık 1,1e20 m⁻³\'tür ve çizgi ortalamalı n̄ yoğunluğunu sınırlar; bu profilde n̄, hacim ortalamasından yaklaşık %11 yüksektir: atış sınırın epeyce ötesine yakıtlanıyor. Atışı, yoğunluk sınırı disrupsiyonu olmadan sonuna kadar gidecek ve en az 0,5e20 m⁻³\'e ulaşacak biçimde değiştirin: boş bir plazma cevap değildir.',
+  'mis.density.brief': 'Aynı DIII-D atışı 1,25e20 m⁻³ hedef yoğunluğuna, yani hacim ortalamalı yoğunluğa yakıtlanıyor. 1,6 MA akımı için Greenwald yoğunluğu yaklaşık 1,1e20 m⁻³\'tür ve çizgi ortalamalı n̄ yoğunluğunu sınırlar; bu profilde n̄, hacim ortalamasından yaklaşık %11 yüksektir: atış sınırın epeyce ötesine yakıtlanıyor. Atışı, yoğunluk sınırı disrupsiyonu olmadan sonuna kadar gidecek ve en az 0,5e20 m⁻³\'e ulaşacak biçimde değiştirin: boş bir plazma cevap değildir.',
   'mis.density.hint1': 'Greenwald yoğunluğu n_G = I_p / (π a²) plazma akımıyla artar. Canlı değerler, 1\'in altında kalması gereken n̄/n_G\'yi gösterir.',
   'mis.density.hint2': 'Ya daha az yakıt verin ya da daha çok akım taşıyın. En basiti yoğunluğu düşürmektir.',
   'mis.density.lesson': 'n_G\'nin ötesinde kenar ışır ve soğur; akım kanalı daralır ve plazma disrupsiyona uğrar. Yoğunluk ile akım birbirine bağlıdır.',

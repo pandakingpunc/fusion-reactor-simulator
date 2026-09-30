@@ -710,7 +710,7 @@ export class MagneticModel implements SimModel {
     if (this.phase === 'normal') {
       // ---- L-H transition (Martin threshold, with P_L = P_heat − P_rad,core − dW/dt; hysteresis 0.7) ----
       // Near the threshold the outcome is NOT monotonic in the density, and that is the physics of the inputs, not a bug (ws2d; DIII-D at
-      // 2 MA with 1 MW of beam and no other heating: H-mode fraction 0 at 0.6e20, 0.63 at 0.9e20, 0.68 at 0.3e20 in v4.0-2A). P_L holds the
+      // 1.6 MA with 1 MW of beam and no other heating: H-mode fraction 0 at 0.6e20, 0.63 at 0.9e20, 0.68 at 0.3e20 in v4.0-2A). P_L holds the
       // ohmic power (Martin 2008: P_loss = P_OHM + P_aux − dW/dt), and I_p²η(T_e) grows with the density at fixed current: the plasma cools
       // (T_e 1.4 keV at 0.45e20, 0.57 keV at 0.7e20) and P_oh goes from 0.75 to 2.7 MW. With no heating the ratio P_L/P_LH therefore RISES
       // with the density (0.74 at 0.3e20, 0.91 at 1.0e20), while the heated part of P_L against P_LH ∝ n̄^0.717 falls (8 MW: 4.6 to 2.2);

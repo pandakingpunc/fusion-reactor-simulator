@@ -93,7 +93,7 @@ export function Wizard({ cfg, setCfg, name, setName, onRun, scenarioStep, scenar
         </>
       );
     }
-    if (id === 'scenario') return <><h2>{stepIdx + 1} · {STEP_TITLES.scenario}</h2>{scenarioStep}</>;
+    if (id === 'scenario') return <><h2>{stepIdx + 1} · {wt(STEP_TITLES.scenario)}</h2>{scenarioStep}</>;
     if (id === 'run') return <RunSummary cfg={cfg} name={name} onRun={onRun} missing={missing} issues={issues} blocked={blocked} goToStep={goToStep} scenarioSummary={scenarioSummary} />;
     const advanced = isAdvancedStep(id) && advancedApplies(id, cfg.method, cfg) ? id : null;
     const def = steps.find((s) => s.id === id);

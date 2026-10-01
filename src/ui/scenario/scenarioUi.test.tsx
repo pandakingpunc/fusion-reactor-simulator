@@ -327,7 +327,7 @@ describe('the wizard\'s Scenario step', () => {
   it('is translated: the Turkish dictionary loads with the editor', async () => {
     const h = mount();
     await act(async () => { await h.store.actions.setLocale('tr'); await loadScenarioTr(); });
-    fireEvent.click(within(document.querySelector('.steps') as HTMLElement).getByText('Scenario'));
+    fireEvent.click(within(document.querySelector('.steps') as HTMLElement).getByText('Senaryo'));
     await answerProbe(h, 2);
     expect(await screen.findByText('Dalga biçimleri')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Şerit ekle' })).toBeTruthy();

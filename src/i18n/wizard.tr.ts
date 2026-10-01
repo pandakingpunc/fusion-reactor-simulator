@@ -12,6 +12,7 @@ export const wizardTr: Readonly<Record<string, string>> = {
   'Magnet / Driver': 'Mıknatıs / Sürücü',
   'Heating & Fueling': 'Isıtma ve yakıt besleme',
   'RUN': 'ÇALIŞTIR',
+  'Scenario': 'Senaryo',
   'Magnet, blanket, divertor, economics': 'Mıknatıs, blanket, divertör, ekonomi',
   'Heating, fueling, confinement': 'Isıtma, yakıt besleme, hapsetme',
   'Capsule': 'Kapsül',

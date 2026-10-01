@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "what": "The radial-resolution series (25, 50 and 100 cells) of `npm run bench:convergence` for ITER15: flat-top Q, f_bs, l_i(3) and T_ped (keV). Written by scripts/paper-numbers.ts --record-convergence; its 50-cell run equals the golden ITER15.",
+  "command": "npm run bench:convergence -- --out FILE",
+  "source": {
+    "file": "scratch/claude-ntmfix-convergence.json",
+    "sha256": "10f8b842b99e6de55480774e44037bc42988c5a3e205052018503f8c8db2e8b1",
+    "date": "2026-10-01T11:32:16.599Z",
+    "node": "v24.19.0"
+  },
+  "preset": "ITER15",
+  "t_end_s": 400,
+  "nRho": [
+    {
+      "cells": 25,
+      "Q": 10.162916089240392,
+      "f_bs": 0.23029335972203813,
+      "li": 0.7138313096867068,
+      "Tped": 3.5061429030678064
+    },
+    {
+      "cells": 50,
+      "Q": 10.450311385999676,
+      "f_bs": 0.23060661249890135,
+      "li": 0.7194870995550975,
+      "Tped": 3.548727613973553
+    },
+    {
+      "cells": 100,
+      "Q": 10.509424980506319,
+      "f_bs": 0.2310672439084393,
+      "li": 0.7212729718381051,
+      "Tped": 3.509772373854703
+    }
+  ]
+}

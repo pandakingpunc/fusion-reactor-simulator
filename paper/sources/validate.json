@@ -1,0 +1,720 @@
+{
+  "schema": 1,
+  "what": "Extract of the output of `npm run -s validate -- --json` (validate schema 3): one entry per check of src/physics/validation/references.ts. Written by scripts/paper-numbers.ts --record-validate; paper/paper.md takes its validation counts and ratios from it.",
+  "command": "npm run -s validate -- --json --threads 2",
+  "recorded": {
+    "gitHead": "8b4cfc869ca23f806fa08405e3ae545c4a339da8",
+    "utc": "2026-10-01T19:38:54Z",
+    "node": "v24.19.0",
+    "threads": 2
+  },
+  "summary": {
+    "checksExecuted": 46,
+    "failures": 0,
+    "knownFailures": 8,
+    "unexpectedPasses": 0,
+    "passed": true,
+    "wordings": {
+      "validated": 16,
+      "benchmarked": 16,
+      "calibrated": 1,
+      "sanity bound": 13,
+      "unavailable": 0
+    }
+  },
+  "checks": [
+    {
+      "id": "ITER.Q",
+      "preset": "ITER",
+      "kind": "benchmark",
+      "status": "pass",
+      "wording": "validated",
+      "value": 10.084010178476294,
+      "published": 10,
+      "ratio": 1.0084010178476295,
+      "deviationPct": 0.8401017847629477,
+      "accept": [
+        5,
+        20
+      ]
+    },
+    {
+      "id": "ITER.Pfus",
+      "preset": "ITER",
+      "kind": "benchmark",
+      "status": "pass",
+      "wording": "validated",
+      "value": 516.6380753205701,
+      "published": 500,
+      "ratio": 1.0332761506411403,
+      "deviationPct": 3.327615064114031,
+      "accept": [
+        300,
+        800
+      ]
+    },
+    {
+      "id": "ITER.H98",
+      "preset": "ITER",
+      "kind": "sanity",
+      "status": "pass",
+      "wording": "sanity bound",
+      "value": 1.0908774695581107,
+      "published": 1,
+      "ratio": 1.0908774695581107,
+      "deviationPct": 9.08774695581107,
+      "accept": [
+        0.748,
+        1.34
+      ]
+    },
+    {
+      "id": "ITER.nG",
+      "preset": "ITER",
+      "kind": "benchmark",
+      "status": "pass",
+      "wording": "validated",
+      "value": 0.8483152087896285,
+      "published": 0.85,
+      "ratio": 0.9980178926936807,
+      "deviationPct": -0.1982107306319314,
+      "accept": [
+        0.6,
+        1
+      ]
+    },
+    {
+      "id": "ITER.alphaShare",
+      "preset": "ITER",
+      "kind": "sanity",
+      "status": "pass",
+      "wording": "sanity bound",
+      "value": 0.20734275147692083,
+      "published": 0.2,
+      "ratio": 1.0367137573846041,
+      "deviationPct": 3.671375738460414,
+      "accept": [
+        0,
+        0.213
+      ]
+    },
+    {
+      "id": "JET.Efus",
+      "preset": "JET",
+      "kind": "validation",
+      "status": "pass",
+      "wording": "validated",
+      "value": 66.63614242626056,
+      "published": 59,
+      "ratio": 1.1294261428179757,
+      "deviationPct": 12.942614281797571,
+      "accept": [
+        40,
+        80
+      ]
+    },
+    {
+      "id": "JET.alphaShare",
+      "preset": "JET",
+      "kind": "sanity",
+      "status": "pass",
+      "wording": "sanity bound",
+      "value": 0.2028244249161458,
+      "published": 0.2,
+      "ratio": 1.014122124580729,
+      "deviationPct": 1.4122124580729034,
+      "accept": [
+        0,
+        0.213
+      ]
+    },
+    {
+      "id": "SPARC.Q",
+      "preset": "SPARC",
+      "kind": "benchmark",
+      "status": "pass",
+      "wording": "benchmarked (deviation -29 %)",
+      "value": 7.8425050580137965,
+      "published": 11,
+      "ratio": 0.7129550052739815,
+      "deviationPct": -28.704499472601853,
+      "accept": [
+        2,
+        20
+      ]
+    },
+    {
+      "id": "SPARC.alphaShare",
+      "preset": "SPARC",
+      "kind": "sanity",
+      "status": "pass",
+      "wording": "sanity bound",
+      "value": 0.20373541669437495,
+      "published": 0.2,
+      "ratio": 1.0186770834718746,
+      "deviationPct": 1.8677083471874578,
+      "accept": [
+        0,
+        0.213
+      ]
+    },
+    {
+      "id": "DIIID.H98",
+      "preset": "DIIID",
+      "kind": "sanity",
+      "status": "pass",
+      "wording": "sanity bound",
+      "value": 0.8825966037544938,
+      "published": 1,
+      "ratio": 0.8825966037544938,
+      "deviationPct": -11.740339624550622,
+      "accept": [
+        0.748,
+        1.34
+      ]
+    },
+    {
+      "id": "DIIID.Palpha",
+      "preset": "DIIID",
+      "kind": "sanity",
+      "status": "pass",
+      "wording": "sanity bound",
+      "value": 0.0025514471015859077,
+      "published": 0.0225,
+      "ratio": 0.11339764895937368,
+      "deviationPct": -88.66023510406264,
+      "accept": [
+        0,
+        0.0225
+      ]
+    },
+    {
+      "id": "JT60SA.W",
+      "preset": "JT60SA",
+      "kind": "benchmark",
+      "status": "pass",
+      "wording": "validated",
+      "value": 20.379286126711616,
+      "published": 22,
+      "ratio": 0.9263311875778008,
+      "deviationPct": -7.366881242219925,
+      "accept": [
+        15.8,
+        31.2
+      ]
+    },
+    {
+      "id": "JT60SA.tauE",
+      "preset": "JT60SA",
+      "kind": "benchmark",
+      "status": "pass",
+      "wording": "benchmarked (deviation -25 %)",
+      "value": 0.4786714289736969,
+      "published": 0.64,
+      "ratio": 0.7479241077714014,
+      "deviationPct": -25.20758922285986,
+      "accept": [
+        0.389,
+        0.856
+      ]
+    },
+    {
+      "id": "MASTU.H98",
+      "preset": "MASTU",
+      "kind": "validation",
+      "status": "pass",
+      "wording": "benchmarked (deviation -20.4 %)",
+      "value": 0.9153820205189118,
+      "published": 1.15,
+      "ratio": 0.7959843656686191,
+      "deviationPct": -20.401563433138094,
+      "accept": [
+        0.748,
+        1.74
+      ]
+    },
+    {
+      "id": "MASTU.q95",
+      "preset": "MASTU",
+      "kind": "sanity",
+      "status": "pass",
+      "wording": "sanity bound",
+      "value": 6.393286797428502,
+      "published": 7.5,
+      "ratio": 0.8524382396571336,
+      "deviationPct": -14.75617603428664,
+      "accept": [
+        5,
+        10
+      ]
+    },
+    {
+      "id": "W7X.Ti0",
+      "preset": "W7X",
+      "kind": "validation",
+      "status": "pass",
+      "wording": "benchmarked (deviation +34 %)",
+      "value": 2.003947667629135,
+      "published": 1.5,
+      "ratio": 1.3359651117527565,
+      "deviationPct": 33.596511175275644,
+      "accept": [
+        0.91,
+        2.21
+      ]
+    },
+    {
+      "id": "W7X.HISS04",
+      "preset": "W7X",
+      "kind": "validation",
+      "status": "pass",
+      "wording": "benchmarked (deviation +24 %)",
+      "value": 0.8067999880999354,
+      "published": 0.65,
+      "ratio": 1.2412307509229774,
+      "deviationPct": 24.12307509229774,
+      "accept": [
+        0.448,
+        0.869
+      ]
+    },
+    {
+      "id": "DEMO.Pfus",
+      "preset": "DEMO",
+      "kind": "benchmark",
+      "status": "pass",
+      "wording": "validated",
+      "value": 1903.345921181523,
+      "published": 2000,
+      "ratio": 0.9516729605907615,
+      "deviationPct": -4.832703940923855,
+      "accept": [
+        1000,
+        3000
+      ]
+    },
+    {
+      "id": "DEMO.alphaShare",
+      "preset": "DEMO",
+      "kind": "sanity",
+      "status": "pass",
+      "wording": "sanity bound",
+      "value": 0.20919231881024977,
+      "published": 0.2,
+      "ratio": 1.0459615940512488,
+      "deviationPct": 4.596159405124878,
+      "accept": [
+        0,
+        0.213
+      ]
+    },
+    {
+      "id": "ITER15.Q",
+      "preset": "ITER15",
+      "kind": "benchmark",
+      "status": "pass",
+      "wording": "validated",
+      "value": 10.450311385999676,
+      "published": 10,
+      "ratio": 1.0450311385999675,
+      "deviationPct": 4.503113859996755,
+      "accept": [
+        5,
+        20
+      ]
+    },
+    {
+      "id": "ITER15.Pfus",
+      "preset": "ITER15",
+      "kind": "benchmark",
+      "status": "pass",
+      "wording": "validated",
+      "value": 525.6153095962217,
+      "published": 500,
+      "ratio": 1.0512306191924434,
+      "deviationPct": 5.123061919244343,
+      "accept": [
+        300,
+        800
+      ]
+    },
+    {
+      "id": "ITER15.fbs",
+      "preset": "ITER15",
+      "kind": "benchmark",
+      "status": "pass",
+      "wording": "validated",
+      "value": 0.23060661249890135,
+      "published": 0.2,
+      "ratio": 1.1530330624945067,
+      "deviationPct": 15.303306249450666,
+      "accept": [
+        0.1,
+        0.4
+      ]
+    },
+    {
+      "id": "ITER15.li",
+      "preset": "ITER15",
+      "kind": "benchmark",
+      "status": "pass",
+      "wording": "validated",
+      "value": 0.7194870995550975,
+      "published": 0.85,
+      "ratio": 0.8464554112412912,
+      "deviationPct": -15.354458875870879,
+      "accept": [
+        0.6,
+        1.1
+      ]
+    },
+    {
+      "id": "ITER15.q95",
+      "preset": "ITER15",
+      "kind": "benchmark",
+      "status": "pass",
+      "wording": "validated",
+      "value": 3.503445695589063,
+      "published": 3,
+      "ratio": 1.167815231863021,
+      "deviationPct": 16.781523186302106,
+      "accept": [
+        2.7,
+        4
+      ]
+    },
+    {
+      "id": "ITER15.Tped",
+      "preset": "ITER15",
+      "kind": "benchmark",
+      "status": "pass",
+      "wording": "benchmarked (deviation -21 %)",
+      "value": 3.548727613973553,
+      "published": 4.5,
+      "ratio": 0.7886061364385673,
+      "deviationPct": -21.139386356143277,
+      "accept": [
+        2,
+        7
+      ]
+    },
+    {
+      "id": "ITER15.nG",
+      "preset": "ITER15",
+      "kind": "benchmark",
+      "status": "pass",
+      "wording": "validated",
+      "value": 0.7999742906729633,
+      "published": 0.85,
+      "ratio": 0.9411462243211334,
+      "deviationPct": -5.885377567886662,
+      "accept": [
+        0.6,
+        1
+      ]
+    },
+    {
+      "id": "JET15.Efus",
+      "preset": "JET15",
+      "kind": "validation",
+      "status": "known-fail",
+      "wording": "benchmarked (deviation +39 %)",
+      "value": 81.84452148751515,
+      "published": 59,
+      "ratio": 1.3871952794494093,
+      "deviationPct": 38.719527944940936,
+      "accept": [
+        40,
+        80
+      ]
+    },
+    {
+      "id": "JET15.Ti0",
+      "preset": "JET15",
+      "kind": "validation",
+      "status": "pass",
+      "wording": "validated",
+      "value": 10.199843890032954,
+      "published": 10,
+      "ratio": 1.0199843890032954,
+      "deviationPct": 1.9984389003295355,
+      "accept": [
+        6,
+        15
+      ]
+    },
+    {
+      "id": "SPARC15.Q",
+      "preset": "SPARC15",
+      "kind": "benchmark",
+      "status": "pass",
+      "wording": "benchmarked (deviation -43 %)",
+      "value": 6.289156883896872,
+      "published": 11,
+      "ratio": 0.5717415348997157,
+      "deviationPct": -42.825846510028434,
+      "accept": [
+        2,
+        20
+      ]
+    },
+    {
+      "id": "DEMO15.Pfus",
+      "preset": "DEMO15",
+      "kind": "benchmark",
+      "status": "pass",
+      "wording": "validated",
+      "value": 2007.4915593436826,
+      "published": 2000,
+      "ratio": 1.0037457796718414,
+      "deviationPct": 0.37457796718414205,
+      "accept": [
+        1000,
+        3000
+      ]
+    },
+    {
+      "id": "DEMO15.fbs",
+      "preset": "DEMO15",
+      "kind": "benchmark",
+      "status": "pass",
+      "wording": "validated",
+      "value": 0.3745281597847269,
+      "published": 0.35,
+      "ratio": 1.0700804565277913,
+      "deviationPct": 7.008045652779127,
+      "accept": [
+        0.2,
+        0.6
+      ]
+    },
+    {
+      "id": "NIF210808.G",
+      "preset": "NIF210808",
+      "kind": "validation",
+      "status": "pass",
+      "wording": "calibrated (deviation -0.7 %)",
+      "value": 0.714783095106351,
+      "published": 0.72,
+      "ratio": 0.9927542987588208,
+      "deviationPct": -0.7245701241179181,
+      "accept": [
+        0.36,
+        1.44
+      ],
+      "role": "calibration"
+    },
+    {
+      "id": "NIF210808.Ti",
+      "preset": "NIF210808",
+      "kind": "validation",
+      "status": "known-fail",
+      "wording": "benchmarked (deviation -86 %)",
+      "value": 1.3215532055481172,
+      "published": 9.55,
+      "ratio": 0.13838253461236827,
+      "deviationPct": -86.16174653876317,
+      "accept": [
+        6.3,
+        13.2
+      ]
+    },
+    {
+      "id": "NIF.G",
+      "preset": "NIF",
+      "kind": "validation",
+      "status": "known-fail",
+      "wording": "benchmarked (deviation -55 %)",
+      "value": 0.6684093625945734,
+      "published": 1.5,
+      "ratio": 0.4456062417297156,
+      "deviationPct": -55.43937582702845,
+      "accept": [
+        1,
+        3
+      ],
+      "role": "blind"
+    },
+    {
+      "id": "NIF.G_N230729",
+      "preset": "NIF",
+      "kind": "validation",
+      "status": "known-fail",
+      "wording": "benchmarked (deviation -65 %)",
+      "value": 0.6684093625945734,
+      "published": 1.89,
+      "ratio": 0.3536557474045362,
+      "deviationPct": -64.63442525954638,
+      "accept": [
+        1,
+        3.78
+      ],
+      "role": "blind"
+    },
+    {
+      "id": "DIRECT.G",
+      "preset": "DIRECT",
+      "kind": "benchmark",
+      "status": "pass",
+      "wording": "benchmarked (deviation -47 %)",
+      "value": 0.3905709192014861,
+      "published": 0.74,
+      "ratio": 0.5277985394614677,
+      "deviationPct": -47.22014605385323,
+      "accept": [
+        0.3,
+        1.76
+      ]
+    },
+    {
+      "id": "Z.yield",
+      "preset": "Z",
+      "kind": "validation",
+      "status": "known-fail",
+      "wording": "benchmarked (deviation +1718 %)",
+      "value": 199971825241927.1,
+      "published": 11000000000000,
+      "ratio": 18.17925684017519,
+      "deviationPct": 1717.925684017519,
+      "accept": [
+        3660000000000,
+        33000000000000
+      ]
+    },
+    {
+      "id": "Z.Ti",
+      "preset": "Z",
+      "kind": "validation",
+      "status": "pass",
+      "wording": "validated",
+      "value": 3.1686968754553604,
+      "published": 3.1,
+      "ratio": 1.022160282404955,
+      "deviationPct": 2.2160282404954934,
+      "accept": [
+        2.17,
+        4.03
+      ]
+    },
+    {
+      "id": "GF.Tmax",
+      "preset": "GF",
+      "kind": "sanity",
+      "status": "pass",
+      "wording": "sanity bound",
+      "value": 1.411720037399834,
+      "published": 6.463,
+      "ratio": 0.21843107494968805,
+      "deviationPct": -78.1568925050312,
+      "accept": [
+        0.3,
+        6.463
+      ]
+    },
+    {
+      "id": "FRXL.Tmax",
+      "preset": "FRXL",
+      "kind": "sanity",
+      "status": "pass",
+      "wording": "sanity bound",
+      "value": 1.430278977531235,
+      "published": 6.463,
+      "ratio": 0.22130264235358735,
+      "deviationPct": -77.86973576464126,
+      "accept": [
+        0.3,
+        6.463
+      ]
+    },
+    {
+      "id": "ZAP.Te",
+      "preset": "ZAP",
+      "kind": "sanity",
+      "status": "pass",
+      "wording": "sanity bound",
+      "value": 1,
+      "published": 2,
+      "ratio": 0.5,
+      "deviationPct": -50,
+      "accept": [
+        0.7,
+        3.9
+      ]
+    },
+    {
+      "id": "TAE.Te",
+      "preset": "TAE",
+      "kind": "validation",
+      "status": "pass",
+      "wording": "benchmarked (deviation +21 %)",
+      "value": 0.6060661233301651,
+      "published": 0.5,
+      "ratio": 1.2121322466603301,
+      "deviationPct": 21.213224666033014,
+      "accept": [
+        0.25,
+        1
+      ]
+    },
+    {
+      "id": "TAE.Ttot",
+      "preset": "TAE",
+      "kind": "validation",
+      "status": "known-fail",
+      "wording": "benchmarked (deviation -60 %)",
+      "value": 1.2121322466603301,
+      "published": 3,
+      "ratio": 0.40404408222011007,
+      "deviationPct": -59.595591777988986,
+      "accept": [
+        1.5,
+        6
+      ]
+    },
+    {
+      "id": "MIRROR.Te",
+      "preset": "MIRROR",
+      "kind": "sanity",
+      "status": "known-fail",
+      "wording": "sanity bound",
+      "value": 9.531773248244315,
+      "published": 0.66,
+      "ratio": 14.442080679158053,
+      "deviationPct": 1344.2080679158053,
+      "accept": [
+        0.33,
+        1.8
+      ]
+    },
+    {
+      "id": "MUON.Yf",
+      "preset": "MUON",
+      "kind": "validation",
+      "status": "known-fail",
+      "wording": "benchmarked (deviation -29 %)",
+      "value": 106.4616796102706,
+      "published": 150,
+      "ratio": 0.7097445307351373,
+      "deviationPct": -29.025546926486268,
+      "accept": [
+        109,
+        191
+      ]
+    },
+    {
+      "id": "MUON.Q",
+      "preset": "MUON",
+      "kind": "sanity",
+      "status": "pass",
+      "wording": "sanity bound",
+      "value": 0.37451089653300945,
+      "published": 0.528,
+      "ratio": 0.709300940403427,
+      "deviationPct": -29.069905959657305,
+      "accept": [
+        0,
+        0.99
+      ]
+    }
+  ]
+}

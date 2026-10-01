@@ -3,7 +3,7 @@ import { fieldInfo, validateConfig } from '../../physics/config/schema';
 import { DEFAULT_EDGE_PARAMS } from '../../physics/edge/params';
 import { DEFAULT_PROFILE_SETTINGS } from '../../physics/profiles/defaults';
 import { DEFAULT_PULSE_LENGTH_S } from '../../physics/systems/cryo';
-import { ITER, ITER_15D, W7X } from '../../physics/presets';
+import { ITER, ITER_15D, JET_15D, W7X } from '../../physics/presets';
 import { Simulation } from '../../physics/simulation';
 import type { ReactorConfig } from '../../physics/types';
 import { ADVANCED_FIELDS } from './advanced';
@@ -85,17 +85,22 @@ describe('the Advanced fields', () => {
 
   it('reach the model: a pulse length and an edge option written by the wizard change the report the way they say', () => {
     const run = (cfg: ReactorConfig) => new Simulation({ ...cfg, t_end: 3 } as ReactorConfig).runAll().engineering;
-    const base = run(ITER);
+    // ITER carries its published design pulse (presets.ts); with the field blank the model's default applies
+    expect(run(ITER)['Cryo pulse length (s)']).toBe(500);
+    const blank = setPath(ITER, 'systems.pulseLength_s', undefined);
+    const base = run(blank);
     expect(base['Cryo pulse length (s)']).toBe(DEFAULT_PULSE_LENGTH_S);
-    const set = run(setPath(setPath(ITER, 'systems.pulseLength_s', 7200), 'divertor.edge.sheathGamma', 8.6));
+    const set = run(setPath(setPath(blank, 'systems.pulseLength_s', 7200), 'divertor.edge.sheathGamma', 8.6));
     expect(set['Cryo pulse length (s)']).toBe(7200);
     // a higher sheath transmission coefficient puts the same power on the target at a lower temperature: the edge rows move
     expect(set['Target T_e, two-point (eV)']).not.toBe(base['Target T_e, two-point (eV)']);
   }, 30_000);
 
   it('lists the settings a configuration carries, and not the blank ones', () => {
-    expect(advancedOverrides(ITER_15D)).toEqual([]);
-    let cfg: ReactorConfig = setPath(ITER_15D, 'systems.pulseLength_s', 7200);
+    expect(advancedOverrides(JET_15D)).toEqual([]);
+    // a preset that carries a setting lists it: the published ITER design pulse of 500 s
+    expect(advancedOverrides(ITER_15D)).toEqual([{ step: 'driver', path: 'systems.pulseLength_s' }]);
+    let cfg: ReactorConfig = setPath(JET_15D, 'systems.pulseLength_s', 7200);
     cfg = setPath(cfg, 'profiles.rtol', 5e-3);
     cfg = setPath(cfg, 'divertor.edge.S_mm', undefined);
     expect(advancedOverrides(cfg)).toEqual([{ step: 'driver', path: 'systems.pulseLength_s' }, { step: 'heating', path: 'profiles.rtol' }]);

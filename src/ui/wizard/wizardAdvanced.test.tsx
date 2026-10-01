@@ -7,7 +7,7 @@
 import { useState } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { ITER, ITER_15D, TAE, W7X } from '../../physics/presets';
+import { ITER, ITER_15D, JET, JET_15D, TAE, W7X } from '../../physics/presets';
 import type { ReactorConfig } from '../../physics/types';
 import { AppStore, AppStoreContext, createAppStore } from '../state/store';
 import { installDomStubs } from '../testing/dom';
@@ -42,7 +42,7 @@ const openAdvanced = async () => {
 
 describe('wizard: the Advanced section', () => {
   it('is closed until it is opened, then shows the pulse length, the edge options and their defaults', async () => {
-    const seen = mount(ITER);
+    const seen = mount(JET); // a preset without a design pulse or edge settings
     step('Magnet / Driver');
     expect(screen.getByText('Advanced')).toBeTruthy();
     expect(screen.queryByText('Plant pulse length')).toBeNull(); // not loaded yet
@@ -57,6 +57,12 @@ describe('wizard: the Advanced section', () => {
     // looking at the defaults changes nothing in the configuration
     expect(getPath(seen.cfg, 'divertor.edge')).toBeUndefined();
     expect(getPath(seen.cfg, 'systems')).toBeUndefined();
+    // a preset that carries a pulse length shows it: the published ITER design pulse
+    cleanup();
+    mount(ITER);
+    step('Magnet / Driver');
+    await openAdvanced();
+    expect(input('Plant pulse length').value).toBe('500');
   });
 
   it('writes a value only when it is edited, and a blank one goes back to undefined', async () => {
@@ -112,9 +118,13 @@ describe('wizard: the Advanced section', () => {
   });
 
   it('lists the settings the configuration carries on the run summary, and nothing when they are all at the defaults', async () => {
-    mount(ITER_15D);
+    mount(JET_15D);
     step('RUN');
     expect(screen.queryByTestId('advanced-summary')).toBeNull();
+    cleanup();
+    mount(ITER_15D); // carries the published 500 s design pulse
+    step('RUN');
+    expect(within(await screen.findByTestId('advanced-summary')).getByText('Plant pulse length').closest('tr')!.textContent).toContain('500');
     cleanup();
     const cfg = { ...ITER_15D, systems: { pulseLength_s: 7200 }, profiles: { ...(ITER_15D as { profiles?: object }).profiles, rtol: 0.005, nonlinearSolver: 'newton' } } as ReactorConfig;
     mount(cfg);

@@ -21,8 +21,10 @@ const PRESET_LIST: Preset[] = [
 ];
 const TEST_LIST: TestDef[] = [
   { id: 'nif', presetId: 'NIF', title: 'NIF test', criteria: [
-    { label: 'Gain', get: (r) => r.Q_sci_max, lo: 1, hi: 2, unit: '', source: 'N221204' },
-    { label: 'E_fusion', get: (r) => r.E_fusion_MJ, lo: 2, hi: 4.5, unit: 'MJ', source: '3.15 MJ' },
+    // plumbing test: these ranges only have to be passed by the preset (G = 0.67, 1.37 MJ since the ICF model is calibrated on N210808);
+    // they are not validation ranges, which live in physics/validation/references.ts
+    { label: 'Gain', get: (r) => r.Q_sci_max, lo: 0.5, hi: 1, unit: '', source: 'N221204' },
+    { label: 'E_fusion', get: (r) => r.E_fusion_MJ, lo: 1, hi: 2, unit: 'MJ', source: '3.15 MJ' },
   ] },
   { id: 'tae', presetId: 'TAE', title: 'TAE test', criteria: [
     { label: 'Q must be huge', get: (r) => r.Q_sci_max, lo: 100, hi: 200, unit: '', source: 'impossible on purpose' },
@@ -127,6 +129,30 @@ describe('Validation view', () => {
     expect(f.workers.length).toBeGreaterThan(0);
   });
 
+  it('a documented miss is badged as such, not as FAIL, and the summary says how many tests passed', async () => {
+    const f = fakeWorkerFactory();
+    const pool = new RunPool(f.create, 2);
+    const tests: TestDef[] = [
+      { id: 'miss', presetId: 'NIF', title: 'Documented', knownMiss: true, criteria: [{ label: 'Gain', get: (r) => r.Q_sci_max, lo: 1, hi: 3, unit: '', source: 'N221204' }] },
+      { id: 'ok', presetId: 'NIF', title: 'Passing', criteria: [{ label: 'Gain', get: (r) => r.Q_sci_max, lo: 0.5, hi: 1, unit: '', source: 'N210808' }] },
+    ];
+    render(<AppStoreContext.Provider value={createAppStore()}><Validation createWorker={f.create} pool={pool} tests={tests} presets={PRESET_LIST} /></AppStoreContext.Provider>);
+    fireEvent.click(screen.getByRole('button', { name: 'Run 2 tests' }));
+    drive(f.workers);
+    await waitFor(() => expect(screen.getByText('PASS')).toBeTruthy());
+    const miss = screen.getByText('Documented').closest('.panel') as HTMLElement;
+    expect(within(miss).getByText('DOCUMENTED MISS').classList.contains('warn')).toBe(true);
+    expect(within(miss).getByText(/A documented miss, not a fault of the test/)).toBeTruthy();
+    expect(within(miss).queryByText('FAIL')).toBeNull();
+    expect(screen.queryByText('FAIL')).toBeNull();
+    // the passing test has neither badge nor note
+    const ok = screen.getByText('Passing').closest('.panel') as HTMLElement;
+    expect(within(ok).queryByText('DOCUMENTED MISS')).toBeNull();
+    expect(within(ok).queryByText(/documented miss/i)).toBeNull();
+    // 1 of 2 passed, the other is documented: a warning, not a failure
+    expect(screen.getByText('1/2 tests passed').classList.contains('warn')).toBe(true);
+  });
+
   it('is available in Turkish', async () => {
     const store = createAppStore();
     mount(1, store);
@@ -145,6 +171,33 @@ describe('Validation view', () => {
     for (const t of TESTS) {
       expect(PRESETS.some((p) => p.id === t.presetId), t.id).toBe(true);
       for (const c of t.criteria) { expect(c.lo).toBeLessThanOrEqual(c.hi); expect(c.source.length).toBeGreaterThan(5); }
+    }
+  });
+
+  it('the NIF tests take their ranges from the literature table, so the panel cannot drift from `npm run validate`', async () => {
+    const { REFERENCE_CHECKS, widen } = await import('../../physics/validation/references');
+    const row = (id: string) => REFERENCE_CHECKS.find((c) => c.id === id)!;
+    const crit = (testId: string, label: string) => TESTS.find((t) => t.id === testId)!.criteria.find((c) => c.label === label)!;
+    // N210808, the calibration shot: the gain of its row, the yield by the yield tolerance around the published 1.37 MJ
+    expect([crit('nif210808', 'Gain (Q)').lo, crit('nif210808', 'Gain (Q)').hi]).toEqual([...row('NIF210808.G').accept]);
+    expect([crit('nif210808', 'E_fusion').lo, crit('nif210808', 'E_fusion').hi]).toEqual([...widen('yield', [1.37, 1.37])]);
+    expect(TESTS.find((t) => t.id === 'nif210808')!.presetId).toBe('NIF210808');
+    // N221204: the gain of its row; a documented miss of the model, so it says so and is not hidden
+    expect([crit('nif', 'Gain (Q)').lo, crit('nif', 'Gain (Q)').hi]).toEqual([...row('NIF.G').accept]);
+    expect(row('NIF.G').knownFailure).toBeDefined();
+    expect(TESTS.find((t) => t.id === 'nif')!.knownMiss).toBe(true);
+    // nothing else of the panel is a documented miss, and the calibration shot is not
+    expect(TESTS.filter((t) => t.knownMiss).map((t) => t.id)).toEqual(['nif']);
+  });
+
+  it('with the real model the NIF tests come out as the panel says: N210808 passes, N221204 misses as documented', async () => {
+    const { PRESETS } = await import('../../physics/presets');
+    const { Simulation } = await import('../../physics/simulation');
+    for (const t of TESTS.filter((x) => x.presetId.startsWith('NIF'))) {
+      const rep = new Simulation(PRESETS.find((p) => p.id === t.presetId)!.cfg).runAll();
+      const ok = t.criteria.every((c) => { const v = c.get(rep); return Number.isFinite(v) && v >= c.lo && v <= c.hi; });
+      // a documented miss that starts to pass has to lose its marker (the XPASS of npm run validate); a test without one has to pass
+      expect(ok, `${t.id}: G = ${rep.Q_sci_max}, E_fus = ${rep.E_fusion_MJ} MJ`).toBe(t.knownMiss !== true);
     }
   });
 });

@@ -6,9 +6,11 @@
  * hesaplanır; ateşleme eşiği (hız, ρR, asimetri, pürüzlülük) bir "cliff" çarpanıyla
  * modellenir. Yanma zaman içinde bang-time çevresinde Gauss darbesi olarak verilir.
  *
- * Kalibrasyon: NIF N221204 preset'i G ≈ 1.5 verir (Abu-Shawareb 2024).
+ * Calibration: ICF_CAL (ρR scale) is the one constant tuned to an experiment. Since v4.0 it is calibrated on NIF N210808 alone
+ * (1.37 MJ, Abu-Shawareb 2022; icfCalibration.ts: what, to which shot and how); N221204 (3.15 MJ, G = 1.5) and N230729 (3.88 MJ) are
+ * blind predictions of the model (validation/references.ts). Until v4.0 ICF_CAL = 0.07 was tuned to N221204.
  * Fuel: the energy and the neutron number per reaction, H_B and the ignition threshold come from the selected fuel (icfFuelData);
- * the D-T values keep the calibration exactly.
+ * the D-T values are those of the D-T-only model of v3.0.0 exactly.
  * Durum y: [0] E_fus [J]  [1] E_in [J]  [2] N_n
  * APPROXIMATION: 0D, tek noktalı hotspot; hidrodinamik ayrıntı yok.
  */
@@ -21,8 +23,12 @@ import { PulsedBase } from './common';
 
 const IDX = { Efus: 0, Ein: 1, Nn: 2 } as const;
 const NSTATE = 3;
-const H_B_DT = 7.0; // g/cm², D-T burn parameter (Atzeni & Meyer-ter-Vehn 2004; calibration point)
-const ICF_CAL = 0.07; // geometrik ρR → gerçekçi ρR kalibrasyonu (NIF'e ayarlı)
+const H_B_DT = 7.0; // g/cm², D-T burn parameter (Atzeni & Meyer-ter-Vehn 2004, whose optimum is ≈ 7.3); held fixed when ICF_CAL is calibrated
+/**
+ * Calibration knob: geometric ρR → effective ρR, ρR_eff = ICF_CAL · ρR_geo · √(2.8/α). The root of E_fus(ICF_CAL) = 1.37 MJ for the NIF_N210808 preset
+ * (N210808), rounded to four significant digits: 0.03931 (0.07 until v4.0, tuned to N221204); reproduced by icfCalibration.test.ts.
+ */
+export const ICF_CAL = 0.03931;
 /** Default driver (laser) wall-plug efficiency and thermal conversion efficiency (used when ICFConfig gives none) */
 const DRIVER_EFF_DEFAULT = 0.1;
 const THERMAL_EFF_DEFAULT = 0.4;
@@ -49,7 +55,7 @@ export interface ICFFuelData {
  * is dn/dt = −n² K, K = Σ_ch 2 x_ch ⟨σv⟩_ch (x_ch = x_a x_b or x_a²/2; each reaction consumes two
  * ions) and the same derivation gives H(T) = 4 m_f c_s/K (D-T: K = ⟨σv⟩/2 → 8 m_f c_s/⟨σv⟩);
  * c_s = √((1+Z̄)T/m_f) is the isothermal sound speed. The minimum of H(T) is ≈ 7.3 g/cm² for D-T (T ≈ 39 keV);
- * the calibrated D-T value of the model, 7 g/cm², is kept and the other fuels are scaled by the ratio:
+ * the D-T value of the model, 7 g/cm², is kept and the other fuels are scaled by the ratio:
  *   H_B,fuel = 7 · min_T H_fuel / min_T H_DT.
  * The energy and neutron number per reaction use the branching ratios at this optimal burn temperature.
  * The ignition threshold (Lawson-type figure of merit at constant pressure, self-heating ∝ p² ⟨σv⟩E_ch/((1+Z̄)²T²)) is scaled
@@ -93,6 +99,62 @@ export function icfFuelData(fuel: FuelType): ICFFuelData {
 }
 const FUEL_DATA_CACHE = new Map<FuelType, ICFFuelData>();
 
+/** Stagnation and burn state of one implosion, everything {@link ICFModel} takes from the capsule inputs. */
+export interface ICFStagnation {
+  /** geometric areal density of the fuel at stagnation, m / (4/3 π R_stag²) [g/cm²] */
+  rhoR_geo: number;
+  /** effective (burn-weighted) areal density, rhoRScale · ρR_geo · √(2.8/α) [g/cm²] */
+  rhoR_eff: number;
+  /** ignition parameter χ_ig of the cliff multiplier */
+  chi_ig: number;
+  ignited: boolean;
+  /** cliff multiplier on the burn: 1 when ignited, χ_ig³ below the threshold */
+  burnMult: number;
+  /** burn-up fraction of the fuel ions, ρR/(ρR + H_B), before the cliff multiplier */
+  Phi: number;
+  N_fus_total: number;
+  E_fus_total: number;
+  N_n_total: number;
+  T_hs: number;
+}
+
+/**
+ * The 0D implosion model in closed form: capsule inputs → stagnation ρR, ignition parameter and total yield.
+ * ICFModel uses this function; `rhoRScale` is the one calibration knob of the model (ICF_CAL, see icfCalibration.ts),
+ * a parameter here so that the calibration can solve for it and the tests can reproduce it.
+ */
+export function icfStagnation(cfg: ICFConfig, rhoRScale: number = ICF_CAL): ICFStagnation {
+  const fd = icfFuelData(cfg.fuel);
+  const m_fuel = cfg.fuelMass_ug * 1e-9; // kg
+  const m_i = fd.m_f_amu * C.amu; // mean fuel-ion mass
+  const N_ions = m_fuel / m_i;
+
+  // stagnation geometry
+  const R0 = cfg.capsuleRadius_um * 1e-6;
+  const R_stag = R0 / Math.max(cfg.convergenceRatio, 1);
+  const rhoR_kg = m_fuel / ((4 / 3) * Math.PI * R_stag * R_stag); // kg/m²
+  const rhoR_geo = rhoR_kg / 10; // g/cm²
+  const rhoR_eff = rhoRScale * rhoR_geo * Math.sqrt(2.8 / Math.max(cfg.adiabat, 0.5));
+
+  // ignition cliff: rate, ρR, asymmetry, roughness (constants set for D-T), scaled by the self-heating figure of merit of the fuel
+  const v = cfg.implosionVelocity_kms;
+  const f_asym = Math.exp(-Math.pow(cfg.asymmetry_rms / 6, 2));
+  const f_rough = Math.exp(-Math.pow(cfg.surfaceRoughness_nm / 200, 2));
+  const chi_ig = fd.ignitionScale * (rhoR_eff / 0.2) * Math.pow(v / 360, 3) * f_asym * f_rough;
+  const ignited = chi_ig >= 1;
+  const burnMult = ignited ? 1 : Math.pow(Math.max(chi_ig, 0), 3);
+
+  const Phi = rhoR_eff / (rhoR_eff + fd.H_B); // burn-up fraction (fuel ions)
+  const N_fus_total = Phi * (N_ions / 2) * burnMult; // two ions per reaction
+  const E_fus_total = N_fus_total * U.MeV_to_J(fd.E_rx_MeV);
+  const N_n_total = N_fus_total * fd.neutronsPerReaction;
+
+  // hot-spot temperature: kinematic + ignition (alpha) boost
+  const T_kin = (m_i * Math.pow(v * 1e3, 2)) / (3 * C.keV_J); // keV
+  const T_hs = ignited ? Math.min(4 + (chi_ig - 1) * 4, 15) : Math.max(T_kin, 0.5);
+  return { rhoR_geo, rhoR_eff, chi_ig, ignited, burnMult, Phi, N_fus_total, E_fus_total, N_n_total, T_hs };
+}
+
 const ICF_DIAGS: DiagSpec[] = [
   { key: 'P_fus', label: 'P_fusion (instantaneous)', unit: 'MW', group: 'Power' },
   { key: 'Ti', label: 'Hotspot T', unit: 'keV', group: 'Temperature' },
@@ -112,7 +174,6 @@ export class ICFModel extends PulsedBase {
   private fuelData: ICFFuelData;
   private E_laser_J: number;
   private E_fus_total: number; // toplam füzyon enerjisi [J]
-  private N_fus_total: number; // toplam füzyon reaksiyonu
   private N_n_total: number; // total number of neutrons
   private rhoR_eff: number; // g/cm²
   private chi_ig: number; // ateşleme parametresi
@@ -132,35 +193,14 @@ export class ICFModel extends PulsedBase {
     this.bang = cfg.pulse_ns;
     this.E_laser_J = cfg.E_laser_MJ * 1e6;
 
-    const fd = icfFuelData(cfg.fuel);
-    this.fuelData = fd;
-    const m_fuel = cfg.fuelMass_ug * 1e-9; // kg
-    const m_i = fd.m_f_amu * C.amu; // mean fuel-ion mass
-    const N_ions = m_fuel / m_i;
-
-    // durgunluk geometrisi
-    const R0 = cfg.capsuleRadius_um * 1e-6;
-    const R_stag = R0 / Math.max(cfg.convergenceRatio, 1);
-    const rhoR_kg = m_fuel / ((4 / 3) * Math.PI * R_stag * R_stag); // kg/m²
-    const rhoR_geo = rhoR_kg / 10; // g/cm²
-    this.rhoR_eff = ICF_CAL * rhoR_geo * Math.sqrt(2.8 / Math.max(cfg.adiabat, 0.5));
-
-    // ignition cliff: rate, ρR, asymmetry, roughness (calibrated to D-T), scaled by the self-heating figure of merit of the fuel
-    const v = cfg.implosionVelocity_kms;
-    const f_asym = Math.exp(-Math.pow(cfg.asymmetry_rms / 6, 2));
-    const f_rough = Math.exp(-Math.pow(cfg.surfaceRoughness_nm / 200, 2));
-    this.chi_ig = fd.ignitionScale * (this.rhoR_eff / 0.2) * Math.pow(v / 360, 3) * f_asym * f_rough;
-    this.ignited = this.chi_ig >= 1;
-    const burnMult = this.ignited ? 1 : Math.pow(Math.max(this.chi_ig, 0), 3);
-
-    const Phi = this.rhoR_eff / (this.rhoR_eff + fd.H_B); // burn-up fraction (fuel ions)
-    this.N_fus_total = Phi * (N_ions / 2) * burnMult; // two ions per reaction
-    this.E_fus_total = this.N_fus_total * U.MeV_to_J(fd.E_rx_MeV);
-    this.N_n_total = this.N_fus_total * fd.neutronsPerReaction;
-
-    // hotspot sıcaklığı: kinematik + ateşleme (alfa) yükseltmesi
-    const T_kin = (m_i * Math.pow(v * 1e3, 2)) / (3 * C.keV_J); // keV
-    this.T_hs = this.ignited ? Math.min(4 + (this.chi_ig - 1) * 4, 15) : Math.max(T_kin, 0.5);
+    this.fuelData = icfFuelData(cfg.fuel);
+    const st = icfStagnation(cfg);
+    this.rhoR_eff = st.rhoR_eff;
+    this.chi_ig = st.chi_ig;
+    this.ignited = st.ignited;
+    this.E_fus_total = st.E_fus_total;
+    this.N_n_total = st.N_n_total;
+    this.T_hs = st.T_hs;
 
     this.ctrl = {};
   }

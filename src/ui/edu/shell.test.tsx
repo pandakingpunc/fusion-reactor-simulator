@@ -33,7 +33,7 @@ describe('the education and comparison screens in the app shell', () => {
   it('a mission runs on the same worker factory as the app (a worker of its own, not the live simulation)', async () => {
     const { factory } = mount();
     fireEvent.click(screen.getByRole('button', { name: 'Learn' }));
-    fireEvent.click(await screen.findByRole('button', { name: /Ignite the capsule/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Squeeze the capsule evenly/ }));
     const before = factory.workers.length;
     fireEvent.click(screen.getByRole('button', { name: 'Run the shot' }));
     expect(factory.workers.length).toBe(before + 1);
@@ -60,17 +60,17 @@ describe('the education and comparison screens in the app shell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Validation' }));
     expect(await screen.findByText(/shared among \d background workers/, {}, { timeout: 30000 })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Run everything' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Run 4 tests' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Run 5 tests' }));
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(await screen.findAllByText('cancelled')).toHaveLength(4);
+    expect(await screen.findAllByText('cancelled')).toHaveLength(5);
   }, 90000);
 
   it('the Learn tab is in the address: #/learn, #/learn/missions/<id>, #/learn/glossary/<term>, and back returns', async () => {
     const { store } = mount();
     fireEvent.click(screen.getByRole('button', { name: 'Learn' }));
     expect(window.location.hash).toBe('#/learn');
-    fireEvent.click(await screen.findByRole('button', { name: /Ignite the capsule/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Squeeze the capsule evenly/ }));
     expect(window.location.hash).toBe('#/learn/missions/nif');
     expect(await screen.findByRole('button', { name: 'Run the shot' })).toBeTruthy();
 
@@ -87,7 +87,7 @@ describe('the education and comparison screens in the app shell', () => {
     expect(await screen.findByRole('button', { name: 'Run the shot' })).toBeTruthy();
     act(() => { window.history.back(); });
     await waitFor(() => expect(window.location.hash).toBe('#/learn'));
-    expect(await screen.findByRole('button', { name: /Ignite the capsule/ })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: /Squeeze the capsule evenly/ })).toBeTruthy();
     expect(store.getState().tab).toBe('learn');
 
     // leaving the tab leaves the address

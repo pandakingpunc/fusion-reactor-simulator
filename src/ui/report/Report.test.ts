@@ -59,8 +59,11 @@ describe.each(cases)('$name report units', ({ cfg, unit, seconds }) => {
   });
 });
 
-it('reports a completed NIF shot as 11 ns with sub-nanosecond ignition', () => {
-  const sim = new Simulation(NIF);
+// the NIF preset no longer ignites in the model (it is calibrated on N210808, chi_ig = 0.95: see physics/confinement/icfCalibration.ts), so the report of an
+// ignited shot is read from the same capsule at adiabat 1.5 (chi_ig = 1.30, G = 1.05, Q above 1 for 2.9 ns)
+it('reports a completed ignited NIF-capsule shot as 11 ns with sub-nanosecond ignition', () => {
+  const ignited = { ...NIF, adiabat: 1.5 };
+  const sim = new Simulation(ignited);
   const report = sim.runAll();
   expect(report.duration).toBeCloseTo(11, 8);
   expect(report.stableTime_s).toBeGreaterThan(10e-9);
@@ -69,6 +72,6 @@ it('reports a completed NIF shot as 11 ns with sub-nanosecond ignition', () => {
   expect(report.ignitionTime_s).toBeLessThan(1e-9);
   expect(report.burnTime_s).toBeGreaterThan(2e-9);
   expect(report.burnTime_s).toBeLessThan(4e-9);
-  expect(render({ ...sampleShot(NIF), report, frames: sim.history, events: sim.events }))
+  expect(render({ ...sampleShot(ignited), report, frames: sim.history, events: sim.events }))
     .toContain('Shot duration 11.00 ns');
 });

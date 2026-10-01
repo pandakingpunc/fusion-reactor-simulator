@@ -251,9 +251,13 @@ SVG/PDF yapısı ve xref ofsetleri) ve POPCON tutarlılığı.
 
 ## 7. Geçerlilik (validation)
 
-`npm run validate`, 25 preset'i işçi havuzunda paralel koşar ve 19 ölçütü yayımlanmış
-aralıklara karşı denetler (tümü geçer). Şekil 5 ve tablo, 0D ve 1.5D sonuçlarının
-referansa oranını verir (düz tepe = atışın son %30'u).
+`npm run validate`, 22 preset'i işçi havuzunda paralel koşar ve 46 ölçütü yayımlanmış
+aralıklara karşı denetler: 38'i geçer, 8'i belgelenmiş bilinen başarısızlıktır (beklenmeyen
+başarısızlık yok). Her ölçütün ifadesi, model değerinin yayımlanmış değerden sapmasına bağlıdır:
+%20 içinde "doğrulandı" (validated), ötesinde "karşılaştırıldı, sapma X %" (benchmarked), modelin
+tek ayarlı sabitinin uydurulduğu NIF atışında "kalibre" (calibrated; geçmesi yapı gereğidir),
+bir sınır olan (kind sanity) ölçütte "sağlık sınırı" (sanity bound). Şekil 5 ve tablo, 0D ve 1.5D
+sonuçlarının referansa oranını verir (düz tepe = atışın son %30'u).
 
 ![Şekil 5](figures/fig05_validation.svg)
 
@@ -273,7 +277,7 @@ referansa oranını verir (düz tepe = atışın son %30'u).
 | SPARC P_fus | 140 MW | 1.30 | 1.12 |
 | DEMO P_fus | 2 GW (Siccinio 2020) | 1.10 | 0.98 |
 | DEMO f_bs | 0.35 | — | 1.04 |
-| NIF kazanç G | 1.54 (N221204) | 0.97 | — |
+| NIF kazanç G | 1.5 (N221204) | 0.45 | — |
 
 **Yorum.** 1.5D model ITER'de 0D'nin Q ≈ 14 aşırı tahminini Q ≈ 9.8'e indirir: 3/2 NTM
 (testere dişi tohumlu, doyum w/a ≈ 0.084) ve profil etkileri (pedestal, akım difüzyonu)
@@ -281,6 +285,14 @@ hapsetmeyi düşürür. **JET +%43:** 1.5D'de füzyonun ≈ %60'ı üç-bileşen
 reaksiyonlarından gelir (TRANSP analizleriyle nitel uyumlu); bu pay hızlı iyon yavaşlama
 modeline duyarlıdır ve modelin bilinen bir sınırlamasıdır. SPARC'ta her iki model de
 Q ≈ 11 tasarım tahmininin altındadır (yalnız ICRH, W safsızlığı ve H98 = 1 varsayımları).
+
+**NIF: kör bir ıskalama.** ICF modelinin tek ayarlı sabiti (ICF_CAL) NIF N210808 atışına (1.37 MJ,
+G = 0.72) kalibre edilir; bu atışın tutması yapı gereğidir, bir doğrulama değildir. N221204 aynı
+sabitle yeniden uydurulmadan öngörülür ve model yayımlanmış G = 1.5'in 0.45'ini verir (N230729
+için 0.35): modelin üç atışı birbirinden ayıran girdisi yoktur, hepsi için kalibrasyon verimini (1.37
+MJ) öngörür; bu bilinen bir başarısızlık olarak belgelenmiştir. v4.0 öncesinde sabit N221204'ün
+kendisine ayarlıydı (G = 1.49), yani uydurma bir tahmin gibi görünüyordu. Tablonun NIF dışındaki
+satırları v3.0.0 değerleridir.
 
 ## 8. POPCON ve parametre taraması
 

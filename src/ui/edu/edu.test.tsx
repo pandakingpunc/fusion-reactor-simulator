@@ -224,7 +224,7 @@ describe('Learn screen', () => {
 
   it('plays a run mission: a failing shot, a solving one, the verdict, the lesson, the saved progress', async () => {
     const { f } = mount();
-    openMission('Ignite the capsule');
+    openMission('Squeeze the capsule evenly');
     expect(screen.getByText(/Starting point: NIF/)).toBeTruthy();
     expect(slider('Drive asymmetry').value).toBe('8');
     expect(screen.getAllByText('Target gain')).toHaveLength(2); // the glossary chip and the goal
@@ -238,10 +238,10 @@ describe('Learn screen', () => {
     expect(screen.queryByText('Mission accomplished')).toBeNull();
     const goals = screen.getAllByRole('listitem');
     expect(goals[0].textContent).toContain('✓'); // survived
-    expect(goals[1].textContent).toContain('✗'); // gain below 1.2
+    expect(goals[1].textContent).toContain('✗'); // gain below 0.7
     expect(loadSolved()).toEqual([]);
 
-    fireEvent.change(slider('Drive asymmetry'), { target: { value: '3' } });
+    fireEvent.change(slider('Drive asymmetry'), { target: { value: '1' } });
     expect(screen.getByText('start 8.00 %')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Run the shot' }));
     drive(f.workers);
@@ -253,7 +253,7 @@ describe('Learn screen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /All missions/ }));
     expect(screen.getByText('1 of 10 missions solved')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Ignite the capsule/ }).classList.contains('solved')).toBe(true);
+    expect(screen.getByRole('button', { name: /Squeeze the capsule evenly/ }).classList.contains('solved')).toBe(true);
   });
 
   it('shows the progress kept by an earlier visit', () => {
@@ -265,7 +265,7 @@ describe('Learn screen', () => {
 
   it('cancels a running shot and frees the controls', async () => {
     const { f, pool } = mount();
-    openMission('Ignite the capsule');
+    openMission('Squeeze the capsule evenly');
     fireEvent.click(screen.getByRole('button', { name: 'Run the shot' }));
     expect(screen.getByRole('progressbar')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
@@ -278,7 +278,7 @@ describe('Learn screen', () => {
 
   it('reports a worker that fails', async () => {
     const { f } = mount();
-    openMission('Ignite the capsule');
+    openMission('Squeeze the capsule evenly');
     fireEvent.click(screen.getByRole('button', { name: 'Run the shot' }));
     act(() => f.workers[0].crash('boom'));
     const alert = await screen.findByRole('alert');
@@ -288,19 +288,19 @@ describe('Learn screen', () => {
 
   it('gives two hints one after the other, then shows a solution and its explanation', async () => {
     mount();
-    openMission('Ignite the capsule');
+    openMission('Squeeze the capsule evenly');
     const hint = screen.getByRole('button', { name: 'Hint' });
     fireEvent.click(hint);
     expect(screen.getByText(/The gain collapses quickly/)).toBeTruthy();
-    expect(screen.queryByText(/Aim for a few per cent/)).toBeNull();
+    expect(screen.queryByText(/Aim for about 1 %/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Hint 2 of 2' }));
-    expect(screen.getByText(/Aim for a few per cent/)).toBeTruthy();
+    expect(screen.getByText(/Aim for about 1 %/)).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Hint 2 of 2' }) as HTMLButtonElement).disabled).toBe(true);
 
     fireEvent.click(screen.getByRole('button', { name: 'Show a solution' }));
-    expect(slider('Drive asymmetry').value).toBe('3');
+    expect(slider('Drive asymmetry').value).toBe('1');
     expect(screen.getByText('A solution is set on the controls. Run it to check.')).toBeTruthy();
-    expect(screen.getByText(/About 3 % asymmetry gives a gain near 1.5/)).toBeTruthy();
+    expect(screen.getByText(/About 1 % asymmetry gives a gain near 0.75/)).toBeTruthy();
     // touching a control takes the note away; reset restores the starting values
     fireEvent.change(slider('Drive asymmetry'), { target: { value: '5' } });
     expect(screen.queryByText('A solution is set on the controls. Run it to check.')).toBeNull();
@@ -311,7 +311,7 @@ describe('Learn screen', () => {
   it('every mission opens, has a control for each lever and a goal list', () => {
     mount();
     for (const m of MISSIONS) {
-      openMission(m.id === 'hmode' ? 'Reach H-mode' : { density: 'Stay below the density limit', beta: 'Beat the beta limit', kink: 'Carry more current', sparcQ: 'Q above 3 on SPARC', ignition: 'Find ignition in POPCON', elm: 'Survive an ELM storm', fuel: 'Fuel JET for the record', nif: 'Ignite the capsule', tungsten: 'Keep the core clean' }[m.id]!);
+      openMission(m.id === 'hmode' ? 'Reach H-mode' : { density: 'Stay below the density limit', beta: 'Beat the beta limit', kink: 'Carry more current', sparcQ: 'Q above 3 on SPARC', ignition: 'Find ignition in POPCON', elm: 'Survive an ELM storm', fuel: 'Fuel JET for the record', nif: 'Squeeze the capsule evenly', tungsten: 'Keep the core clean' }[m.id]!);
       expect(screen.getAllByRole('listitem')).toHaveLength(m.goals.length);
       expect(document.querySelectorAll('.lever')).toHaveLength(m.levers.length);
       fireEvent.click(screen.getByRole('button', { name: /All missions/ }));
@@ -378,7 +378,7 @@ describe('Learn screen', () => {
 
   it('opens the glossary at a term from a mission popover', () => {
     mount();
-    openMission('Ignite the capsule');
+    openMission('Squeeze the capsule evenly');
     const chips = screen.getByLabelText('Terms in this mission');
     fireEvent.click(within(chips).getByRole('button', { name: 'Explain Target gain' }));
     fireEvent.click(screen.getByRole('button', { name: 'Open in the glossary' }));
@@ -406,7 +406,7 @@ describe('Learn screen', () => {
   it('stops its workers when the screen goes away', () => {
     const f = fakeWorkerFactory();
     const { unmount } = withStore(<LearnView createWorker={f.create} />);
-    openMission('Ignite the capsule');
+    openMission('Squeeze the capsule evenly');
     fireEvent.click(screen.getByRole('button', { name: 'Run the shot' }));
     expect(f.workers).toHaveLength(1);
     unmount();

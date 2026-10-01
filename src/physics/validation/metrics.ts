@@ -14,15 +14,18 @@
  *   derived.Ttot       T_e + T_i (flat top), the "total temperature" quoted for FRC plasmas
  *   derived.alphaShare P_alpha / P_fus (flat top): the share of the fusion power that heats the plasma as charged
  *                      products (0.2 in a D-T plasma whose alphas are all deposited; 0D presets only)
+ *   derived.HISS04     τ_E(flat top) / τ_ISS04 of a stellarator, the scaling evaluated independently of the physics
+ *                      code at the flat-top line-averaged density and heating power (renormalisation f_ren = 1; see
+ *                      {@link tauISS04Ref}); the quantity W7-X papers quote as τ_E/τ_ISS04
  *
  * A metric that is unavailable (missing key, non-numeric entry, preset without the inputs a derived
  * metric needs) reads as NaN, which the evaluation reports as a failure.
  */
 import type { HistoryFrame, MagneticConfig, ReactorConfig, ShotReport } from '../types';
 
-export type DerivedMetric = 'H98y2' | 'Ttot' | 'alphaShare';
+export type DerivedMetric = 'H98y2' | 'Ttot' | 'alphaShare' | 'HISS04';
 /** every derived metric, for validating metric paths read from a file */
-export const DERIVED_METRICS: readonly DerivedMetric[] = ['H98y2', 'Ttot', 'alphaShare'];
+export const DERIVED_METRICS: readonly DerivedMetric[] = ['H98y2', 'Ttot', 'alphaShare', 'HISS04'];
 /** the scopes a metric path can start with */
 export const METRIC_SCOPES = ['flatTop', 'report', 'engineering', 'burn', 'derived'] as const;
 
@@ -68,6 +71,7 @@ function derived(name: DerivedMetric, run: RunOutputs): number {
     case 'Ttot': return num(run.flatTop.Te) + num(run.flatTop.Ti);
     case 'H98y2': return h98FromRun(run);
     case 'alphaShare': return alphaShareFromRun(run);
+    case 'HISS04': return hISS04FromRun(run);
   }
 }
 
@@ -134,6 +138,53 @@ export function h98FromRun(run: RunOutputs): number {
   const tau = tauIPB98y2Ref({
     Ip_MA: c.Ip_MA, B_T: c.B0, n19: 10 * n20, P_MW: f.P_heat,
     R_m: c.geometry.R, a_m: c.geometry.a, kappa: c.geometry.kappa, M,
+  });
+  return f.tauE / tau;
+}
+
+/** Engineering and configuration parameters of the ISS04 scaling. */
+export interface Iss04Inputs {
+  /** minor and major radius [m] */
+  a_m: number;
+  R_m: number;
+  /** toroidal field on axis [T] */
+  B_T: number;
+  /** rotational transform at 2/3 of the minor radius */
+  iota23: number;
+  /** heating power [MW] */
+  P_MW: number;
+  /** line-averaged electron density [10¹⁹ m⁻³] */
+  n19: number;
+}
+
+/**
+ * Energy confinement time of the International Stellarator Confinement Scaling ISS04 [s], without the configuration
+ * renormalisation (f_ren = 1):
+ *   τ = 0.134 · a^2.28 · R^0.64 · P^−0.61 · n̄^0.54 · B^0.84 · ι_{2/3}^0.41
+ * H. Yamada et al., Nucl. Fusion 45 (2005) 1684, doi:10.1088/0029-5515/45/12/024. The primary paper was not read: the
+ * prefactor and the exponents are those printed in eq. (1) of F. Warmer et al., "Limits of confinement enhancement for
+ * stellarators" (EUROfusion preprint WPS2-PR(15)02, who quote the scaling with a renormalisation factor f_ren in front), and the exponents
+ * agree with the other secondary quotations found (a^2.28 R^0.64 P^−0.61 n^0.54 B^0.84 ι^0.41).
+ * Deliberately independent of the physics code (transport.ts), so that it can serve as a benchmark.
+ */
+export function tauISS04Ref(p: Iss04Inputs): number {
+  return 0.134 * p.a_m ** 2.28 * p.R_m ** 0.64 * p.P_MW ** -0.61 * p.n19 ** 0.54 * p.B_T ** 0.84 * p.iota23 ** 0.41;
+}
+
+/**
+ * τ_E / τ_ISS04 over the flat top of a stellarator run: the preset's a, R, B and ι_{2/3}, the flat-top line-averaged density
+ * (`nbar`; the volume average `ne` as the fallback) and heating power P_heat. NaN for any other method. The 0D model sets
+ * τ_E = H_ISS04 · τ_ISS04 with the preset's renormalisation H_ISS04 (f_ren · H98 unless given), at the loss power it computes
+ * (P_heat − core radiation − dW/dt) and its own density, so this value is that input moved by the model's loss power and
+ * density: it tests the preset's confinement renormalisation against experiment, not a transport model.
+ */
+export function hISS04FromRun(run: RunOutputs): number {
+  const c = run.cfg as MagneticConfig;
+  if (c.method !== 'stellarator') return NaN;
+  const f = run.flatTop;
+  const n20 = Number.isFinite(f.nbar) ? f.nbar : f.ne;
+  const tau = tauISS04Ref({
+    a_m: c.geometry.a, R_m: c.geometry.R, B_T: c.B0, iota23: c.stellarator.iota23, P_MW: f.P_heat, n19: 10 * n20,
   });
   return f.tauE / tau;
 }

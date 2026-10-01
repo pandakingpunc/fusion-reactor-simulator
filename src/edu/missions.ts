@@ -280,10 +280,12 @@ export const MISSIONS: Mission[] = [
       num('adiabat', 'adiabat', 1.2, 4, 0.1, ''),
       num('laserE', 'E_laser_MJ', 1, 3, 0.05, 'MJ'),
     ],
-    goals: [{ metric: 'noDisruption', op: '>=', target: 1 }, { metric: 'gain', op: '>=', target: 1.2 }],
-    solution: () => ({ asymmetry: 3 }),
-    // the drive asymmetry is still too large
-    control: { asymmetry: 6 },
+    // since the ICF model is calibrated on the first record shot N210808 (G = 0.72) the NIF capsule reaches at most G = 0.78 at the nominal adiabat (1.17 at
+    // adiabat 1.2): the gain goal is that of N210808, reached at about 1 % of asymmetry (G = 0.74; 0.67 at the 1.5 % of the preset)
+    goals: [{ metric: 'noDisruption', op: '>=', target: 1 }, { metric: 'gain', op: '>=', target: 0.7 }],
+    solution: () => ({ asymmetry: 1 }),
+    // the drive asymmetry is still too large (G = 0.38)
+    control: { asymmetry: 3 },
     terms: ['icfGain', 'asymmetry', 'adiabat', 'hohlraum'],
   },
   {

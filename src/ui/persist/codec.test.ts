@@ -49,8 +49,8 @@ describe('tagged JSON', () => {
 });
 
 describe('share codec: round trip', () => {
-  it('the 21 stock presets survive unchanged, and their links are short enough to paste', async () => {
-    expect(PRESETS).toHaveLength(21);
+  it('the 22 stock presets survive unchanged, and their links are short enough to paste', async () => {
+    expect(PRESETS).toHaveLength(22);
     for (const p of PRESETS) {
       const code = await encodeShare({ cfg: p.cfg, name: p.name });
       const { payload, version } = await decodeShare(code);
@@ -61,7 +61,7 @@ describe('share codec: round trip', () => {
     }
   });
 
-  it('is exact for 200 random edits of each of the 21 presets (any double, blanks, NaN, infinities, -0)', async () => {
+  it('is exact for 200 random edits of each of the 22 presets (any double, blanks, NaN, infinities, -0)', async () => {
     for (const p of PRESETS) {
       const rng = new RNG(0xc0de + PRESETS.indexOf(p));
       for (let i = 0; i < 200; i++) {

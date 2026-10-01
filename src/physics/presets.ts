@@ -202,13 +202,26 @@ export const JET_15D: MagneticConfig = { ...JET, fidelity: '1.5D' };
 export const SPARC_15D: MagneticConfig = { ...SPARC, fidelity: '1.5D' };
 export const DEMO_15D: MagneticConfig = { ...DEMO, fidelity: '1.5D', n_target: 0.75e20 };
 
-// NIF N221204 (Aralık 2022): 2.05 MJ lazer (351 nm), 3.15 MJ verim (G≈1.5); HDC kapsül ~1.05 mm dış yarıçap,
-// DT buz ~ 220 µg (≈ 0.065 mm kalınlık), v_imp ≈ 390 km/s, CR ≈ 30, α ≈ 2.5–3, hohlraum η ≈ 0.10–0.12 (Zylstra 2022, Abu-Shawareb 2024)
+// NIF Hybrid-E shots, indirect drive: 351 nm laser, HDC capsule inside a gold-lined hohlraum. The shots share the capsule values below, which are the
+// ones the 0D ICF model can take (icf.ts): the HDC ablator starts at a radius of 1050 µm in all capsules of the 1.9 and 2.05 MJ designs (Pak et al. 2024, appendix);
+// the DT ice mass is 210 µg (Pak et al., Phys. Rev. E 109 (2024) 025203, doi:10.1103/PhysRevE.109.025203: the inferred hot-spot mass of N221204, 84 µg, is
+// 40 % of the initial ice mass; Zylstra et al. 2022, doi:10.1103/PhysRevE.106.025202, quote "~200 µg" for N210808). v_imp 390 km/s, CR 30, α 2.8,
+// hohlraum η 0.11, the low-mode asymmetry and the roughness are not shot-specific: they are the platform values of the preset until v4.0 (not re-derived here:
+// the design values of Kritcher et al., Phys. Rev. E 106 (2022) 025201 and 109 (2024) 025204 could not be read) and the model has no input for what the
+// shots differ in (ablator thickness +6 µm, laser energy +7 %, hot-spot symmetry, capsule defects). The ICF model is calibrated on N210808 alone
+// (confinement/icfCalibration.ts); N221204 and N230729 are blind predictions (validation/references.ts).
+// N221204 (5 December 2022): 2.05 MJ of laser light, a fusion yield of 3.1 MJ (the abstract of Abu-Shawareb et al. 2024, doi:10.1103/PhysRevLett.132.065102, which gives
+// G = 1.5; 3.15 MJ is the figure of the abstract of Kritcher et al. 2024, doi:10.1063/5.0210904, and 3.14 MJ that of the text of Pak et al. 2024);
+// ablator 85.4 µm thick on average (Pak et al. 2024).
 export const NIF: ICFConfig = {
-  method: 'icf_indirect', E_laser_MJ: 2.05, wavelength_nm: 351, pulse_ns: 8, capsuleRadius_um: 1050, fuelMass_ug: 220, ablatorMass_ug: 4000,
+  method: 'icf_indirect', E_laser_MJ: 2.05, wavelength_nm: 351, pulse_ns: 8, capsuleRadius_um: 1050, fuelMass_ug: 210, ablatorMass_ug: 4000,
   ablator: 'HDC', adiabat: 2.8, convergenceRatio: 30, implosionVelocity_kms: 390, hohlraumEff: 0.11, absorption: 0.9,
   asymmetry_rms: 1.5, surfaceRoughness_nm: 20, fuel: 'DT', seed: 1,
 };
+// N210808 (8 August 2021), the calibration shot: 1.917 MJ of laser light, 1.37 MJ of fusion yield, G = 0.72 (Abu-Shawareb et al. 2022, doi:10.1103/PhysRevLett.129.075001,
+// table I); ablator 79.5 µm thick on average, 6 µm thinner than N221204 (Pak et al. 2024), so an ablator mass scaled by the ratio of the shell volumes of the two
+// ablators (79.5 and 85.4 µm thick from a radius of 1050 µm: 0.936): 4000 × 0.936 = 3745 µg. The model does not use the ablator mass.
+export const NIF_N210808: ICFConfig = { ...NIF, E_laser_MJ: 1.917, ablatorMass_ug: 3745 };
 // Doğrudan tahrik (OMEGA benzeri, ölçekli): 1.9 MJ, CH ablatör
 export const DIRECT_DRIVE: ICFConfig = {
   method: 'icf_direct', E_laser_MJ: 1.9, wavelength_nm: 351, pulse_ns: 10, capsuleRadius_um: 1700, fuelMass_ug: 600, ablatorMass_ug: 3000,
@@ -255,7 +268,8 @@ export const PRESETS: Preset[] = [
   { id: 'JET15', name: 'JET DTE2 · 1.5D profiles', desc: 'Profiles with beam-target fusion from 3-component NBI', cfg: JET_15D, validation: 'E_fus ≈ 59 MJ (1.5D: +40%)' },
   { id: 'SPARC15', name: 'SPARC · 1.5D profiles', desc: 'High-field compact tokamak with profile physics', cfg: SPARC_15D },
   { id: 'DEMO15', name: 'EU DEMO · 1.5D profiles', desc: '2000 s burn, bootstrap ≈ 0.4, NBCD', cfg: DEMO_15D, validation: 'P_fus ≈ 2 GW' },
-  { id: 'NIF', name: 'NIF (N221204)', desc: '2.05 MJ laser, indirect drive → 3.15 MJ (G=1.5)', cfg: NIF, validation: 'Gain ≈ 1–2' },
+  { id: 'NIF', name: 'NIF (N221204)', desc: '2.05 MJ laser, indirect drive → 3.15 MJ (G=1.5)', cfg: NIF, validation: 'Published G = 1.5; model 0.67, a documented miss' },
+  { id: 'NIF210808', name: 'NIF (N210808)', desc: '1.92 MJ laser, indirect drive → 1.37 MJ (G=0.72)', cfg: NIF_N210808, validation: 'Calibration shot of the ICF model' },
   { id: 'DIRECT', name: 'Direct-drive ICF', desc: '1.9 MJ, CH ablator', cfg: DIRECT_DRIVE },
   { id: 'Z', name: 'Z Machine (MagLIF)', desc: '20 MA, 100 ns, Be liner, 12 T, 2 kJ preheat', cfg: ZMACHINE },
   { id: 'GF', name: 'General Fusion (piston)', desc: 'Liquid-metal piston MTF, 3 ms compression', cfg: GF_PISTON },

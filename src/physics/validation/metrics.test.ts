@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { DIIID, ITER, MASTU, NIF, W7X } from '../presets';
-import { tauIPB98y2 } from '../transport';
+import { tauIPB98y2, tauISS04 } from '../transport';
 import type { ShotReport } from '../types';
-import { type RunOutputs, burnAverages, h98FromRun, readMetric, tauIPB98y2Ref } from './metrics';
+import { type RunOutputs, burnAverages, h98FromRun, hISS04FromRun, readMetric, tauIPB98y2Ref, tauISS04Ref } from './metrics';
 
 const report = {
   Q_sci_max: 1.5, E_fusion_MJ: 3.1, neutronYield: 1e18, Tmax_keV: 7,
@@ -57,6 +57,39 @@ describe('IPB98(y,2) reference implementation', () => {
     const dd: RunOutputs = { report, flatTop: { ne: 0.6, P_heat: 15, tauE: 0.09194 }, cfg: DIIID };
     const diiid = tauIPB98y2Ref({ Ip_MA: DIIID.Ip_MA, B_T: DIIID.B0, n19: 6, P_MW: 15, R_m: 1.67, a_m: 0.67, kappa: 1.8, M: 2 });
     expect(h98FromRun(dd)).toBeCloseTo(0.09194 / diiid, 12);
+  });
+});
+
+describe('ISS04 reference implementation (stellarators)', () => {
+  const w7x = { a_m: 0.53, R_m: 5.5, B_T: 2.5, iota23: 0.9, P_MW: 7.5, n19: 8.304 };
+
+  it('matches a hand evaluation for W7-X (0.53 m, 5.5 m, 2.5 T, ι 0.9, 7.5 MW, 8.304e19 m⁻³): 0.178 s', () => {
+    // 0.134 · 0.53^2.28 · 5.5^0.64 · 7.5^−0.61 · 8.304^0.54 · 2.5^0.84 · 0.9^0.41, evaluated in Python
+    expect(tauISS04Ref(w7x)).toBeCloseTo(0.17800112, 7);
+  });
+
+  it('agrees with the physics code implementation (transport.ts) at f_ren = 1, to rounding', () => {
+    for (const [P, n, iota] of [[7.5, 8.3e19, 0.9], [3.9, 7e19, 0.95], [15, 1.4e20, 1.0]]) {
+      const ref = tauISS04Ref({ ...w7x, P_MW: P, n19: n / 1e19, iota23: iota });
+      expect(ref / tauISS04(W7X.geometry, W7X.B0, n, P * 1e6, iota, 1), `${P} MW`).toBeCloseTo(1, 12);
+    }
+  });
+
+  it('scales with the exponents of the scaling: a^2.28, P^−0.61, n^0.54, B^0.84', () => {
+    const base = tauISS04Ref(w7x);
+    expect(tauISS04Ref({ ...w7x, a_m: 2 * 0.53 }) / base).toBeCloseTo(2 ** 2.28, 12);
+    expect(tauISS04Ref({ ...w7x, P_MW: 15 }) / base).toBeCloseTo(2 ** -0.61, 12);
+    expect(tauISS04Ref({ ...w7x, n19: 2 * 8.304 }) / base).toBeCloseTo(2 ** 0.54, 12);
+    expect(tauISS04Ref({ ...w7x, B_T: 5 }) / base).toBeCloseTo(2 ** 0.84, 12);
+  });
+
+  it('τ_E / τ_ISS04 of a run uses the flat-top n̄ (ne as the fallback) and P_heat; NaN for a tokamak', () => {
+    const tau = tauISS04Ref(w7x);
+    const run: RunOutputs = { report, flatTop: { nbar: 0.8304, ne: 0.5, P_heat: 7.5, tauE: 0.8 * tau }, cfg: W7X };
+    expect(readMetric('derived.HISS04', run)).toBeCloseTo(0.8, 12);
+    expect(hISS04FromRun({ ...run, flatTop: { ne: 0.8304, P_heat: 7.5, tauE: 2 * tau } })).toBeCloseTo(2, 12);
+    expect(readMetric('derived.HISS04', { ...run, cfg: ITER })).toBeNaN();
+    expect(readMetric('derived.HISS04', { ...run, flatTop: { tauE: 0.1 } })).toBeNaN();
   });
 });
 

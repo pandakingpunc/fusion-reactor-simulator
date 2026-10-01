@@ -254,7 +254,7 @@ export const wizardTr: Readonly<Record<string, string>> = {
   '2000 s burn, bootstrap ≈ 0.4, NBCD': '2000 s yanma, bootstrap ≈ 0,4, NBCD',
   'P_fus ≈ 2 GW': 'P_fus ≈ 2 GW',
   '2.05 MJ laser, indirect drive → 3.15 MJ (G=1.5)': '2,05 MJ lazer, dolaylı sürüş → 3,15 MJ (G=1,5)',
-  'Published G = 1.5 (blind prediction)': 'Yayınlanan G = 1,5 (kör tahmin)',
+  'Published G = 1.5 (not used in the calibration)': 'Yayınlanan G = 1,5 (kalibrasyonda kullanılmadı)',
   '1.92 MJ laser, indirect drive → 1.37 MJ (G=0.72)': '1,92 MJ lazer, dolaylı sürüş → 1,37 MJ (G=0,72)',
   'Calibration shot of the ICF model': 'ICF modelinin kalibrasyon atışı',
   '1.9 MJ, CH ablator': '1,9 MJ, CH ablatör',

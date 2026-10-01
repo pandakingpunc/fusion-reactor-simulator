@@ -218,8 +218,9 @@ export const NIF: ICFConfig = {
   asymmetry_rms: 1.5, surfaceRoughness_nm: 20, fuel: 'DT', seed: 1,
 };
 // N210808 (8 August 2021), the calibration shot: 1.917 MJ of laser light, 1.37 MJ of fusion yield, G = 0.72 (Abu-Shawareb et al. 2022, doi:10.1103/PhysRevLett.129.075001,
-// table I); ablator 79.5 µm thick on average, 6 µm thinner than N221204 (Pak et al. 2024), so an ablator mass scaled by the shell volume: 4000 × 0.926.
-export const NIF_N210808: ICFConfig = { ...NIF, E_laser_MJ: 1.917, ablatorMass_ug: 3700 };
+// table I); ablator 79.5 µm thick on average, 6 µm thinner than N221204 (Pak et al. 2024), so an ablator mass scaled by the ratio of the shell volumes of the two
+// ablators (79.5 and 85.4 µm thick from a radius of 1050 µm: 0.936): 4000 × 0.936 = 3745 µg. The model does not use the ablator mass.
+export const NIF_N210808: ICFConfig = { ...NIF, E_laser_MJ: 1.917, ablatorMass_ug: 3745 };
 // Doğrudan tahrik (OMEGA benzeri, ölçekli): 1.9 MJ, CH ablatör
 export const DIRECT_DRIVE: ICFConfig = {
   method: 'icf_direct', E_laser_MJ: 1.9, wavelength_nm: 351, pulse_ns: 10, capsuleRadius_um: 1700, fuelMass_ug: 600, ablatorMass_ug: 3000,
@@ -266,7 +267,7 @@ export const PRESETS: Preset[] = [
   { id: 'JET15', name: 'JET DTE2 · 1.5D profiles', desc: 'Profiles with beam-target fusion from 3-component NBI', cfg: JET_15D, validation: 'E_fus ≈ 59 MJ (1.5D: +40%)' },
   { id: 'SPARC15', name: 'SPARC · 1.5D profiles', desc: 'High-field compact tokamak with profile physics', cfg: SPARC_15D },
   { id: 'DEMO15', name: 'EU DEMO · 1.5D profiles', desc: '2000 s burn, bootstrap ≈ 0.4, NBCD', cfg: DEMO_15D, validation: 'P_fus ≈ 2 GW' },
-  { id: 'NIF', name: 'NIF (N221204)', desc: '2.05 MJ laser, indirect drive → 3.15 MJ (G=1.5)', cfg: NIF, validation: 'Published G = 1.5 (blind prediction)' },
+  { id: 'NIF', name: 'NIF (N221204)', desc: '2.05 MJ laser, indirect drive → 3.15 MJ (G=1.5)', cfg: NIF, validation: 'Published G = 1.5 (not used in the calibration)' },
   { id: 'NIF210808', name: 'NIF (N210808)', desc: '1.92 MJ laser, indirect drive → 1.37 MJ (G=0.72)', cfg: NIF_N210808, validation: 'Calibration shot of the ICF model' },
   { id: 'DIRECT', name: 'Direct-drive ICF', desc: '1.9 MJ, CH ablator', cfg: DIRECT_DRIVE },
   { id: 'Z', name: 'Z Machine (MagLIF)', desc: '20 MA, 100 ns, Be liner, 12 T, 2 kJ preheat', cfg: ZMACHINE },

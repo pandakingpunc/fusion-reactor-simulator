@@ -30,7 +30,7 @@ describe('ICF_CAL is the root of E_fus = 1.37 MJ for the N210808 capsule', () =>
     expect(Math.abs(r.E_fusion_MJ / ICF_CALIBRATION_SHOT.yield_MJ - 1)).toBeLessThan(1e-3);
     expect(r.Q_sci_max).toBeCloseTo(ICF_CALIBRATION_SHOT.yield_MJ / ICF_CALIBRATION_SHOT.E_laser_MJ, 3);
     expect(Math.abs(r.Q_sci_max / 0.72 - 1)).toBeLessThan(0.01);
-    // table I rounds 1.37/1.917 = 0.7147 up to 0.72
+    // the published gain of the shot is 0.72, the yield over the laser energy of table I is 0.7147
     expect(ICF_CALIBRATION_SHOT.yield_MJ / ICF_CALIBRATION_SHOT.E_laser_MJ).toBeCloseTo(0.7147, 4);
   });
 

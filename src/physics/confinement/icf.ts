@@ -22,7 +22,7 @@ import { PulsedBase } from './common';
 const IDX = { Efus: 0, Ein: 1, Nn: 2 } as const;
 const NSTATE = 3;
 const H_B_DT = 7.0; // g/cm², D-T burn parameter (Atzeni & Meyer-ter-Vehn 2004; calibration point)
-const ICF_CAL = 0.07; // geometrik ρR → gerçekçi ρR kalibrasyonu (NIF'e ayarlı)
+export const ICF_CAL = 0.07; // geometrik ρR → gerçekçi ρR kalibrasyonu (NIF'e ayarlı)
 /** Default driver (laser) wall-plug efficiency and thermal conversion efficiency (used when ICFConfig gives none) */
 const DRIVER_EFF_DEFAULT = 0.1;
 const THERMAL_EFF_DEFAULT = 0.4;
@@ -93,6 +93,62 @@ export function icfFuelData(fuel: FuelType): ICFFuelData {
 }
 const FUEL_DATA_CACHE = new Map<FuelType, ICFFuelData>();
 
+/** Stagnation and burn state of one implosion, everything {@link ICFModel} takes from the capsule inputs. */
+export interface ICFStagnation {
+  /** geometric areal density of the fuel at stagnation, m / (4/3 π R_stag²) [g/cm²] */
+  rhoR_geo: number;
+  /** effective (burn-weighted) areal density, rhoRScale · ρR_geo · √(2.8/α) [g/cm²] */
+  rhoR_eff: number;
+  /** ignition parameter χ_ig of the cliff multiplier */
+  chi_ig: number;
+  ignited: boolean;
+  /** cliff multiplier on the burn: 1 when ignited, χ_ig³ below the threshold */
+  burnMult: number;
+  /** burn-up fraction of the fuel ions, ρR/(ρR + H_B), before the cliff multiplier */
+  Phi: number;
+  N_fus_total: number;
+  E_fus_total: number;
+  N_n_total: number;
+  T_hs: number;
+}
+
+/**
+ * The 0D implosion model in closed form: capsule inputs → stagnation ρR, ignition parameter and total yield.
+ * ICFModel uses this function; `rhoRScale` is the one calibration knob of the model (ICF_CAL, see icfCalibration.ts),
+ * a parameter here so that the calibration can solve for it and the tests can reproduce it.
+ */
+export function icfStagnation(cfg: ICFConfig, rhoRScale: number = ICF_CAL): ICFStagnation {
+  const fd = icfFuelData(cfg.fuel);
+  const m_fuel = cfg.fuelMass_ug * 1e-9; // kg
+  const m_i = fd.m_f_amu * C.amu; // mean fuel-ion mass
+  const N_ions = m_fuel / m_i;
+
+  // stagnation geometry
+  const R0 = cfg.capsuleRadius_um * 1e-6;
+  const R_stag = R0 / Math.max(cfg.convergenceRatio, 1);
+  const rhoR_kg = m_fuel / ((4 / 3) * Math.PI * R_stag * R_stag); // kg/m²
+  const rhoR_geo = rhoR_kg / 10; // g/cm²
+  const rhoR_eff = rhoRScale * rhoR_geo * Math.sqrt(2.8 / Math.max(cfg.adiabat, 0.5));
+
+  // ignition cliff: rate, ρR, asymmetry, roughness (constants set for D-T), scaled by the self-heating figure of merit of the fuel
+  const v = cfg.implosionVelocity_kms;
+  const f_asym = Math.exp(-Math.pow(cfg.asymmetry_rms / 6, 2));
+  const f_rough = Math.exp(-Math.pow(cfg.surfaceRoughness_nm / 200, 2));
+  const chi_ig = fd.ignitionScale * (rhoR_eff / 0.2) * Math.pow(v / 360, 3) * f_asym * f_rough;
+  const ignited = chi_ig >= 1;
+  const burnMult = ignited ? 1 : Math.pow(Math.max(chi_ig, 0), 3);
+
+  const Phi = rhoR_eff / (rhoR_eff + fd.H_B); // burn-up fraction (fuel ions)
+  const N_fus_total = Phi * (N_ions / 2) * burnMult; // two ions per reaction
+  const E_fus_total = N_fus_total * U.MeV_to_J(fd.E_rx_MeV);
+  const N_n_total = N_fus_total * fd.neutronsPerReaction;
+
+  // hot-spot temperature: kinematic + ignition (alpha) boost
+  const T_kin = (m_i * Math.pow(v * 1e3, 2)) / (3 * C.keV_J); // keV
+  const T_hs = ignited ? Math.min(4 + (chi_ig - 1) * 4, 15) : Math.max(T_kin, 0.5);
+  return { rhoR_geo, rhoR_eff, chi_ig, ignited, burnMult, Phi, N_fus_total, E_fus_total, N_n_total, T_hs };
+}
+
 const ICF_DIAGS: DiagSpec[] = [
   { key: 'P_fus', label: 'P_fusion (instantaneous)', unit: 'MW', group: 'Power' },
   { key: 'Ti', label: 'Hotspot T', unit: 'keV', group: 'Temperature' },
@@ -132,35 +188,15 @@ export class ICFModel extends PulsedBase {
     this.bang = cfg.pulse_ns;
     this.E_laser_J = cfg.E_laser_MJ * 1e6;
 
-    const fd = icfFuelData(cfg.fuel);
-    this.fuelData = fd;
-    const m_fuel = cfg.fuelMass_ug * 1e-9; // kg
-    const m_i = fd.m_f_amu * C.amu; // mean fuel-ion mass
-    const N_ions = m_fuel / m_i;
-
-    // durgunluk geometrisi
-    const R0 = cfg.capsuleRadius_um * 1e-6;
-    const R_stag = R0 / Math.max(cfg.convergenceRatio, 1);
-    const rhoR_kg = m_fuel / ((4 / 3) * Math.PI * R_stag * R_stag); // kg/m²
-    const rhoR_geo = rhoR_kg / 10; // g/cm²
-    this.rhoR_eff = ICF_CAL * rhoR_geo * Math.sqrt(2.8 / Math.max(cfg.adiabat, 0.5));
-
-    // ignition cliff: rate, ρR, asymmetry, roughness (calibrated to D-T), scaled by the self-heating figure of merit of the fuel
-    const v = cfg.implosionVelocity_kms;
-    const f_asym = Math.exp(-Math.pow(cfg.asymmetry_rms / 6, 2));
-    const f_rough = Math.exp(-Math.pow(cfg.surfaceRoughness_nm / 200, 2));
-    this.chi_ig = fd.ignitionScale * (this.rhoR_eff / 0.2) * Math.pow(v / 360, 3) * f_asym * f_rough;
-    this.ignited = this.chi_ig >= 1;
-    const burnMult = this.ignited ? 1 : Math.pow(Math.max(this.chi_ig, 0), 3);
-
-    const Phi = this.rhoR_eff / (this.rhoR_eff + fd.H_B); // burn-up fraction (fuel ions)
-    this.N_fus_total = Phi * (N_ions / 2) * burnMult; // two ions per reaction
-    this.E_fus_total = this.N_fus_total * U.MeV_to_J(fd.E_rx_MeV);
-    this.N_n_total = this.N_fus_total * fd.neutronsPerReaction;
-
-    // hotspot sıcaklığı: kinematik + ateşleme (alfa) yükseltmesi
-    const T_kin = (m_i * Math.pow(v * 1e3, 2)) / (3 * C.keV_J); // keV
-    this.T_hs = this.ignited ? Math.min(4 + (this.chi_ig - 1) * 4, 15) : Math.max(T_kin, 0.5);
+    this.fuelData = icfFuelData(cfg.fuel);
+    const st = icfStagnation(cfg);
+    this.rhoR_eff = st.rhoR_eff;
+    this.chi_ig = st.chi_ig;
+    this.ignited = st.ignited;
+    this.N_fus_total = st.N_fus_total;
+    this.E_fus_total = st.E_fus_total;
+    this.N_n_total = st.N_n_total;
+    this.T_hs = st.T_hs;
 
     this.ctrl = {};
   }

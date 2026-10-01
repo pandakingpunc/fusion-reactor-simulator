@@ -27,7 +27,7 @@ passed**, validation **36 passed + 6 known failures + 0 unexpected**, golden **3
 93.63 % branches) and `npm run coverage:levels -- --check` with every floor unchanged; `npm run typecheck:strict` 37 errors in 25
 files against a baseline of 37 in 25 (lowered from 39 in 27 at the end of Wave 2A, never raised). Passed at `a430821` (same
 production source): `release:check` 8/8, `missions` 10/10, `build:lib`, `mutation-smoke` **58/58** killed (M21 by timeout only),
-`bench:convergence`, the pause-latency benches (**p99 7.4 to 14.7 ms** against the < 60 ms target; Wave 2A: 71 to 126 ms).
+`bench:convergence` (ran to completion, exit 0; the script has no verdict and its Q series misses a Wave-2A target, section 8.1), the pause-latency benches (**p99 7.4 to 14.7 ms** at 30x and 100x against the < 60 ms target, one run, shared machine; the 1x rows are 6.3 to 6.4 ms; Wave 2A: 71 to 126 ms).
 `figures:check` exits 2 (no `figures.manifest.json`), as expected until Wave 3.
 
 What failed first and how it was closed (section 5.1): at `a430821` `ci:local` and `coverage` stopped on **four wizard tests**
@@ -199,7 +199,7 @@ commit trailers and the reports say (section 9 has the history).
 | `3a1ade9` | (ws6d lane fix, merged with it) six seeded JET15-fast chunk schedules (profile fast ions and physics CD); formulas unchanged | Codex GPT-6.1 Sol | lane tip: 3123/3123, golden 33/33 |
 | `d3a38aa` | **seam fix of the merged modules**: every impurity species is remapped with the cell volumes at an equilibrium adoption (no double booking, the fast-ion source keeps its own remap); a throwing or closed (`generator.return`) sliced step restores impurity, coupling, flux, pedestal, fast-ion state, counters and RNG; the Loarte ELM trial evaluates on copies and the actual loss is measured before and after the species flush, with the crash hook after it | Codex GPT-6.1 Sol | 69 targeted tests by the author; independent review (Sol): 5 seam tests and a trial-purity probe, no implementation defect found |
 | `89c3f55`, `10bc3dc`, `b03a704` | the import validator knows every optional profile setting: enums, nested ECCD, exact domain bounds | GPT-6 Luna (commits `89c3f55`, `10bc3dc`), merged by Codex GPT-6 Luna (`b03a704`) | `codec.test.ts`: all merged optional modules round-trip without warnings |
-| `de96640` | strict baseline lowered 38 -> 37 errors (26 -> 25 files), not raised | Codex | `typecheck:strict` exit 0 |
+| `de96640` | strict baseline lowered 38 -> 37 errors (26 -> 25 files), not raised | Codex (no trailer; credited from the Codex handoff) | `typecheck:strict` exit 0 |
 | `c99ebcd` | the ws6e and ws6b merges each added an `o.profiles` override block to `caseConfig` in `src/regression/golden.ts`; the first copy threw before the second could throw the pinned message, so three `golden.test.ts` cases failed; the duplicate (idempotent) block is removed, no golden configuration changes | Claude (root) | `golden.test.ts` green |
 | `9016bc7` | the author-verification TODO of `CITATION.cff` removed (the owner confirmed the author record; there is no ORCID); clears the `release:check` `no-todo` failure | Claude (root) | `release:check` 8/8 at `a430821` |
 | `cbccf84` | `integrationSeams.events.test.ts`: a real Loarte ELM shot (JET15, 1.0 s, 10 ELMs from 0.6851 s, one rejected and one accepted Grad-Shafranov update) and a real Porcelli plus Kadomtsev sawtooth shot (two crashes with an actual q0 reset) through random chunks, slices that suspend steps and rewinds, compared bitwise with the direct run; every module opt-in on | Claude (Sonnet 5.5 subagent) + independent review | 12 tests; 8 one-line sabotages all caught (the old 0.04 s fixture passed those 8); the reviewer's 16 sabotages: 15 caught, the survivor is an equivalent mutant |
@@ -254,15 +254,15 @@ means, P_fus in MW):
 
 They are nine representative combinations. They do not prove every combination or every activation path: a flag in a configuration
 is not an activation. Real activation is shown by the targeted tests (a real Kadomtsev reset and a real Loarte ELM in
-`integrationSeams.events.test.ts`; MASTU15-saw for the Porcelli trigger; the JET15 5.5 s golden has no q = 1 surface, q0 >= 1.23,
+`integrationSeams.events.test.ts`; MASTU15-saw for the Porcelli trigger; the JET15 5.5 s golden has no q = 1 surface (flat-top q0 1.229, q_min >= 1.04 over the shot),
 so it has no sawtooth with or without the Porcelli trigger). The golden `ITER15-EPED` T_ped (flat-top mean 6.09 keV) is a regression
 guard of a 30 s shot, not an acceptance number (section 8.1).
 
 ## 5. Gate: commands, results
 
-All on Windows 11, Node v24.19.0, 12 cores (AMD Ryzen 5 5600), run by the gate runner one after the other (`claude-gate-run.mjs`:
+All on Windows 11, Node v24.19.0, 6 cores / 12 threads (AMD Ryzen 5 5600), run by the gate runner one after the other (`claude-gate-run.mjs`:
 the runner refuses to start if HEAD differs from the expected one and records HEAD before and after, start and end UTC, exit code
-and duration). **Every row of both tables has the same HEAD before and after (`a430821` in 5.1, `a229d7c` in 5.2) and a clean tree.**
+and duration). **Every row of both tables has the same HEAD before and after (`a430821` in 5.1, `a229d7c` in 5.2) and, according to the gate summaries, a clean tree (observed at the start of each phase; the per-row records hold no `git status`).**
 `ci:local` ran with `CI_LOCAL_WORKERS=3 CI_LOCAL_THREADS=2`; the other commands used `--maxWorkers=3` or `--threads 2` to `4` as
 shown. The machine was shared: the Wave-3 lane builders (RESUME phase E1) were running during both gate windows (their result files
 are timestamped inside them), so wall-clock durations are load-dependent and no timing here is a performance baseline; the gate
@@ -311,7 +311,7 @@ supplementary run: 857 of 892 branches were needed, 855 covered; the uncovered b
 | `npm run coverage:levels -- --check` | 0 | 0.6 s | every glob at or above its floor (table below), floors unchanged |
 | `npm run typecheck:strict` | 0 | 11.0 s | 37 errors in 25 files, baseline 37 in 25 (not raised); no file above its baseline |
 
-Per-glob coverage (lines / statements / functions / branches, measured against the floor of `vite.config.ts`): `src/numerics/**`
+Per-glob coverage (lines / statements / functions / branches, measured against the floor of `vite.config.ts`): `src/physics/numerics/**`
 99.0 / 99.0 / 98.4 / 95.8 against 98 / 98 / 98 / 95; `src/physics/validation/**` 99.6 / 99.6 / 100.0 / 92.6 against 99 / 99 / 99 / 92;
 `src/physics/**` 99.5 / 99.5 / 97.6 / 94.8 against 99 / 99 / 96 / 93; `src/regression/**` 99.1 / 99.1 / 100.0 / 92.4 against 98 / 98 / 99 /
 92; `src/plot/**` 97.5 / 97.5 / 96.3 / 91.6 against 97 / 97 / 96 / 91; `src/cli/**` 98.4 / 98.4 / 94.9 / 98.9 against 97 / 97 / 94 / 96
@@ -323,7 +323,7 @@ vite.config.ts` is empty: no floor was changed after ws1d set them. `scripts/str
 
 `git diff --name-only a430821 a229d7c` lists eight files: `src/cli/optimizeSpec.test.ts`, `pool.test.ts`, `provenance.test.ts`,
 `scenarioFlag.test.ts`, `scenarioSchema.test.ts`, `src/cli/testdata/pool-fixture.worker.mjs` (test data only, excluded from coverage and
-referenced by `pool.test.ts` and `pool.shutdown.test.ts` only), `src/ui/wizard/advanced.test.ts`, `wizardAdvanced.test.tsx` (+330 / -15
+referenced by `pool.test.ts`, `pool.shutdown.test.ts` and the three testdata files `pool-deferred.mts`, `pool-exit.mts` and `pool-sigint.mts`), `src/ui/wizard/advanced.test.ts`, `wizardAdvanced.test.tsx` (+330 / -15
 lines). No production source changed, so the first run's `validate`, `golden`, `build`, `missions`, `release:check`, `build:lib`,
 `mutation-smoke`, `bench:convergence` and the pause benches stand for `a229d7c`. The second `ci:local` repeated validation, golden,
 build and bundle on `a229d7c` anyway (7/7). No Windows exit 3221225477 (0xC0000005) and no `onTaskUpdate` timeout occurred in either
@@ -350,7 +350,7 @@ TAE-pB11, MIRROR, MIRROR-DHe3, MUON (the methods that neither ws2d nor ws6c touc
 | JT60SA | 3.27368e-3 -> 3.26675e-3 | 0.134229 -> 0.134202 | -0.21 % / -0.02 % | |
 | MASTU | 6.87112e-5 -> 6.98989e-5 | 1.41059e-4 -> 1.42033e-4 | +1.73 % / +0.69 % | |
 | W7X | 6.29073e-6 -> 6.29625e-6 | 4.71804e-5 -> 4.72219e-5 | +0.09 % / +0.09 % | equals the ws2d lane fixture in every key |
-| DEMO | 18.2742 -> 19.0278 | 1835.73 -> 1912.19 | +4.12 % / +4.17 % | ELMs 1788 -> 1812; the permanent TF-stress warning is gone (warnings 2 -> 1) |
+| DEMO | 18.2742 -> 19.0278 | 1835.73 -> 1912.19 | +4.12 % / +4.17 % | ELMs 1788 -> 1812; the permanent TF-stress warning is gone (`scalars` warnings count 2 -> 1; the `events.warning` count is 2 in both files) |
 | ITER-DHe3 | 3.04031e-3 -> 3.36209e-3 | 0.237791 -> 0.255293 | +10.58 % / +7.36 % | a near-threshold plasma that dithers when the density follows the ramp: L-H 1 -> 8, H-L 0 -> 7 |
 | ITER-pB11 | 1.64503e-7 -> 8.6632e-8 | 9.46192e-6 -> 5.06437e-6 | -47.34 % / -46.48 % | the collapse case pinned at n_target 1.0e20: the flat-top window is the shorter run up to the collapse (steps 1318 -> 1386) |
 
@@ -362,7 +362,7 @@ equal the ws2d lane numbers key by key (W7X in all keys; the nine other cases ex
 
 | Case | Q before -> now | P_fus before -> now | Change (Q / P_fus) | Other keys that matter |
 |---|---|---|---|---|
-| **ITER15** (400 s) | 10.6967 -> 10.6912 | 537.92 -> 537.655 | -0.05 % / -0.05 % | T_ped 3.491 -> 3.493 keV; f_bs 0.2313 -> 0.2314; l_i(3) 0.7291 -> 0.7281; q95 3.504 -> 3.503; q_min 0.9938 -> 0.9967; V_loop 0.0582 -> 0.0593 V (+1.8 %, boundary-flux definition); ELMs 1332 -> 1327; **sawtooth crashes 40 -> 51** (m); steps 21562 -> 21207; Q_eng 1.106 -> 1.091; whole-shot E_fusion -2.3 % |
+| **ITER15** (400 s) | 10.6967 -> 10.6912 | 537.92 -> 537.655 | -0.05 % / -0.05 % | T_ped 3.491 -> 3.493 keV; f_bs 0.2313 -> 0.2314; l_i(3) 0.7291 -> 0.7281; q95 3.504 -> 3.503; q_min 0.9938 -> 0.9967; V_loop 0.0582 -> 0.0593 V (+1.8 %, boundary-flux definition); ELMs 1332 -> 1327; **sawtooth crashes 40 -> 42 (r) -> 51 (m)**; steps 21562 -> 21207; Q_eng 1.106 -> 1.091; whole-shot E_fusion -2.3 % |
 | JET15 | 0.442761 -> 0.443716 | 14.6894 -> 14.7206 | +0.22 % / +0.21 % | q0 1.298 -> 1.229 (-5.3 %), q_min 1.114 -> 1.076; V_loop +1.1 %; Q_sci_max 0.932 -> 0.906; E_fus 82.0 -> 81.8 MJ (JET15.Efus still a known failure); thermal fraction of the fusion power 36.7 % |
 | SPARC15 | 6.29029 -> 6.28916 | 161.55 -> 161.499 | -0.02 % / -0.03 % | a sawtooth crash appears (events 0 -> 1); q0 0.860 -> 0.851; V_loop +1.7 %; Q_eng 0.567 -> 0.541 (d) |
 | SPARC15-short (3 s) | 5.23285 -> 5.21934 | 134.281 -> 133.884 | -0.26 % / -0.30 % | V_loop 0.0315 -> 0.0487 V (a 3 s shot: the ramp-up dominates the mean) |
@@ -412,7 +412,7 @@ results and not golden keys.
 | the same with `events.ntm` off (diagnostic) | 12.7958 | 49.355 s (before the crash the NTM has no effect) | none |
 | + the mixing-radius fix `37e3c90` (final) | **11.2770** | 49.355 s and 56.100 s | 49.592 s |
 
-**Mechanism (measured).** At each of the 30 equilibrium adoptions the old scheme kept psi, and with it q, and let the enclosed
+**Mechanism (measured; the mechanism numbers below, including the -1.5203 and the 98.4 %, and the perturbation runs were measured on the tree `3fcf528`, before the mixing-radius fix `37e3c90`; on the final tree the flat-top Q moves by -1.5428 (12.8198 -> 11.2770) and a second crash at 56.100 s adds about -0.022 (11.2995 -> 11.2770); the 98.4 % share was not re-derived on the final tree).** At each of the 30 equilibrium adoptions the old scheme kept psi, and with it q, and let the enclosed
 current I = V' g2 psi' / (2 pi mu0) follow the change of the metric; summed over the 30 adoptions the enclosed current fell by 0.29 %
 of I_p inside rho = 0.18 (about 4 % of the current enclosed there), by 0.65 % inside 0.29 and by 1.11 % inside 0.50, with no source in
 the balance. The remap keeps I at every face (largest change 1.6e-14 of I_p) and lets q follow the metric; the changes of q_min at
@@ -507,6 +507,8 @@ reports, named as such.
 
 ### 8.1 Targets and what was measured
 
+The rows are of three kinds, and only the first kind is validation against external data: **validation** (EPED, emergent H98, JET #99971, density controller near n_G, ITER15 flat-top Q, He ash, sawtooth period, FACIT, published TF builds); **verification** against analytic limits or conservation ledgers (flux closure and Ejima, fast ions); **software or performance budget** (pause latency, main chunk, ITER15 convergence of the numerical solution). A "met" in the last two kinds does not say the model agrees with experiment.
+
 | Target | Measured | Status |
 |---|---|---|
 | **EPED**: ITER15 pedestal within 15 % of the published EPED prediction (roadmap 6a); converged between 50 and 100 cells | like-for-like at the ELM onset, ITER15 50 s, window 34 to 50 s, model on, `a229d7c`: pressure **87.39 kPa against 72.18 kPa** of the published H-mode branch at the density of the shot (**+21.1 %**), T_p 5.80 against 5.03 keV (**+15.4 %**) (lane tip `819e979`: +20.9 % and +15.1 %); onset p / limit 1.038; pedestal width 0.0342 in psi_N, 14.5 % below 0.04 (the guard is 15 %, margin 0.45 points); cycle-mean T_ped 4.96 keV (-1.4 % of 5.03) against 4.48 keV (-10.9 %) of the fixed pedestal; 54 ELMs; 50 against 100 cells: T_ped +0.50 %, onset p +0.23 %, limit -0.02 %, width -0.01 % | **15 % NOT met** (the onset band the test enforces is the honest 25 % of a reduced closure); grid convergence met |
@@ -518,7 +520,7 @@ reports, named as such.
 | ITER15 flat-top Q moves < 2 % with the current/flux lane (roadmap 6c) | -0.05 % against `947f38b` at the gate HEAD (+0.17 % at the lane tip) | met |
 | **Flux closure and Ejima** (6c) | V_B I = dW/dt + V_R I closes to 0.06 % of the boundary flux over the first 60 s of ITER15 and to 1 % in the skin-time test and through an I_p ramp (lane report); C_E = 0.4 default (PROCESS), 0.45 as the ITER design value through `systems.cs.ejima` | met (lane tests, green in both gate runs); the roadmap's Gribov 2015 citation for the ITER C_E range is the vertical-stabilisation paper and was replaced by ITER Physics Basis ch. 8 |
 | **Fast ions** (6d): Gaffey moments 1e-4, energy conservation 1e-10 | moments agree with brute-force quadrature to 1e-8; the energy ledger closes to 1e-10 per accepted step | met (lane tests, green in the gate runs) |
-| **Sawtooth period** (6d): JET15 shows a finite period | the golden JET15 (5.5 s) has q0 >= 1.23 and no q = 1 surface, hence no crash (the roadmap's "q0 = 0.92 with no crash for 5.5 s" no longer holds); a 14 s JET run with the Porcelli trigger gave a period of about 2.4 s (crashes at 11.0 and 13.4 s; lane report at `4d884ff`, not re-measured on the merged tree); MASTU15-saw has 4 crashes in 0.5 s (2 of them on the hollow-core fallback, section 7.3) | met in a 14 s run, not in the golden window |
+| **Sawtooth period** (6d): JET15 shows a finite period | the golden JET15 (5.5 s) has flat-top q0 1.229, q_min >= 1.04 over the shot and no q = 1 surface, hence no crash (the roadmap's "q0 = 0.92 with no crash for 5.5 s" no longer holds); a 14 s JET run with the Porcelli trigger gave a period of about 2.4 s (crashes at 11.0 and 13.4 s; lane report at `4d884ff`, not re-measured on the merged tree); MASTU15-saw has 4 crashes in 0.5 s (2 of them on the hollow-core fallback, section 7.3) | met at the lane tip only (14 s run; not re-measured on the merged tree, where the JET15 q0 moved from 1.298 to 1.229); not in the golden window |
 | **He ash** (6e): ITER f_He 2 to 4 % at tau_He*/tau_E = 5 | ITER15-impurity (gate HEAD): n_He/n_e 3.68 %, tau_He* 12.53 s, tau_E 2.42 s (ratio 5.17) | met |
 | **FACIT** reduced form (6e) | a reviewer compared every formula term by term with the Aurora FACIT source; there is no numerical benchmark against NEO or Aurora output (limits of the theory and regression pins only); one mean charge per species, no neutral dynamics, first-order splitting outside the TR-BDF2 error estimate | **not an external benchmark** |
 | **Published TF builds** (ws2d) | DEMO leg and table values verified against Federici 2019 table 3 by the reviewer; the SPARC leg (0.735 to 1.060 m), the CS radii and the pulse times were read from Creely 2020 figures 2 and 3 (vector data) and not all re-verified (publisher sites returned 403 or reset the connection); only Hartwig 2024's "approximately 22 T peak field on coil" was re-checked against the model's 21.3 T | provenance partly unverified; SPARC TF stress 1299 MPa against 800 keeps its warning |
@@ -566,7 +568,7 @@ the hollow-core sawtooth is outside the premise of its model, and the near-limit
 The work was done by five parties in this order: **Claude, Codex, MiMo-V2.6-Pro, Codex, Claude**. Times are local (UTC+3) and the
 roles are those the commit trailers, the saved reports and the archive prompts show.
 
-1. **Claude (Wave 1, Wave 2A, first Wave-2B run).** Subagents ran as Sonnet 5.5; the root session's own commits carry Opus 5.5.
+1. **Claude (Wave 1, Wave 2A, first Wave-2B run).** Subagents ran as Sonnet 5.5; the root session's own commits of the first Wave-2B run (`f25bfa0`, `69e7b1d`, `27973a5`, `86a2ccf`, `6d01cd8`, and the ws10r merge `6cee5fb`) carry Sonnet 5.5 trailers, and only the five commits of the current closing session (`c99ebcd`, `9016bc7`, `897ad8a`, `a430821`, `ba56db9`) carry Opus 5.5.
    Wave 1 and Wave 2A were completed by 2026-09-29, Wave 2A at `947f38b` (two usage-limit interruptions in 2A, each resumed from committed state). The
    first Wave-2B run started the same afternoon (10 lanes forked from `947f38b` in `.wt/<lane>`); the usage limit cut it after about
    50 minutes with no builder finished, it was resumed, and it was **stopped by the user for an account switch** in the evening (the
@@ -639,7 +641,7 @@ release, Zenodo, PyPI or Pages action is part of Wave 3 until the owner-authoris
 6. **Docs.** English README with a Turkish mirror, `docs/technical-report.md` v4 (English, Turkish update) including edge, systems,
    scenario, UQ, G-EQDSK, TR-BDF2, the Wave-2B modules and their limits (section 8), the generated config reference, the convergence
    tables; no stale numbers (README validation table and its figure, technical-report timing rows: ITER15 400 s is about 24 s and 2e4
-   steps, DEMO15 500 s about 140 s, both from the idle machine of Wave 2A, `docs/v4-wave1-report.md` section 5).
+   steps, DEMO15 500 s about 140 s, both from the idle machine of Wave 2A, `docs/v4-wave2a-report.md` section 9, which supersedes the Wave-1 section 5 numbers).
 7. **JOSS paper.** `paper/paper.md` and `paper.bib` (750 to 1000 words), statement of need, the section 5 and 6 tables of the reports,
    an AI-assistance disclosure, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, issue and PR templates, `paper/READINESS.md`.
 8. **Release preparation (local).** 4.0.0 in `package.json`, `package-lock.json`, `CITATION.cff`, `.zenodo.json` and `CHANGELOG.md` (the
@@ -721,7 +723,8 @@ release, Zenodo, PyPI or Pages action is part of Wave 3 until the owner-authoris
     model-dependent rules (`x-rules`); `optimize --scenario` checks the optimum with the preset's own heating, not an operating point;
     protocol v3 is backward compatible in one direction only; the Advanced section does not offer stellarator edge options.
 11. **Strict typecheck**: 37 errors in 25 files remain (the baseline only goes down).
-12. **Release metadata**: `CITATION.cff` has no TODO any more (the owner confirmed the author record, no ORCID); the 4.0.0 version
+12. **Roadmap WS6 items not attempted in this phase** (not reported above and not done): the QLKNN-10D MLP, toroidal momentum (NBI torque, Peeters pinch, Rice scaling, ExB quench), the TORAX `iterhybrid` comparison within 10 %, row 6f (EC ray tracing, 1.5D stellarator), and the 6e criterion of a steady `exp(int v/D)` impurity profile to 1e-4 (no such test is reported here; it is open). They are carried as open items for v4.1 or later (no decision has been recorded).
+13. **Release metadata**: `CITATION.cff` has no TODO any more (the owner confirmed the author record, no ORCID); the 4.0.0 version
     DOI comes after publication; `release:check --no-allow-unreleased` is a release-preparation gate and fails until the bump.
 
 ### 10.4 Owner decisions collected

@@ -257,6 +257,12 @@ export interface SystemsConfig {
     pfFlux_Vs?: number;
     /** internal inductance l_i(3) of the plasma for the inductive flux (default 0.85, or the 1.5D value) */
     li?: number;
+    /** outer radius of the solenoid [m] (default: the TF inner radius minus the CS-TF gap of systems/csFlux.ts) */
+    outerRadius_m?: number;
+    /** radial thickness of the solenoid winding [m]; sets the current density B_max / (mu0 t) and takes precedence over currentDensity_MAm2 */
+    thickness_m?: number;
+    /** height of the solenoid stack [m] (default: the height of the straight TF leg; stored energy and mass only) */
+    height_m?: number;
   };
   blanket?: {
     /** inboard breeding-blanket depth [m] (default: 56 % of the space behind the first wall) */

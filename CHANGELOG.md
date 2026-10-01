@@ -5,6 +5,7 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 ## [Unreleased]
 
 ### Added
+- Published preset coil/pulse builds, neutron-power engineering inputs and a feed-forward density controller with explicit seed-dependent behavior near the Greenwald limit.
 - Resumable 1.5D equilibrium steps keep worker playback responsive; controls settle suspended steps and rewinds discard them, with reduced uint32 RNG checkpoints and bitwise replay guards.
 - Scenario editor and exact-run sharing: programmed and actual actuator lanes, waveform and trigger templates, recording, worker completion fingerprints, scenario-aware scan/UQ/optimization and export metadata.
 - Wave-2B tooling: 58 mutation-smoke cases cover TR-BDF2, Anderson, edge losses, TF Tresca stress and equilibrium iterations; M21 is currently detected by timeout.

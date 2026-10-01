@@ -132,8 +132,16 @@ const withHeating = (b: MagneticConfig, h: Partial<MagneticConfig['heating']>): 
 
 /** DIII-D on 0.5 MW of neutral beam and no ECRH: far too little power to leave L-mode */
 const HMODE_BASE = withHeating(dd, { P_NBI_MW: 0.5, P_ECRH_MW: 0 });
-/** DIII-D with a 1.0e20 m⁻³ setpoint (0.88 n_G for 1.6 MA); the density overshoots it to about 1.13e20 = n_G and disrupts at about 1.15 s (1.2 s before the Miller volume of ws2c) */
-const DENSITY_BASE: MagneticConfig = { ...dd, n_target: 1.0e20 };
+/**
+ * DIII-D with a 1.25e20 m⁻³ setpoint. The setpoint of the 0D model is the volume-average density, the Greenwald limit (n_G = 1.13e20 m⁻³
+ * at 1.6 MA) is on the line average, which is 11 % higher for the profile of this shot: the shot is fuelled to n̄/n_G = 1.22 and disrupts
+ * at about 1 s. (Until v4.0-ws2d the setpoint was 1.0e20, 0.98 n_G, and the underdamped fuelling loop overshot it onto the limit. The
+ * controller removes that systematic ramp overshoot (about 4.5 % to about 1 %), but the threshold in n_target is NOT clean: a stochastic
+ * near-limit band remains, within about 2 % of n_G in the line average and seed- and schedule-dependent (a setpoint of 1.01e20 disrupts
+ * on one seed while 1.02e20 survives on it, and the mirror image on another; regress/densityControl.test.ts pins the documented
+ * outcomes), so a setpoint near n_G is not guaranteed safe.)
+ */
+const DENSITY_BASE: MagneticConfig = { ...dd, n_target: 1.25e20 };
 /** DIII-D with 30 MW of beam power: beta-limit disruption at 0.4 s */
 const BETA_BASE = withHeating(dd, { P_NBI_MW: 30 });
 /** DIII-D asked for 5.5 MA at its 2.2 T: q95 below 2 */
@@ -179,9 +187,9 @@ export const MISSIONS: Mission[] = [
     ],
     goals: [{ metric: 'noDisruption', op: '>=', target: 1 }, { metric: 'nbarMax', op: '>=', target: 0.5 }],
     solution: () => ({ density: 0.7 }),
-    // a trim of 2 % is not enough: the 0D density overshoot puts the threshold between 0.97e20 (survives) and 0.98e20
-    // (disrupts at 1.9 s); 1.05e20 is an isolated survivor of the same knife edge, which is why it is not the control
-    control: { density: 0.98 },
+    // a trim of 12 % is not enough: 1.1e20 is below the 1.13e20 of n_G but n_G is a limit of the line average; the setpoint at which the
+    // line average reaches n_G is n_G / 1.11 = 1.02e20, and 1.1e20 sits well above the stochastic near-limit band around it
+    control: { density: 1.1 },
     terms: ['greenwald', 'disruption', 'ip'],
   },
   {

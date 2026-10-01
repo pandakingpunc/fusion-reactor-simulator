@@ -3,13 +3,14 @@
  * (lane ws7b). `buildMagneticReport` (confinement/magneticReport.ts) feeds it with the flat-top means of the simulated history and
  * adds the result to the `engineering` block of the shot report; the old keys of that block keep their names.
  */
+import { C } from '../constants';
 import { Geometry } from '../geometry';
 import type { MagneticConfig } from '../types';
 import { TBROptions, tritiumBreedingRatio } from './breeding';
 import { CS_TF_GAP, FluxBudget, FluxMeasurement, fluxBudget } from './csFlux';
 import { CryoResult, DEFAULT_PULSE_LENGTH_S, cryoPlant, plantPulseLength_s } from './cryo';
 import { MAGNET_TECH } from './magnets';
-import { RadialBuild, radialBuild, tfNuclearHeating_W } from './radialBuild';
+import { RadialBuild, nuclearHeatingFitNote, radialBuild, tfNuclearHeatingFromNeutrons_W } from './radialBuild';
 import { TFCoilResult, tfCoil, TF_TECH } from './tfCoil';
 
 /** structure of the PF coils and of the CS in the cold mass, relative to the TF coils (APPROXIMATION: ITER cold mass about 10 kt for 6.5 kt of TF coils) */
@@ -47,6 +48,13 @@ export interface SystemsAssessment {
   breederFraction?: number;
   /** flux budget; null for a stellarator, without plasma current or if the CS does not fit */
   cs: FluxBudget | null;
+  /**
+   * the design gave the solenoid (`systems.cs`): only then are the swing of the solenoid and the margin a statement about the machine.
+   * Without it the solenoid is the one that fits between the TF nose and the bore at the technology's field and current density, a
+   * placeholder (ITER: TF inner radius 2.0 m against a CS outer radius of 2.08 m; JET has an iron-core transformer), and the report keeps
+   * to the flux the pulse requires.
+   */
+  csGiven: boolean;
   cryo: CryoResult;
   /** plasma pulse length the pulsed-field load of the cryoplant was computed with [s] */
   pulseLength_s: number;
@@ -80,16 +88,23 @@ export function assessSystems(inp: SystemsInput): SystemsAssessment {
   const superconducting = tech !== 'Cu';
   const notes: string[] = [];
   if (build.compressed) notes.push('the fixed layers of the radial build were compressed into the plasma-to-coil gap');
-  if (superconducting && !hasBlanket) notes.push('TF nuclear heating: the PROCESS fit is for a DEMO breeding blanket and is extrapolated to a build without one');
-  const Qnuc = superconducting ? tfNuclearHeating_W(build.xBlanket, build.xShield, tf.totalMass_kg, inp.P_fus_MW) : 0;
+  // the fit is for the D-T neutronics of the DEMO HCPB blanket: it takes the neutron power, and a build outside its range is flagged
+  const nucNote = superconducting ? nuclearHeatingFitNote(c.blanket.type, build.blanketMean_m) : undefined;
+  if (nucNote) notes.push(nucNote);
+  const Qnuc = superconducting ? tfNuclearHeatingFromNeutrons_W(build.xBlanket, build.xShield, tf.totalMass_kg, inp.P_neutron_MW) : 0;
 
   // central solenoid flux budget
   let cs: FluxBudget | null = null;
-  const r_cs = tf.r_c - CS_TF_GAP;
+  // the published solenoid of a design (outer radius, thickness, height) or the one that fits between the TF nose and the bore
+  const r_cs = sys?.cs?.outerRadius_m ?? tf.r_c - CS_TF_GAP;
   if (!inp.isStellarator && c.Ip_MA > 0 && r_cs > 0.05) {
+    const B_cs = sys?.cs?.B_max_T ?? spec.Bmax_coil;
+    // the thickness of the winding is B / (mu0 J): a given thickness fixes the current density
+    const J_cs = sys?.cs?.thickness_m !== undefined && sys.cs.thickness_m > 0 ? B_cs / (C.mu0 * sys.cs.thickness_m)
+      : sys?.cs?.currentDensity_MAm2 !== undefined ? sys.cs.currentDensity_MAm2 * 1e6 : undefined;
     cs = fluxBudget({
-      R: inp.g.R, a: inp.g.a, kappa: inp.g.kappa, Ip_MA: c.Ip_MA, li: sys?.cs?.li ?? inp.li, tech, r_outer_m: r_cs, height_m: tf.legHeight_m,
-      currentDensity_Am2: sys?.cs?.currentDensity_MAm2 !== undefined ? sys.cs.currentDensity_MAm2 * 1e6 : undefined, B_max_T: sys?.cs?.B_max_T ?? spec.Bmax_coil, swingFraction: sys?.cs?.swingFraction,
+      R: inp.g.R, a: inp.g.a, kappa: inp.g.kappa, Ip_MA: c.Ip_MA, li: sys?.cs?.li ?? inp.li, tech, r_outer_m: r_cs, height_m: sys?.cs?.height_m ?? tf.legHeight_m,
+      currentDensity_Am2: J_cs, B_max_T: B_cs, swingFraction: sys?.cs?.swingFraction,
       pfFlux_Vs: sys?.cs?.pfFlux_Vs, burn: inp.flux ? { Vloop_V: inp.flux.Vloop_V, duration_s: inp.flux.duration_s } : undefined,
     }, inp.flux?.measurement);
   }
@@ -111,12 +126,13 @@ export function assessSystems(inp: SystemsInput): SystemsAssessment {
   if (cs && sys?.cs !== undefined && isFinite(cs.margin) && cs.psiCS_Vs < (1 - PF_FLUX_SHARE_MAX) * cs.psiRequired_Vs) {
     warnings.push(`CS flux swing ${cs.psiAvailable_Vs.toFixed(0)} V s is ${(100 * cs.psiAvailable_Vs / cs.psiRequired_Vs).toFixed(0)} % of the ${cs.psiRequired_Vs.toFixed(0)} V s the pulse needs — the PF coils would have to supply more than ${(100 * PF_FLUX_SHARE_MAX).toFixed(0)} % of it; enlarge the solenoid, raise its field or give the PF flux (systems.cs.pfFlux_Vs).`);
   }
-  return { tf, build, tbr, breederFraction: sys?.blanket?.breederFraction, cs, cryo, pulseLength_s, notes: [...notes, ...tf.notes], nuclearHeating_W: Qnuc, coldMass_kg: coldMass, warnings };
+  return { tf, build, tbr, breederFraction: sys?.blanket?.breederFraction, cs, csGiven: sys?.cs !== undefined, cryo, pulseLength_s, notes: [...notes, ...tf.notes], nuclearHeating_W: Qnuc, coldMass_kg: coldMass, warnings };
 }
 
 /**
  * The new `engineering` keys of the shot report (the old ones are written by buildMagneticReport). Numbers are rounded like the old
- * ones. Keys of a subsystem that does not apply (no CS in a stellarator, no cryoplant for copper coils, no blanket) are left out.
+ * ones. Keys of a subsystem that does not apply (no CS in a stellarator, no cryoplant for copper coils, no blanket) are left out; so
+ * are the swing and the margin of a solenoid that the configuration does not give (`systems.cs`).
  */
 export function systemsReportKeys(s: SystemsAssessment): Record<string, number> {
   const r = (x: number, d: number) => +x.toFixed(d);
@@ -130,9 +146,12 @@ export function systemsReportKeys(s: SystemsAssessment): Record<string, number> 
     'TF mass (t)': r(s.tf.totalMass_kg / 1e3, 0),
   };
   if (s.cs) {
-    k['CS flux swing (V s)'] = r(s.cs.psiCS_Vs, 1);
     k['Flux required (V s)'] = r(s.cs.psiRequired_Vs, 1);
-    if (isFinite(s.cs.margin)) k['Flux margin'] = r(s.cs.margin, 3);
+    // the swing and the margin of a placeholder solenoid are not published (see SystemsAssessment.csGiven)
+    if (s.csGiven) {
+      k['CS flux swing (V s)'] = r(s.cs.psiCS_Vs, 1);
+      if (isFinite(s.cs.margin)) k['Flux margin'] = r(s.cs.margin, 3);
+    }
   }
   if (s.cryo.Q_total_W > 0) {
     k['TF nuclear heating (kW)'] = r(s.nuclearHeating_W / 1e3, 2);

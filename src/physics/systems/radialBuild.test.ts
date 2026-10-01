@@ -2,7 +2,10 @@
  * Radial build and TF nuclear heating (lane ws7b).
  */
 import { describe, expect, it } from 'vitest';
-import { NUC_HEATING, attenuationProfile, radialBuild, tfHeatingAttenuation, tfNuclearHeating_W } from './radialBuild';
+import {
+  DT_NEUTRON_FRACTION, NUC_HEATING, attenuationProfile, nuclearHeatingFitNote, radialBuild, tfHeatingAttenuation, tfNuclearHeatingFromNeutrons_W,
+  tfNuclearHeating_W,
+} from './radialBuild';
 
 describe('radial build', () => {
   it('the inboard layers fill exactly the plasma-to-coil gap', () => {
@@ -94,6 +97,48 @@ describe('nuclear heating of the TF coil (PROCESS fit of Kovari 2016)', () => {
     expect(q(thick)).toBeLessThan(q(thin));
     expect(q(thick)).toBeGreaterThan(1e3);
     expect(q(thin)).toBeLessThan(2e5);
+  });
+
+  it('is a function of the neutron power: the fit for D-T (0.80 of the fusion power), a fraction of it for D-D and D-He3, nothing for p-B11', () => {
+    expect(DT_NEUTRON_FRACTION).toBeCloseTo(0.8, 1); // 14.0 / 17.6 MeV, the D-T channel of the plasma model
+    const b = radialBuild({ a: 2, gap_m: 1.3, blanketType: 'HCPB' });
+    // a D-T plasma of 500 MW: 400 MW of neutrons give the published fit
+    const dt = tfNuclearHeatingFromNeutrons_W(b.xBlanket, b.xShield, 4e6, 500 * DT_NEUTRON_FRACTION);
+    expect(dt / tfNuclearHeating_W(b.xBlanket, b.xShield, 4e6, 500)).toBeCloseTo(1, 12);
+    // linear in the neutron power, zero without neutrons (p-11B, and D-3He apart from the D-D side reactions)
+    expect(tfNuclearHeatingFromNeutrons_W(b.xBlanket, b.xShield, 4e6, 200) / tfNuclearHeatingFromNeutrons_W(b.xBlanket, b.xShield, 4e6, 100)).toBeCloseTo(2, 12);
+    expect(tfNuclearHeatingFromNeutrons_W(b.xBlanket, b.xShield, 4e6, 0)).toBe(0);
+    // the same 500 MW of fusion power in D-D (the n + He3 branch gives 2.45 of its 3.27 MeV, the p + T branch none: 0.34 of the
+    // 3.65 MeV per reaction in neutrons) heats the coil 0.34 / 0.80 = 0.42 times as much as in D-T
+    const dd = tfNuclearHeatingFromNeutrons_W(b.xBlanket, b.xShield, 4e6, 500 * (0.5 * 2.45) / 3.65);
+    expect(dd / (dt / DT_NEUTRON_FRACTION * (500 * (0.5 * 2.45) / 3.65) / 500)).toBeCloseTo(1, 12);
+    expect(dd / dt).toBeGreaterThan(0.35);
+    expect(dd / dt).toBeLessThan(0.5);
+  });
+
+  it('a build without a breeding blanket attenuates with the shield coefficient only: armour and first wall count as shield', () => {
+    const none = radialBuild({ a: 0.57, gap_m: 0.22, blanketType: 'none' });
+    expect(none.xBlanket).toBe(0);
+    const line = (L: typeof none.inboard, roles: string[]) => L.filter((l) => roles.includes(l.role)).reduce((s, l) => s + (l.thickness_m * l.density) / 1000, 0);
+    expect(none.xShield).toBeCloseTo(0.5 * (line(none.inboard, ['armour', 'wall', 'shield']) + line(none.outboard, ['armour', 'wall', 'shield'])), 12);
+    expect(none.xShield).toBeGreaterThan(line(none.inboard, ['shield']));
+    // the heating is then that of a plain shield: without the 0.156 tonne/m^2 of tungsten and steel counted with the blanket coefficient
+    // (exp(-2.83 x) = 0.64) the coil sees more neutrons than in the earlier estimate
+    const q = tfNuclearHeatingFromNeutrons_W(none.xBlanket, none.xShield, 3e5, 160);
+    expect(q).toBeGreaterThan(0);
+    expect(tfHeatingAttenuation(none.xBlanket, none.xShield)).toBeCloseTo(Math.exp(-NUC_HEATING.b * none.xShield), 12);
+    // the profile of the layers ends at the same value
+    const p = attenuationProfile(none.inboard);
+    const xsIn = line(none.inboard, ['armour', 'wall', 'shield']);
+    expect(p[p.length - 1].attenuation).toBeCloseTo(Math.exp(-NUC_HEATING.b * xsIn), 12);
+  });
+
+  it('flags an extrapolation of the fit: no blanket, another blanket type, a blanket depth outside the DEMO HCPB study', () => {
+    expect(nuclearHeatingFitNote('HCPB', 0.85)).toBeUndefined();
+    expect(nuclearHeatingFitNote('none', 0)).toContain('no breeding blanket');
+    expect(nuclearHeatingFitNote('WCLL', 0.85)).toContain('WCLL');
+    expect(nuclearHeatingFitNote('HCPB', 0.5)).toContain('outside');
+    expect(nuclearHeatingFitNote('HCPB', 1.3)).toContain('outside');
   });
 
   it('the attenuation profile falls monotonically layer by layer and ends at the fit value', () => {

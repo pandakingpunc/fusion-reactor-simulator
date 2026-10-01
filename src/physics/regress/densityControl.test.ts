@@ -1,0 +1,102 @@
+/**
+ * The 0D density controller in the model (lane ws2d; the command itself is tested in confinement/densityControl.test.ts).
+ *
+ * Before v4.0-ws2d the density limit was a knife edge in n_target: DIII-D at 0.97e20 survived, at 0.98e20 an NTM dipped the density by
+ * 14 % and the recovery of the underdamped fuelling loop overshot the set-point by 4.5 % onto the Greenwald limit (disruption at 1.9 s),
+ * and 1.05e20 survived by luck. n_target of the 0D model is the VOLUME average; the Greenwald fraction uses the line average
+ * n̄ = f_line <n_e> (f_line = 1.110 at alpha_n = 0.3), so n_G = 1.1345e20 of DIII-D at 1.6 MA is reached by a set-point of 1.022e20.
+ *
+ * The controller removes that systematic ramp overshoot (about 4.5 % to about 1 %; flat-top n_e/n_target 0.999 to 1.003), but the
+ * near-limit band is NOT clean: within about 2 % of n_G in the line average the outcome is stochastic and non-monotone in n_target, and
+ * seed- and schedule-dependent (at t_end 4, seed 2 disrupts at 1.01e20 while 1.02e20 survives, and seed 11 disrupts at 1.02e20 while
+ * 1.04e20 survives). A set-point near n_G is therefore not guaranteed safe; the tests below pin this documented boundary behaviour
+ * (they fail if the controller regresses, and a physics change that moves the boundary has to re-pin them deliberately).
+ */
+import { describe, expect, it } from 'vitest';
+import { Simulation } from '../simulation';
+import { greenwaldDensity, lineAverageFactor } from '../limits';
+import { DIIID, ITER } from '../presets';
+import type { MagneticConfig } from '../types';
+
+function run(cfg: MagneticConfig) {
+  const sim = new Simulation(cfg);
+  sim.runAll();
+  const disruption = (sim.model.report(sim.history, sim.events) as { termination: { disruption?: { cause: string } } }).termination.disruption;
+  let peak = 0, peakNe = 0;
+  for (const f of sim.history) {
+    peak = Math.max(peak, (f.d as Record<string, number>).nG_frac);
+    peakNe = Math.max(peakNe, ((f.d as Record<string, number>).ne * 1e20) / cfg.n_target);
+  }
+  return { sim, cause: disruption?.cause, peakFrac: disruption ? Infinity : peak, peakNe };
+}
+
+describe('the density limit in n_target (DIII-D, 1.6 MA)', { timeout: 60_000 }, () => {
+  const nG = greenwaldDensity(DIIID.Ip_MA, DIIID.geometry.a);
+  const fLine = lineAverageFactor(DIIID.transport.alpha_n);
+  const at = (n1e20: number) => run({ ...DIIID, n_target: n1e20 * 1e20, t_end: 3 });
+
+  it('set-points below n_G survive and stay within 3 % of their own line average (0.90 to 1.00e20, seed 11, t_end 3)', () => {
+    for (const n of [0.9, 0.96, 1.0]) {
+      const r = at(n);
+      const set = (n * 1e20 * fLine) / nG;
+      expect(r.cause, `n_target ${n}e20`).toBeUndefined();
+      expect(r.peakFrac, `n_target ${n}e20 (n̄/n_G ${set.toFixed(3)})`).toBeLessThan(set * 1.03);
+    }
+  });
+
+  it('set-points whose line average is above n_G disrupt on the density limit at this seed and schedule (1.04 to 1.1e20, seed 11, t_end 3): the 1.01-1.03 band is stochastic, pinned per seed below', () => {
+    for (const n of [1.04, 1.07, 1.1]) expect(at(n).cause, `n_target ${n}e20 (n̄/n_G ${((n * 1e20 * fLine) / nG).toFixed(3)})`).toBe('density_limit');
+  });
+});
+
+describe('the near-limit band in n_target (DIII-D, seeded pins at t_end 4)', { timeout: 60_000 }, () => {
+  // The boundary is stochastic and NON-monotone in n_target (ELM/sawtooth exhaust, actuator lag, and the event schedule that the step
+  // grid of one t_end fixes), so every case below pins ONE documented outcome of ONE seed at ONE t_end - the honest contract of the
+  // controller, not a safety guarantee. Re-measured at HEAD (t_end 4): seed 2 disrupts at 1.01e20 (t = 1.79 s) while 1.02e20 survives
+  // (peak n_bar/n_G 0.999), seed 11 disrupts at 1.02e20 (t = 1.95 s) while 1.04e20 survives (peak 0.997). A controller regression or a
+  // physics change that moves the boundary fails these on purpose: re-pin them deliberately, never retune the physics to hide a move.
+  const at = (n1e20: number, seed: number) => run({ ...DIIID, n_target: n1e20 * 1e20, t_end: 4, seed });
+
+  it('the near-limit band (0.988 to 1.018 n_G in the line average) is non-monotone per seed: 1.01e20 disrupts while 1.02e20 survives at seed 2, the mirror image at seed 11', () => {
+    expect(at(1.01, 2).cause, 'seed 2, n_target 1.01e20 (0.988 n_G)').toBe('density_limit');
+    const s2 = at(1.02, 2);
+    expect(s2.cause, 'seed 2, n_target 1.02e20 (0.998 n_G)').toBeUndefined();
+    expect(s2.peakFrac, 'seed 2, n_target 1.02e20 peaks below n_G').toBeLessThan(1);
+    expect(at(1.02, 11).cause, 'seed 11, n_target 1.02e20 (0.998 n_G)').toBe('density_limit');
+    const s11 = at(1.04, 11);
+    expect(s11.cause, 'seed 11, n_target 1.04e20 (1.018 n_G)').toBeUndefined();
+    expect(s11.peakFrac, 'seed 11, n_target 1.04e20 peaks below n_G').toBeLessThan(1);
+  });
+
+  it('the systematic ramp overshoot is gone at moderate set-points: peak n_e/n_target below 1.03 (the old loop added about 4.5 %)', () => {
+    for (const seed of [2, 11]) {
+      for (const n of [0.96, 1.0]) {
+        const r = at(n, seed);
+        expect(r.cause, `seed ${seed}, n_target ${n}e20`).toBeUndefined();
+        expect(r.peakNe, `seed ${seed}, n_target ${n}e20 (peak n_e/n_target)`).toBeLessThan(1.03);
+      }
+    }
+  });
+});
+
+describe('the density of the flat top', { timeout: 60_000 }, () => {
+  it('ITER (0D): the volume-average density reaches n_target to 1 % (2 % below it before the feed-forward of the present losses) and the Greenwald fraction the 0.85 of the design', () => {
+    const { sim } = run({ ...ITER, t_end: 45 });
+    const tail = sim.history.filter((f) => f.t > 38).map((f) => f.d as Record<string, number>);
+    const mean = (k: string) => tail.reduce((s, d) => s + d[k], 0) / tail.length;
+    expect(Math.abs((mean('ne') * 1e20) / ITER.n_target - 1)).toBeLessThan(0.01);
+    expect(Math.abs(mean('nG_frac') / 0.85 - 1)).toBeLessThan(0.015);
+  });
+
+  it('every fuelling method holds the target through a heated H-mode run: gas, pellets, beams and the mix (DIII-D, 3 s)', () => {
+    for (const method of ['gas', 'pellet', 'nbi', 'mixed'] as const) {
+      const cfg: MagneticConfig = { ...DIIID, fueling: { ...DIIID.fueling, method }, t_end: 3 };
+      const { sim, cause } = run(cfg);
+      expect(cause, method).toBeUndefined();
+      const late = sim.history.filter((f) => f.t > 2).map((f) => (f.d as Record<string, number>).ne * 1e20 / cfg.n_target);
+      const mean = late.reduce((s, x) => s + x, 0) / late.length;
+      expect(Math.abs(mean - 1), method).toBeLessThan(0.015);
+      expect(Math.max(...late), method).toBeLessThan(1.03);
+    }
+  });
+});

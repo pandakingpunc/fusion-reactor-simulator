@@ -3,6 +3,8 @@
  */
 import { FRCConfig, ICFConfig, MagneticConfig, MirrorConfig, MTFConfig, MuonConfig, ReactorConfig } from './types';
 
+const MERGED_SECTIONS = ['heating', 'fueling', 'impurity', 'limits', 'transport', 'events', 'magnet', 'blanket', 'divertor', 'economics', 'stellarator'] as const;
+
 export function defaultMagnetic(over: Partial<MagneticConfig> & { geometry: MagneticConfig['geometry']; B0: number; Ip_MA: number }): MagneticConfig {
   const base: MagneticConfig = {
     method: 'tokamak',
@@ -23,12 +25,10 @@ export function defaultMagnetic(over: Partial<MagneticConfig> & { geometry: Magn
     economics: { availability: 0.6, thermalEff: 0.35, wallPlugEff: 0.4, discountRate: 0.07, lifetime_yr: 30 },
     t_end: 400, seed: 42,
   };
-  return { ...base, ...over, heating: { ...base.heating, ...(over.heating ?? {}) }, fueling: { ...base.fueling, ...(over.fueling ?? {}) },
-    impurity: { ...base.impurity, ...(over.impurity ?? {}) }, limits: { ...base.limits, ...(over.limits ?? {}) },
-    transport: { ...base.transport, ...(over.transport ?? {}) }, events: { ...base.events, ...(over.events ?? {}) },
-    magnet: { ...base.magnet, ...(over.magnet ?? {}) }, blanket: { ...base.blanket, ...(over.blanket ?? {}) },
-    divertor: { ...base.divertor, ...(over.divertor ?? {}) }, economics: { ...base.economics, ...(over.economics ?? {}) },
-    stellarator: { ...base.stellarator, ...(over.stellarator ?? {}) } };
+  // the sections of a preset merge into those of the base (the keys keep the order of the base object)
+  const out: Record<string, unknown> = { ...base, ...over };
+  for (const k of MERGED_SECTIONS) out[k] = { ...base[k], ...(over[k] ?? {}) };
+  return out as unknown as MagneticConfig;
 }
 
 export interface Preset { id: string; name: string; desc: string; cfg: ReactorConfig; validation?: string }
@@ -49,6 +49,12 @@ export const ITER = defaultMagnetic({
   // ITER Q=10 senaryosu: Be %2 + Ar %0.12 tohumlama (divertör radyasyonu) → Z_eff ≈ 1.65 (Shimada 2007, Tablo 2)
   impurity: { species: 'Be', concentration: 0.02, wallReflectivity: 0.7, W_source_frac: 0, seedSpecies: 'Ar', seedConcentration: 0.0012 },
   magnet: { tech: 'Nb3Sn', gap_m: 1.3, coilThickness_m: 0.9 }, t_end: 400,
+  // Design data of the systems-lite report (the plasma models never read them). Pulse: the inductive 15 MA scenario burns 300-500 s at Q = 10
+  // (T.A. Casper et al., Nucl. Fusion 54 (2014) 013005; 400 s in the ITER Physics Basis and Shimada 2007), 500 s is taken as the plasma pulse
+  // of the plant. Central solenoid: inner radius 1.3 m, outer radius 2.08 m (0.78 m thick), 13 T on the conductor (J.H. Schultz et al., "The ITER
+  // Central Solenoid", MIT PSFC, 2005; General Atomics ITER CS booklet 2021), which the model turns into 13.3 MA/m2 and 237 V s of swing
+  // against the 266.6 V s quoted for the solenoid (the CS and the PF coils together supply the 277 V s of the scenario, Shimada 2007).
+  systems: { pulseLength_s: 500, cs: { outerRadius_m: 2.08, thickness_m: 0.78, B_max_T: 13 } },
 });
 // JET DTE2 (2021) rekor atışı #99971: R=2.96, a≈0.9, B=3.45–3.7 T, Ip=3.5 MA, ~33 MW NBI+ICRH, 5 s, 59 MJ (Maslov 2023 NF)
 export const JET = defaultMagnetic({
@@ -65,16 +71,34 @@ export const JET = defaultMagnetic({
   t_end: 5.5, seed: 7,
 });
 // SPARC V2 (Creely et al., JPP 2020): R=1.85, a=0.57, κ=1.97, δ=0.54, B=12.2 T, Ip=8.7 MA, 25 MW ICRH, Q≈11 tahmini, n≈3e20, 10 s
+// Radial build and design data (Wave 2B review of the 0.25 m gap and 0.5 m leg, which came from no source). Creely et al. 2020 gives the build
+// only as Figure 2, the V2 poloidal cross-section, whose vector data carry the axis scale: at the midplane the toroidal field coil (light grey)
+// spans R = 0.735 to 1.060 m (thickness 0.325 m, the outer surface 0.22 m from the plasma at R - a = 1.28 m), the vacuum vessel 1.175 to 1.240 m,
+// the central solenoid CS1-CS3 R = 0.405 to 0.681 m (0.276 m thick) over Z = -1.9 to 1.9 m (measured from the figure to about 0.01 m; the
+// figure draws the coil as one band, case and winding pack together). The field on the conductor is then 12.2 T x 1.85 / 1.06 = 21.3 T, the
+// "approximately 22 T peak field-on-coil" of Z.S. Hartwig et al., IEEE Trans. Appl. Supercond. 34 (2024), "The SPARC Toroidal Field Model Coil
+// Program" (arXiv:2308.12301, section III). 18 TF coils, a flat top of 10 s and 42 Wb of flux from the CS and PF coils together (Creely,
+// section 3 and table 1); the plant pulse is the TSC discharge of Creely Figure 3: ramp-up 8.5 s, flat top 10 s, ramp-down 12 s, 31 s in all.
+// The peak field of the solenoid is not in the open literature: the technology limit (23 T) is used, which gives 44 V s. This build is OVER
+// the stress limit of this model (Tresca about 1300 MPa against 800 MPa: 'TF coil stress' warning kept): the leg of the model is a free
+// cylinder, while the SPARC coil is bucked against the solenoid, is a stack-in-plate design in Nitronic steel plates (the winding pack carries
+// load; structure fraction 0.8 here) and its allowable is that of a high-strength steel, not of 316LN; the published build is not made
+// thicker to hide the warning.
 export const SPARC = defaultMagnetic({
   geometry: { R: 1.85, a: 0.57, kappa: 1.97, delta: 0.54 }, B0: 12.2, Ip_MA: 8.7,
   n_target: 3.0e20, n_rampTime: 3,
   heating: { P_NBI_MW: 0, E_NBI_keV: 100, P_ICRH_MW: 25, f_ICRH_ion: 0.6, P_ECRH_MW: 0, rampTime: 1.5, autoOff: false },
   impurity: { species: 'W', concentration: 1.5e-5, wallReflectivity: 0.7, W_source_frac: 0 },
-  magnet: { tech: 'REBCO', gap_m: 0.25, coilThickness_m: 0.5 }, blanket: { type: 'none', li6_enrichment: 0.075, coverage: 0 },
+  magnet: { tech: 'REBCO', gap_m: 0.22, coilThickness_m: 0.325 }, blanket: { type: 'none', li6_enrichment: 0.075, coverage: 0 },
   transport: { tau_p_over_tau_E: 3, tau_He_over_tau_E: 5, alpha_n: 0.3, alpha_T: 1.5 },
+  // systems.pulseLength_s is the FULL plant pulse of the machine (the semantics of the key, types.ts: the pulsed-field energy of the PF
+  // system and CS is spread over the whole discharge in the cryoplant load), here the 31 s TSC discharge above. The "about 10 s" of the
+  // design-pulse task is the flat top (the burn, Creely section 3), which the model runs as t_end 10 s; the ramps belong to the plant
+  // pulse because the cryoplant load and the flux swing cover them.
+  systems: { pulseLength_s: 31, tf: { nCoils: 18 }, cs: { outerRadius_m: 0.681, thickness_m: 0.276, height_m: 3.8 } },
   t_end: 10, seed: 3,
 });
-// DIII-D: R=1.67, a=0.67, κ=1.8, δ=0.5, B=2.2 T, Ip=2.0 MA, 20 MW NBI (80 keV), D-D
+// DIII-D: R=1.67, a=0.67, κ=1.8, δ=0.5, B=2.2 T, Ip=1.6 MA, 20 MW NBI (80 keV), D-D
 export const DIIID = defaultMagnetic({
   geometry: { R: 1.67, a: 0.67, kappa: 1.8, delta: 0.5 }, B0: 2.2, Ip_MA: 1.6,
   fuel: 'DD', fuelFracA: 1.0, n_target: 0.6e20, n_rampTime: 1,
@@ -134,6 +158,15 @@ export const W7X = defaultMagnetic({
 // IAEA/ITER/DS/10) that the DEMO baselines were produced with. The Miller boundary of that shape has 2637 m³ and 1462 m² against 2434 m³ and
 // 1371 m² of the 95 % shape (+8.3 % and +6.6 %); measured on the 600 s shot, the LCFS shape lowers P_fus and Q by 3.0 % (1836 against 1892 MW),
 // because the bigger volume at a given stored energy is a lower temperature. ITER's 1.70 → 1.85 and 0.33 → 0.49 are the published Shimada et al. 2007 values.
+// Radial build and design data (Wave 2B review of the 1.9 m gap and 1.0 m leg, which came from no source): G. Federici et al., "Overview of the DEMO
+// staged design approach in Europe", Nucl. Fusion 59 (2019) 066013 (IAEA FEC 2018 preprint WPPMI-CPR(18)19367), table 3 with its text: 16 TF coils,
+// 12.1 T on the conductor, 660 MPa Tresca, 60-90 kA per turn, inboard blanket 0.755 m, inboard shield with the vessel 0.600 m, vessel-to-TF gap
+// 0.020 m, plasma-to-wall 0.225 m; "for a 12.5 T peak field in DEMO we obtain an inboard leg width of around 1.3 m" (section 3.3.1); a burn of 2 h;
+// flux 380 Wb for the start-up and 340 Wb for the burn, of which the PF system supplies about 320 Wb (44 %) and the CS 400 Wb, at 13 T on the CS
+// conductor (table 3). The gap follows the field on the conductor, r_o = B0 R / 12.1 T = 4.39 m, i.e. 1.75 m to the winding pack (the published inboard
+// layers sum to 1.60 m and the first wall, the thermal shield and the gaps of the radial build make up the rest); the model turns the
+// published 1.3 m leg into 570 MPa against the 660 MPa limit, so this preset no longer carries the permanent 'TF coil stress' warning.
+// Pulse: the 2 h burn, 7200 s (the ramps add a few percent: the PROCESS unit test of the 2018 baseline has 10364 s for the whole cycle).
 export const DEMO = defaultMagnetic({
   geometry: { R: 9.07, a: 2.93, kappa: 1.65, delta: 0.33 }, B0: 5.86, Ip_MA: 17.75,
   profiles: { lcfsKappa: 1.85, lcfsDelta: 0.5, lcfsRef95: { kappa: 1.65, delta: 0.33 } },
@@ -150,8 +183,9 @@ export const DEMO = defaultMagnetic({
   heating: { P_NBI_MW: 50, E_NBI_keV: 1000, P_ICRH_MW: 0, f_ICRH_ion: 0.5, P_ECRH_MW: 50, rampTime: 20, autoOff: false },
   impurity: { species: 'W', concentration: 1e-5, wallReflectivity: 0.7, W_source_frac: 0, seedSpecies: 'Ar', seedConcentration: 0.001 },
   limits: { betaN_limit: 3.5, greenwald_limit: 1.3, q95_limit: 2.0, W_conc_limit: 3e-4 },
-  H98: 1.1, magnet: { tech: 'Nb3Sn', gap_m: 1.9, coilThickness_m: 1.0 },
+  H98: 1.1, magnet: { tech: 'Nb3Sn', gap_m: 1.75, coilThickness_m: 1.3 },
   blanket: { type: 'HCPB', li6_enrichment: 0.6, coverage: 0.85 },
+  systems: { pulseLength_s: 7200, tf: { nCoils: 16 }, cs: { B_max_T: 13, pfFlux_Vs: 320 } },
   transport: { tau_p_over_tau_E: 3, tau_He_over_tau_E: 5, alpha_n: 0.3, alpha_T: 1.5 },
   economics: { availability: 0.3, thermalEff: 0.38, wallPlugEff: 0.4, discountRate: 0.07, lifetime_yr: 30 },
   t_end: 2000, seed: 21,

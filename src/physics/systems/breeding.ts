@@ -5,7 +5,9 @@
  * J. McMillan, "A parameter study of time-varying tritium production in solid-type breeder blankets", Fusion Eng. Des. 104
  * (2016) 34-39, eq. (2) with the coefficients of its Table 3 (time-averaged TBR over 5 years of operation, 198 breeder
  * compositions per blanket thickness; MCNP6 coupled to FISPACT-II through FATI, EU DEMO HCPB model of the PPPT programme,
- * 2.4 GW, 70 % availability). PROCESS uses these fits for its HCPB blanket. The function is
+ * 2.4 GW, 70 % availability). The fits were the HCPB blanket model of PROCESS at the time of that paper (Kovari et al., Fusion Eng.
+ * Des. 104 (2016) 9-20); the current PROCESS no longer has this TBR model (the Wave 2A review of the code found it removed), so this
+ * is the published fit itself, not a reproduction of the present PROCESS. The function is
  *
  *   TBR(x, y) = v1 + v2 x + v3 y + v4 y x + v5 x^2 + v6 y^2 + v7 x^2 y + v8 x y^2 + v9 x^2 y^2 + v10 x^3 + v11 y^3
  *             + v12 y x^3 + v13 y^2 x^3 + v14 x y^3 + v15 y^3 x^2 + v16 y^3 x^3 + v17 ln x + v18 ln y + v19 ln x ln y

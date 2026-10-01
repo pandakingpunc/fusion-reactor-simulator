@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computePopcon } from '../physics/popcon';
-import { greenwaldDensity } from '../physics/limits';
+import { greenwaldDensity, lineAverageFactor } from '../physics/limits';
 import { MagneticConfig } from '../physics/types';
 import { ignitionCells, playMission, popconMetrics, readPopcon, runMetrics, solveMission, goalMet, judge, RunData, METRIC_UNITS } from './missionEval';
 import { MISSIONS, buildConfig, findMission, leverStart, leverValues, missionKey, operatingPoint } from './missions';
@@ -150,27 +150,42 @@ describe('the density mission text', () => {
   const cfg = buildConfig(m, {}) as MagneticConfig;
   const nG = greenwaldDensity(cfg.Ip_MA, cfg.geometry.a);
 
-  it('starts with a setpoint just below the Greenwald density, as the brief says, and the overshoot crosses the limit', () => {
+  it('starts with a volume-average setpoint whose line average is beyond the Greenwald density, as the brief says, and disrupts on it', () => {
     expect(nG).toBeGreaterThan(1.05e20);
     expect(nG).toBeLessThan(1.2e20);
-    expect(cfg.n_target).toBeLessThan(nG);
-    expect(cfg.n_target / nG).toBeGreaterThan(0.8);
+    // the setpoint of the 0D model is the volume average; the limit is on the line average (11 % higher at alpha_n = 0.3)
+    const fLine = lineAverageFactor(cfg.transport.alpha_n);
+    expect(cfg.n_target * fLine / nG).toBeGreaterThan(1.1);
     const r = playMission(m, {});
     expect(r.run).toBeDefined();
-    // the density overshoots its setpoint during the ramp: that, not the setpoint, crosses n_G
     expect(runMetrics(r.run!).nbarMax! * 1e20).toBeGreaterThanOrEqual(nG * 0.98);
     expect(r.run!.report.termination.disruption?.cause).toBe('density_limit');
   });
 
-  it('says so in English and Turkish, and quotes n_G as about 1.1e20 (not "above the limit")', () => {
-    expect(eduEn['mis.density.brief']).toContain('just below');
-    expect(eduEn['mis.density.brief']).toContain('overshoots');
-    expect(eduEn['mis.density.brief']).not.toContain('above the Greenwald');
-    expect(eduTr['mis.density.brief']).toContain('hemen altında');
-    expect(eduTr['mis.density.brief']).not.toContain('biraz üstünde');
+  it('has a negative control below n_G as a number but above n_G / f_line, the setpoint at which the line average reaches the limit', () => {
+    const control = buildConfig(m, m.control) as MagneticConfig;
+    const fLine = lineAverageFactor(control.transport.alpha_n);
+    expect(control.n_target).toBeLessThan(nG);
+    expect(control.n_target).toBeGreaterThan(nG / fLine);
+    expect(playMission(m, m.control).outcome.passed).toBe(false);
+  });
+
+  it('says so in English and Turkish: the setpoint is a volume average and the limit is on the line average, n_G is about 1.1e20', () => {
+    expect(eduEn['mis.density.brief']).toContain('1.25e20');
+    expect(eduEn['mis.density.brief']).toContain('volume-average');
+    expect(eduEn['mis.density.brief']).toContain('line-averaged');
+    // the current the brief quotes is the 1.6 MA of the preset (n_G = 1.1345e20; 2.0 MA would give 1.42e20)
+    expect(eduEn['mis.density.brief']).toContain('1.6 MA');
+    expect(eduEn['mis.density.brief']).not.toContain('2.0 MA');
+    expect(eduTr['mis.density.brief']).toContain('1,6 MA');
+    expect(eduTr['mis.density.brief']).not.toContain('2,0 MA');
+    expect(eduTr['mis.density.brief']).toContain('1,25e20');
+    expect(eduTr['mis.density.brief']).toContain('hacim ortalamalı');
+    expect(eduTr['mis.density.brief']).toContain('çizgi ortalamalı');
+    expect(cfg.n_target).toBeCloseTo(1.25e20, 6); // the number the brief quotes
     for (const txt of [eduEn['mis.density.brief'], eduEn['mis.density.answer']]) expect(txt).toMatch(/1\.1e20/);
     for (const txt of [eduTr['mis.density.brief'], eduTr['mis.density.answer']]) expect(txt).toMatch(/1,1e20/);
-    // the solution's own numbers: a 0.7e20 setpoint peaks near 0.8e20, which is n̄/n_G ≈ 0.7
+    // the solution's own numbers: a 0.7e20 setpoint gives a line average near 0.8e20, which is n̄/n_G ≈ 0.7
     const sol = playMission(m, solveMission(m));
     const peak = runMetrics(sol.run!).nbarMax! * 1e20; // the metric is in 1e20 m⁻³
     expect(peak).toBeGreaterThan(0.75e20);

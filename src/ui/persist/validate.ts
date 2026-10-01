@@ -60,9 +60,10 @@ const templates = new Map<Method, Template>();
 /**
  * Sections a configuration may leave out although the method's default preset has them: `profiles` holds the optional 1.5D settings, and
  * since v4.0 the ITER and DEMO presets carry one in 0D too (only the LCFS shape: profiles.lcfsKappa, lcfsDelta, lcfsRef95), so the default
- * tokamak preset has a profiles section that JET, SPARC and every configuration written by an older version do not.
+ * tokamak preset has a profiles section that JET, SPARC and every configuration written by an older version do not. Likewise `systems` (the design
+ * data of the systems-lite report: plant pulse, solenoid, coil count) is carried by the ITER, DEMO and SPARC presets only.
  */
-const OPTIONAL_SECTIONS = ['profiles'];
+const OPTIONAL_SECTIONS = ['profiles', 'systems'];
 
 /**
  * The options of the edge model (divertor.edge.*, an optional block that no preset carries and the wizard offers only in part):
@@ -75,13 +76,14 @@ const EDGE_OPTION_TYPES: Record<keyof EdgeOptions, LeafType> = {
 };
 
 /**
- * The options of the systems-lite engineering models (systems.*, an optional block of the magnetic configurations that no preset carries and the
- * wizard does not offer): settings of this version, not fields of a newer one. Exhaustive over SystemsConfig, so a new option is a compile error here.
+ * The options of the systems-lite engineering models (systems.*, an optional block of the magnetic configurations that the ITER, DEMO and SPARC
+ * presets carry in part and the wizard does not offer): settings of this version, not fields of a newer one. Exhaustive over SystemsConfig, so a
+ * new option is a compile error here.
  */
 const SYSTEMS_OPTION_TYPES: { [K in keyof SystemsConfig]-?: NonNullable<SystemsConfig[K]> extends number ? LeafType : { [J in keyof NonNullable<SystemsConfig[K]>]-?: LeafType } } = {
   pulseLength_s: 'number',
   tf: { nCoils: 'number', noseFraction: 'number', structureFraction: 'number', turnCurrent_A: 'number', verticalInboardFraction: 'number' },
-  cs: { currentDensity_MAm2: 'number', B_max_T: 'number', swingFraction: 'number', pfFlux_Vs: 'number', li: 'number' },
+  cs: { currentDensity_MAm2: 'number', B_max_T: 'number', swingFraction: 'number', pfFlux_Vs: 'number', li: 'number', outerRadius_m: 'number', thickness_m: 'number', height_m: 'number' },
   blanket: { inboardDepth_m: 'number', breederFraction: 'number' },
 };
 

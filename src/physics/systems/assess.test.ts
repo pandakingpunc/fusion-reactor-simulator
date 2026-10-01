@@ -14,6 +14,9 @@ import { DEFAULT_PULSE_LENGTH_S } from './cryo';
 
 const MU0 = C.mu0;
 
+/** ITER without the design data of the preset (pulse, solenoid): what a configuration that gives none of them gets */
+const ITER_PLAIN: MagneticConfig = { ...ITER, systems: undefined };
+
 const inputOf = (cfg: MagneticConfig, over: Partial<Parameters<typeof assessSystems>[0]> = {}) => ({
   cfg, g: cfg.geometry, isStellarator: cfg.method === 'stellarator', P_fus_MW: 500, P_neutron_MW: 400, ...over,
 });
@@ -165,7 +168,7 @@ describe('assessSystems', () => {
 
 describe('pulsed-field load of the cryoplant follows the design pulse of the plant', () => {
   it('defaults to the PROCESS-time plant pulse, reports it and says so in the notes', () => {
-    const s = assessSystems(inputOf(ITER));
+    const s = assessSystems(inputOf(ITER_PLAIN));
     expect(s.pulseLength_s).toBe(DEFAULT_PULSE_LENGTH_S);
     expect(DEFAULT_PULSE_LENGTH_S).toBe(1055);
     expect(s.cryo.Q_ac_W).toBeGreaterThan(0);
@@ -192,7 +195,7 @@ describe('pulsed-field load of the cryoplant follows the design pulse of the pla
   });
 
   it('a non-positive or non-finite pulse falls back to the default with a note, no division by a shot length', () => {
-    const ref = assessSystems(inputOf(ITER));
+    const ref = assessSystems(inputOf(ITER_PLAIN));
     for (const bad of [0, -5, NaN, Infinity]) {
       const s = assessSystems(inputOf({ ...ITER, systems: { pulseLength_s: bad } }));
       expect(s.pulseLength_s, String(bad)).toBe(DEFAULT_PULSE_LENGTH_S);
@@ -259,8 +262,9 @@ describe('the engineering report of a machine does not depend on the simulated l
   /** the part of the heat load that belongs to the machine: static + AC + leads = Q / 1.45 - Q_nuclear [kW] */
   const machineLoad = (e: Record<string, number | string | boolean>) => (e['Cryo heat load (kW)'] as number) / 1.45 - (e['TF nuclear heating (kW)'] as number);
 
-  it('the plant pulse of the cryoplant is the design pulse for every t_end and for an aborted shot', () => {
-    for (const k of Object.keys(runs)) expect(reports[k]['Cryo pulse length (s)'], k).toBe(DEFAULT_PULSE_LENGTH_S);
+  it('the plant pulse of the cryoplant is the design pulse of the preset (500 s) for every t_end and for an aborted shot', () => {
+    for (const k of Object.keys(runs)) expect(reports[k]['Cryo pulse length (s)'], k).toBe(ITER.systems!.pulseLength_s);
+    expect(ITER.systems!.pulseLength_s).toBe(500);
   });
 
   it('static, pulsed-field and lead loads are those of the machine: equal for every t_end and for an aborted shot (to the rounding of the keys)', () => {

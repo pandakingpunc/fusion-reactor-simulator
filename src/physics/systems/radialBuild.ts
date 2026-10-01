@@ -20,11 +20,18 @@
  * #272, which corrected the paper): P_TF = e exp(-a x_b) exp(-b x_s) M_TF P_fus, with e = 9.062 W kg^-1 GW^-1, a = 2.830 and
  * b = 0.583 m^2 tonne^-1, x_b and x_s the line densities [tonne m^-2] of the armour-first wall-blanket and of the
  * shield-vessel (the mean of the inboard and the outboard build), M_TF the coil mass and P_fus the fusion power. The fit
- * is for the EU DEMO HCPB neutronics; it is applied unchanged to other builds (APPROXIMATION, and outside its range when there
- * is no blanket).
+ * is a fit to the D-T neutronics of the EU DEMO HCPB blanket (its PROCESS unit test has x_b = 2.34 and x_s = 4.06 tonne m^-2), so
+ * P_fus stands for the neutron power of a D-T plasma: `tfNuclearHeatingFromNeutrons_W` takes the neutron power and divides it
+ * by the neutron share of the D-T fusion energy (0.80), which reproduces the fit for D-T and lets the D-D, D-He3 and p-B11 fuels
+ * (a fraction to none of the neutron power per unit of fusion power) heat the coil accordingly (Wave 2A had P_fus in every fuel).
+ * The coefficient a belongs to the breeding blanket (Li ceramic, Be multiplier, Eurofer) and b to the steel-water shield and the
+ * vessel; a build without a breeding blanket has no layer that a describes, so all its layers (armour, first wall, shield,
+ * vessel) count with b (`radialBuild` with a blanket type 'none'), and every build outside the HCPB range of the fit is reported
+ * as an extrapolation (`nuclearHeatingFitNote`).
  */
 import type { BlanketType } from '../types';
-import { SHIMWELL_OUT_IN } from './breeding';
+import { FUEL_CHANNELS } from '../reactivity';
+import { SHIMWELL_OUT_IN, depthInFittedRange } from './breeding';
 
 export type BuildRole = 'void' | 'armour' | 'wall' | 'blanket' | 'shield' | 'thermal' | 'tf';
 
@@ -80,11 +87,19 @@ export interface RadialBuild {
   blanketOverridden: boolean;
 }
 
+/** neutron share of the D-T fusion energy: 14.03 / 17.59 MeV (the D-T channel of reactivity.ts) */
+export const DT_NEUTRON_FRACTION = FUEL_CHANNELS.DT[0].Eneutron_MeV / FUEL_CHANNELS.DT[0].Etot_MeV;
+
 const FIXED = { fw: 0.018, armour: 0.003, gapBlSh: 0.02, gapShVv: 0.02, thermal: 0.05, gapTf: 0.05 } as const;
 /** share of the space behind the first wall taken by the blanket inboard */
 const BLANKET_SHARE = 0.56;
 /** outboard shield thickness relative to the inboard one (PROCESS DEMO build 1.1 / 0.6 m) */
 const SHIELD_OUT_IN = 1.83;
+
+/** the layer roles of the two line densities of the nuclear-heating fit: [armour-wall-blanket, shield-vessel]; without a blanket all of them are shield */
+function fitRoles(hasBlanket: boolean): [BuildRole[], BuildRole[]] {
+  return hasBlanket ? [['armour', 'wall', 'blanket'], ['shield']] : [[], ['armour', 'wall', 'shield']];
+}
 
 /** Radial build of the inboard and outboard midplane. */
 export function radialBuild(inp: RadialBuildInput): RadialBuild {
@@ -131,8 +146,10 @@ export function radialBuild(inp: RadialBuildInput): RadialBuild {
   const total = (L: BuildLayer[]) => L.reduce((sum, l) => sum + l.thickness_m, 0);
   // line densities [tonne/m^2]: armour + first wall + blanket, shield + vessel; mean of the inboard and outboard build (PROCESS)
   const line = (L: BuildLayer[], roles: BuildRole[]) => L.filter((l) => roles.includes(l.role)).reduce((sum, l) => sum + l.thickness_m * l.density, 0) / 1000;
-  const xb = 0.5 * (line(inboard, ['armour', 'wall', 'blanket']) + line(outboard, ['armour', 'wall', 'blanket']));
-  const xs = 0.5 * (line(inboard, ['shield']) + line(outboard, ['shield']));
+  // without a breeding blanket there is nothing for the blanket coefficient a to describe: armour and first wall attenuate like the shield
+  const [rolesB, rolesS] = fitRoles(hasBlanket);
+  const xb = 0.5 * (line(inboard, rolesB) + line(outboard, rolesB));
+  const xs = 0.5 * (line(inboard, rolesS) + line(outboard, rolesS));
   return {
     inboard, outboard, inboardTotal_m: total(inboard), outboardTotal_m: total(outboard),
     blanketInboard_m: blIn, blanketOutboard_m: blOut, blanketMean_m: 0.5 * (blIn + blOut),
@@ -145,20 +162,46 @@ export function tfHeatingAttenuation(xBlanket: number, xShield: number): number 
   return Math.exp(-NUC_HEATING.a * xBlanket - NUC_HEATING.b * xShield);
 }
 
-/** Nuclear heating of the TF coil [W]: e exp(-a x_b) exp(-b x_s) M_TF [kg] P_fus [GW]. */
+/** Nuclear heating of the TF coil [W]: e exp(-a x_b) exp(-b x_s) M_TF [kg] P_fus [GW], the fit as published (P_fus of a D-T plasma). */
 export function tfNuclearHeating_W(xBlanket: number, xShield: number, tfMass_kg: number, Pfus_MW: number): number {
   return NUC_HEATING.e * tfHeatingAttenuation(xBlanket, xShield) * tfMass_kg * (Pfus_MW / 1000);
+}
+
+/**
+ * Nuclear heating of the TF coil [W] of any fuel: the fit of `tfNuclearHeating_W` with the fusion power of the D-T plasma that
+ * has the same neutron power, P_fus = P_neutron / 0.80. Identical to the fit for D-T (P_neutron = 0.80 P_fus); D-D and D-He3
+ * plasmas give a fraction and p-B11 none (APPROXIMATION: the 2.45 MeV neutrons of D-D are attenuated faster than the 14 MeV ones the
+ * fit was made for, so the D-D heating is an upper bound).
+ */
+export function tfNuclearHeatingFromNeutrons_W(xBlanket: number, xShield: number, tfMass_kg: number, Pneutron_MW: number): number {
+  return tfNuclearHeating_W(xBlanket, xShield, tfMass_kg, Pneutron_MW / DT_NEUTRON_FRACTION);
+}
+
+/**
+ * Where the fit does not apply: a note for the report, or undefined inside its range. The fit was made for the D-T neutronics of the EU
+ * DEMO HCPB blanket, so an HCPB blanket whose mean depth is in the depth range of the DEMO HCPB study behind the TBR fit
+ * (`depthInFittedRange`, 0.72 to 1.025 m) is inside; another blanket type (its smeared density and its neutron multiplication differ), a
+ * depth outside that range, or no blanket at all is an extrapolation of the exponential attenuation.
+ */
+export function nuclearHeatingFitNote(type: BlanketType, blanketMean_m: number): string | undefined {
+  if (type === 'none') {
+    return 'TF nuclear heating: no breeding blanket, so the PROCESS DEMO HCPB fit is extrapolated: armour, first wall, shield and vessel all attenuate with the shield coefficient (0.583 m^2/tonne); an APPROXIMATION, and for a pulsed machine a load during the burn only';
+  }
+  if (type !== 'HCPB') return `TF nuclear heating: the PROCESS fit is for an HCPB blanket, ${type} is an extrapolation`;
+  if (!depthInFittedRange(blanketMean_m)) return `TF nuclear heating: the mean blanket depth ${blanketMean_m.toFixed(2)} m is outside the 0.72 to 1.025 m of the DEMO HCPB study behind the PROCESS fit (extrapolated)`;
+  return undefined;
 }
 
 /** cumulative attenuation of the TF heating through the layers from the plasma outwards (1 at the plasma) for plots and tests */
 export function attenuationProfile(build: BuildLayer[]): { name: string; x_m: number; attenuation: number }[] {
   const out: { name: string; x_m: number; attenuation: number }[] = [];
+  const [rolesB] = fitRoles(build.some((l) => l.role === 'blanket'));
   let x = 0, xb = 0, xs = 0;
   for (const l of build) {
     x += l.thickness_m;
     const m = (l.thickness_m * l.density) / 1000;
-    if (l.role === 'armour' || l.role === 'wall' || l.role === 'blanket') xb += m;
-    else if (l.role === 'shield') xs += m;
+    if (rolesB.includes(l.role)) xb += m;
+    else if (l.role === 'armour' || l.role === 'wall' || l.role === 'shield') xs += m;
     out.push({ name: l.name, x_m: x, attenuation: tfHeatingAttenuation(xb, xs) });
   }
   return out;

@@ -44,6 +44,20 @@ describe('Shimwell et al. (2016) fit', () => {
     for (const s of [0.72, 0.875, 1.025]) expect(tbrHCPB(0.6, s)).toBeGreaterThan(1.15);
   });
 
+  it('at the minimum 6Li enrichment of Table 4 for tritium self-sufficiency (thin 16.4 %, medium 14.9 %, thick 14.2 %) the optimal TBR is 1.00, not the 1.25 of full enrichment', () => {
+    // y < 1: the maxima above are all at 100 % 6Li. Self-sufficiency needs a time-averaged TBR just above 1 (the paper's criterion
+    // includes burn-up and decay), which the surface reaches at exactly these enrichments: 1.0047, 1.0045, 1.0040.
+    for (const [cls, y] of [['thin', 0.164], ['medium', 0.149], ['thick', 0.142]] as const) {
+      const t = gridMax(cls, y).tbr;
+      expect(t, cls).toBeGreaterThan(1.0);
+      expect(t, cls).toBeLessThan(1.01);
+      expect(tbrHCPB(y, { thin: SHIMWELL_DEPTH.thin, medium: SHIMWELL_DEPTH.medium, thick: SHIMWELL_DEPTH.thick }[cls])).toBeCloseTo(t, 3);
+    }
+    // less enrichment than that does not breed, more does
+    expect(gridMax('thick', 0.12).tbr).toBeLessThan(1);
+    expect(gridMax('thick', 0.2).tbr).toBeGreaterThan(1.03);
+  });
+
   it('the fit is clamped to its range: 6Li below 10 % and breeder fractions outside 0.06-1 give the edge values', () => {
     expect(shimwellTBR('thin', 0.5, 0.05)).toBe(shimwellTBR('thin', 0.5, 0.1));
     expect(shimwellTBR('thin', 0.001, 0.5)).toBe(shimwellTBR('thin', 0.06, 0.5));

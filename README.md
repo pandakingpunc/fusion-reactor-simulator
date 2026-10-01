@@ -44,8 +44,8 @@ Requirements: Node.js 20+.
 npm install
 npm run dev        # user interface (Vite) → http://localhost:5173
 npm test           # unit, CLI and fast golden-regression tests (vitest)
-npm run validate   # 21 presets, 42 literature checks (7 documented known failures), on a worker pool (~45 s)
-npm run golden     # golden regression: 30 cases compared with test/golden (~12 s on 4 threads)
+npm run validate   # 22 presets, 46 literature checks (8 documented known failures), on a worker pool (~45 s)
+npm run golden     # golden regression: 40 cases compared with test/golden (~12 s on 4 threads)
 npm run ci:local   # type check + schema check + tests + validate + golden + build + bundle budget, in sequence, stops at the first failure
 npm run check:bundle  # after a build: fails when the main JS chunk is above 250 kB (85 kB gzip)
 npm run figures    # paper figures → docs/figures/*.svg|pdf + captions.md (~1 MB, ~55 s)
@@ -135,9 +135,10 @@ Two independent safety nets guard the physics:
 
 - **Literature validation** (`npm run validate`) checks selected outputs of every preset against
   published ranges. The ranges are wide: it catches order-of-magnitude and consistency errors.
-- **Golden regression** (`npm run golden`) catches *any* numerical drift. For 30 cases (all 21
-  presets, covering every method in 0D and 1.5D, a 3 s SPARC 1.5D variant, and 8 variants for
-  what no preset uses: every fuel in 0D and 1.5D, 1.5D D-D and 1.5D spherical tokamak) it stores a
+- **Golden regression** (`npm run golden`) catches *any* numerical drift. For 40 cases (all 22
+  presets, covering every method in 0D and 1.5D, a 3 s SPARC 1.5D variant, and 17 variants for
+  what no preset uses: other fuels in 0D and 1.5D, the optional 1.5D bootstrap, transport, impurity,
+  pedestal, fast-ion, ECCD and sawtooth models, and 1.5D DIII-D and MAST-U) it stores a
   deterministic snapshot in `test/golden/<case>.json`: every finite scalar of the shot report,
   flat-top averages of all diagnostics, whole-run minimum, maximum and mean of every diagnostic
   together with the number of frames in which it is missing or not finite (so a NaN anywhere in

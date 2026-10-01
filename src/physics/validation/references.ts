@@ -26,13 +26,17 @@
  * the numbers. Each entry states its own derivation in `basis`.
  *
  * Roles (optional). 'calibration' marks the one shot a model constant was fitted to: its model value matches the
- * published one by construction, so it is not a test and validate labels it 'calibrated'. 'blind' marks a prediction made
- * after that calibration with nothing adjusted for the shot. A check without a role compares a model that was not fitted
- * to any value of the table with a published one.
+ * published one by construction, so it is not a test and validate labels it 'calibrated' (and counts it apart in its summary).
+ * 'blind' marks a prediction made after that calibration with the fitted constant not re-fitted for the shot. It is blind with
+ * respect to that constant only: the other constants and the inputs of the model predate the calibration and were not chosen
+ * without knowledge of the shot, and where the model has no input that separates the shots the blind rows are the published
+ * ratios of the calibration shot in disguise (each `basis` says so). A check without a role compares a model that was not
+ * fitted to any value of the table with a published one.
  *
- * Wording (evaluate.ts). A check whose model value deviates by more than 20 % from the published value is reported as
- * 'benchmarked (deviation X %)', one within 20 % as 'validated' (a bound of kind sanity as 'sanity bound'). The deviation is
- * measured from the `value` of the check, which for a bound or a mid-point of a band is not a measurement: read the row with its kind.
+ * Wording (evaluate.ts). A check of kind validation or benchmark whose model value deviates by more than 20 % from the published
+ * value is reported as 'benchmarked (deviation X %)', one within 20 % as 'validated'; a check of kind sanity is always a 'sanity bound',
+ * whatever its deviation, because its `value` is a bound or a rough level and not a measurement (the signed deviation stays in --json).
+ * The deviation is measured from the `value` of the check, which for a mid-point of a band is not a measurement either: read the row with its kind.
  *
  * Known failures. When the current model falls outside a defensible range, the check is kept and
  * `knownFailure` says why: validate prints it as KNOWN-FAIL, lists it in the summary and does not fail

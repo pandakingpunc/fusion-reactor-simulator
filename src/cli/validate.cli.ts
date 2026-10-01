@@ -13,7 +13,9 @@
  *                      `npm run` writes its banner to stdout before the JSON). Schema 3: one entry per check with the
  *                      reference (published value, uncertainty, source, DOI), the model value, ratio = model/published,
  *                      the accepted range, the pass status, the role (calibration, blind) and the wording of the
- *                      comparison: 'validated' within 20 % of the published value, 'benchmarked (deviation X %)' beyond
+ *                      comparison: 'validated' within 20 % of the published value, 'benchmarked (deviation X %)' beyond,
+ *                      'calibrated' for the shot a model constant was fitted to, 'sanity bound' for every check of kind
+ *                      sanity (a bound is not a measurement; its deviation is still given as ratio and deviationPct)
  *   --markdown         a Markdown table of the checks with the model values instead of the report
  *   --list             print the selected checks without running anything (with --markdown: as a table)
  *   --timeout S        fail a preset whose run takes longer than S seconds
@@ -76,7 +78,7 @@ interface CheckResult {
   ratio: number | null;
   /** 100 × (ratio − 1), the deviation of the model from the published value in percent; null as `ratio` */
   deviationPct: number | null;
-  /** 'validated', 'benchmarked (deviation +35 %)' (beyond 20 %), 'sanity bound', 'calibrated (deviation …)' or 'n/a' */
+  /** 'validated', 'benchmarked (deviation +35 %)' (beyond 20 %, kinds validation and benchmark), 'sanity bound' (kind sanity), 'calibrated (deviation …)' or 'n/a' */
   wording: string;
   /** 'calibration' (a model constant was fitted to this value) or 'blind' (predicted after that calibration); absent otherwise */
   role?: CheckRole;
@@ -102,6 +104,12 @@ interface PresetResult {
 }
 
 const finiteOrNull = (v: number): number | null => (Number.isFinite(v) ? v : null);
+
+/** " (of which 1 calibration, a pass by construction)": the passes that are no test, because a model constant was fitted to their published value */
+function byConstruction(outcomes: readonly CheckOutcome[]): string {
+  const n = outcomes.filter((o) => o.check.role === 'calibration' && (o.status === 'pass' || o.status === 'xpass')).length;
+  return n === 0 ? '' : ` (of which ${n} ${n === 1 ? 'calibration, a pass' : 'calibrations, passes'} by construction)`;
+}
 
 /** how many checks of each wording ('benchmarked (deviation +35 %)' counts as 'benchmarked'; 'n/a' as 'unavailable') */
 function wordingTally(outcomes: readonly CheckOutcome[]): Record<'validated' | 'benchmarked' | 'calibrated' | 'sanity bound' | 'unavailable', number> {
@@ -219,15 +227,15 @@ async function main() {
     process.stdout.write(JSON.stringify(out, null, 2) + '\n');
   } else if (args.markdown) {
     process.stdout.write(markdownTable(outcomes) + '\n\n' +
-      `${t.pass + t.xpass} of ${outcomes.length} checks within the accepted range; ${t.knownFail} known failures; ${failures} unexpected failures.\n`);
+      `${t.pass + t.xpass} of ${outcomes.length} checks within the accepted range${byConstruction(outcomes)}; ${t.knownFail} known failures; ${failures} unexpected failures.\n`);
   } else if (none && failures === 0) {
     say('  (none — the selection has no literature checks)\n\n✗ NO CHECKS EXECUTED\n');
   } else if (failures > 0) {
     say(`\n✗ ${failures} CHECKS FAILED${t.knownFail ? ` (plus ${t.knownFail} known failures)` : ''}\n`);
   } else if (t.knownFail || t.xpass) {
-    say(`\n✓ NO UNEXPECTED FAILURES: ${t.pass + t.xpass} passed, ${t.knownFail} known failures (listed above)\n`);
+    say(`\n✓ NO UNEXPECTED FAILURES: ${t.pass + t.xpass} passed${byConstruction(outcomes)}, ${t.knownFail} known failures (listed above)\n`);
   } else {
-    say(`\n✓ ALL CHECKS PASSED (${t.pass})\n`);
+    say(`\n✓ ALL CHECKS PASSED (${t.pass}${byConstruction(outcomes)})\n`);
   }
   if (failures > 0 || none) process.exitCode = 1;
 }

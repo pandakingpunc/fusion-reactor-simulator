@@ -261,7 +261,11 @@ describe('wording of a comparison: validated, benchmarked, calibrated', () => {
     expect(compareWithPublished({ ...c, role: 'blind' }, 10.5).wording).toBe('validated');
     expect(compareWithPublished({ ...c, role: 'blind' }, 4).wording).toBe('benchmarked (deviation -60 %)');
     expect(compareWithPublished({ ...c, kind: 'sanity' }, 9).wording).toBe('sanity bound');
-    expect(compareWithPublished({ ...c, kind: 'sanity' }, 50).wording).toBe('benchmarked (deviation +400 %)');
+    // a bound is not a measurement: far from it the row is still a sanity bound, and the deviation stays in the numbers
+    expect(compareWithPublished({ ...c, kind: 'sanity' }, 50)).toMatchObject({ ratio: 5, wording: 'sanity bound' });
+    expect(compareWithPublished({ ...c, kind: 'sanity' }, 50).deviation).toBeCloseTo(4, 12);
+    expect(compareWithPublished({ ...c, kind: 'sanity' }, 1).wording).toBe('sanity bound');
+    expect(evaluateCheck({ ...c, kind: 'sanity' }, 150)).toMatchObject({ status: 'fail', wording: 'sanity bound' });
     const none = { ratio: null, deviation: null, wording: 'n/a' };
     expect(compareWithPublished(c, null)).toEqual(none);
     expect(compareWithPublished(c, NaN)).toEqual(none);
@@ -275,12 +279,13 @@ describe('wording of a comparison: validated, benchmarked, calibrated', () => {
       ['+35 %', '-35 %', '+7.3 %', '-0.7 %', '+0.0 %', '+0.0 %', '+100 %', '+20 %']);
   });
 
-  it('every check of the table gets a wording from the published value alone, none of them is "validated" beyond 20 %', () => {
+  it('every check of the table gets a wording from the published value alone: none of them is "validated" beyond 20 %, and a bound is never "benchmarked"', () => {
     for (const k of REFERENCE_CHECKS) {
       for (const f of [0.5, 0.79, 0.81, 1, 1.19, 1.21, 2]) {
         const w = compareWithPublished(k, k.value * f).wording;
-        expect(w.startsWith('benchmarked') || w.startsWith('calibrated'), `${k.id} x${f}: ${w}`).toBe(Math.abs(f - 1) > 0.2 || k.role === 'calibration');
-        if (Math.abs(f - 1) <= 0.2 && k.role !== 'calibration') expect(w, `${k.id} x${f}`).toBe(k.kind === 'sanity' ? 'sanity bound' : 'validated');
+        if (k.role === 'calibration') expect(w, `${k.id} x${f}`).toMatch(/^calibrated \(deviation /);
+        else if (k.kind === 'sanity') expect(w, `${k.id} x${f}`).toBe('sanity bound');
+        else expect(w, `${k.id} x${f}`).toEqual(Math.abs(f - 1) > 0.2 ? expect.stringMatching(/^benchmarked \(deviation [+-]/) : 'validated');
       }
     }
   });

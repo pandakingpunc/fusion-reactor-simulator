@@ -11,9 +11,11 @@
  *
  * Wording of one check (independent of the status): the model value is compared with the published value of the check.
  *   validated     within 20 % of the published value
- *   benchmarked   deviating by more than 20 %: "benchmarked (deviation +35 %)", whatever the status: a model that is
- *                 far from the published value is compared with it, not validated against it
- *   sanity bound  a check of kind 'sanity' (the published value is a bound) within 20 %
+ *   benchmarked   a published measured or design value (kinds 'validation' and 'benchmark') deviating by more than 20 %:
+ *                 "benchmarked (deviation +35 %)", whatever the status: a model that is far from the published value is
+ *                 compared with it, not validated against it
+ *   sanity bound  a check of kind 'sanity', whatever its deviation: the published value is a bound or a rough level, not a
+ *                 measurement, so the model is not 'benchmarked' against it; the signed deviation stays in --json as information
  *   calibrated    the check of the shot a model constant was fitted to (role 'calibration'): "calibrated (deviation -0.7 %)"
  */
 import { type CheckKind, type CheckRole, type ReferenceCheck, type Tolerance, publishedBand, widen } from './references';
@@ -50,9 +52,11 @@ export function compareWithPublished(check: ReferenceCheck, value: number | null
   if (value === null || !Number.isFinite(value) || !Number.isFinite(check.value) || check.value === 0) return { ratio: null, deviation: null, wording: 'n/a' };
   const ratio = value / check.value;
   const deviation = ratio - 1;
+  // a bound or a rough level (kind 'sanity') is not a measurement: its deviation is information (--json), never a claim of 'benchmarked'
   const wording = check.role === 'calibration' ? `calibrated (deviation ${fmtDeviation(deviation)})`
-    : Math.abs(deviation) > BENCHMARK_DEVIATION ? `benchmarked (deviation ${fmtDeviation(deviation)})`
-      : check.kind === 'sanity' ? 'sanity bound' : 'validated';
+    : check.kind === 'sanity' ? 'sanity bound'
+      : Math.abs(deviation) > BENCHMARK_DEVIATION ? `benchmarked (deviation ${fmtDeviation(deviation)})`
+        : 'validated';
   return { ratio, deviation, wording };
 }
 

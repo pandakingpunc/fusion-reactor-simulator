@@ -1,11 +1,13 @@
 #!/usr/bin/env node
-// Local CI: type check, config JSON Schema up to date, unit tests, literature validation and golden regression, in sequence,
-// then (when scripts/check-bundle.mjs exists) the production build and its main-chunk budget.
+// Local CI: type check, config JSON Schema up to date, unit tests, literature validation, golden regression and the reproducibility
+// of the paper figures (docs/figures), in sequence, then (when scripts/check-bundle.mjs exists) the production build and its main-chunk budget.
 // Stops at the first failing step and exits with its code. Usage: npm run ci:local [-- --dry-run]
 //
 // Environment knobs, for a machine that several agents or builds share (the defaults are the ones of a machine of its own):
 //   CI_LOCAL_WORKERS   vitest workers of the unit-test step (a positive integer; unset: vitest's own default, one per core)
-//   CI_LOCAL_THREADS   worker threads of the validation and golden steps (a positive integer; default 4)
+//   CI_LOCAL_THREADS   worker threads of the validation, golden and figures steps (a positive integer; default 4)
+//   CI_LOCAL_FIGURES   0 skips the figures step (it regenerates the nine figures of docs/figures and compares their hashes with the manifest;
+//                      several minutes; default: run it, a missing manifest fails it)
 //   CI_LOCAL_BUNDLE    0 skips the build and bundle-size steps (default: run them when scripts/check-bundle.mjs exists)
 // --dry-run prints the steps that would run and exits 0 (a bad knob value is a usage error, exit 2, also with --dry-run).
 import { spawnSync } from 'node:child_process';
@@ -40,6 +42,7 @@ function buildSteps(env = process.env, bundle = existsSync(join(root, 'scripts',
     ['validation', 'npm', ['run', 'validate', '--', '--threads', String(threads)]],
     ['golden regression', 'npm', ['run', 'golden', '--', '--threads', String(threads)]],
   ];
+  if (env.CI_LOCAL_FIGURES !== '0') steps.push(['figures reproducible', 'npm', ['run', 'figures:check', '--', '--threads', String(threads)]]);
   if (bundle && env.CI_LOCAL_BUNDLE !== '0') {
     steps.push(['production build', 'npm', ['run', 'build']]);
     steps.push(['main chunk within budget', 'node', ['scripts/check-bundle.mjs']]);

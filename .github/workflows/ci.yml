@@ -1,4 +1,4 @@
-# Continuous integration: type check, unit tests, literature validation, golden regression and build
+# Continuous integration: type check, unit tests, literature validation, golden regression, figure reproducibility and build
 # on Linux and Windows for every supported Node.js major (package.json engines.node).
 # Actions are pinned by full commit SHA (the tag is in the comment); Dependabot keeps them current.
 name: CI
@@ -63,6 +63,13 @@ jobs:
       - name: Golden regression (Node 24 only)
         if: matrix.node == 24
         run: npm run golden -- --threads 2
+
+      # The paper figures in docs/figures are the ones recorded in docs/figures/figures.manifest.json and the code reproduces them
+      # (npm run figures:check regenerates all nine and compares SHA-256 hashes; several minutes). The manifest is made on Node 24 and the
+      # figures depend on its Math.* results (and the compressed PDF streams may on its zlib), so, like the goldens, this runs on that major only.
+      - name: Figures reproducible (Node 24 only)
+        if: matrix.node == 24
+        run: npm run figures:check -- --threads 2
 
       - name: Build
         run: npm run build

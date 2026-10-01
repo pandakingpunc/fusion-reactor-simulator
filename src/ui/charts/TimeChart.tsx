@@ -184,17 +184,17 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
 
   return (
     <div className="chart-wrap" ref={wrapRef}>
-      <canvas ref={canvasRef} style={{ height, cursor: 'crosshair' }} onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}
+      <canvas ref={canvasRef} role="img" aria-label={title ? t('chart.aria', { title }) : t('chart.ariaPlain')} style={{ height, cursor: 'crosshair' }} onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}
         onMouseLeave={() => { drag.current = null; setHover(null); }} onDoubleClick={() => setXRange(null)} />
       <div className="chart-legend">
         {series.map((s) => (
-          <span key={s.key} className={`li ${hidden.has(s.key) ? 'off' : ''}`} onClick={() => setHidden((h) => { const n = new Set(h); n.has(s.key) ? n.delete(s.key) : n.add(s.key); return n; })}>
-            <span className="sw" style={{ background: s.color }} />{s.label}{s.unit ? ` [${s.unit}]` : ''}
-          </span>
+          <button type="button" key={s.key} className={`li ${hidden.has(s.key) ? 'off' : ''}`} aria-pressed={!hidden.has(s.key)} onClick={() => setHidden((h) => { const n = new Set(h); n.has(s.key) ? n.delete(s.key) : n.add(s.key); return n; })}>
+            <span className="sw" style={{ background: s.color }} aria-hidden="true" />{s.label}{s.unit ? ` [${s.unit}]` : ''}
+          </button>
         ))}
         <span className="spacer" />
-        <span className="li" onClick={() => setLogY((v) => !v)} title={t('chart.logTitle')}>{logY ? 'log' : 'lin'}</span>
-        {xRange && <span className="li" onClick={() => setXRange(null)} title={t('chart.resetZoom')}>⟲</span>}
+        <button type="button" className="li" aria-pressed={logY} onClick={() => setLogY((v) => !v)} title={t('chart.logTitle')} aria-label={t('chart.logTitle')}>{logY ? t('chart.scaleLog') : t('chart.scaleLin')}</button>
+        {xRange && <button type="button" className="li" onClick={() => setXRange(null)} title={t('chart.resetZoom')} aria-label={t('chart.resetZoom')}>⟲</button>}
       </div>
     </div>
   );

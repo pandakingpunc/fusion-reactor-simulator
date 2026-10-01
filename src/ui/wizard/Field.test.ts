@@ -16,6 +16,25 @@ describe('parseNumberInput', () => {
     expect(parseNumberInput(' 2e20 ')).toBe(2e20);
     expect(parseNumberInput('0')).toBe(0);
   });
+
+  it('reads a number the way the Turkish interface writes it, thousands point and decimal comma', () => {
+    expect(parseNumberInput('1.234,5')).toBe(1234.5);
+    expect(parseNumberInput('1,234.5')).toBe(1234.5);
+    expect(parseNumberInput('-12.345,25')).toBe(-12345.25);
+    expect(parseNumberInput('1.234.567')).toBe(1234567);
+    expect(parseNumberInput('1,234,567')).toBe(1234567);
+    expect(parseNumberInput('1.234,5e3')).toBe(1234500);
+    expect(parseNumberInput('2,5e-3')).toBe(0.0025);
+    expect(parseNumberInput('1.5')).toBe(1.5);
+  });
+
+  it('rejects separators that make no sense instead of guessing', () => {
+    expect(parseNumberInput('1,2,3')).toBeNull();
+    expect(parseNumberInput('1.2.3,4')).toBeNull();
+    expect(parseNumberInput('1,5.234,5')).toBeNull();
+    expect(parseNumberInput('1.234,5,6')).toBeNull();
+    expect(parseNumberInput('.,')).toBeNull();
+  });
 });
 
 /** a field bound to local state, the way the wizard binds it to the configuration */

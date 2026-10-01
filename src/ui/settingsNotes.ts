@@ -35,7 +35,7 @@ const REASON: Record<NoteReason, MessageKey> = { pos: 'note.step.pos', nonneg: '
 
 /** The note in the interface language (in English it is the text of the model's own warning, word for word). */
 export function stepNoteText(n: StepNote, t: Translate): string {
-  return t('note.step', { key: n.key, given: String(n.given), why: t(REASON[n.reason], { min: STEP_DT_MIN }), used: n.used, unit: n.key === 'dtMax' ? ' s' : '' });
+  return t('note.step', { key: n.key, given: typeof n.given === 'number' ? n.given : String(n.given), why: t(REASON[n.reason], { min: STEP_DT_MIN }), used: n.used, unit: n.key === 'dtMax' ? ' s' : '' });
 }
 
 /** A warning of a report or a run log: the step-control notes of `cfg` in the interface language, any other warning as it is. */

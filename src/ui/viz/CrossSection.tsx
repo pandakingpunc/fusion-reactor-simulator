@@ -8,6 +8,9 @@
  */
 import React, { useEffect, useRef } from 'react';
 import { EqSnapshot } from '../../physics/types';
+import { useT } from '../state/store';
+import { useWizText } from '../wizard/wizText';
+import { localizeDecimals } from '../../i18n';
 
 interface Props {
   R: number; a: number; kappa: number; delta: number;
@@ -36,6 +39,8 @@ function tempColor(u: number): string {
 }
 
 export function CrossSection(p: Props) {
+  const wt = useWizText();
+  const tr = useT();
   const ref = useRef<HTMLCanvasElement>(null);
   const { R, a, kappa, delta, gap, coilThickness, T0_keV, alphaT, Hmode, divertor, stellarator, disrupted, elmFlash = 0, height = 300, eq, prof } = p;
 
@@ -126,13 +131,13 @@ export function CrossSection(p: Props) {
     const bx = width - 22, by = 14, bh = height - 40;
     for (let i = 0; i < bh; i++) { ctx.fillStyle = tempColor(Math.pow(1 - i / bh, 1)); ctx.fillRect(bx, by + i, 10, 1.5); }
     ctx.fillStyle = '#7f8ba3'; ctx.font = '9px JetBrains Mono, monospace'; ctx.textAlign = 'right';
-    ctx.fillText(`${Tref.toFixed(Tref < 10 ? 1 : 0)} keV`, bx - 2, by + 8); ctx.fillText('0', bx - 2, by + bh);
+    ctx.fillText(localizeDecimals(`${Tref.toFixed(Tref < 10 ? 1 : 0)} keV`), bx - 2, by + 8); ctx.fillText('0', bx - 2, by + bh);
     ctx.textAlign = 'left'; ctx.fillStyle = '#d6dce8'; ctx.font = '10px JetBrains Mono, monospace';
-    ctx.fillText(`T₀ = ${T0.toFixed(T0 < 10 ? 2 : 1)} keV`, 6, height - 8);
-    ctx.fillStyle = '#7f8ba3'; ctx.fillText(`R=${R.toFixed(2)} a=${a.toFixed(2)} κ=${kappa.toFixed(2)} δ=${delta.toFixed(2)}`, 6, 12);
-    if (useEq) { ctx.fillText(`GS: q95=${eq!.q95.toFixed(2)} ℓi=${eq!.li.toFixed(2)} βp=${eq!.betaP.toFixed(2)} Δ=${((eq!.Raxis - R) * 100).toFixed(0)} cm`, 6, 24); }
-    if (disrupted) { ctx.fillStyle = '#ef476f'; ctx.font = 'bold 12px Inter, sans-serif'; ctx.fillText('DISRUPTION', 6, 28); }
-  }, [R, a, kappa, delta, gap, coilThickness, T0_keV, alphaT, Hmode, divertor, stellarator, disrupted, elmFlash, height, eq, prof]);
+    ctx.fillText(localizeDecimals(`T₀ = ${T0.toFixed(T0 < 10 ? 2 : 1)} keV`), 6, height - 8);
+    ctx.fillStyle = '#7f8ba3'; ctx.fillText(localizeDecimals(`R=${R.toFixed(2)} a=${a.toFixed(2)} κ=${kappa.toFixed(2)} δ=${delta.toFixed(2)}`), 6, 12);
+    if (useEq) { ctx.fillText(localizeDecimals(`GS: q95=${eq!.q95.toFixed(2)} ℓi=${eq!.li.toFixed(2)} βp=${eq!.betaP.toFixed(2)} Δ=${((eq!.Raxis - R) * 100).toFixed(0)} cm`), 6, 24); }
+    if (disrupted) { ctx.fillStyle = '#ef476f'; ctx.font = 'bold 12px Inter, sans-serif'; ctx.fillText(wt('DISRUPTION'), 6, 28); }
+  }, [R, a, kappa, delta, gap, coilThickness, T0_keV, alphaT, Hmode, divertor, stellarator, disrupted, elmFlash, height, eq, prof, wt]);
 
-  return <canvas ref={ref} style={{ width: '100%', height, display: 'block' }} />;
+  return <canvas ref={ref} role="img" aria-label={tr('run.cross.aria')} style={{ width: '100%', height, display: 'block' }} />;
 }

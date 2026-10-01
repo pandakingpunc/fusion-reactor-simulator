@@ -96,6 +96,10 @@ export function WaveformLane(p: LaneProps) {
   const xTicks = [0, p.tEnd / 2, p.tEnd];
   const valueText = (v: number | null) => `${fmtNum(v === null ? p.base : v, 4)}${p.unit ? ` ${p.unit}` : ''}${v === null ? ` (${t('scn.configuredWord')})` : ''}`;
 
+  // the programmed line and the actual one differ in more than colour (the actual one is dashed), and the run's end value is in the name
+  const lastActual = actualPts.length ? actualPts[actualPts.length - 1][1] : undefined;
+  const laneName = t('scn.laneLabel', { label: p.label }) + (lastActual !== undefined && Number.isFinite(lastActual) ? `: ${t('scn.laneActual', { value: valueText(lastActual) })}` : '');
+
   const nudge = (i: number, e: React.KeyboardEvent) => {
     if (!editable || !p.wf) return;
     const pt = points[i];
@@ -115,7 +119,7 @@ export function WaveformLane(p: LaneProps) {
 
   return (
     <svg ref={svgRef} className={`scn-lane${p.invalid ? ' invalid' : ''}${editable ? ' editable' : ''}`} viewBox={`0 0 ${LANE_W} ${LANE_H}`} role="group"
-      aria-label={t('scn.laneLabel', { label: p.label })}
+      aria-label={laneName}
       onPointerMove={(e) => {
         if (drag === null || !editable) return;
         const d = toData(e.clientX, e.clientY);

@@ -4,6 +4,7 @@ import { PRESETS, Preset } from '../../physics/presets';
 import { WorkerFactory } from '../state/sim';
 import { fmtNum } from '../format';
 import { useEduT } from '../edu/useEduT';
+import { useWizText } from '../wizard/wizText';
 import '../edu/edu.css';
 import { AbortError, RunPool } from './pool';
 
@@ -74,6 +75,7 @@ function inRange(c: Criterion, r: ShotReport): boolean { const v = c.get(r); ret
  */
 export function Validation({ createWorker, pool: given, tests = TESTS, presets = PRESETS }: Props) {
   const t = useEduT();
+  const wt = useWizText();
   const [own] = useState(() => (given ? null : new RunPool(createWorker)));
   const pool = given ?? own!;
   const [items, setItems] = useState<Record<string, Item>>({});
@@ -166,7 +168,7 @@ export function Validation({ createWorker, pool: given, tests = TESTS, presets =
         return (
           <div className="panel" key={def.id}>
             <div className="panel-title">
-              <h3>{def.title}</h3>
+              <h3>{wt(def.title)}</h3>
               <span className="row" style={{ gap: 6 }}>
                 {ok !== undefined && <span className={`badge ${ok ? 'ok' : 'bad'}`}>{t(ok ? 'val.pass' : 'val.fail')}</span>}
                 {stateText(it) && <span className="val-state">{stateText(it)}</span>}
@@ -181,7 +183,7 @@ export function Validation({ createWorker, pool: given, tests = TESTS, presets =
                 const pass = row ? inRange(c, row) : undefined;
                 return (
                   <tr key={c.label}>
-                    <td>{c.label}<div className="small muted">{c.source}</div></td>
+                    <td>{wt(c.label)}<div className="small muted">{wt(c.source)}</div></td>
                     <td className="num">
                       <span className="muted">[{fmtNum(c.lo)} … {fmtNum(c.hi)}] {c.unit}</span><br />
                       {v === undefined ? <span className="muted">—</span> : <b className={pass ? 'ok' : 'bad'}>{fmtNum(v)} {c.unit}</b>}
@@ -207,7 +209,7 @@ export function Validation({ createWorker, pool: given, tests = TESTS, presets =
                 const it = get(presetKey(p.id)), r = it.report;
                 return (
                   <tr key={p.id}>
-                    <td>{p.name}</td>
+                    <td>{wt(p.name)}</td>
                     <td className="small muted">{p.validation ?? '—'}</td>
                     {r ? (
                       <>

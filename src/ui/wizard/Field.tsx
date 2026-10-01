@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { FieldDef, fieldHint, fieldLabel, isRequired } from './schema';
-import { useT } from '../state/store';
+import { useApp, useT } from '../state/store';
+import { localizeDecimals } from '../../i18n';
 import { useWizText } from './wizText';
 
 interface Props { def: FieldDef; value: unknown; onChange: (v: unknown) => void }
@@ -38,26 +39,63 @@ export function Field({ def, value, onChange }: Props) {
 }
 
 /**
- * Parse a number typed by the user (decimal comma accepted).
+ * Parse a number typed by the user (a decimal comma is accepted, and so are thousands separators as the Turkish interface shows them).
  * Blank → undefined (the value is unset); unparseable → null (the edit is rejected).
+ *
+ * One separator, once, is the decimal mark ('1,5' and '1.5' are 1.5). Both marks: the last one is the decimal mark and the other one
+ * groups thousands ('1.234,5' and '1,234.5' are 1234.5). A mark that repeats is a thousands separator ('1.234.567'). Grouping that is not
+ * in threes ('1,2,3', '1.2.3,4') is rejected instead of guessed.
  */
 export function parseNumberInput(text: string): number | undefined | null {
   const s = text.trim();
   if (s === '') return undefined;
-  const v = parseFloat(s.replace(',', '.'));
+  const plain = normalizeSeparators(s);
+  if (plain === null) return null;
+  const v = parseFloat(plain);
   return Number.isFinite(v) ? v : null;
+}
+
+const count = (s: string, ch: string) => s.split(ch).length - 1;
+
+/** The text with a '.' decimal mark and no thousands separators, or null when its separators make no sense. */
+function normalizeSeparators(s: string): string | null {
+  const m = /^([+-]?[\d.,]*)([eE][+-]?\d+)?$/.exec(s);
+  if (!m) return s.replace(',', '.'); // not a plain number: parseFloat decides (as before)
+  const mant = m[1];
+  const exp = m[2] ?? '';
+  const dots = count(mant, '.');
+  const commas = count(mant, ',');
+  if (dots && commas) {
+    const decimal = mant.lastIndexOf('.') > mant.lastIndexOf(',') ? '.' : ',';
+    const group = decimal === '.' ? ',' : '.';
+    const parts = mant.split(decimal);
+    if (parts.length !== 2) return null;
+    const [int, frac] = parts;
+    if (!/^\d*$/.test(frac) || !groupedInt(int, group)) return null;
+    return `${int.split(group).join('')}.${frac}${exp}`;
+  }
+  const mark = dots ? '.' : ',';
+  if (dots + commas > 1) return groupedInt(mant, mark) ? mant.split(mark).join('') + exp : null;
+  return mant.replace(',', '.') + exp;
+}
+
+/** an integer part whose `group` marks split it in threes from the right: 1,234,567 */
+function groupedInt(int: string, group: string): boolean {
+  const [head, ...rest] = int.replace(/^[+-]/, '').split(group);
+  return /^\d{1,3}$/.test(head) && rest.length > 0 && rest.every((p) => /^\d{3}$/.test(p));
 }
 
 function NumberField({ def, value, onChange }: { def: FieldDef; value: number | undefined; onChange: (v: number | undefined) => void }) {
   const t = useT();
   const wt = useWizText();
+  const locale = useApp((s) => s.locale);
   const scale = def.scale ?? 1;
   const shown = value === undefined ? undefined : value / scale;
   const [text, setText] = useState(fmtEdit(shown));
   // bumped on every commit so the text re-syncs with the committed value (even when it is unchanged)
   const [rev, setRev] = useState(0);
   // dışarıdan (preset yükleme) değişince metni tazele
-  useEffect(() => { setText(fmtEdit(shown)); }, [shown, rev]);
+  useEffect(() => { setText(fmtEdit(shown)); }, [shown, rev, locale]);
   const commit = (s: string) => {
     // untouched text: keep the exact value (the text is rounded to 6 digits) and the preset unmodified
     if (s.trim() === fmtEdit(shown)) return;
@@ -85,7 +123,7 @@ function NumberField({ def, value, onChange }: { def: FieldDef; value: number | 
         onChange={(e) => setText(e.target.value)} onBlur={(e) => commit(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') commit((e.target as HTMLInputElement).value); }} />
       {def.min !== undefined && def.max !== undefined && !def.noSlider && (
-        <input type="range" min={def.min} max={def.max} step={def.step ?? (def.max - def.min) / 200}
+        <input type="range" aria-label={t('field.slider', { label: fieldLabel(def, t, wt) })} min={def.min} max={def.max} step={def.step ?? (def.max - def.min) / 200}
           value={shown !== undefined ? Math.min(def.max, Math.max(def.min, shown)) : def.min}
           onChange={(e) => { const v = parseFloat(e.target.value); setText(fmtEdit(v)); onChange(v * scale); }} />
       )}
@@ -97,6 +135,6 @@ function NumberField({ def, value, onChange }: { def: FieldDef; value: number | 
 function fmtEdit(x: number | undefined): string {
   if (x === undefined || !isFinite(x)) return '';
   const ax = Math.abs(x);
-  if (ax !== 0 && (ax >= 1e7 || ax < 1e-4)) return x.toExponential(3).replace(/\.?0+e/, 'e');
-  return parseFloat(x.toPrecision(6)).toString();
+  if (ax !== 0 && (ax >= 1e7 || ax < 1e-4)) return localizeDecimals(x.toExponential(3).replace(/\.?0+e/, 'e'));
+  return localizeDecimals(parseFloat(x.toPrecision(6)).toString());
 }

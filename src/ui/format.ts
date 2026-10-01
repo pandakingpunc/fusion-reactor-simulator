@@ -1,6 +1,15 @@
-/** Arayüz sayı/birim biçimlendirme (mono gösterim). */
+/**
+ * Interface number/unit formatting (mono display). The numbers are for people to read, so they follow the interface language: Turkish
+ * writes the decimal comma ("0,5") and groups thousands with a point. Exports, share links and anything a program reads are written
+ * elsewhere (src/ui/report/exportShot.ts, src/ui/persist) and keep the point.
+ */
+import { activeLocale, localizeDecimals } from '../i18n';
 
 export function fmtNum(x: number | undefined | null, digits = 3): string {
+  return localizeDecimals(plainNum(x, digits));
+}
+
+function plainNum(x: number | undefined | null, digits: number): string {
   if (x === undefined || x === null || !isFinite(x)) return '—';
   const ax = Math.abs(x);
   if (ax < 1e-30) return '0'; // sayısal sıfır (ör. söndükten sonra 1e-296 MW)
@@ -12,10 +21,14 @@ export function fmtNum(x: number | undefined | null, digits = 3): string {
 
 export function fmtInt(x: number): string {
   if (!isFinite(x)) return '—';
-  return Math.round(x).toLocaleString('en-US');
+  return Math.round(x).toLocaleString(activeLocale() === 'tr' ? 'tr-TR' : 'en-US');
 }
 
 export function fmtTime(t: number, unit: string): string {
+  return localizeDecimals(plainTime(t, unit));
+}
+
+function plainTime(t: number, unit: string): string {
   if (unit === 's') {
     if (t >= 100) return `${t.toFixed(1)} s`;
     if (t >= 1) return `${t.toFixed(2)} s`;
@@ -30,6 +43,10 @@ export function fmtValue(x: number, unit: string): string {
 
 /** Eksen etiketi için kısa sayı */
 export function fmtAxis(x: number): string {
+  return localizeDecimals(plainAxis(x));
+}
+
+function plainAxis(x: number): string {
   if (x === 0) return '0';
   const ax = Math.abs(x);
   if (ax >= 1e5 || ax < 1e-2) return x.toExponential(0).replace('e+', 'e');

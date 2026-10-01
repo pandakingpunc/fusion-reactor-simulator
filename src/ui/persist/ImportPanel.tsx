@@ -1,6 +1,7 @@
 import { DragEvent, useEffect, useRef, useState } from 'react';
 import { METHOD_LABELS } from '../../physics/types';
 import { useAppStore } from '../state/store';
+import { useWizText } from '../wizard/wizText';
 import { errorText, usePersistDeps } from './deps';
 import { ParsedRecord, parseRunRecord, RunRecordError } from './runRecord';
 import { importedShot, shotToNewRun } from './shots';
@@ -39,6 +40,7 @@ export function ImportPanel({ onDone }: { onDone(): void }) {
   const [saved, setSaved] = useState(false);
   const [over, setOver] = useState(false);
   const abort = useRef<AbortController | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   useEffect(() => () => abort.current?.abort(), []);
 
   const start = async (file: File) => {
@@ -99,11 +101,10 @@ export function ImportPanel({ onDone }: { onDone(): void }) {
       <h3>{p('persist.imp.heading')}</h3>
       <p className="muted small">{p('persist.imp.help')}</p>
       <div className={`persist-drop${over ? ' over' : ''}`} onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={onDrop}>
-        <label className="btn sm" style={{ cursor: 'pointer' }}>
-          {p('persist.imp.pick')}
-          <input type="file" accept=".json,application/json" hidden data-testid="import-file"
-            onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void start(f); }} />
-        </label>
+        {/* a real button (a tab stop) opens the file chooser; the input itself is out of the tab order and hidden from assistive technology, but not display:none */}
+        <button type="button" className="btn sm" onClick={() => fileRef.current?.click()}>{p('persist.imp.pick')}</button>
+        <input ref={fileRef} type="file" accept=".json,application/json" className="sr-only" tabIndex={-1} aria-hidden="true" data-testid="import-file"
+          onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void start(f); }} />
         <span className="muted small">{p('persist.imp.drop')}</span>
       </div>
 
@@ -126,6 +127,7 @@ export function ImportPanel({ onDone }: { onDone(): void }) {
 
 function Result({ phase, saved, onOpen, onSave, onLoad }: { phase: Extract<Phase, { kind: 'done' }>; saved: boolean; onOpen(): void; onSave(): void; onLoad(): void }) {
   const p = usePersistT();
+  const wt = useWizText();
   const { rec, v } = phase;
   const { verify } = v;
   const s = verify.status;
@@ -136,7 +138,7 @@ function Result({ phase, saved, onOpen, onSave, onLoad }: { phase: Extract<Phase
     : p(`persist.verify.${s}.text` as 'persist.verify.verified.text');
   return (
     <div className="persist-result" role="status" data-verify={s}>
-      <div className="muted small">{p('persist.imp.file', { name: rec.name, method: METHOD_LABELS[rec.cfg.method], version: rec.appVersion ?? p('persist.imp.noVersion') })}</div>
+      <div className="muted small">{p('persist.imp.file', { name: rec.name, method: wt(METHOD_LABELS[rec.cfg.method]), version: rec.appVersion ?? p('persist.imp.noVersion') })}</div>
       <div className="row" style={{ margin: '6px 0' }}>
         <VerifyBadge status={s} fileVersion={verify.versions.file} currentVersion={verify.versions.current} />
       </div>

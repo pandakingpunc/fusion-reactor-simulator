@@ -10,6 +10,7 @@ export const eduTr: EduDict = {
   'edu.sub': 'Bir füzyon plazmasının nasıl ayakta tutulduğunu öğreten on görev ve terimlerin sözlüğü.',
   'edu.sub.missions': 'Görevler',
   'edu.sub.glossary': 'Sözlük',
+  'edu.sections': 'Öğrenme bölümleri',
   'edu.progress': '{total} görevin {n} tanesi çözüldü',
   'edu.solved': 'Çözüldü',
   'edu.open': 'Aç',

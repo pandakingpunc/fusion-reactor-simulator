@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { SimApi } from '../../useSim';
 import { fmtNum, fmtTime } from '../../format';
+import { localizeDecimals } from '../../../i18n';
 import { useT } from '../../state/store';
 import { SPEEDS } from '../controls';
 
@@ -31,7 +32,7 @@ export function TransportBar({ sim, seekTo, onReport, onSetup }: Props) {
           <button className="btn icon" onClick={sim.restart} title={t('run.restart')}>⟲</button>
         </div>
         <div className="speed-btns">
-          {SPEEDS.map((s) => <button key={s} className={`btn ${state.speed === s ? 'active' : ''}`} onClick={() => sim.setSpeed(s)}>{s}×</button>)}
+          {SPEEDS.map((s) => <button key={s} className={`btn ${state.speed === s ? 'active' : ''}`} onClick={() => sim.setSpeed(s)}>{localizeDecimals(String(s))}×</button>)}
         </div>
         <span className="muted small">{meta.timeUnit === 's' ? t('run.realtime') : t('run.pulsedScale', { unit: meta.timeUnit })}</span>
         <div className="spacer" />

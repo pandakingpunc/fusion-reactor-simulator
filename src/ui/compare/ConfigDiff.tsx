@@ -2,6 +2,7 @@ import { Fragment, useMemo } from 'react';
 import { SavedShot } from '../state/types';
 import { useT } from '../state/store';
 import { fmtNum } from '../format';
+import { localizeDecimals } from '../../i18n';
 import { Explain } from '../edu/Explain';
 import { useEduT } from '../edu/useEduT';
 import { DiffRow, Scalar, diffConfigs } from './diffConfigs';
@@ -31,7 +32,7 @@ export function ConfigDiff({ a, b }: Props) {
   const change = (r: DiffRow): string => {
     if (r.change === undefined) return '';
     const pct = r.change * 100;
-    return `${pct > 0 ? '+' : ''}${Math.abs(pct) >= 100 ? pct.toFixed(0) : pct.toFixed(1)} %`;
+    return localizeDecimals(`${pct > 0 ? '+' : ''}${Math.abs(pct) >= 100 ? pct.toFixed(0) : pct.toFixed(1)} %`);
   };
 
   if (!rows.length) return <div className="muted">{te('cmp2.diffSame')}</div>;

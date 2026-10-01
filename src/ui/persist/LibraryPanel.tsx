@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { METHOD_LABELS } from '../../physics/types';
 import { useAppStore } from '../state/store';
+import { useWizText } from '../wizard/wizText';
 import { fmtNum } from '../format';
+import { activeLocale, localizeDecimals } from '../../i18n';
 import { ArchiveError, RunArchive, RunSummary } from './archive';
 import { errorText, usePersistDeps } from './deps';
 import { ImportPanel } from './ImportPanel';
@@ -19,12 +21,13 @@ const safeName = (s: string) => s.replace(/[^\w-]+/g, '_').slice(0, 60) || 'run'
 export function fmtBytes(b: number): string {
   if (b < 1024) return `${b} B`;
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} kB`;
-  return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+  return localizeDecimals(`${(b / (1024 * 1024)).toFixed(1)} MB`);
 }
 
 /** The archive of completed runs in this browser, and the import of run files. */
 export default function LibraryPanel({ onClose }: { onClose(): void }) {
   const p = usePersistT();
+  const wt = useWizText();
   const deps = usePersistDeps();
   const { actions } = useAppStore();
   const [runs, setRuns] = useState<RunSummary[] | null>(null);
@@ -79,7 +82,7 @@ export default function LibraryPanel({ onClose }: { onClose(): void }) {
   const clear = async () => { setConfirmClear(false); await withArchive((a) => a.clear()); await refresh(); };
 
   const total = (runs ?? []).reduce((a, r) => a + r.bytes, 0);
-  const when = (ms: number) => new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  const when = (ms: number) => new Date(ms).toLocaleString(activeLocale() === 'tr' ? 'tr-TR' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' });
 
   return (
     <Modal title={p('persist.lib.heading')} onClose={onClose} wide>
@@ -115,7 +118,7 @@ export default function LibraryPanel({ onClose }: { onClose(): void }) {
                       <strong className="persist-name">{r.name}</strong>
                     )}
                     <span className="muted small">
-                      {METHOD_LABELS[r.method]} · Q {fmtNum(r.Q_sci_max)} · E_fus {fmtNum(r.E_fusion_MJ)} MJ · {p('persist.lib.saved', { when: when(r.savedAt) })} · v{r.appVersion} · {fmtBytes(r.bytes)}
+                      {wt(METHOD_LABELS[r.method])} · Q {fmtNum(r.Q_sci_max)} · E_fus {fmtNum(r.E_fusion_MJ)} MJ · {p('persist.lib.saved', { when: when(r.savedAt) })} · v{r.appVersion} · {fmtBytes(r.bytes)}
                     </span>
                     <span className="row" style={{ gap: 6 }}>
                       {r.origin === 'import' && <span className="badge">{p('persist.lib.imported')}</span>}

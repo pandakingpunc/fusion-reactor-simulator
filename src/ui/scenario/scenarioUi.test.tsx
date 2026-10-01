@@ -223,21 +223,21 @@ describe('the wizard\'s Scenario step', () => {
   it('adds templates (drop, ramp, gas puff is refused where there is no density target), and a trigger with its controls', async () => {
     const h = mount();
     await openScenarioStep(h);
-    const templates = screen.getByRole('tablist', { name: 'Templates' });
+    const templates = screen.getByRole('group', { name: 'Templates' });
     // drop: the default is the NBI power to zero in the middle of the run
     fireEvent.click(screen.getByRole('button', { name: 'Add to the scenario' }));
     expect(scenarioOf(h)!.waveforms!.P_NBI_MW).toEqual({ kind: 'step', points: [[T / 2, 0]] });
     // ramp of the confinement factor
-    fireEvent.click(within(templates).getByRole('tab', { name: 'Ramp' }));
+    fireEvent.click(within(templates).getByRole('button', { name: 'Ramp' }));
     fireEvent.change(screen.getByRole('combobox', { name: 'Control' }), { target: { value: 'kappa_conf' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add to the scenario' }));
     expect(scenarioOf(h)!.waveforms!.kappa_conf.kind).toBe('pwl');
     // gas puff: the FRC has no density target: the scenario says so instead of running
-    fireEvent.click(within(templates).getByRole('tab', { name: 'Gas puff' }));
+    fireEvent.click(within(templates).getByRole('button', { name: 'Gas puff' }));
     fireEvent.click(screen.getByRole('button', { name: 'Add to the scenario' }));
     expect(screen.getAllByText(/unknown control 'n_target_1e20'/).length).toBeGreaterThan(0);
     // interlock -> a trigger, editable
-    fireEvent.click(within(templates).getByRole('tab', { name: 'Interlock' }));
+    fireEvent.click(within(templates).getByRole('button', { name: 'Interlock' }));
     fireEvent.click(screen.getByRole('button', { name: 'Add to the scenario' }));
     const trig = await screen.findByTestId('trigger-0');
     fireEvent.change(within(trig).getByLabelText('Dwell time'), { target: { value: '0.002' } });
@@ -262,7 +262,7 @@ describe('the wizard\'s Scenario step', () => {
     fireEvent.blur(box);
     expect(scenarioOf(h)!.rampStep).toBe(1e-9);
     expect((await screen.findAllByText(/rampStep/)).length).toBeGreaterThan(0);
-    expect(screen.getByRole('alert').textContent).toMatch(/must be >= 0\.000005/);
+    expect(screen.getByTestId('scn-problems').textContent).toMatch(/must be >= 0\.000005/);
     fireEvent.click(screen.getByRole('button', { name: 'Suggest' }));
     expect(scenarioOf(h)!.rampStep).toBe(T / 100 >= 5e-6 ? Number((T / 100).toPrecision(2)) : 5e-6);
     expect(screen.getByText(/The scenario is valid for this configuration/)).toBeTruthy();
@@ -318,7 +318,7 @@ describe('the wizard\'s Scenario step', () => {
   it('shows the problems of a scenario that does not fit the model, live', async () => {
     const h = mount({ scenario: { schema: 1, waveforms: { not_a_control: { kind: 'step', points: [[0.01, 1]] } }, triggers: [{ diag: 'nope', op: '>', value: 1, set: { P_NBI_MW: 0 } }] } });
     await openScenarioStep(h);
-    const box = screen.getByText('Problems with this scenario').closest('[role="alert"]') as HTMLElement;
+    const box = screen.getByText('Problems with this scenario').closest('[data-testid="scn-problems"]') as HTMLElement;
     expect(box.textContent).toMatch(/waveforms\.not_a_control/);
     expect(box.textContent).toMatch(/triggers\[0\]\.diag/);
     expect(within(screen.getByTestId('trigger-0')).getByText(/unknown diagnostic 'nope'/)).toBeTruthy();

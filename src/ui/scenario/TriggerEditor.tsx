@@ -3,6 +3,7 @@ import type { ScenarioIssue, TriggerOp, TriggerSpec } from '../../physics/scenar
 import { NumberBox } from './NumberBox';
 import { controlInfo, issuesAt, laneKeys, type EditorContext } from './model';
 import { useScenarioT } from './useScenarioT';
+import { useWizText } from '../wizard/wizText';
 
 const OPS: TriggerOp[] = ['>', '>=', '<', '<='];
 
@@ -17,6 +18,7 @@ interface Props {
 
 export function TriggerEditor({ ctx, triggers, issues, onUpdate, onRemove, onAdd }: Props) {
   const t = useScenarioT();
+  const wt = useWizText();
   const keys = laneKeys(ctx);
   const tu = ctx.timeUnit;
 
@@ -57,7 +59,7 @@ export function TriggerEditor({ ctx, triggers, issues, onUpdate, onRemove, onAdd
               <label className="field"><span className="lbl">{t('scn.trg.diag')}</span>
                 <select value={tr.diag} aria-label={t('scn.trg.diag')} onChange={(e) => onUpdate(i, { diag: e.target.value })}>
                   {!ctx.diagSpecs.some((d) => d.key === tr.diag) && <option value={tr.diag}>{tr.diag}</option>}
-                  {ctx.diagSpecs.map((d) => <option key={d.key} value={d.key}>{d.label ? `${d.label} (${d.key})` : d.key}</option>)}
+                  {ctx.diagSpecs.map((d) => <option key={d.key} value={d.key}>{d.label ? `${wt(d.label)} (${d.key})` : d.key}</option>)}
                 </select>
               </label>
               <label className="field"><span className="lbl">{t('scn.trg.op')}</span>

@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { parseNumberInput } from '../wizard/Field';
+import { localizeDecimals } from '../../i18n';
+import { useApp } from '../state/store';
 
 /** A number as typed text: the draft is committed on blur or Enter (typing "0.0" on the way to "0.02" must not clamp anything). */
 export function fmtEdit(x: number | null | undefined): string {
   if (x === null || x === undefined || !Number.isFinite(x)) return '';
   const ax = Math.abs(x);
-  if (ax !== 0 && (ax >= 1e7 || ax < 1e-4)) return x.toExponential(4).replace(/\.?0+e/, 'e');
-  return parseFloat(x.toPrecision(7)).toString();
+  if (ax !== 0 && (ax >= 1e7 || ax < 1e-4)) return localizeDecimals(x.toExponential(4).replace(/\.?0+e/, 'e'));
+  return localizeDecimals(parseFloat(x.toPrecision(7)).toString());
 }
 
 interface Props {
@@ -22,10 +24,11 @@ interface Props {
 }
 
 export function NumberBox({ value, onCommit, allowEmpty, placeholder, invalid, className, ...rest }: Props) {
+  const locale = useApp((s) => s.locale); // the text is written again when the language changes
   const shown = fmtEdit(value);
   const [text, setText] = useState(shown);
   const [rev, setRev] = useState(0);
-  useEffect(() => { setText(shown); }, [shown, rev]);
+  useEffect(() => { setText(shown); }, [shown, rev, locale]);
   const commit = (s: string) => {
     if (s.trim() === shown) return;
     const v = parseNumberInput(s);

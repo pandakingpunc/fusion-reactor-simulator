@@ -67,7 +67,7 @@ export function LearnView({ createWorker, pool: given, location, onNavigate }: P
         </div>
         <div className="row">
           <span className="badge">{t('edu.progress', { n: solved.length, total: MISSIONS.length })}</span>
-          <div className="edu-subtabs" role="tablist">
+          <div className="edu-subtabs" role="tablist" aria-label={t('edu.sections')}>
             {(['missions', 'glossary'] as const).map((s) => (
               <button key={s} type="button" role="tab" aria-selected={section === s} className={section === s ? 'active' : ''}
                 onClick={() => go({ section: s })}>{t(`edu.sub.${s}` as EduKey)}</button>

@@ -14,20 +14,20 @@ let loading: Promise<void> | null = null;
 
 /** Load the Turkish dictionary (once). */
 export function loadScenarioTr(): Promise<void> {
-  return (loading ??= import('../../i18n/scenario.tr').then((m) => { tr = m.scenarioTr; }));
+  return (loading ??= import('../../i18n/scenario.tr').then((m) => { tr = m.scenarioTr; }, (e: unknown) => { loading = null; throw e; }));
 }
 
 /** Translator for a locale, from the dictionaries loaded so far. */
 export function scenarioTranslator(locale: string): ScenarioT {
   const d: Record<ScenarioKey, string> = locale === 'tr' && tr ? tr : scenarioEn;
-  return (key, params) => format(d[key] ?? scenarioEn[key], params);
+  return (key, params) => format(d[key] ?? scenarioEn[key], params, locale === 'tr' ? 'tr' : 'en');
 }
 
 export function useScenarioT(): ScenarioT {
   const locale = useApp((s) => s.locale);
   const [ready, setReady] = useState(tr !== null);
   useEffect(() => {
-    if (locale === 'tr' && !tr) void loadScenarioTr().then(() => setReady(true));
+    if (locale === 'tr' && !tr) void loadScenarioTr().then(() => setReady(true), () => { /* the English texts stay */ });
   }, [locale]);
   return useMemo(() => scenarioTranslator(locale), [locale, ready]);
 }

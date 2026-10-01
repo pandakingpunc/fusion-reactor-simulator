@@ -3,6 +3,7 @@ import { HistoryFrame, METHOD_LABELS } from '../../physics/types';
 import { MessageKey } from '../../i18n';
 import { SavedShot } from '../state/types';
 import { useApp, useT } from '../state/store';
+import { useWizText } from '../wizard/wizText';
 import { fmtNum, fmtTime } from '../format';
 import { TimeChart } from '../charts/TimeChart';
 import { PALETTE } from '../format';
@@ -28,6 +29,7 @@ const FIG_LABEL: Record<FigKind, MessageKey> = { traces: 'rep.fig.traces', profi
 
 export function Report({ shot, onRerun, onEdit, embedded }: Props) {
   const t = useT();
+  const wt = useWizText();
   const locale = useApp((s) => s.locale);
   const openGlossary = useOpenGlossary();
   const [figKind, setFigKind] = useState<FigKind>('traces');
@@ -52,7 +54,7 @@ export function Report({ shot, onRerun, onEdit, embedded }: Props) {
   const ex = (term: string, label: React.ReactNode) => <Explain term={term} onOpenGlossary={openGlossary}><span>{label}</span></Explain>;
 
   const keyList = ['Ti', 'P_fus', 'Q'].filter((k) => meta.diagSpecs.some((s) => s.key === k));
-  const series = keyList.map((k, i) => { const s = meta.diagSpecs.find((x) => x.key === k)!; return { key: k, label: s.label, unit: s.unit, color: PALETTE[i], log: s.log }; });
+  const series = keyList.map((k, i) => { const s = meta.diagSpecs.find((x) => x.key === k)!; return { key: k, label: wt(s.label), unit: s.unit, color: PALETTE[i], log: s.log }; });
   const figKinds: FigKind[] = ['traces', ...(frames.some((f) => f.prof) ? ['profiles' as const] : []), ...(frames.some((f) => f.eq) ? ['cross' as const] : [])];
   // yayın figürü: grafik kütüphanesi yalnız tıklamada yüklenir (dinamik import)
   const exportFig = async (format: 'svg' | 'pdf') => {
@@ -70,7 +72,7 @@ export function Report({ shot, onRerun, onEdit, embedded }: Props) {
       <div className="panel full">
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <div>
-            <h2 style={{ margin: 0 }}>{name} <span className="muted">— {METHOD_LABELS[r.method]}</span></h2>
+            <h2 style={{ margin: 0 }}>{name} <span className="muted">— {wt(METHOD_LABELS[r.method])}</span></h2>
             <div className="muted small">{t('rep.subtitle', { duration: fmtTime(r.duration, tUnit), frames: frames.length, events: events.length })}</div>
           </div>
           {!embedded && <div className="row">
@@ -145,7 +147,7 @@ export function Report({ shot, onRerun, onEdit, embedded }: Props) {
             const frac = s.ref > 0 ? Math.min(1, Math.max(0, s.value / s.ref)) : 0;
             return (
               <tr key={s.label}>
-                <td>{s.label}<div className="small muted">{s.note}</div></td>
+                <td>{wt(s.label)}<div className="small muted">{wt(s.note)}</div></td>
                 <td className="num">{fmtNum(s.value)} / {fmtNum(s.ref)} {s.unit}<div className="bar" style={{ marginTop: 3 }}><div style={{ width: `${frac * 100}%` }} /></div></td>
               </tr>
             );
@@ -154,7 +156,7 @@ export function Report({ shot, onRerun, onEdit, embedded }: Props) {
         <h3 style={{ marginTop: 10 }}>{t('rep.historical')}</h3>
         <table className="kv"><tbody>
           {r.historical.map((h) => (
-            <tr key={h.label}><td>{h.label}<div className="small muted">{h.note}</div></td><td className="num"><span className={`badge ${h.ratio >= 1 ? 'ok' : h.ratio >= 0.3 ? 'warn' : 'bad'}`}>{fmtNum(h.ratio)}×</span></td></tr>
+            <tr key={h.label}><td>{wt(h.label)}<div className="small muted">{wt(h.note)}</div></td><td className="num"><span className={`badge ${h.ratio >= 1 ? 'ok' : h.ratio >= 0.3 ? 'warn' : 'bad'}`}>{fmtNum(h.ratio)}×</span></td></tr>
           ))}
         </tbody></table>
       </div>

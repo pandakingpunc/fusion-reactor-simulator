@@ -8,6 +8,8 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { UiFrame } from '../../worker/protocol';
 import { fmtAxis } from '../format';
+import { useT } from '../state/store';
+import { localizeDecimals } from '../../i18n';
 
 interface Props {
   kind: 'icf' | 'mtf';
@@ -23,6 +25,7 @@ interface Props {
 function smooth(x: number): number { const u = Math.min(1, Math.max(0, x)); return u * u * (3 - 2 * u); }
 
 export function Implosion({ kind, frames, t, tEnd, timeUnit, geometry, bang_ns, height = 240 }: Props) {
+  const tr = useT();
   const ref = useRef<HTMLCanvasElement>(null);
 
   const r0 = kind === 'icf' ? (geometry.capsuleRadius_um ?? 1000) : (geometry.r0 ?? 0.1);
@@ -90,7 +93,7 @@ export function Implosion({ kind, frames, t, tEnd, timeUnit, geometry, bang_ns, 
     ctx.fillStyle = hs; ctx.beginPath(); ctx.arc(acx, acy, Math.max(px(rNow), 2), 0, 2 * Math.PI); ctx.fill();
     if (glow > 0.05) { const gg = ctx.createRadialGradient(acx, acy, 0, acx, acy, amax); gg.addColorStop(0, `rgba(255,255,220,${0.5 * glow})`); gg.addColorStop(1, 'rgba(255,255,220,0)'); ctx.fillStyle = gg; ctx.fillRect(0, 0, aw + 12, height); }
     ctx.fillStyle = '#d6dce8'; ctx.font = '10px JetBrains Mono, monospace'; ctx.textAlign = 'left';
-    ctx.fillText(`r = ${fmtAxis(rNow)} ${unitR}  C = ${(R0s / Math.max(rNow, 1e-12)).toFixed(1)}`, 6, height - 8);
+    ctx.fillText(localizeDecimals(`r = ${fmtAxis(rNow)} ${unitR}  C = ${(R0s / Math.max(rNow, 1e-12)).toFixed(1)}`), 6, height - 8);
     ctx.fillText(`T = ${fmtAxis(T)} keV`, 6, 12);
 
     // --- sağ: r(t) grafiği ---
@@ -115,12 +118,12 @@ export function Implosion({ kind, frames, t, tEnd, timeUnit, geometry, bang_ns, 
       ctx.strokeStyle = 'rgba(247,37,133,0.9)'; ctx.lineWidth = 1.2; ctx.beginPath(); let pen = false;
       for (let i = 0; i < frames.length; i += stride) { const f = frames[i]; const x = xs(f.t), y = Tp + ph - ((f.d.P_fus ?? 0) / pMax) * ph; pen ? ctx.lineTo(x, y) : ctx.moveTo(x, y); pen = true; }
       ctx.stroke();
-      ctx.fillStyle = 'rgba(247,37,133,0.9)'; ctx.textAlign = 'left'; ctx.fillText('P_fus (norm.)', L + 6, Tp + 12);
+      ctx.fillStyle = 'rgba(247,37,133,0.9)'; ctx.textAlign = 'left'; ctx.fillText(tr('run.implosion.pfusNorm'), L + 6, Tp + 12);
     }
     ctx.fillStyle = '#4cc9f0'; ctx.textAlign = 'left'; ctx.fillText('r(t)', L + 6, Tp + 24);
     // şimdiki t
     ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(xs(t), Tp); ctx.lineTo(xs(t), Tp + ph); ctx.stroke();
-  }, [frames, t, tEnd, timeUnit, r0, CR, rScale, unitR, radiusAt, pMax, kind, bang_ns, height]);
+  }, [frames, t, tEnd, timeUnit, r0, CR, rScale, unitR, radiusAt, pMax, kind, bang_ns, height, tr]);
 
-  return <canvas ref={ref} style={{ width: '100%', height, display: 'block' }} />;
+  return <canvas ref={ref} role="img" aria-label={tr('run.implosion.aria')} style={{ width: '100%', height, display: 'block' }} />;
 }

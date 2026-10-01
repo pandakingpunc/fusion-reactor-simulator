@@ -199,6 +199,7 @@ test/golden/          Golden regression snapshots and their change log
 docs/
   technical-report.md Technical report (equations, numerical methods, verification, validation, figures)
   figures/            Generated figures (SVG + PDF) and captions.md
+  interface-language-and-accessibility.md  What the Turkish interface and the accessibility checks guarantee, and the manual checks before a release
 ```
 
 ## Resource usage

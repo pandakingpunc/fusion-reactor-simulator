@@ -15,6 +15,7 @@ export const scenarioTr: Record<ScenarioKey, string> = {
   'scn.lanesHint': 'Her kontrol için bir şerit. Bir noktayı sürükleyerek taşıyın, şeride çift tıklayarak nokta ekleyin; bir noktaya odaklanınca ok tuşları onu kaydırır (Shift: on kat) ve Delete siler. İlk noktasından önce kontrol yapılandırılmış değerini korur (kesik çizgi).',
   'scn.noLanes': 'Henüz dalga biçimi yok: bir şerit ekleyin ya da bir şablon kullanın.',
   'scn.laneLabel': '{label} dalga biçimi',
+  'scn.laneActual': 'programlanan çizgi ve koşunun ona verdiği değer: sonunda {value}',
   'scn.kind': 'Biçim',
   'scn.kind.pwl': 'Rampalar (parçalı doğrusal)',
   'scn.kind.step': 'Basamaklar (sabit tutma)',
@@ -82,6 +83,8 @@ export const scenarioTr: Record<ScenarioKey, string> = {
 
   'scn.problems': 'Bu senaryodaki sorunlar',
   'scn.ok': 'Senaryo bu yapılandırma için geçerli.',
+  'scn.problemsCount': 'Senaryoda bulunan sorun sayısı: {n}',
+  'scn.noProblems': 'Senaryoda sorun bulunmadı',
   'scn.json': 'Metin biçimi (JSON)',
   'scn.jsonApply': 'Metni uygula',
   'scn.jsonCopy': 'Kopyala',

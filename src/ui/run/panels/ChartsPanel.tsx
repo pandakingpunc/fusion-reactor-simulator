@@ -4,6 +4,7 @@ import { SimMeta, UiFrame } from '../../../worker/protocol';
 import { Series, TimeChart } from '../../charts/TimeChart';
 import { PALETTE } from '../../format';
 import { useT } from '../../state/store';
+import { useWizText } from '../../wizard/wizText';
 
 interface Props {
   meta: SimMeta;
@@ -21,15 +22,16 @@ interface Props {
 /** Diagnostic group toggles and one time chart per enabled group. */
 export function ChartsPanel({ meta, frames, events, groupsOn, onToggleGroup, live, resetKey, onSeek }: Props) {
   const t = useT();
+  const wt = useWizText();
   const groups = useMemo(() => {
     const m = new Map<string, Series[]>();
     meta.diagSpecs.forEach((s, i) => {
       const arr = m.get(s.group) ?? [];
-      arr.push({ key: s.key, label: s.label, unit: s.unit, color: PALETTE[i % PALETTE.length], log: s.log });
+      arr.push({ key: s.key, label: wt(s.label), unit: s.unit, color: PALETTE[i % PALETTE.length], log: s.log });
       m.set(s.group, arr);
     });
     return [...m.entries()].map(([name, series]) => ({ name, series }));
-  }, [meta]);
+  }, [meta, wt]);
 
   return (
     <>
@@ -38,14 +40,14 @@ export function ChartsPanel({ meta, frames, events, groupsOn, onToggleGroup, liv
           <span className="muted small">{t('run.charts')}</span>
           {groups.map((g) => (
             <button key={g.name} className={`btn sm ${groupsOn.has(g.name) ? 'active' : ''}`} style={groupsOn.has(g.name) ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}
-              onClick={() => onToggleGroup(g.name)}>{g.name}</button>
+              onClick={() => onToggleGroup(g.name)}>{wt(g.name)}</button>
           ))}
           <span className="spacer" />
           <span className="muted small">{t('run.chartHelp')}</span>
         </div>
       </div>
       {groups.filter((g) => groupsOn.has(g.name)).map((g) => (
-        <TimeChart key={g.name} title={g.name} frames={frames} series={g.series} timeUnit={meta.timeUnit} tEnd={meta.tEnd} events={events}
+        <TimeChart key={g.name} title={wt(g.name)} frames={frames} series={g.series} timeUnit={meta.timeUnit} tEnd={meta.tEnd} events={events}
           live={live} resetKey={resetKey} height={200} onSeek={onSeek} />
       ))}
     </>

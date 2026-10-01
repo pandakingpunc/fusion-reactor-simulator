@@ -47,7 +47,22 @@ export function useStore<T extends object, S>(store: Store<T>, selector: (s: T) 
 
 // ── app store ────────────────────────────────────────────────────────────────
 
-const LOCALE_KEY = 'fusion-sim.locale';
+/** the key the language is saved under; the inline script of index.html reads the same key to set <html lang> early (firstPaint.test.tsx ties the two) */
+export const LOCALE_KEY = 'fusion-sim.locale';
+
+/**
+ * The dictionaries of the screens that are chunks of their own (sharing, the scenario editor, education, the validation and compare views)
+ * are fetched together with the main one, so that none of them paints in English before its Turkish text arrives (the sharing buttons are
+ * on the first screen, the others open within seconds). A load that fails is not an error here: the screen asks again when it is opened.
+ */
+function loadScreenDictionaries(locale: Locale): Promise<void> {
+  if (locale === 'en') return Promise.resolve(); // English is bundled
+  return Promise.all([
+    import('../persist/usePersistT').then((m) => m.loadPersistTr()),
+    import('../scenario/useScenarioT').then((m) => m.loadScenarioTr()),
+    import('../../edu/i18n').then((m) => m.loadEduLocale(locale)),
+  ]).then(() => undefined, () => undefined);
+}
 
 export function initialAppState(): AppState {
   return { tab: 'setup', cfg: ITER, cfgName: 'ITER', scenario: null, shots: [], archivedKey: null, viewId: null, locale: 'en' };
@@ -107,7 +122,7 @@ export function createAppStore(init: Partial<AppState> = {}): AppStore {
     editShot: (shot) => set({ cfg: shot.cfg, cfgName: shot.name.replace(/ #\d+$/, ''), scenario: (shot.prov?.scenario as ScenarioSpec | undefined) ?? null, tab: 'setup' }),
     async setLocale(locale) {
       // the wizard's own texts come with the dictionary (a failed load leaves them in English; the wizard asks again)
-      await Promise.all([loadLocale(locale), loadWizardText(locale).catch(() => undefined)]);
+      await Promise.all([loadLocale(locale), loadWizardText(locale).catch(() => undefined), loadScreenDictionaries(locale)]);
       setActiveLocale(locale);
       set({ locale });
       try { localStorage.setItem(LOCALE_KEY, locale); } catch { /* storage unavailable: keep for this session only */ }

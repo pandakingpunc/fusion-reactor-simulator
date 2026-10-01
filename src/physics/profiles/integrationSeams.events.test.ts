@@ -24,7 +24,13 @@
  *  - the same from the frame of the first crash itself, where the crash energy, the in-transit helium and the crash restart step
  *    are booked but not yet consumed by a step;
  *  - the same from a frame well before the first crash (in the ELM shot: in H-mode before the rejected Grad-Shafranov update at
- *    0.662 s, so the future holds that rejection, the first ELM and everything after it).
+ *    0.662 s, so the future holds that rejection, the first ELM and everything after it);
+ *  - the ELM shot only: the same from the frame of the accepted equilibrium update between ELMs (0.788 s), the frame at which the
+ *    coupling has just adopted a solve, so retry and adoption state is checkpointed at an adoption frame, with later ELMs and the
+ *    adoption at 0.928 s in the discarded future.
+ * Coverage caveat of the sawtooth shot: its 'before' and 'first' rewinds are ADJACENT frames (frame 0, the initial frame, and frame 1),
+ * because the first Porcelli crash fires in the very first kernel step (t = 1.6e-6 s); there is no earlier frame 50 ms before it. Its
+ * three rewinds are therefore frames 0, 1 and about 0.026 s, not three separated points; the ELM shot's three are well apart.
  * Right after each rewind the module state must equal the one the run had at the checkpoint, part by part (the paths of a difference name the part).
  */
 import { describe, expect, it, vi } from 'vitest';
@@ -347,11 +353,14 @@ function rewoundRun(shot: Shot, ref: Direct, i: number, tStop: number, seeds: { 
 }
 
 /** the checkpoint frames of the rewind tests, and how many crashes the events hold at them */
-const REWINDS = [
+const REWINDS: readonly { where: string; at: 'before' | 'between' | 'first' | 'adopt'; kept: number | null; only?: Shot['kind'] }[] = [
+  // sawtooth shot: 'before' is frame 0 and 'first' is frame 1 (the first crash fires in the first kernel step), i.e. adjacent frames
   { where: 'a frame well before the first crash', at: 'before', kept: 0 },
   { where: 'a frame strictly between the first and the second crash', at: 'between', kept: 1 },
   { where: 'the frame of the first crash itself', at: 'first', kept: 1 },
-] as const;
+  // ELM shot only: the frame of the accepted equilibrium update between ELMs (kept = the ELMs fired up to it, computed from the events)
+  { where: 'the frame of an accepted equilibrium update between ELMs', at: 'adopt', kept: null, only: 'ELM' },
+];
 
 describe.each(SHOTS)('$name: bitwise determinism around the crashes', (shot) => {
   it('random uneven chunks reproduce the direct run', () => {
@@ -367,21 +376,32 @@ describe.each(SHOTS)('$name: bitwise determinism around the crashes', (shot) => 
     expectSameFinal(got, ref, 'sliced steps');
   }, LONG);
 
-  for (const { where, at, kept } of REWINDS) it(`a replay after a rewind to ${where} is the direct run, whatever the discarded future held`, () => {
+  for (const { where, at, kept: keptDeclared, only } of REWINDS) if (!only || only === shot.kind) it(`a replay after a rewind to ${where} is the direct run, whatever the discarded future held`, () => {
     const ref = direct(shot), hist = ref.run.history;
     const [t1, t2] = kindEvents(ref.sim, shot.kind).map((e) => e.t);
     let i = 0;
     if (at === 'first') i = frameAt(ref.run, t1);
-    else if (at === 'between') i = hist.findIndex((f) => f.t > 0.5 * (t1 + t2));
+    else if (at === 'adopt') {
+      // the first accepted equilibrium update after the first ELM: a frame with more adoptions than the frame of that ELM
+      const nAtFirst = hist[frameAt(ref.run, t1)].internal.eqUpdates;
+      i = hist.findIndex((f) => f.t > t1 && f.internal.eqUpdates > nAtFirst);
+    } else if (at === 'between') i = hist.findIndex((f) => f.t > 0.5 * (t1 + t2));
     else hist.forEach((f, j) => { if (f.t < t1 - 0.05) i = j; }); // the last frame 50 ms before the first crash (the initial frame if there is none)
     expect(i, 'the checkpoint frame exists').toBeGreaterThanOrEqual(at === 'before' ? 0 : 1);
+    const kept = keptDeclared ?? kindEvents(ref.sim, shot.kind).filter((e) => e.t <= hist[i].t).length;
     if (at === 'between') { expect(hist[i].t, 'after the first crash').toBeGreaterThan(t1); expect(hist[i].t, 'before the second crash').toBeLessThan(t2); }
+    else if (at === 'adopt') {
+      expect(hist[i].internal.eqUpdates, 'the checkpoint frame is the one that adopted the update').toBe(hist[i - 1].internal.eqUpdates + 1);
+      expect(kept, 'ELMs before it').toBeGreaterThanOrEqual(1);
+      expect(kept, 'and ELMs after it').toBeLessThan(kindEvents(ref.sim, shot.kind).length);
+    }
     else if (at === 'first') expect(hist[i].t).toBe(t1);
     else expect(hist[i].t, 'before the first crash').toBeLessThan(t1);
     // the future to discard: the next accepted equilibrium update (and with it the second crash and, in the ELM shot, a FACIT table refresh)
     const adopt = hist.find((f, j) => j > i && f.internal.eqUpdates > hist[i].internal.eqUpdates);
     expect(adopt, 'an accepted equilibrium update follows the checkpoint').toBeDefined();
     expect(adopt!.t, 'it comes after the second crash').toBeGreaterThan(t2);
+    expect(adopt!.t, 'and after the checkpoint').toBeGreaterThan(hist[i].t);
     const r = rewoundRun(shot, ref, i, adopt!.t, { future: 17, replay: 531 });
     // the future really happened before it was discarded
     expect(r.future.stepSuspended, 'the future ended inside a step').toBe(true);

@@ -30,9 +30,16 @@ export function isMessageKey(key: string): key is MessageKey {
   return Object.prototype.hasOwnProperty.call(en, key);
 }
 
-/** Fetch a locale's dictionary (no-op when already loaded). */
-export async function loadLocale(locale: Locale): Promise<Dict> {
-  return (dicts[locale] ??= await loaders[locale]());
+const pending: Partial<Record<Locale, Promise<Dict>>> = {};
+
+/** Fetch a locale's dictionary (no-op when already loaded; concurrent callers share one fetch, a failed one is retried). */
+export function loadLocale(locale: Locale): Promise<Dict> {
+  const have = dicts[locale];
+  if (have) return Promise.resolve(have);
+  return (pending[locale] ??= loaders[locale]().then(
+    (d) => { dicts[locale] = d; delete pending[locale]; return d; },
+    (e: unknown) => { delete pending[locale]; throw e; },
+  ));
 }
 
 /** Replace {name} placeholders; unknown placeholders are left as written. */
@@ -47,10 +54,13 @@ export function translator(locale: Locale): Translate {
   return (key, params) => format(d[key] ?? en[key] ?? key, params);
 }
 
-/** Make `locale` the active one for t() and mirror it on <html lang> (screen readers, hyphenation). */
+/** Make `locale` the active one for t() and mirror it on <html lang> (screen readers, hyphenation) and on the page title (the tab). */
 export function setActiveLocale(locale: Locale): void {
   active = locale;
-  if (typeof document !== 'undefined') document.documentElement.lang = locale;
+  if (typeof document !== 'undefined') {
+    document.documentElement.lang = locale;
+    document.title = translator(locale)('app.title');
+  }
 }
 
 export function activeLocale(): Locale { return active; }

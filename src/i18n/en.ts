@@ -10,6 +10,7 @@
  */
 export const en = {
   'app.brand': 'FUSION REACTOR SIMULATOR',
+  'app.title': 'Fusion Reactor Simulator',
   'app.tab.setup': 'Setup',
   'app.tab.run': 'Run',
   'app.tab.report': 'Report',

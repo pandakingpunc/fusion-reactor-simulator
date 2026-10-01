@@ -22,9 +22,16 @@ const loaders: Record<Locale, () => Promise<EduDict>> = {
 };
 const dicts: Partial<Record<Locale, EduDict>> = { en: eduEn };
 
-/** Fetch a locale's education dictionary (no-op when it is already loaded). */
-export async function loadEduLocale(locale: Locale): Promise<EduDict> {
-  return (dicts[locale] ??= await loaders[locale]());
+const pending: Partial<Record<Locale, Promise<EduDict>>> = {};
+
+/** Fetch a locale's education dictionary (no-op when it is already loaded; concurrent callers share one fetch, a failed one is retried). */
+export function loadEduLocale(locale: Locale): Promise<EduDict> {
+  const have = dicts[locale];
+  if (have) return Promise.resolve(have);
+  return (pending[locale] ??= loaders[locale]().then(
+    (d) => { dicts[locale] = d; delete pending[locale]; return d; },
+    (e: unknown) => { delete pending[locale]; throw e; },
+  ));
 }
 
 export function isEduLoaded(locale: Locale): boolean { return locale in dicts; }

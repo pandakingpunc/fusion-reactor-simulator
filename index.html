@@ -4,6 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Fusion Reactor Simulator</title>
+    <script>
+      // The language of a previous visit (the key the application saves it under) is on <html lang> before anything is drawn or the script chunk
+      // arrives: screen readers, hyphenation and the browser's own translation offer see the right language from the start. The application
+      // itself restores the language, with its dictionaries, before its first render (src/ui/boot.ts).
+      try { var l = localStorage.getItem('fusion-sim.locale'); if (l === 'tr') document.documentElement.lang = l; } catch (e) { /* storage blocked: stays en */ }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
   </head>

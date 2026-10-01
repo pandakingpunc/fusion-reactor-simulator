@@ -7,6 +7,7 @@ import type { Dict } from './index';
 
 export const tr: Dict = {
   'app.brand': 'FÜZYON REAKTÖR SİMÜLATÖRÜ',
+  'app.title': 'Füzyon Reaktör Simülatörü',
   'app.tab.setup': 'Kurulum',
   'app.tab.run': 'Çalıştır',
   'app.tab.report': 'Rapor',

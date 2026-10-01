@@ -14,7 +14,7 @@ let loading: Promise<void> | null = null;
 
 /** Load the Turkish dictionary (once). */
 export function loadPersistTr(): Promise<void> {
-  return (loading ??= import('../../i18n/persist.tr').then((m) => { tr = m.persistTr; }));
+  return (loading ??= import('../../i18n/persist.tr').then((m) => { tr = m.persistTr; }, (e: unknown) => { loading = null; throw e; }));
 }
 
 /** Translator for a locale, from the dictionaries loaded so far. */
@@ -30,7 +30,7 @@ export function usePersistT(): PersistT {
     // no state update after the component is gone: in a test that ends first, the chunk arrives after jsdom's teardown
     // and the update throws "window is not defined" as an unhandled rejection (vitest exit code 1 with every test green)
     let live = true;
-    if (locale === 'tr' && !tr) void loadPersistTr().then(() => { if (live) setReady(true); });
+    if (locale === 'tr' && !tr) void loadPersistTr().then(() => { if (live) setReady(true); }, () => { /* the English texts stay */ });
     return () => { live = false; };
   }, [locale]);
   return useMemo(() => persistTranslator(locale), [locale, ready]);

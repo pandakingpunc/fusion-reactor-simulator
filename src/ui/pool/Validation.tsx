@@ -19,9 +19,16 @@ interface Props {
 
 /** Bir doğrulama ölçütü: rapordan bir sayı çek, [lo, hi] aralığında mı bak. */
 export interface Criterion { label: string; get: (r: ShotReport) => number; lo: number; hi: number; unit: string; source: string }
-export interface TestDef { id: string; presetId: string; title: string; criteria: Criterion[] }
+/**
+ * A test of the panel. `knownMiss`: the model is documented to miss this one (a known failure of npm run validate, references.ts): when it
+ * misses, the badge says so instead of FAIL, and the panel points at the documentation. It is a statement about a result that exists, never a
+ * reason to move a range.
+ */
+export interface TestDef { id: string; presetId: string; title: string; criteria: Criterion[]; knownMiss?: boolean }
 
 // Beklenen değerler yayınlanmış deney/tasarım sonuçlarından (eğitsel toleranslarla).
+// The NIF ranges are those of the literature table (src/physics/validation/references.ts, rows NIF210808.G and NIF.G; the yield of N210808 by the
+// factor 3 of the yield tolerance): Validation.test.tsx compares them with the table, so the panel cannot drift from `npm run validate`.
 export const TESTS: TestDef[] = [
   {
     id: 'iter', presetId: 'ITER', title: 'ITER — Q ≈ 10 (design point)',
@@ -49,9 +56,18 @@ export const TESTS: TestDef[] = [
     ],
   },
   {
-    id: 'nif', presetId: 'NIF', title: 'NIF N221204 — gain ≈ 1.5',
+    // the calibration shot: the ICF model's one constant is fitted to this yield, so a pass here is by construction and not a validation
+    id: 'nif210808', presetId: 'NIF210808', title: 'NIF N210808 — gain 0.72 (calibration shot)',
     criteria: [
-      { label: 'Gain (Q)', get: (r) => r.Q_sci_max, lo: 1, hi: 2, unit: '', source: '2.05 MJ laser → 3.15 MJ fusion (Dec 2022)' },
+      { label: 'Gain (Q)', get: (r) => r.Q_sci_max, lo: 0.36, hi: 1.44, unit: '', source: '1.917 MJ laser → 1.37 MJ fusion (Aug 2021); the ICF model is fitted to this yield' },
+      { label: 'E_fusion', get: (r) => r.E_fusion_MJ, lo: 0.456, hi: 4.11, unit: 'MJ', source: '1.37 MJ (the calibration target)' },
+    ],
+  },
+  {
+    // predicted without re-fitting: the model runs the calibration capsule, G = 0.67, and misses (npm run validate: NIF.G, a documented known failure)
+    id: 'nif', presetId: 'NIF', title: 'NIF N221204 — gain ≈ 1.5', knownMiss: true,
+    criteria: [
+      { label: 'Gain (Q)', get: (r) => r.Q_sci_max, lo: 1, hi: 3, unit: '', source: '2.05 MJ laser → 3.15 MJ fusion (Dec 2022)' },
       { label: 'E_fusion', get: (r) => r.E_fusion_MJ, lo: 2, hi: 4.5, unit: 'MJ', source: '3.15 MJ' },
     ],
   },
@@ -129,7 +145,10 @@ export function Validation({ createWorker, pool: given, tests = TESTS, presets =
   const get = (key: string): Item => items[key] ?? IDLE;
 
   const finished = tests.filter((d) => get(testKey(d.id)).report);
-  const passCount = finished.filter((d) => d.criteria.every((c) => inRange(c, get(testKey(d.id)).report!))).length;
+  const passed = (d: TestDef): boolean => d.criteria.every((c) => inRange(c, get(testKey(d.id)).report!));
+  const passCount = finished.filter(passed).length;
+  /** tests that missed, but are documented to */
+  const knownCount = finished.filter((d) => !passed(d) && d.knownMiss).length;
   const sweepRows = presets.filter((p) => get(presetKey(p.id)).status !== 'idle');
 
   const stateText = (i: Item): string => (i.status === 'queued' ? t('val.queued') : i.status === 'running' ? t('val.running', { pct: Math.round(i.pct * 100) })
@@ -156,25 +175,27 @@ export function Validation({ createWorker, pool: given, tests = TESTS, presets =
             <div className="val-state">{t('val.progress', { done: batch.finished, total: batch.total })}</div>
           </div>
         )}
-        {finished.length > 0 && <div style={{ marginTop: 6 }}><span className={`badge ${passCount === finished.length ? 'ok' : 'bad'}`}>{t('val.passed', { n: passCount, m: finished.length })}</span></div>}
+        {finished.length > 0 && <div style={{ marginTop: 6 }}><span className={`badge ${passCount === finished.length ? 'ok' : passCount + knownCount === finished.length ? 'warn' : 'bad'}`}>{t('val.passed', { n: passCount, m: finished.length })}</span></div>}
       </div>
 
       {tests.map((def) => {
         const it = get(testKey(def.id));
         const row = it.report;
         const ok = row ? def.criteria.every((c) => inRange(c, row)) : undefined;
+        const known = ok === false && def.knownMiss === true;
         return (
           <div className="panel" key={def.id}>
             <div className="panel-title">
               <h3>{def.title}</h3>
               <span className="row" style={{ gap: 6 }}>
-                {ok !== undefined && <span className={`badge ${ok ? 'ok' : 'bad'}`}>{t(ok ? 'val.pass' : 'val.fail')}</span>}
+                {ok !== undefined && <span className={`badge ${ok ? 'ok' : known ? 'warn' : 'bad'}`}>{t(ok ? 'val.pass' : known ? 'val.known' : 'val.fail')}</span>}
                 {stateText(it) && <span className="val-state">{stateText(it)}</span>}
                 <button className="btn sm" onClick={() => runTest(def)} disabled={pending(it.status)}>{t('val.run')}</button>
               </span>
             </div>
             {pending(it.status) && <div className="val-bar" aria-hidden="true"><span style={{ width: `${Math.round(it.pct * 100)}%` }} /></div>}
             {it.error && <pre className="err">{it.error}</pre>}
+            {known && <div className="small muted">{t('val.knownNote')}</div>}
             <table className="kv"><tbody>
               {def.criteria.map((c) => {
                 const v = row ? c.get(row) : undefined;

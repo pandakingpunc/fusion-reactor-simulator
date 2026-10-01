@@ -60,10 +60,10 @@ describe('the education and comparison screens in the app shell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Validation' }));
     expect(await screen.findByText(/shared among \d background workers/, {}, { timeout: 30000 })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Run everything' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Run 4 tests' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Run 5 tests' }));
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(await screen.findAllByText('cancelled')).toHaveLength(4);
+    expect(await screen.findAllByText('cancelled')).toHaveLength(5);
   }, 90000);
 
   it('the Learn tab is in the address: #/learn, #/learn/missions/<id>, #/learn/glossary/<term>, and back returns', async () => {

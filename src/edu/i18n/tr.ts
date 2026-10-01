@@ -339,6 +339,8 @@ export const eduTr: EduDict = {
   'val.passed': '{m} testin {n} tanesi geçti',
   'val.pass': 'GEÇTİ',
   'val.fail': 'KALDI',
+  'val.known': 'BELGELİ SAPMA',
+  'val.knownNote': 'Belgelenmiş bir sapma, testin hatası değil: model yalnızca N210808 üzerinde kalibre edildi ve bu atışı ondan ayıran bir girdisi yok (npm run validate, NIF.G denetimi).',
   'val.run': 'çalıştır',
   'val.termination': 'Bitiş',
   'val.scanTitle': 'Hazır ayar taraması',

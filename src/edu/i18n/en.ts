@@ -339,6 +339,8 @@ export const eduEn = {
   'val.passed': '{n}/{m} tests passed',
   'val.pass': 'PASS',
   'val.fail': 'FAIL',
+  'val.known': 'DOCUMENTED MISS',
+  'val.knownNote': 'A documented miss, not a fault of the test: the model is calibrated on N210808 alone and has no input that separates this shot from it (npm run validate, check NIF.G).',
   'val.run': 'run',
   'val.termination': 'Termination',
   'val.scanTitle': 'Preset scan',

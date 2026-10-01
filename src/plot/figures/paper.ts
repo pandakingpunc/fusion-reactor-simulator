@@ -8,17 +8,20 @@
 import { Simulation } from '../../physics/simulation';
 import { flatTopAverages } from '../../physics/analysis/flatTop';
 import { DEMO, DEMO_15D, ITER, ITER_15D, JET, JET_15D, NIF, SPARC, SPARC_15D } from '../../physics/presets';
+import { DEFAULT_PROFILE_SETTINGS } from '../../physics/profiles/defaults';
 import { ProfileModel } from '../../physics/profiles/model';
 import { PopconGrid, computePopcon } from '../../physics/popcon';
 import { lineAverageFactor } from '../../physics/limits';
+import { ISLAND_CHI } from '../../physics/profiles/transport/islandCoverage';
+import { REFERENCE_CHECKS } from '../../physics/validation/references';
 import { MagneticConfig, ReactorConfig, ShotReport } from '../../physics/types';
 import { FigureSpec } from '../registry';
 import { C, profileFrame } from './common';
 import { figEquilibrium } from './equilibrium';
-import { figProfiles } from './profiles';
+import { RATIONAL_SURFACES, figProfiles, rationalSurface } from './profiles';
 import { figTimeTraces } from './timetrace';
 import { figPopcon } from './popcon';
-import { ValidationRow, figValidation } from './validation';
+import { BAND_30PCT, ValidationRow, figValidation } from './validation';
 import { LawsonMachine, figReactivityLawson } from './reactivity';
 import { VerificationData, computeVerification, figVerification, slope } from './verification';
 import { CrashRecord, ElmZoom, figMHD } from './mhd';
@@ -35,10 +38,11 @@ export interface RunSummary { id: string; ok: boolean; error?: string; report?: 
 
 /**
  * Counters of the solvers that ran inside a 1.5D discharge (ProfileModel getters): accepted
- * Grad–Shafranov updates after the initial solve (`eqUpdates`; an update whose every retry stage failed
- * is not counted here but in `eqRejected`), the accepted ones that needed a later stage of the retry
- * ladder (`eqRetried`), and transport steps that were forced at the smallest time step without Picard
- * convergence (`forcedSteps`).
+ * Grad–Shafranov updates after the initial solve (`eqUpdates`; an update that was not adopted is not
+ * counted here but in `eqRejected`), the accepted ones that needed help (`eqRetried`: a solve that
+ * failed or needed a shorter continuation step, or an equilibrium adopted with a mapping mismatch above
+ * the acceptance level; coupling/equilibrium.ts), and transport steps that were forced at the smallest
+ * time step without Picard convergence (`forcedSteps`).
  */
 export interface SolverCounters { eqUpdates: number; eqRetried: number; eqRejected: number; forcedSteps: number }
 
@@ -50,7 +54,7 @@ const times = (n: number) => (n === 1 ? 'once' : `${n} times`);
 
 /** caption sentence: what the equilibrium coupling and the transport step had to do in the discharge */
 export function solverCountersText(c: SolverCounters): string {
-  const upd = `The equilibrium was re-solved ${times(c.eqUpdates)} after the initial solve (accepted Grad–Shafranov updates; ${c.eqRetried} of them only after a retry stage) and ${c.eqRejected} update${c.eqRejected === 1 ? ' was' : 's were'} rejected`;
+  const upd = `The equilibrium was re-solved ${times(c.eqUpdates)} after the initial solve (accepted Grad–Shafranov updates; ${c.eqRetried} of them needed help: a solve that was retried with a shorter continuation step, or a mapping mismatch above the acceptance level) and ${c.eqRejected} update${c.eqRejected === 1 ? ' was' : 's were'} rejected`;
   const forced = c.forcedSteps === 0 ? 'no transport step had to be forced' : `${c.forcedSteps} transport step${c.forcedSteps === 1 ? ' was' : 's were'} forced at the smallest time step without Picard convergence`;
   return `${upd}; ${forced}.`;
 }
@@ -59,6 +63,25 @@ export function solverCountersText(c: SolverCounters): string {
 export function solverCountersLine(c: SolverCounters): string {
   return `${c.eqUpdates} GS updates accepted (${c.eqRetried} after a retry), ${c.eqRejected} rejected, ${c.forcedSteps} forced transport steps`;
 }
+
+/** the members of the 1.5D profile settings that the captions describe (ProfileModel.ps) */
+export interface GridSettings { nRho: number; gridPacking?: number; rtol?: number }
+
+/**
+ * The 1.5D model of the discharge in one sentence: the equations and the radial grid, the time stepper and the way the equilibrium is
+ * coupled (v4: edge-packed grid, adaptive TR-BDF2 steps, conservative remap at the adoption of a new equilibrium). The numbers are those of
+ * the run (ProfileModel.ps), not constants of this text.
+ */
+export function model15Text(ps: GridSettings): string {
+  const packing = ps.gridPacking ?? 0;
+  const grid = packing > 0
+    ? `${ps.nRho} finite-volume cells in ρ_tor packed towards the edge (the cells at the pedestal and the separatrix are ${1 + packing} times narrower than in the core)`
+    : `${ps.nRho} uniform finite-volume cells in ρ_tor`;
+  return `The 1.5D model solves the flux-surface-averaged electron and ion energy, electron density and poloidal flux equations on ${grid}, advanced by the adaptive second-order TR-BDF2 scheme (relative error tolerance ${ps.rtol ?? DEFAULT_PROFILE_SETTINGS.rtol}); when a new Grad–Shafranov equilibrium is adopted the state is remapped conservatively (particle number, energy and enclosed current are kept).`;
+}
+
+/** one number in a caption: the value rounded to `d` decimals */
+const fx = (v: number, d: number) => v.toFixed(d);
 
 export interface MainRun {
   sim: Simulation; model: ProfileModel; report: ShotReport; avg: Record<string, number>;
@@ -82,6 +105,8 @@ export const PRESET_RUNS: readonly (readonly [string, ReactorConfig])[] = [
 ];
 export const POPCON_GRID = { res: 110, Tmax: 30, nMaxFactor: 1.35, uniformT: true } as const;
 export const SCAN_T_END = 150;
+/** flat-top Q below which a scan cell that ran to its scheduled end is called out in the caption (it is drawn black: the lowest colour of the scale) */
+export const SCAN_COLD_Q = 0.05;
 
 /**
  * Scan axes: n̄_e/n_G 0.5…1.0 (x) and H98 0.7…1.3 (y). The Greenwald limit is defined for the
@@ -219,7 +244,7 @@ export const PAPER_FIGURES: readonly Spec[] = [
       const last = profileFrame(sim.history)!;
       return {
         fig: figEquilibrium({ eq: model.eq, rho: last.prof!.rho, Te: last.prof!.Te, label: `ITER 1.5D, t = ${last.t.toFixed(0)} s` }),
-        caption: `Magnetic equilibrium. (a) Fixed-boundary Grad–Shafranov solution of the ITER 1.5D discharge at t = ${last.t.toFixed(0)} s (${model.eq.grid.NR}×${model.eq.grid.NZ} grid, Shortley–Weller boundary treatment) coloured by T_e; white: flux surfaces at ρ_tor = 0.2, 0.4, 0.6, 0.8, black: LCFS, +: magnetic axis (Shafranov shift ${(model.eq.shafranovShift * 100).toFixed(0)} cm). (b) Cerfon–Freidberg analytic single-null Solov'ev equilibrium (ε = 0.32, κ = 1.7, δ = 0.33) with separatrix, X-point and scrape-off layer; used for verification (Fig. 7a). (c) Safety factor, magnetic shear and exact trapped-particle fraction from flux-surface averages; q95 = ${model.eq.q95.toFixed(2)}, ℓ_i(3) = ${model.eq.li3.toFixed(2)}, β_p = ${model.eq.betaP.toFixed(2)}. ${solverCountersText(solverCounters(model))}`,
+        caption: `Magnetic equilibrium. (a) Fixed-boundary Grad–Shafranov solution of the ITER 1.5D discharge at t = ${last.t.toFixed(0)} s (${model.eq.grid.NR}×${model.eq.grid.NZ} grid, Shortley–Weller boundary treatment) coloured by T_e; white: flux surfaces at ρ_tor = 0.2, 0.4, 0.6, 0.8, black: LCFS, +: magnetic axis (Shafranov shift ${(model.eq.shafranovShift * 100).toFixed(0)} cm). (b) Cerfon–Freidberg analytic single-null Solov'ev equilibrium (ε = 0.32, κ = 1.7, δ = 0.33) with separatrix, X-point and scrape-off layer; used for verification (Fig. 7a). (c) Safety factor, magnetic shear and exact trapped-particle fraction from flux-surface averages; q95 = ${model.eq.q95.toFixed(2)}, ℓ_i(3) = ${model.eq.li3.toFixed(2)}, β_p = ${model.eq.betaP.toFixed(2)}. ${model15Text(model.ps)} ${solverCountersText(solverCounters(model))}`,
       };
     },
   },
@@ -229,9 +254,20 @@ export const PAPER_FIGURES: readonly Spec[] = [
     build: (ctx) => {
       const { sim, model } = need(ctx.iter);
       const last = profileFrame(sim.history)!;
+      const P = last.prof!;
+      // the rational surfaces that panel (c) marks are those q crosses at this time: the caption names exactly those
+      const found = RATIONAL_SURFACES.map(([qv, lbl]) => ({ lbl, rho: rationalSurface(P.rho, P.q, qv) }));
+      const marked = found.filter((f) => Number.isFinite(f.rho)).map((f) => `q = ${f.lbl} (ρ_tor = ${fx(f.rho, 2)})`);
+      const unmarked = found.filter((f) => !Number.isFinite(f.rho)).map((f) => f.lbl);
+      const rationals = `${marked.length ? `dotted lines: the ${marked.join(' and ')} rational surfaces` : 'no rational surface is marked'}${unmarked.length ? `; q does not cross ${unmarked.join(' or ')} at this time, so no such surface is marked` : ''}`;
+      // the NTM island of the 3/2 surface adds ISLAND_CHI to chi_e and chi_i across its width: the narrow peak of panel (e)
+      const rs32 = rationalSurface(P.rho, P.q, 1.5), w32 = last.d.w32;
+      const iPeak = P.chie.reduce((k, v, i) => (v > P.chie[k] ? i : k), 0);
+      const island = Number.isFinite(rs32) && w32 > 0.02 && Math.abs(P.rho[iPeak] - rs32) < 0.03
+        ? ` The narrow χ peak at ρ_tor = ${fx(P.rho[iPeak], 2)} is the extra ${ISLAND_CHI} m² s⁻¹ that the (3,2) neoclassical tearing mode island (w/a = ${fx(w32, 3)}, Fig. 8d) adds across its width, which also flattens the temperature profiles there.` : '';
       return {
         fig: figProfiles({ frame: last, pedestalWidth: model.ps.pedestalWidth, label: `ITER 1.5D baseline, t = ${last.t.toFixed(0)} s` }),
-        caption: `Radial profiles of the ITER 1.5D discharge at t = ${last.t.toFixed(0)} s (flat top): (a) electron and ion temperatures (grey band: pedestal, width ${model.ps.pedestalWidth} in ρ_tor); (b) electron density and Z_eff; (c) safety factor and magnetic shear with the q = 1, 3/2, 2 rational surfaces; (d) parallel current density and its ohmic, bootstrap (Sauter) and driven components; (e) electron and ion heat diffusivities (τ_E-scaling-constrained, with neoclassical floor and edge transport barrier); (f) alpha, auxiliary, radiated and ohmic power densities.`,
+        caption: `Radial profiles of the ITER 1.5D discharge at t = ${last.t.toFixed(0)} s (flat top; ${model.ps.nRho} cells in ρ_tor, ${(model.ps.gridPacking ?? 0) > 0 ? 'packed towards the edge' : 'uniform'}): (a) electron and ion temperatures (grey band: pedestal, width ${model.ps.pedestalWidth} in ρ_tor); (b) electron density and Z_eff; (c) safety factor and magnetic shear (${rationals}); (d) parallel current density and its ohmic, bootstrap (Sauter) and driven components; (e) electron and ion heat diffusivities (τ_E-scaling-constrained, with neoclassical floor and edge transport barrier); (f) alpha, auxiliary, radiated and ohmic power densities.${island}`,
       };
     },
   },
@@ -242,9 +278,11 @@ export const PAPER_FIGURES: readonly Spec[] = [
       const { sim, avg } = need(ctx.iter);
       const events = sim.events;
       const nElm = events.filter((e) => e.kind === 'ELM').length, nSaw = events.filter((e) => e.kind === 'sawtooth').length;
+      const tLH = events.find((e) => e.kind === 'LH')?.t, tNTM = events.find((e) => e.kind === 'NTM_onset')?.t;
+      const at = (t: number | undefined) => (t === undefined ? '' : ` (t = ${fx(t, 1)} s)`);
       return {
         fig: figTimeTraces(sim.history, events, 'ITER 1.5D baseline (15 MA / 5.3 T, 50 MW)'),
-        caption: `Time evolution of the ITER 1.5D discharge: (a) fusion gain Q (P_fus = Q·P_aux with P_aux = 50 MW) and thermal stored energy; (b) power balance — alpha heating, auxiliary power, transport loss W/τ_E, radiation and ohmic power; (c) central and pedestal temperatures and line-averaged density; (d) q(0), internal inductance, bootstrap fraction and β_N. Dotted vertical line: L–H transition; dashed: NTM onset. Ticks: ${nElm} type-I ELMs (b; closely spaced ELMs merge into a band) and ${nSaw} sawtooth crashes (c). Flat-top (last 30%) averages: Q = ${avg.Q.toFixed(1)}, P_fus = ${avg.P_fus.toFixed(0)} MW, f_bs = ${avg.f_bs.toFixed(2)}, ℓ_i = ${avg.li.toFixed(2)}, β_N = ${avg.betaN.toFixed(2)}.`,
+        caption: `Time evolution of the ITER 1.5D discharge: (a) fusion gain Q (P_fus = Q·P_aux with P_aux = 50 MW) and thermal stored energy; (b) power balance — alpha heating, auxiliary power, transport loss W/τ_E, radiation and ohmic power; (c) central and pedestal temperatures and line-averaged density; (d) q(0), internal inductance, bootstrap fraction and β_N. Dotted vertical line: L–H transition${at(tLH)}; dashed: NTM onset${at(tNTM)}. Ticks: ${nElm} type-I ELMs (b; closely spaced ELMs merge into a band) and ${nSaw} sawtooth crashes (c). Flat-top (last 30%) averages: Q = ${avg.Q.toFixed(1)}, P_fus = ${avg.P_fus.toFixed(0)} MW, f_bs = ${avg.f_bs.toFixed(2)}, ℓ_i = ${avg.li.toFixed(2)}, β_N = ${avg.betaN.toFixed(2)}.`,
       };
     },
   },
@@ -254,9 +292,12 @@ export const PAPER_FIGURES: readonly Spec[] = [
     build: (ctx) => {
       const hist = need(ctx.iter).sim.history;
       const reg = hist.filter((h) => h.prof);
+      // an ignited region is one where no auxiliary power is required (P_aux <= 0; Q = infinity); the statement is read off the grid
+      const ignited = ctx.popcon ? Array.from(ctx.popcon.Paux).some((v) => v <= 0) : undefined;
+      const ignition = ignited === undefined ? '' : ignited ? ' An ignited region (P_aux ≤ 0, black solid line) exists for these assumptions.' : ' No ignited region exists for these assumptions.';
       return {
         fig: figPopcon({ cfg: ITER_15D, grid: ctx.popcon ?? undefined, res: POPCON_GRID.res, traj: { n: reg.map((h) => h.d.ne), T: reg.map((h) => 0.5 * (h.d.Te + h.d.Ti)) }, label: 'ITER (IPB98(y,2), $H_{98}$ = 1)' }),
-        caption: 'Plasma operation contour (POPCON) for ITER from a 0D steady-state power balance using the same physics as the 0D model: fuel dilution by Be, Ar seed and self-consistent He ash, bremsstrahlung, Mavrin line and Albajar synchrotron radiation, IPB98(y,2) confinement (H98 = 1) evaluated at the loss power P_L = P_heat − P_rad,core (radiation from ρ < 0.6), parabolic profiles (α_n = 0.3, α_T = 1.5) and T_i = T_e. Colour, fusion gain Q; white lines, required auxiliary power; black dashed, Q = 5 and 10; red dashed, β_N limit; blue dotted, L–H threshold (Martin 2008 with the Ryter 2014 low-density branch, at the line-averaged density); dash-dotted, Greenwald density (line-averaged). No ignited region exists for these assumptions. Red: volume-averaged trajectory of the 1.5D discharge (open circle: final state).',
+        caption: 'Plasma operation contour (POPCON) for ITER from a 0D steady-state power balance using the same physics as the 0D model: fuel dilution by Be, Ar seed and self-consistent He ash, bremsstrahlung, Mavrin line and Albajar synchrotron radiation, IPB98(y,2) confinement (H98 = 1) evaluated at the loss power P_L = P_heat − P_rad,core (radiation from ρ < 0.6), parabolic profiles (α_n = 0.3, α_T = 1.5) and T_i = T_e. Colour, fusion gain Q; white lines, required auxiliary power; black dashed, Q = 5 and 10; red dashed, β_N limit; blue dotted, L–H threshold (Martin 2008 with the Ryter 2014 low-density branch, at the line-averaged density); dash-dotted, Greenwald density (line-averaged).' + ignition + ' Red: volume-averaged trajectory of the 1.5D discharge (open circle: final state).',
       };
     },
   },
@@ -285,13 +326,30 @@ export const PAPER_FIGURES: readonly Spec[] = [
         { label: 'NIF  gain $G$', ref: 1.5, refText: '1.5', v0D: okRun(ctx, 'NIF')?.report?.Q_sci_max },
       ];
       const nifG = okRun(ctx, 'NIF')?.report?.Q_sci_max;
+      const refValue = (id: string) => REFERENCE_CHECKS.find((c) => c.id === id)?.value;
+      const g230729 = refValue('NIF.G_N230729');
       const nifNote = nifG !== undefined && Number.isFinite(nifG)
-        ? ` The NIF gain is a blind prediction: the ICF model is calibrated on N210808 alone (1.37 MJ; Abu-Shawareb et al. 2022) and reaches ${(nifG / 1.5).toFixed(2)} of the published G = 1.5 of N221204, a documented miss (npm run validate, NIF.G): it has no input that separates the two shots.`
+        ? ` The NIF gain is a blind prediction: the ICF model is calibrated on N210808 alone (1.37 MJ; Abu-Shawareb et al. 2022) and reaches ${(nifG / 1.5).toFixed(2)} of the published G = 1.5 of N221204, a documented miss (npm run validate, NIF.G): it has no input that separates the two shots${g230729 ? `, so the later shot N230729 (G = ${g230729}) is missed by the same prediction, ratio ${(nifG / g230729).toFixed(2)} (NIF.G_N230729)` : ''}.`
+        : '';
+      // rows with a value outside the ±30% band, read off the table that is drawn
+      const [lo30, hi30] = BAND_30PCT;
+      const outside = rows.flatMap((r) => {
+        const out = ([['0D', r.v0D], ['1.5D', r.v15D]] as const)
+          .filter(([, v]) => v !== undefined && Number.isFinite(v) && (v / r.ref < lo30 || v / r.ref > hi30))
+          .map(([k, v]) => `${k} ${(v! / r.ref).toFixed(2)}`);
+        return out.length ? [`${plainLabel(r.label).replace(/\s+/g, ' ')} (${out.join(', ')})`] : [];
+      });
+      const outsideNote = outside.length ? ` Outside the ±30% band: ${outside.join('; ')}.` : ' Every value lies inside the ±30% band.';
+      // JET: the 1.5D yield and the beam-target share of the model's flat-top fusion power
+      const jetRatio = E('JET15') !== undefined ? E('JET15')! / 59 : undefined;
+      const pBT = A('JET15', 'P_bt'), pFus = A('JET15', 'P_fus');
+      const jetNote = jetRatio !== undefined && jetRatio > hi30
+        ? ` The 1.5D JET yield exceeds the record by ${fx((jetRatio - 1) * 100, 0)}% (a known failure of npm run validate, JET15.Efus)${pBT !== undefined && pFus !== undefined && pFus > 0 ? `: beam–target reactions from the three-component NBI make up ${fx((100 * pBT) / pFus, 0)}% of the flat-top fusion power of the model (thermal fraction ${fx(100 * (1 - pBT / pFus), 0)}%, against a trend of about 50% for the baseline scheme reported by Stancar et al. 2023; docs/v4-wave2b-report.md), and beam–beam fusion and fast-ion losses are not modelled` : ''}.`
         : '';
       const tbl = rows.map((r) => `| ${plainLabel(r.label)} | ${r.refText} | ${r.v0D !== undefined ? (r.v0D / r.ref).toFixed(2) : '—'} | ${r.v15D !== undefined ? (r.v15D / r.ref).toFixed(2) : '—'} |`).join('\n');
       return {
         fig: figValidation(rows),
-        caption: 'Ratio of simulated to published values for the 0D (open circles) and 1.5D (filled squares) models; shaded bands ±30% and ×2. Flat-top quantities are averages over the last 30% of the discharge. References: ITER Q = 10 baseline (Shimada et al. 2007), JET DTE2 59 MJ (Maslov et al. 2023), SPARC V2 (Creely et al. 2020), EU DEMO (Siccinio et al. 2020), NIF N221204 (Abu-Shawareb et al. 2024). The 1.5D JET yield exceeds the record by ~40%: beam–target reactions from the three-component NBI (~60% of the yield, as in TRANSP analyses) are sensitive to the fast-ion slowing-down model.' + nifNote + '\n\n| quantity | reference | 0D ratio | 1.5D ratio |\n|---|---|---|---|\n' + tbl,
+        caption: 'Ratio of simulated to published values for the 0D (open circles) and 1.5D (filled squares) models; shaded bands ±30% (ratios 0.7 to 1.3) and ×2 (0.5 to 2). Flat-top quantities are time-weighted averages over the last 30% of the discharge. References: ITER Q = 10 baseline (Shimada et al. 2007), JET DTE2 59 MJ (Maslov et al. 2023), SPARC V2 (Creely et al. 2020), EU DEMO (Siccinio et al. 2020), NIF N221204 (Abu-Shawareb et al. 2024); where npm run validate checks the same quantity its ratio is the one drawn here (the values are benchmarks, not fits, except the one calibration shot).' + outsideNote + jetNote + nifNote + '\n\n| quantity | reference | 0D ratio | 1.5D ratio |\n|---|---|---|---|\n' + tbl,
       };
     },
   },
@@ -319,7 +377,7 @@ export const PAPER_FIGURES: readonly Spec[] = [
       const v = ctx.verification ?? computeVerification();
       return {
         fig: figVerification(v),
-        caption: `Code verification. (a) Grad–Shafranov solver against the exact Solov'ev solution: observed order ${slope(v.gs.h, v.gs.err).toFixed(2)} (expected 2). (b) Finite-volume heat solver, steady diffusion with uniform source in a cylinder: order ${slope(v.space.dr, v.space.err).toFixed(2)}. (c) Backward-Euler time stepping, decay of the J_0(j_01 ρ) eigenmode (self-convergence): order ${slope(v.time.dt, v.time.err).toFixed(2)} (expected 1). (d) Work–precision diagram for a 0D D–T burn-dynamics problem (α heating, power-degraded τ_E, bremsstrahlung, modulated fuelling): the adaptive Dormand–Prince RK5(4) integrator used by the 0D models reaches a given accuracy with far fewer right-hand-side evaluations than fixed-step RK4 or explicit Euler.`,
+        caption: `Code verification. (a) Grad–Shafranov solver against the exact Solov'ev solution: observed order ${slope(v.gs.h, v.gs.err).toFixed(2)} (expected 2). (b) Finite-volume heat solver, steady diffusion with uniform source in a cylinder: order ${slope(v.space.dr, v.space.err).toFixed(2)}. (c) Backward-Euler time stepping, decay of the J_0(j_01 ρ) eigenmode (self-convergence): order ${slope(v.time.dt, v.time.err).toFixed(2)} (expected 1); both stages of the second-order TR-BDF2 step of the 1.5D model are backward-Euler-like solves of this kind, and the order of TR-BDF2 itself is checked on scalar problems in the unit tests (src/physics/profiles/solver/trbdf2.test.ts), not in this figure; the convergence of the 1.5D discharge on the edge-packed grid is measured by npm run bench:convergence. (d) Work–precision diagram for a 0D D–T burn-dynamics problem (α heating, power-degraded τ_E, bremsstrahlung, modulated fuelling): the adaptive Dormand–Prince RK5(4) integrator used by the 0D models reaches a given accuracy with far fewer right-hand-side evaluations than fixed-step RK4 or explicit Euler.`,
       };
     },
   },
@@ -328,9 +386,13 @@ export const PAPER_FIGURES: readonly Spec[] = [
     inputs: () => ({ config: { iter15: iter15Input }, seeds: { ITER_15D: ITER_15D.seed } }),
     build: (ctx) => {
       const iter = need(ctx.iter);
+      // island widths over the discharge (history keys w32, w21, in units of the minor radius) and the onset of the first NTM
+      const peak = (key: string) => iter.sim.history.reduce((m, h) => (Number.isFinite(h.d[key]) ? Math.max(m, h.d[key]) : m), 0);
+      const tNTM = iter.sim.events.find((e) => e.kind === 'NTM_onset')?.t;
+      const ntm = `the (3,2) island${tNTM !== undefined ? ` appears at t = ${fx(tNTM, 1)} s and` : ''} reaches w/a = ${fx(peak('w32'), 3)}, flattening the profiles with an extra χ of ${ISLAND_CHI} m² s⁻¹ across its width; the (2,1) island ${peak('w21') > 5e-4 ? `reaches w/a = ${fx(peak('w21'), 3)}` : 'does not open'}`;
       return {
         fig: figMHD({ saw: iter.saw, elm: iter.elm, zoom: iter.zoom, hist: iter.sim.history, events: iter.sim.events }),
-        caption: `MHD events in the ITER 1.5D discharge. (a) Sawtooth crash at t = ${iter.saw?.t.toFixed(1) ?? '—'} s (trigger: shear at q = 1 above s_crit = ${iter.model.ps.sawtoothShear}): T_e flattened inside the Kadomtsev mixing radius with conservation of the energy content, q raised to ≥ 1. (b) Type-I ELM at t = ${iter.elm?.t.toFixed(2) ?? '—'} s triggered by the pedestal pressure gradient exceeding the ballooning limit α_crit. (c) ELM cycle sampled every 2 ms (${iter.zoom.elm.length} ELMs in 1.5 s). (d) Neoclassical tearing mode island widths from the modified Rutherford equation (seeded by sawteeth, ticks) and β_N.`,
+        caption: `MHD events in the ITER 1.5D discharge. (a) Sawtooth crash at t = ${iter.saw?.t.toFixed(1) ?? '—'} s (trigger: shear at q = 1 above s_crit = ${iter.model.ps.sawtoothShear}): T_e flattened inside the Kadomtsev mixing radius with conservation of the energy content, q raised to ≥ 1. (b) Type-I ELM at t = ${iter.elm?.t.toFixed(2) ?? '—'} s triggered by the pedestal pressure gradient exceeding the ballooning limit α_crit. (c) ELM cycle sampled every 2 ms (${iter.zoom.elm.length} ELMs in 1.5 s). (d) Neoclassical tearing mode island widths from the modified Rutherford equation (seeded by sawteeth, ticks; ${ntm}) and β_N.`,
       };
     },
   },
@@ -341,16 +403,20 @@ export const PAPER_FIGURES: readonly Spec[] = [
       const NS = ctx.params.scan;
       const { sx, sy } = scanAxes(NS);
       const Q: number[] = [], Pf: number[] = [];
-      let nBad = 0;
+      let nBad = 0, nCold = 0;
+      const why = new Map<string, number>();
       for (let j = 0; j < NS; j++) for (let i = 0; i < NS; i++) {
         const r = okRun(ctx, `scan:${i}:${j}`);
         const aborted = !r || r.report!.termination.natural === false;
-        if (aborted) nBad++;
+        if (aborted) { nBad++; const reason = r?.report?.termination.reason; if (reason) why.set(reason, (why.get(reason) ?? 0) + 1); }
+        else if (r!.avg!.Q < SCAN_COLD_Q) nCold++;
         Q.push(aborted ? NaN : r!.avg!.Q); Pf.push(aborted ? NaN : r!.avg!.P_fus);
       }
+      const lower = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
+      const reasons = why.size ? ` (${[...why].map(([k, n]) => `${n} × ${lower(k)}`).join(', ')})` : '';
       return {
         fig: figScan({ x: sx, y: sy, Q, Pfus: Pf, ref: { x: scanBaselineX(), y: ITER.H98, label: 'ITER baseline' }, label: `ITER 0D scan (${NS}×${NS} runs)` }),
-        caption: `Operating-space scan of the ITER 0D model: flat-top Q as a function of the confinement enhancement H98 and the line-averaged density n̄_e normalised to the Greenwald density n_G (${NS}×${NS} = ${NS * NS} independent ${SCAN_T_END} s discharges run in parallel on worker threads${nBad ? `; ${nBad} discharges that ended early (disruption, density limit or radiative collapse) are left blank` : ''}). Contours: Q = 5, 10, 15 (P_aux = 50 MW is fixed, so P_fus = 50 MW × Q); diamond: ITER baseline. Residual structure at high H98 reflects stochastic MHD events (NTM triggering) inside the averaging window.`,
+        caption: `Operating-space scan of the ITER 0D model: flat-top Q as a function of the confinement enhancement H98 and the line-averaged density n̄_e normalised to the Greenwald density n_G (${NS}×${NS} = ${NS * NS} independent ${SCAN_T_END} s discharges run in parallel on worker threads${nBad ? `; ${nBad} discharges that ended early${reasons} are left blank (white)` : ''}${nCold ? `; ${nCold} ran to the scheduled end with a flat-top Q below ${SCAN_COLD_Q} and appear black` : ''}). Contours: Q = 5, 10, 15 (P_aux = 50 MW is fixed, so P_fus = 50 MW × Q), linear interpolation between grid points, not meaningful next to blank or black cells; diamond: ITER baseline. Residual structure at high H98 reflects stochastic MHD events (NTM triggering) inside the averaging window.`,
       };
     },
   },

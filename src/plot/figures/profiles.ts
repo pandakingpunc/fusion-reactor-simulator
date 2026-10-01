@@ -13,6 +13,19 @@ export interface ProfilesFigInput {
   label?: string;
 }
 
+/** the rational surfaces marked in panel (c): the value of q and its label */
+export const RATIONAL_SURFACES = [[1, '1'], [1.5, '3/2'], [2, '2']] as const;
+
+/**
+ * ρ of the outermost point where q crosses `qv` (linear interpolation between cells), NaN where it never does. On the sawtooth plateau q
+ * hovers about 1 and may stay just above it after a crash, so there is then no q = 1 surface to mark (and the caption must not claim one).
+ */
+export function rationalSurface(rho: ArrayLike<number>, q: ArrayLike<number>, qv: number): number {
+  let r = NaN;
+  for (let i = 1; i < rho.length; i++) if ((q[i - 1] - qv) * (q[i] - qv) <= 0 && q[i] !== q[i - 1]) r = rho[i - 1] + ((qv - q[i - 1]) / (q[i] - q[i - 1])) * (rho[i] - rho[i - 1]);
+  return r;
+}
+
 export function figProfiles(inp: ProfilesFigInput): Figure {
   const P = inp.frame.prof!;
   const rho = P.rho;
@@ -40,9 +53,8 @@ export function figProfiles(inp: ProfilesFigInput): Figure {
   // (c) q ve s
   // rasyonel yüzeyler: q'nun değeri en dıştan kestiği ρ'da dikey çizgi (testere dişi platosunda q ≈ 1 dalgalanır)
   const qTop = Math.max(...P.q) * 1.1;
-  for (const [qv, lbl] of [[1, '1'], [1.5, '3/2'], [2, '2']] as const) {
-    let r = NaN;
-    for (let i = 1; i < rho.length; i++) if ((P.q[i - 1] - qv) * (P.q[i] - qv) <= 0 && P.q[i] !== P.q[i - 1]) r = rho[i - 1] + ((qv - P.q[i - 1]) / (P.q[i] - P.q[i - 1])) * (rho[i] - rho[i - 1]);
+  for (const [qv, lbl] of RATIONAL_SURFACES) {
+    const r = rationalSurface(rho, P.q, qv);
     if (!Number.isFinite(r)) continue;
     c.axvline(r, { color: C.grey, lw: 0.4, dash: 'dotted' });
     c.text(r, 0.97 * qTop, lbl, { anchor: 'middle', baseline: 'top', size: 6, color: C.grey, box: true });

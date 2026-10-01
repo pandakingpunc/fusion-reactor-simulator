@@ -15,9 +15,9 @@ const fonts = nodeFontSet();
 describe('solver counters', () => {
   it('the caption sentence names every counter, with singular and plural forms', () => {
     expect(solverCountersText({ eqUpdates: 25, eqRetried: 3, eqRejected: 0, forcedSteps: 0 })).toBe(
-      'The equilibrium was re-solved 25 times after the initial solve (accepted Grad–Shafranov updates; 3 of them only after a retry stage) and 0 updates were rejected; no transport step had to be forced.');
+      'The equilibrium was re-solved 25 times after the initial solve (accepted Grad–Shafranov updates; 3 of them needed help: a solve that was retried with a shorter continuation step, or a mapping mismatch above the acceptance level) and 0 updates were rejected; no transport step had to be forced.');
     expect(solverCountersText({ eqUpdates: 1, eqRetried: 0, eqRejected: 1, forcedSteps: 1 })).toBe(
-      'The equilibrium was re-solved once after the initial solve (accepted Grad–Shafranov updates; 0 of them only after a retry stage) and 1 update was rejected; 1 transport step was forced at the smallest time step without Picard convergence.');
+      'The equilibrium was re-solved once after the initial solve (accepted Grad–Shafranov updates; 0 of them needed help: a solve that was retried with a shorter continuation step, or a mapping mismatch above the acceptance level) and 1 update was rejected; 1 transport step was forced at the smallest time step without Picard convergence.');
     expect(solverCountersText({ eqUpdates: 0, eqRetried: 0, eqRejected: 4, forcedSteps: 7 })).toContain('4 updates were rejected; 7 transport steps were forced');
   });
 

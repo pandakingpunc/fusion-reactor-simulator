@@ -204,7 +204,7 @@ const avg = (k: number): Record<string, number> => ({
 /** a stand-in for the ITER 1.5D main run: the members the paper figures and captions read */
 export function syntheticMainRun(counters = { eqUpdates: 25, eqRetried: 3, eqRejected: 1, forcedSteps: 0 }): MainRun {
   const frames = syntheticFrames(60, 120);
-  const model = { eq: syntheticEquilibrium(), ps: { pedestalWidth: 0.05, sawtoothShear: 1 }, ...counters };
+  const model = { eq: syntheticEquilibrium(), ps: { pedestalWidth: 0.05, sawtoothShear: 1, nRho: 50, gridPacking: 4, rtol: 1e-2 }, ...counters };
   return {
     sim: { history: frames, events: syntheticEvents(120) } as unknown as MainRun['sim'],
     model: model as unknown as MainRun['model'],

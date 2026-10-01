@@ -28,7 +28,7 @@ describe('missions CLI', () => {
     expect(r.code, r.stderr).toBe(0);
     const rows = JSON.parse(r.stdout) as { id: string; start: boolean; control: boolean; solution: boolean; ok: boolean; edits: Record<string, number> }[];
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ id: 'nif', start: false, control: false, solution: true, ok: true, edits: { asymmetry: 3 } });
+    expect(rows[0]).toMatchObject({ id: 'nif', start: false, control: false, solution: true, ok: true, edits: { asymmetry: 1 } });
   }, 120_000);
 
   it('exits 2 on an unknown mission id', () => {

@@ -26,6 +26,13 @@
  * in references.ts without any further adjustment. The model has no input for what separates the three shots (the 6 µm
  * thicker ablator, +7 % laser energy, hot-spot symmetry, capsule quality: they act through the yield amplification above the
  * ignition cliff), so it predicts the calibration yield for all of them; the misses are reported there as known failures.
+ *
+ * What blind means here. ICF_CAL is not re-fitted for those shots, nothing more: the cliff constants and the platform inputs
+ * (v_imp 390 km/s, CR 30, α 2.8, asymmetry 1.5 %, roughness 20 nm, the fuel mass) are shared by the three shots, date from v3.0.0 and
+ * were set when ICF_CAL was tuned to N221204 itself, so they were not chosen without knowledge of that shot. As the yield depends on none
+ * of what differs between the shots, the two blind rows are the published yield ratios 3.15/1.37 and 3.88/1.37 of those shots to the
+ * calibration shot, seen through the gain, not independent tests. The hot spot of the calibration shot is below the model's ignition threshold
+ * (T_hs = 1.32 keV, the experiments show about 9–10 keV): references.ts carries that miss as NIF210808.Ti.
  */
 import type { ICFConfig } from '../types';
 import { icfStagnation } from './icf';

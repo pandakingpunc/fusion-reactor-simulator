@@ -132,20 +132,28 @@ describe('validate CLI exit codes', { timeout: 60_000 }, () => {
     const r = validate('--threads', '2', '--only', 'NIF210808,NIF', '--json');
     const out = JSON.parse(r.stdout) as JsonOut;
     const byId = new Map(out.checks.map((c) => [c.id, c]));
-    expect([...byId.keys()].sort()).toEqual(['NIF.G', 'NIF.G_N230729', 'NIF210808.G']);
+    expect([...byId.keys()].sort()).toEqual(['NIF.G', 'NIF.G_N230729', 'NIF210808.G', 'NIF210808.Ti']);
     const cal = byId.get('NIF210808.G')!;
     expect(cal).toMatchObject({ role: 'calibration', status: 'pass', published: 0.72 });
     expect(cal.wording).toMatch(/^calibrated \(deviation [+-]\d\.\d %\)$/);
     expect(Math.abs(cal.ratio! - 1)).toBeLessThan(0.01);
     for (const id of ['NIF.G', 'NIF.G_N230729']) expect(byId.get(id)).toMatchObject({ role: 'blind', wording: expect.stringMatching(/^benchmarked \(deviation -\d\d %\)$/) });
-    expect(byId.get('NIF.G_N230729')!.reference).toMatchObject({ source: expect.stringContaining('LLNL-PRES-859704'), sourceLimitation: expect.stringContaining('no peer-reviewed paper') });
-    expect(byId.get('NIF.G_N230729')!.reference.doi).toBeUndefined();
+    // N230729: the yield is stated in the abstract of Kritcher et al. 2024 (DOI), the LLNL record is only the source of the shot label and date; what is not verified is printed
+    expect(byId.get('NIF.G_N230729')!.reference).toMatchObject({
+      doi: '10.1063/5.0210904', source: expect.stringContaining('LLNL-PRES-859704'), sourceLimitation: expect.stringContaining('Not verified: the full text'),
+    });
+    expect(byId.get('NIF.G_N230729')!.reference.source).toContain('Phys. Plasmas 31 (2024) 070502');
     expect(byId.get('NIF.G')!.reference.doi).toBe('10.1103/PhysRevLett.132.065102');
-    expect(out.wordings).toMatchObject({ calibrated: 1, benchmarked: 2 });
+    // the temperature of the calibration shot is a validation row too: it misses by a factor 7 and is worded 'benchmarked'
+    expect(byId.get('NIF210808.Ti')).toMatchObject({ status: 'known-fail', wording: expect.stringMatching(/^benchmarked \(deviation -8\d %\)$/) });
+    expect(byId.get('NIF210808.Ti')!.role).toBeUndefined();
+    expect(out.wordings).toMatchObject({ calibrated: 1, benchmarked: 3 });
     const text = validate('--threads', '2', '--only', 'NIF210808,NIF');
     expect(text.stdout).toMatch(/^\s+PASS\s+NIF210808 Gain G \(N210808, calibration\) = 0\.715 .*calibrated \(deviation -0\.7 %\)$/m);
     expect(text.stdout).toMatch(/^\s+KNOWN-FAIL\s+NIF\s+Gain G \(N221204, blind\) = 0\.668 .*benchmarked \(deviation -55 %\)$/m);
-    expect(text.stdout).toMatch(/wording: 0 validated, 2 benchmarked \(deviation above 20 % from the published value\), 1 calibrated, 0 sanity bounds/);
+    expect(text.stdout).toMatch(/wording: 0 validated, 3 benchmarked \(deviation above 20 % from the published value\), 1 calibrated, 0 sanity bounds/);
+    // the one pass of these four rows is the calibration, which is no test: the summary says so
+    expect(text.stdout).toMatch(/✓ NO UNEXPECTED FAILURES: 1 passed \(of which 1 calibration, a pass by construction\), 3 known failures/);
     expect(text.stdout).toMatch(/NIF\.G: 0\.668, accepted 1–3, model\/published 0\.446 \[blind\] — /);
   });
 

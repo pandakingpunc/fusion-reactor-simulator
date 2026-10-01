@@ -104,9 +104,9 @@ describe('reference table integrity', () => {
 
   it('the checks whose source text could not be read, in whole or in part, say so (reviewed for v4.0)', () => {
     const limited = REFERENCE_CHECKS.filter((c) => c.sourceLimitation !== undefined).map((c) => c.id).sort();
-    expect(limited).toEqual(['ITER15.Tped', 'MASTU.q95', 'NIF.G_N230729', 'W7X.HISS04']);
+    expect(limited).toEqual(['ITER15.Tped', 'MASTU.q95', 'NIF.G_N230729', 'NIF210808.Ti', 'W7X.HISS04']);
     // with a DOI and a limitation the published value still has the numbers of the policy: nothing is widened for a missing read
-    for (const id of ['ITER15.Tped', 'MASTU.q95', 'W7X.HISS04']) {
+    for (const id of ['ITER15.Tped', 'MASTU.q95', 'NIF.G_N230729', 'NIF210808.Ti', 'W7X.HISS04']) {
       const c = REFERENCE_CHECKS.find((x) => x.id === id)!;
       expect(c.doi, id).toBeDefined();
       expect(c.kind, id).not.toBe('sanity');
@@ -146,8 +146,33 @@ describe('reference table integrity', () => {
       expect(c.path, c.id).toBe('report.Q_sci_max');
       expect(c.basis, c.id).toMatch(c.role === 'calibration' ? /calibrated on|calibrat/ : /BLIND/);
     }
-    // the only check without a DOI is the yield of N230729, which no paper that could be read states
-    expect(REFERENCE_CHECKS.filter((c) => c.doi === undefined && c.kind !== 'sanity').map((c) => c.id)).toEqual(['NIF.G_N230729']);
+    // every measured or design value has a DOI, the yield of N230729 included: the abstract of Kritcher et al. 2024 states the 3.88 MJ from 2.05 MJ
+    expect(REFERENCE_CHECKS.filter((c) => c.doi === undefined && c.kind !== 'sanity').map((c) => c.id)).toEqual([]);
+    const n230729 = REFERENCE_CHECKS.find((c) => c.id === 'NIF.G_N230729')!;
+    expect(n230729).toMatchObject({ doi: '10.1063/5.0210904', ref: 'Kritcher 2024', value: 1.89, role: 'blind' });
+    expect(n230729.source).toMatch(/Kritcher.*Phys\. Plasmas 31 \(2024\) 070502.*LLNL-PRES-859704/);
+    expect(n230729.sourceLimitation).toMatch(/Not verified: the full text/);
+    expect(n230729.basis).toMatch(/3\.88 MJ from 2\.05 MJ .*abstract of Kritcher et al\. 2024/);
+  });
+
+  it('blind is blind to ICF_CAL only, and the basis of the blind rows say so', () => {
+    for (const id of ['NIF.G', 'NIF.G_N230729']) {
+      const c = REFERENCE_CHECKS.find((x) => x.id === id)!;
+      expect(c.basis, id).toMatch(/ICF_CAL (is|was) not re-fitted/);
+      expect(c.basis, id).toMatch(/the published yield ratio \d\.\d\d?\/1\.37 = \d\.\d of the shot to the calibration shot, seen through the gain/);
+    }
+    expect(REFERENCE_CHECKS.find((c) => c.id === 'NIF.G')!.basis).toMatch(/nothing else of the model is blind to it/);
+  });
+
+  it('the hot spot of the calibration shot is reported as a miss: NIF210808.Ti against the 9–10 keV of Pak et al. 2024', () => {
+    const c = REFERENCE_CHECKS.find((x) => x.id === 'NIF210808.Ti')!;
+    expect(c).toMatchObject({ preset: 'NIF210808', path: 'report.Tmax_keV', kind: 'validation', tolerance: 'temperature', doi: '10.1103/PhysRevE.109.025203', value: 9.55 });
+    expect(c.role).toBeUndefined();
+    expect(c.band).toEqual([9, 10.1]);
+    expect(c.accept).toEqual(widen('temperature', [9, 10.1]));
+    expect(c.accept).toEqual([6.3, 13.2]);
+    expect(c.knownFailure).toMatch(/1\.32 keV/);
+    expect(c.sourceLimitation).toMatch(/accepted manuscript/);
   });
 
   it('a known failure explains itself', () => {
@@ -199,7 +224,7 @@ describe('check evaluation', () => {
     const t = tally([evaluateCheck(base, 1), evaluateCheck(base, 9), evaluateCheck(known, 9), evaluateCheck(known, 1), evaluateCheck(base, 1, 'x')]);
     expect(t).toEqual({ executed: 5, pass: 1, fail: 1, error: 1, knownFail: 1, xpass: 1 });
     expect(selectChecks(REFERENCE_CHECKS, ['NIF']).map((c) => c.id)).toEqual(['NIF.G', 'NIF.G_N230729']);
-    expect(selectChecks(REFERENCE_CHECKS, ['NIF210808']).map((c) => c.id)).toEqual(['NIF210808.G']);
+    expect(selectChecks(REFERENCE_CHECKS, ['NIF210808']).map((c) => c.id)).toEqual(['NIF210808.G', 'NIF210808.Ti']);
     expect(selectChecks(REFERENCE_CHECKS, ['TAE'], ['benchmark'])).toEqual([]);
     expect(selectChecks(REFERENCE_CHECKS, undefined, ['sanity']).every((c) => c.kind === 'sanity')).toBe(true);
   });

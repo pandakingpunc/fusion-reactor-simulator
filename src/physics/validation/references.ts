@@ -128,6 +128,7 @@ const SRC = {
   harrisonSuperX2024: 'J.R. Harrison et al., "Benefits of the Super-X divertor configuration for scenario integration on MAST Upgrade", Plasma Phys. Control. Fusion 66 (2024) 065019',
   lazarus1997: 'E.A. Lazarus et al., "Higher fusion power gain with profile control in DIII-D tokamak plasmas", Nucl. Fusion 37 (1997) 7–12',
   imada2024: 'K. Imada et al., "Observation of a new pedestal stability regime in MAST Upgrade H-mode plasmas", Nucl. Fusion 64 (2024) 086002',
+  kritcher2024: 'A.L. Kritcher et al., "Design of first experiment to achieve fusion target gain > 1", Phys. Plasmas 31 (2024) 070502',
 } as const;
 
 const DOI = {
@@ -157,6 +158,7 @@ const DOI = {
   harrisonSuperX2024: '10.1088/1361-6587/ad4058',
   imada2024: '10.1088/1741-4326/ad5219',
   lazarus1997: '10.1088/0029-5515/37/1/I11',
+  kritcher2024: '10.1063/5.0210904',
 } as const satisfies Record<keyof typeof SRC, string>;
 
 /** exp(2 × 0.145): 2σ of the IPB98(y,2) database fit */
@@ -234,12 +236,12 @@ const MASTU_Q95 = (preset: 'MASTU'): ReferenceCheck => ({
     'Sauter 2016 could not be read either (the EPFL copy resets the connection, Infoscience holds the record without the full text)',
 });
 
-/** The yield of N230729 is not in a paper that could be read: the facility's own record (no DOI), see `sourceLimitation`. */
-const LLNL_NUG2024 = 'K. Fournier et al. (LLNL), "What\'s New for Users at the NIF...", NIF & JLF User Group Meeting (2024), LLNL-PRES-859704, slide 3: N230729, 3.88 MJ yield; ' +
+/** The facility's own record of N230729 (no DOI): the source of the shot label and date, which the abstract of the paper that states the yield does not give. */
+const LLNL_NUG2024 ='K. Fournier et al. (LLNL), "What\'s New for Users at the NIF...", NIF & JLF User Group Meeting (2024), LLNL-PRES-859704, slide 3: N230729, 3.88 MJ yield; ' +
   'lasers.llnl.gov/science/achieving-fusion-ignition: "July 30, 2023: The NIF laser again delivered 2.05 MJ of energy to the target, resulting in 3.88 MJ of fusion energy output"';
-const LLNL_NUG2024_LIMIT = 'no peer-reviewed paper that states the yield of N230729 could be verified in this session (the design perspective of Kritcher et al., ' +
-  'Phys. Plasmas 31 (2024) 070502, doi:10.1063/5.0210904, discusses the platform but its text could not be read): the value is the facility record of the 2.05 MJ laser energy and the ' +
-  '3.88 MJ yield, without a published uncertainty';
+const KRITCHER_N230729_LIMIT = 'verified: the abstract of Kritcher et al. 2024 (the Crossref record of doi:10.1063/5.0210904, read 2026-10-01) gives the maximum fusion energy of the ' +
+  'platform to date as 3.88 MJ from 2.05 MJ of incident laser energy, and 3.15 MJ for N221204. Not verified: the full text of the paper, so no uncertainty of the 3.88 MJ is known ' +
+  '(none is used), and the shot label and date, which the abstract does not state and which come from the facility record of LLNL (N230729, 30 July 2023)';
 
 const r3 = (x: number) => Math.round(x * 1000) / 1000;
 /** lossless (adiabatic, γ = 5/3) temperature after radial compression of a cylinder by C: T0·C^(4/3) */
@@ -440,10 +442,27 @@ export const REFERENCE_CHECKS: readonly ReferenceCheck[] = [
       'yield over the laser energy by construction and the check tests the arithmetic of the calibration, not the model; ×/÷ 2 (gain tolerance)',
   },
   {
+    id: 'NIF210808.Ti', preset: 'NIF210808', metric: 'T_i (N210808)', path: 'report.Tmax_keV', value: 9.55, band: [9, 10.1], unit: 'keV',
+    ref: 'Pak 2024', source: SRC.pak2024, doi: DOI.pak2024, accept: [6.3, 13.2], tolerance: 'temperature', kind: 'validation',
+    basis: 'ion temperature of the hot spot of N210808 (the calibration shot), the mid-point 9.55 keV of two determinations in Pak et al. 2024: about 9 keV inferred for the hot spot ' +
+      '(section V, fig. 7: the shots above 1 MJ, N210808 and N220919, appear at T_i ≈ 9 keV and ρR_hs ≈ 0.45 g/cm²) and 10.1 keV, the apparent DT ion temperature of the neutron spectra of ' +
+      'N210808 (conclusion); ±30 % temperature tolerance on the band. ICF_CAL is fitted to the yield only, so a temperature is a model output that no fit enters: this row has no role. ' +
+      'The model value is Tmax_keV, the hot-spot temperature of the model. No uncertainty of either determination was read, none is used',
+    sourceLimitation: 'read in the accepted manuscript of the paper (OSTI 2377242, LLNL-JRNL-856035, 2026-10-01), not in the typeset article: the 10.1 keV is printed in its conclusion without an ' +
+      'uncertainty, the 9 keV in section V as an approximate value for two shots, and the manuscript quotes N210808 as 1.33 ± 0.13 MJ where Abu-Shawareb et al. 2022 (table I) give 1.37 MJ',
+    knownFailure: 'the model puts N210808 below its own ignition threshold (χ_ig = 0.951 with ICF_CAL = 0.03931, fitted to the yield only), so no α heating raises the hot spot: its temperature is ' +
+      'the kinematic one of the compression, 1.32 keV, a factor 7 below the experiment, while the calibrated yield (1.37 MJ) is reproduced. The temperature is the clearest sign that the ' +
+      'calibration matches the yield with a wrong hot spot: the ignition-cliff constants, set when ICF_CAL was 0.07, are not part of it',
+  },
+  {
     id: 'NIF.G', preset: 'NIF', metric: 'Gain G (N221204, blind)', path: 'report.Q_sci_max', value: 1.5, uncertainty: 0.1, unit: '',
     ref: 'Abu-Shawareb 2024', source: `${SRC.abushawareb2024}; uncertainty: ${SRC.pak2024}`, doi: DOI.abushawareb2024, accept: [1.0, 3.0], tolerance: 'stated', kind: 'validation', role: 'blind',
-    basis: 'N221204 (5 December 2022): 3.15 MJ from 2.05 MJ of laser energy, G = 1.5 ± 0.1. A BLIND prediction: the ICF model is calibrated on N210808 alone ' +
-      '(NIF210808.G) and nothing is adjusted for this shot. Lower bound G = 1, the result the shot is known for (target gain above unity); upper bound ×2 (gain tolerance)',
+    basis: 'N221204 (5 December 2022): 3.15 MJ from 2.05 MJ of laser energy, G = 1.5 ± 0.1. A BLIND prediction in a limited sense: the ICF model is calibrated on N210808 alone ' +
+      '(NIF210808.G) and ICF_CAL is not re-fitted for this shot, but nothing else of the model is blind to it. The ignition-cliff constants (0.2 g/cm², 360 km/s, the asymmetry and ' +
+      'roughness scales) and the platform inputs (v_imp 390 km/s, CR 30, α 2.8, asymmetry 1.5 %, roughness 20 nm) are those of v3.0.0, shared by the three shots, and date from when ' +
+      'ICF_CAL was tuned to N221204 itself (the preset was commented "G ~ 1.5"). The model yield does not depend on what differs between the shots (laser energy, ablator mass), so it is ' +
+      '1.37 MJ for every shot of the platform and this row is the published yield ratio 3.15/1.37 = 2.3 of the shot to the calibration shot, seen through the gain, not an independent test. ' +
+      'Lower bound G = 1, the result the shot is known for (target gain above unity); upper bound ×2 (gain tolerance)',
     knownFailure: 'the model has no input for what separates N221204 from the calibration shot N210808 (an ablator 6 µm thicker, 7 % more laser energy, better low-mode ' +
       'symmetry and capsule quality), so it runs the same capsule and predicts the calibration yield, 1.37 MJ: G = 0.67 against 1.5 (model/published 0.45, yield ' +
       'ratio 0.43). The 2.3-fold increase of the yield between the two shots lies above the ignition cliff, which a model calibrated at one point on the cliff does not ' +
@@ -451,10 +470,12 @@ export const REFERENCE_CHECKS: readonly ReferenceCheck[] = [
   },
   {
     id: 'NIF.G_N230729', preset: 'NIF', metric: 'Gain G (N230729, blind)', path: 'report.Q_sci_max', value: 1.89, unit: '',
-    ref: 'LLNL NIF 2024', source: LLNL_NUG2024, sourceLimitation: LLNL_NUG2024_LIMIT, accept: [1.0, 3.78], tolerance: 'stated', kind: 'validation', role: 'blind',
+    ref: 'Kritcher 2024', source: `${SRC.kritcher2024}; shot label and date: ${LLNL_NUG2024}`, doi: DOI.kritcher2024, sourceLimitation: KRITCHER_N230729_LIMIT,
+    accept: [1.0, 3.78], tolerance: 'stated', kind: 'validation', role: 'blind',
     basis: 'N230729 (fired 30 July 2023 UTC; NIF notation NYYMMDD is the day the countdown began, the shot is also quoted as N230730): 3.88 MJ from 2.05 MJ of laser ' +
-      'energy, G = 1.89; the repeat of the N221204 design with a higher-quality diamond capsule. No yield uncertainty was verified, none is used. A BLIND prediction ' +
-      'with the configuration of the NIF preset (the model has no input that separates the shot from N221204). Lower bound G = 1 as for N221204; upper bound ×2 (gain tolerance)',
+      'energy (the abstract of Kritcher et al. 2024), G = 1.89; the repeat of the N221204 design with a higher-quality diamond capsule. No yield uncertainty was verified, none is used. ' +
+      'A BLIND prediction with the configuration of the NIF preset (the model has no input that separates the shot from N221204), blind in the sense of the NIF.G basis: ' +
+      'ICF_CAL was not re-fitted, and this row is the published yield ratio 3.88/1.37 = 2.8 of the shot to the calibration shot, seen through the gain. Lower bound G = 1 as for N221204; upper bound ×2 (gain tolerance)',
     knownFailure: 'as for N221204 the model predicts the calibration yield, 1.37 MJ, for every shot of the platform: G = 0.67 against 1.89 (model/published 0.35). ' +
       'The capsule quality that raised the yield of N230729 above that of N221204 (fewer high-Z inclusions and defects) enters the model only through the surface roughness, ' +
       'which acts on the ignition parameter and not on the burn-up of an ignited or marginal shot',

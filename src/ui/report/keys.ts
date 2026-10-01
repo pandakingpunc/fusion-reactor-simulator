@@ -62,6 +62,7 @@ const ROWS: Row[] = [
   ['CS flux swing (V s)', 'Central-solenoid flux swing', 'Merkezi solenoid akı salınımı', 'V·s'],
   ['Flux required (V s)', 'Flux the pulse needs', 'Atımın gerektirdiği akı', 'V·s'],
   ['Flux margin', 'Flux margin', 'Akı payı', ''],
+  ['Flux-limited flat top (s)', 'Flat-top length the flux allows', 'Akının izin verdiği düz tepe süresi', 's'],
   ['TF nuclear heating (kW)', 'Nuclear heating of the TF coils', 'TF bobinlerinin nükleer ısınması', 'kW'],
   ['Cryo heat load (kW)', 'Cryogenic heat load', 'Kriyojenik ısı yükü', 'kW'],
   ['Cryoplant power (MW)', 'Cryoplant electric power', 'Kriyojenik tesisin elektrik gücü', 'MW'],
@@ -83,6 +84,13 @@ const ROWS: Row[] = [
   ['Forced transport steps', 'Forced transport steps', 'Zorlanan taşınım adımları', ''],
   ['Transport steps (accepted / rejected by the error test)', 'Transport steps (accepted / rejected by the error test)', 'Taşınım adımları (kabul / hata sınamasında reddedilen)', ''],
   ['Newton iterations / Jacobians / Picard fallbacks', 'Newton iterations / Jacobians / Picard fallbacks', 'Newton yinelemeleri / Jacobian sayısı / Picard’a dönüşler', ''],
+  // predictive transport (bgb, ifspppl): the confinement the closure arrives at, against the H-mode scalings
+  ['Emergent τ_E (flat-top mean, s)', 'Emergent energy confinement time τ_E (flat-top mean)', 'Ortaya çıkan enerji hapsetme süresi τ_E (düz tepe ortalaması)', 's', { term: 'tauE' }],
+  ['Emergent H98(y,2) (flat-top mean)', 'Emergent confinement factor H98(y,2) (flat-top mean)', 'Ortaya çıkan hapsetme çarpanı H98(y,2) (düz tepe ortalaması)', '', { term: 'h98' }],
+  ['Emergent H(ITPA20) (flat-top mean)', 'Emergent confinement factor against ITPA20 (flat-top mean)', 'ITPA20 ölçeklemesine göre ortaya çıkan hapsetme çarpanı (düz tepe ortalaması)', ''],
+  // profile-resolved impurities (impurityTransport)
+  ['He ash fraction n_He/n_e (avg.)', 'Helium ash fraction n_He/n_e (mean)', 'Helyum külü oranı n_He/n_e (ortalama)', '', { term: 'heAsh' }],
+  ['He ash fraction on axis (final)', 'Helium ash fraction on axis (final)', 'Eksende helyum külü oranı (son)', '', { term: 'heAsh' }],
   // ---- extras of the magnetic reports
   ['He ash fraction (final)', 'Helium ash fraction (final)', 'Helyum külü oranı (son)', '', { term: 'heAsh' }],
   ['Z_eff (final)', 'Effective charge Z_eff (final)', 'Etkin yük Z_eff (son)', '', { term: 'zeff' }],

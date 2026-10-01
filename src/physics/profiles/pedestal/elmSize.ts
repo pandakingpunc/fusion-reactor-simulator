@@ -18,6 +18,7 @@ import type { ProfileContext } from '../context';
 import { interpCells } from '../geometry1d';
 import { elmCrash } from '../mhd';
 import type { ProfileState } from '../state';
+import { allocateWorkArrays } from '../work';
 import { loarteEnergyFraction, pedestalCollisionality } from './loarte';
 
 const KEV = 1.602176634e-16;
@@ -65,7 +66,25 @@ export function elmShapeForEnergy(ctx: ProfileContext, st: ProfileState, rhoPed:
   if (!(target > 0)) return { depth: 0, width: ELM_WIDTH_STD, energy: 0, capped: false };
   const N = ctx.N, g = ctx.tg;
   const Te = new Float64Array(N), Ti = new Float64Array(N), ne = new Float64Array(N), ni = new Float64Array(N);
+  // Impurity-mode trials use copied state and private composition arrays: shape searches must not book an ELM.
+  const imp = ctx.impurity;
+  const trial = imp ? ctx.view(new Float64Array(ctx.layout.size)) : null;
+  const comp = imp ? allocateWorkArrays(N) : null;
+  let W0 = 0;
+  if (imp && comp) {
+    imp.composition(st.Te, st.ne, st.s, comp);
+    W0 = ctx.storedEnergy(st, comp.ni);
+  }
   const loss = (f: number, w: number): number => {
+    if (imp && trial && comp) {
+      trial.Te.set(st.Te); trial.Ti.set(st.Ti); trial.ne.set(st.ne);
+      trial.s.raw.set(st.s.raw); trial.s.imp.set(st.s.imp);
+      imp.composition(trial.Te, trial.ne, trial.s, comp);
+      elmCrash(g, trial.Te, trial.Ti, trial.ne, comp.ni, ctx.bc.Te, ctx.bc.Ti, ctx.bc.n, rhoPed, f, 0.5 * f, w);
+      imp.previewElm(trial.s, rhoPed, 0.5 * f, w);
+      imp.composition(trial.Te, trial.ne, trial.s, comp);
+      return W0 - ctx.storedEnergy(trial, comp.ni);
+    }
     Te.set(st.Te); Ti.set(st.Ti); ne.set(st.ne); ni.set(ctx.w.ni);
     return elmCrash(g, Te, Ti, ne, ni, ctx.bc.Te, ctx.bc.Ti, ctx.bc.n, rhoPed, f, 0.5 * f, w);
   };

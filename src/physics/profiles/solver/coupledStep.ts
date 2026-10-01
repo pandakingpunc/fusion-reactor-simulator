@@ -47,7 +47,7 @@ import type { EventModel, EventTrigger, TriggerScratch, TriggerState } from '../
 import { triggerScratch } from '../events/triggers';
 import { solverErrorMessage } from '../eqguard';
 import { StepFailure, isNumericalFailure } from '../failures';
-import { Checkpointable, CheckpointRecord, recNum } from '../checkpoint';
+import { Checkpointable, CheckpointRecord, type CheckpointAux, recNum } from '../checkpoint';
 import type { FastIonSnapshot } from '../fastions/pool';
 import { CurrentInputs, DensityInputs, HEAT_CONVECTION, HeatInputs } from '../fvsolver';
 import { currentProfiles } from '../qprofile';
@@ -117,9 +117,12 @@ interface StepSnapshot {
   ped: Record<string, number> | null;
   /** the energy fields of the 'profile' fast-ion model (fastions/), which the source's accepted hook updates */
   fast: FastIonSnapshot | null;
+  /** State kept outside y by the impurity source and the equilibrium coupling. */
+  parts: { part: Partial<Checkpointable>; rec: CheckpointRecord; aux: CheckpointAux }[];
+  dt: number; eqDirty: boolean; diagStale: boolean; rng: number;
 }
 
-function snapshotStep(ctx: ProfileContext, forcedSteps: number): StepSnapshot {
+function snapshotStep(ctx: ProfileContext, forcedSteps: number, parts: readonly Partial<Checkpointable>[]): StepSnapshot {
   return {
     PSOL: ctx.PSOL, GammaB: ctx.GammaB, lastVloop: ctx.lastVloop, dWdtS: ctx.dWdtS, crashE: ctx.crashE, nsepGain: ctx.nsepGain,
     alphaRatio: ctx.alphaRatio, WfAlpha: ctx.WfAlpha, WfBeam: ctx.WfBeam, Pbound: ctx.Pbound,
@@ -127,17 +130,27 @@ function snapshotStep(ctx: ProfileContext, forcedSteps: number): StepSnapshot {
     geo: ctx.geo, pending: ctx.pending.length, warned: new Set(ctx.warned), forcedSteps, flux: ctx.flux.snapshot(),
     ped: ctx.ped ? (() => { const rec: Record<string, number> = {}; ctx.ped!.save(rec); return rec; })() : null,
     fast: ctx.fast?.snapshot() ?? null,
+    dt: ctx.dt, eqDirty: ctx.eqDirty, diagStale: ctx.diagStale, rng: ctx.rng.getState(),
+    parts: [...(ctx.impurity ? [ctx.impurity] : []), ...parts].map((part) => {
+      const rec: CheckpointRecord = {}, aux: CheckpointAux = {};
+      part.save?.(rec, aux);
+      return { part, rec, aux };
+    }),
   };
 }
 
 /** Puts the context back; returns the number of forced steps of the snapshot */
 function restoreStep(ctx: ProfileContext, s: StepSnapshot): number {
-  const { geo, pending, warned, forcedSteps, flux, ped, fast, ...scalars } = s;
+  const { geo, pending, warned, forcedSteps, flux, ped, fast, parts, rng, eqDirty, ...scalars } = s;
   Object.assign(ctx, scalars);
   ctx.flux.rollback(flux);
+  if (ctx.geo !== geo) ctx.adoptGeometry(geo);
+  // Geometry callbacks remap the current fields; restore snapshots only after those callbacks.
   if (ped) ctx.ped!.restore(ped);
   if (fast) ctx.fast?.restoreSnapshot(fast);
-  if (ctx.geo !== geo) ctx.adoptGeometry(geo);
+  for (const { part, rec, aux } of parts) part.restore?.(rec, aux);
+  ctx.eqDirty = eqDirty;
+  ctx.rng.setState(rng);
   ctx.pending.length = pending;
   ctx.warned = new Set(warned);
   return forcedSteps;
@@ -208,6 +221,8 @@ export class CoupledStepper implements Checkpointable {
     private readonly accept: (t: number, dt: number, yOld: Float64Array, y: Float64Array) => Slices<void>,
     /** event models: those with a trigger are localised inside a step */
     events: readonly EventModel[] = [],
+    /** Additional model state mutated by the accepted update, restored if the step throws or is closed early. */
+    private readonly rollbackParts: readonly Partial<Checkpointable>[] = [],
   ) {
     const N = ctx.N;
     const arr = () => new Float64Array(N);
@@ -238,7 +253,7 @@ export class CoupledStepper implements Checkpointable {
    * (a step that is rejected or retried is several of them) and inside the update after the accepted step (the
    * equilibrium update yields about every 5 ms). While it is suspended y holds a state that belongs to the step in
    * progress and nothing else may touch the model (Simulation.advance, `yieldWhen`); dropping the generator (`return()`)
-   * leaves y and the context as they are, for the caller's rewind to overwrite.
+   * rolls the unfinished step back, including accepted hooks whose equilibrium solve was still suspended.
    */
   *stepSlices(t: number, y: Float64Array, tMax: number): Slices<number> {
     const ctx = this.ctx;
@@ -248,14 +263,21 @@ export class CoupledStepper implements Checkpointable {
     const dt = Math.min(dtWant, tMax - t);
     if (dt <= 0) return t;
     const yOld = Float64Array.from(y);
-    const snap = snapshotStep(ctx, this.forcedSteps);
+    const snap = snapshotStep(ctx, this.forcedSteps, this.rollbackParts);
+    const stats = { ...this.stats }, failure = this.stepFailure;
+    const residual = this.energyResidual, err = this.lastErr, errAt = { ...this.lastErrAt };
+    let complete = false;
     try {
-      return yield* this.advance(t, dt, dtWant, yOld, y);
-    } catch (e) {
-      // a programming error (an exception that is no numerical failure): the step did not happen
-      y.set(yOld);
-      this.forcedSteps = restoreStep(ctx, snap);
-      throw e;
+      const next = yield* this.advance(t, dt, dtWant, yOld, y);
+      complete = true;
+      return next;
+    } finally {
+      if (!complete) {
+        y.set(yOld);
+        this.forcedSteps = restoreStep(ctx, snap);
+        this.stats = stats; this.stepFailure = failure;
+        this.energyResidual = residual; this.lastErr = err; this.lastErrAt = errAt;
+      }
     }
   }
 

@@ -21,7 +21,7 @@ import { SingularMatrixError } from '../../numerics/linalg';
 import type { Slices } from '../../kernel/slices';
 import type { EqSnapshot } from '../../types';
 import { KEV, ProfileContext } from '../context';
-import type { Checkpointable, CheckpointRecord } from '../checkpoint';
+import type { Checkpointable, CheckpointRecord, CheckpointAux } from '../checkpoint';
 import { recNum } from '../checkpoint';
 import { GsAttempt, GsStage, isUsableEquilibrium, isUsableGeometry, solveGuarded, solverErrorMessage } from '../eqguard';
 import { EquilibriumInitFailure } from '../failures';
@@ -269,6 +269,7 @@ export class EquilibriumCoupling implements Checkpointable {
     }
     // the state of the old geometry becomes the state of the new one with its contents and its enclosed current kept (remap.ts), then the geometry is adopted
     remapContents(g, tg, v.ne, v.psi, v.s.Ip);
+    ctx.impurity?.remapGeometry(g, tg, v);
     ctx.adoptGeometry({ eq: res.eq, tg });
     this.eqIp = v.s.Ip;
     // postStep (ELM, sawtooth) runs next and reads n_i, q, p: evaluate them on the new geometry
@@ -294,18 +295,21 @@ export class EquilibriumCoupling implements Checkpointable {
     return { R, Z, rho, Raxis: eq.Raxis, Zaxis: eq.Zaxis, q95: eq.q95, li: eq.li3, betaP: eq.betaP };
   }
 
-  save(rec: CheckpointRecord): void {
+  save(rec: CheckpointRecord, aux?: CheckpointAux): void {
     Object.assign(rec, {
       eqTime: this.eqTime, eqBetaP: this.eqBetaP, eqLi: this.eqLi, eqIp: this.eqIp, eqRetryAt: this.eqRetryAt, eqFailStreak: this.eqFailStreak,
       eqUpdates: this.eqUpdates, eqRetried: this.eqRetried, eqRejected: this.eqRejected,
     });
+    if (aux) { aux.eqStats = { ...this.eqStats }; aux.eqAttempts = this.eqAttempts.slice(); }
   }
-  restore(rec: Readonly<CheckpointRecord>): void {
+  restore(rec: Readonly<CheckpointRecord>, aux?: Readonly<CheckpointAux>): void {
     const num = (k: string, dflt: number) => recNum(rec, k, dflt);
     this.eqTime = num('eqTime', 0);
     this.eqBetaP = num('eqBetaP', this.eqBetaP); this.eqLi = num('eqLi', this.eqLi); this.eqIp = num('eqIp', this.eqIp);
     this.eqRetryAt = num('eqRetryAt', 0); this.eqFailStreak = num('eqFailStreak', 0);
     this.eqUpdates = num('eqUpdates', this.eqUpdates); this.eqRetried = num('eqRetried', this.eqRetried);
     this.eqRejected = num('eqRejected', this.eqRejected);
+    if (aux?.eqStats) this.eqStats = { ...(aux.eqStats as { it: number; res: number }) };
+    if (aux?.eqAttempts) this.eqAttempts = (aux.eqAttempts as GsAttempt[]).slice();
   }
 }

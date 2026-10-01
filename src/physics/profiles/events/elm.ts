@@ -52,6 +52,8 @@ export class ElmEvents implements EventModel {
     const over = ctx.ped ? d.ped_ratio > 1 : d.alpha_ped > 1;
     if (!(ctx.hmode && c.events.elms && over && t - this.lastElm > tRef)) return;
     const rhoPed = 1 - ctx.pedWidth;
+    // Accepted inventory hooks may have changed the composition since the heat equation's work arrays.
+    ctx.impurity?.composition(st.Te, st.ne, s);
     const scatter = 0.8 + 0.4 * ctx.rng.next();
     let fW = ps.elmFraction * scatter, wIn = ELM_WIDTH_STD, note = '';
     if (ps.elmLoss === 'loarte') {
@@ -63,10 +65,15 @@ export class ElmEvents implements EventModel {
     }
     ctx.ped?.onElm();
     const before = ctx.crashHook ? ctx.crashSnapshot(st) : null;
-    const dW = elmCrash(ctx.tg, st.Te, st.Ti, st.ne, ctx.w.ni, ctx.bc.Te, ctx.bc.Ti, ctx.bc.n, rhoPed, fW, 0.5 * fW, wIn);
-    if (before) ctx.crashHook!('ELM', t, before, ctx.crashSnapshot(st));
-    if (ctx.impurity) ctx.impurity.elmCrash(st, rhoPed, 0.5 * fW, wIn); // every species uses the electron crash width
+    const W0 = ctx.impurity ? ctx.storedEnergy(st) : 0;
+    let dW = elmCrash(ctx.tg, st.Te, st.Ti, st.ne, ctx.w.ni, ctx.bc.Te, ctx.bc.Ti, ctx.bc.n, rhoPed, fW, 0.5 * fW, wIn);
+    if (ctx.impurity) {
+      ctx.impurity.elmCrash(st, rhoPed, 0.5 * fW, wIn); // every species uses the electron crash width
+      ctx.impurity.composition(st.Te, st.ne, s);
+      dW = W0 - ctx.storedEnergy(st);
+    }
     else { s.NHe *= 1 - 0.1 * fW; s.cZ *= 1 - 0.1 * fW; }
+    if (before) ctx.crashHook!('ELM', t, before, ctx.crashSnapshot(st));
     s.Pelm += dW / 1.0; // energy pulse into the exponential average (τ = 1 s)
     ctx.crashE += dW; // the loss power of the τ_E scaling counts it in dW/dt (acceptStep)
     this.lastElm = t;

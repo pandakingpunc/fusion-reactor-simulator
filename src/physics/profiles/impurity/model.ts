@@ -113,7 +113,8 @@ export class ImpurityModel implements SourceModel {
   readonly N0: Float64Array;
   /**
    * The change of the content of each species by the adoptions of a new equilibrium: the cell volumes change (V' of a face by up to 1.7 %, the total volume
-   * fixed) while the densities stay, as for n_e (the coupling lane's remap of the contents is an open item). N_z = N_z(0) + injected - lost + Nremap.
+   * fixed) without a conservative state remap. Normal equilibrium updates remap every species and acknowledge the new geometry instead.
+   * N_z = N_z(0) + injected - lost + Nremap.
    */
   readonly Nremap: Float64Array;
   private tgSeen: TransportGeometry | null = null;
@@ -164,7 +165,7 @@ export class ImpurityModel implements SourceModel {
 
   /**
    * Books the change of the content of every species by an equilibrium adoption since the module last looked: the cell volumes changed (V' of a face by
-   * up to 1.7 %, the total volume fixed) and the densities stayed, as for n_e (the remap of the contents is the coupling lane's open item). Called before
+   * up to 1.7 %, the total volume fixed) and the densities stayed because the caller adopted geometry without remapping the state. Called before
    * anything changes the densities (the advance and every event), so that the booking is with the densities the adoption met and the balance
    * N_z = N_z(0) + injected - lost + Nremap holds to round-off between any two calls.
    */
@@ -179,6 +180,17 @@ export class ImpurityModel implements SourceModel {
       for (let i = 0; i < this.N; i++) d += b[i] * (g.dV[i] - old.dV[i]);
       this.Nremap[k] += d;
     }
+  }
+
+  /** Conserves every species' cell content during the final, non-yielding equilibrium adoption. */
+  remapGeometry(old: TransportGeometry, next: TransportGeometry, st: ProfileState): void {
+    this.syncGeometry(st.s); // retain any pending booking from an earlier, unremapped adoption
+    for (let k = 0; k < this.nSp; k++) {
+      const b = this.block(st.s, k);
+      for (let i = 0; i < this.N; i++) b[i] *= old.dV[i] / next.dV[i];
+    }
+    this.tgSeen = next; // the next advance/crash must not book this conservative change again
+    // NHe and cZ mirror conserved integrals; they and all source/loss counters stay unchanged.
   }
 
   /** Sets the initial profiles in st: no helium, the impurities at their configured concentration times n_e (the scalar model starts there) */
@@ -202,8 +214,8 @@ export class ImpurityModel implements SourceModel {
    * the charge of helium and of the impurities at their mean charge at T_e, Z_eff, the ion sum sum n_j Z_j^2/A_j / n_e and the arrays of the
    * species (w.nHe, w.nZ, w.ns, mean charges).
    */
-  composition(Te: ArrayLike<number>, ne: ArrayLike<number>, s: ScalarView): void {
-    const ctx = this.ctx, w = ctx.w, N = this.N;
+  composition(Te: ArrayLike<number>, ne: ArrayLike<number>, s: ScalarView, w: Pick<ProfileContext['w'], 'na' | 'nb' | 'nHe' | 'nZ' | 'ns' | 'Zimp' | 'Zseed' | 'ni' | 'ZeffMain' | 'Zeff' | 'ionSum'> = this.ctx.w): void {
+    const ctx = this.ctx, N = this.N;
     const fs = FUEL_SPECIES[ctx.cfg.fuel];
     const fA = Math.min(Math.max(s.fA, 0), 1);
     const imp = s.imp;
@@ -370,10 +382,20 @@ export class ImpurityModel implements SourceModel {
    * separatrix value. What leaves counts as outflux (helium: the exhaust of the next advance).
    */
   elmCrash(st: ProfileState, rhoPed: number, fN: number, wIn: number): void {
-    const g = this.ctx.tg, N = this.N;
     this.syncGeometry(st.s);
+    this.flushElm(st.s, rhoPed, fN, wIn, true);
+    this.mirror(st);
+  }
+
+  /** The same density crash on a trial state's copies, without geometry booking, controllers or loss counters. */
+  previewElm(s: ScalarView, rhoPed: number, fN: number, wIn: number): void {
+    this.flushElm(s, rhoPed, fN, wIn, false);
+  }
+
+  private flushElm(s: ScalarView, rhoPed: number, fN: number, wIn: number, book: boolean): void {
+    const g = this.ctx.tg, N = this.N;
     for (let k = 0; k < this.nSp; k++) {
-      const b = this.block(st.s, k), nB = this.edgeDensity(k);
+      const b = this.block(s, k), nB = this.edgeDensity(k);
       let lost = 0;
       for (let i = 0; i < N; i++) {
         const r = g.rhoC[i];
@@ -384,10 +406,11 @@ export class ImpurityModel implements SourceModel {
         b[i] = nB + (old - nB) * (1 - fN * wgt);
         lost += (old - b[i]) * g.dV[i];
       }
-      this.Nout[k] += lost;
-      if (k === this.iHe) this.elmOut += lost;
+      if (book) {
+        this.Nout[k] += lost;
+        if (k === this.iHe) this.elmOut += lost;
+      }
     }
-    this.mirror(st);
   }
 
   /** The particle loss of a disruption quench: every species decays with the electrons, by the factor f in the step (the concentrations stay) */

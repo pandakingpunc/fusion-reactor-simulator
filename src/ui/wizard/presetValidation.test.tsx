@@ -70,9 +70,9 @@ describe('wizard: the validation line of the preset cards', () => {
     const cases: [string, string, string][] = [
       ['ITER', '✓', 'Validated: within the published range'],
       ['SPARC', '≈', 'Benchmark: passes, but deviates more than 20 % from the published value'],
-      ['NIF (N221204)', '✗', 'Documented miss: the model does not reach the published value'],
+      ['NIF (N221204)', '✗', 'Documented deviation: the model is outside the published range'],
       ['NIF (N210808)', '◎', 'Calibration shot: passes by construction, not a validation'],
-      ['JET DTE2 · 1.5D profiles', '✗', 'Documented miss: the model does not reach the published value'],
+      ['JET DTE2 · 1.5D profiles', '✗', 'Documented deviation: the model is outside the published range'],
     ];
     for (const [name, glyph, label] of cases) {
       const glyphEl = within(line(name)).getByRole('img');
@@ -93,7 +93,7 @@ describe('wizard: the validation line of the preset cards', () => {
   it('has the accessible labels in Turkish too, and no English label is left', async () => {
     mount();
     await act(async () => { await store.actions.setLocale('tr'); });
-    await waitFor(() => expect(within(line('NIF (N221204)')).getByRole('img').getAttribute('aria-label')).toBe('Belgelenmiş sapma: model yayınlanan değere ulaşmıyor'));
+    await waitFor(() => expect(within(line('NIF (N221204)')).getByRole('img').getAttribute('aria-label')).toBe('Belgelenmiş sapma: model yayımlanmış aralığın dışında'));
     expect(within(line('NIF (N210808)')).getByRole('img').getAttribute('aria-label')).toBe('Kalibrasyon atışı: yapı gereği geçer, doğrulama sayılmaz');
     expect(within(line('SPARC')).getByRole('img').getAttribute('aria-label')).toBe('Kıyas: geçiyor, ancak yayınlanan değerden %20’den fazla sapıyor');
     expect(within(line('ITER')).getByRole('img').getAttribute('aria-label')).toBe('Doğrulandı: yayınlanmış aralığın içinde');

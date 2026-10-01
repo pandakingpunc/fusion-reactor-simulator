@@ -164,7 +164,7 @@ Sarmalayıcı, komut satırının standart kütüphane tabanlı bir alt-süreç 
 ```bash
 npm test               # birim, bileşen, CLI ve hızlı altın testler (vitest)
 npm run validate       # tüm preset'ler literatür tablosuna karşı; birkaç dakika
-npm run golden         # altın regresyon: her durum 1e-9'da
+npm run golden         # altın regresyon: her durum 1e-9'da; birkaç dakika sürer
 npm run figures:check  # docs/figures, figures.manifest.json ile eşleşir ve aynen yeniden üretilir
 npm run ci:local       # tür denetimleri, şema denetimleri, testler, validate, golden, şekil denetimi, derleme, paket bütçesi; ilk hatada durur
 ```

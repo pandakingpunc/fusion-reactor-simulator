@@ -154,7 +154,7 @@ export const en = {
   'wiz.val.ok': 'Validated: within the published range',
   'wiz.val.benchmarked': 'Benchmark: passes, but deviates more than 20 % from the published value',
   'wiz.val.calibration': 'Calibration shot: passes by construction, not a validation',
-  'wiz.val.miss': 'Documented miss: the model does not reach the published value',
+  'wiz.val.miss': 'Documented deviation: the model is outside the published range',
   'wiz.modified': '(modified)',
   'wiz.methodTitle': 'Confinement method',
   'wiz.methodNote': 'Each method runs its own physics module. Changing the method loads its reference preset.',

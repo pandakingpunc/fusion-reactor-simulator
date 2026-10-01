@@ -173,7 +173,7 @@ The wrapper is a standard-library subprocess front end of the command line ([`py
 ```bash
 npm test               # unit, component, CLI and fast golden tests (vitest)
 npm run validate       # all presets against the literature table; a few minutes
-npm run golden         # golden regression: every case at 1e-9
+npm run golden         # golden regression: every case at 1e-9; takes several minutes
 npm run figures:check  # docs/figures match figures.manifest.json and regenerate identically
 npm run ci:local       # type checks, schema checks, tests, validate, golden, figures check, build, bundle budget; stops at the first failure
 ```

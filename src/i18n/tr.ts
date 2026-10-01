@@ -151,7 +151,7 @@ export const tr: Dict = {
   'wiz.val.ok': 'Doğrulandı: yayınlanmış aralığın içinde',
   'wiz.val.benchmarked': 'Kıyas: geçiyor, ancak yayınlanan değerden %20’den fazla sapıyor',
   'wiz.val.calibration': 'Kalibrasyon atışı: yapı gereği geçer, doğrulama sayılmaz',
-  'wiz.val.miss': 'Belgelenmiş sapma: model yayınlanan değere ulaşmıyor',
+  'wiz.val.miss': 'Belgelenmiş sapma: model yayımlanmış aralığın dışında',
   'wiz.modified': '(değiştirildi)',
   'wiz.methodTitle': 'Hapsetme yöntemi',
   'wiz.methodNote': 'Her yöntem kendi fizik modülüyle koşar. Yöntem değiştirmek o yöntemin referans presetini yükler.',

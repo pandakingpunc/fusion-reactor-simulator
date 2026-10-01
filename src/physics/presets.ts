@@ -31,7 +31,16 @@ export function defaultMagnetic(over: Partial<MagneticConfig> & { geometry: Magn
   return out as unknown as MagneticConfig;
 }
 
-export interface Preset { id: string; name: string; desc: string; cfg: ReactorConfig; validation?: string }
+/**
+ * What the validation line of a preset is worth, taken from `npm run validate` (src/physics/validation/references.ts), never guessed:
+ *  - 'ok'          every check the line names is within its published range and is a validated or a sanity-bound row (default);
+ *  - 'benchmarked' the line names a check that passes but is a benchmark more than 20 % from the published value;
+ *  - 'calibration' the line names a calibration shot: the model is fitted to it, so a pass is by construction;
+ *  - 'miss'        the line names a documented miss (a known failure of the table).
+ * The setup wizard picks the glyph and its accessible label from it (a tick only for 'ok').
+ */
+export type ValidationStatus = 'ok' | 'benchmarked' | 'calibration' | 'miss';
+export interface Preset { id: string; name: string; desc: string; cfg: ReactorConfig; validation?: string; validationStatus?: ValidationStatus }
 
 // ITER: R=6.2, a=2.0, κ95=1.7 (κ_sep 1.85), δ95=0.33 (δ_sep 0.49), B=5.3 T, Ip=15 MA, n≈1.0e20, P_aux=50 MW (33 NBI + 17 ICRH ... 20 EC), Q=10 hedef, 400 s. (ITER Physics Basis 1999; Shimada 2007)
 // `geometry` carries the 95 % values (q95, the τ_E scalings); `profiles.lcfsKappa/lcfsDelta` the LCFS shape, which sets the plasma volume
@@ -258,18 +267,18 @@ export const MUON: MuonConfig = { method: 'muon', muonRate_per_s: 1e14, muonCost
 export const PRESETS: Preset[] = [
   { id: 'ITER', name: 'ITER', desc: 'R=6.2 m, B=5.3 T, I_p=15 MA, 50 MW → Q≈10 target', cfg: ITER, validation: 'Q ≈ 10, T_i ≈ 8–20 keV, P_fus ≈ 500 MW' },
   { id: 'JET', name: 'JET DTE2 (2021)', desc: 'R=2.96 m, B=3.7 T, I_p=3.5 MA, 33 MW, 5 s → 59 MJ', cfg: JET, validation: 'E_fus ≈ 59 MJ (5 s)' },
-  { id: 'SPARC', name: 'SPARC', desc: 'REBCO 12.2 T, R=1.85 m, 25 MW ICRH → Q≈11', cfg: SPARC, validation: 'Q ≈ 2–11' },
+  { id: 'SPARC', name: 'SPARC', desc: 'REBCO 12.2 T, R=1.85 m, 25 MW ICRH → Q≈11', cfg: SPARC, validation: 'Q ≈ 2–11', validationStatus: 'benchmarked' },
   { id: 'DIIID', name: 'DIII-D', desc: 'R=1.67 m, B=2.2 T, D-D experiment', cfg: DIIID },
   { id: 'JT60SA', name: 'JT-60SA', desc: 'R=2.96 m, B=2.25 T, superconducting, 41 MW, D-D', cfg: JT60SA },
   { id: 'MASTU', name: 'MAST-U', desc: 'Spherical tokamak A=1.6, B=0.55 T, I_p=0.75 MA', cfg: MASTU },
   { id: 'W7X', name: 'Wendelstein 7-X', desc: 'Stellarator R=5.5 m, B=2.5 T, 7.5 MW ECRH', cfg: W7X },
   { id: 'DEMO', name: 'EU DEMO', desc: 'R=9.07 m, B=5.86 T, I_p=17.75 MA, 2 GW fusion', cfg: DEMO },
   { id: 'ITER15', name: 'ITER · 1.5D profiles', desc: 'Radial transport + Grad–Shafranov equilibrium; sawteeth, ELMs, NTMs, bootstrap', cfg: ITER_15D, validation: 'Q ≈ 10, P_fus ≈ 500 MW, f_bs ≈ 0.2' },
-  { id: 'JET15', name: 'JET DTE2 · 1.5D profiles', desc: 'Profiles with beam-target fusion from 3-component NBI', cfg: JET_15D, validation: 'E_fus ≈ 59 MJ (1.5D: +40%)' },
+  { id: 'JET15', name: 'JET DTE2 · 1.5D profiles', desc: 'Profiles with beam-target fusion from 3-component NBI', cfg: JET_15D, validation: 'E_fus ≈ 59 MJ (1.5D: +40%)', validationStatus: 'miss' },
   { id: 'SPARC15', name: 'SPARC · 1.5D profiles', desc: 'High-field compact tokamak with profile physics', cfg: SPARC_15D },
   { id: 'DEMO15', name: 'EU DEMO · 1.5D profiles', desc: '2000 s burn, bootstrap ≈ 0.4, NBCD', cfg: DEMO_15D, validation: 'P_fus ≈ 2 GW' },
-  { id: 'NIF', name: 'NIF (N221204)', desc: '2.05 MJ laser, indirect drive → 3.15 MJ (G=1.5)', cfg: NIF, validation: 'Published G = 1.5; model 0.67, a documented miss' },
-  { id: 'NIF210808', name: 'NIF (N210808)', desc: '1.92 MJ laser, indirect drive → 1.37 MJ (G=0.72)', cfg: NIF_N210808, validation: 'Calibration shot of the ICF model' },
+  { id: 'NIF', name: 'NIF (N221204)', desc: '2.05 MJ laser, indirect drive → 3.15 MJ (G=1.5)', cfg: NIF, validation: 'Published G = 1.5; model 0.67, a documented miss', validationStatus: 'miss' },
+  { id: 'NIF210808', name: 'NIF (N210808)', desc: '1.92 MJ laser, indirect drive → 1.37 MJ (G=0.72)', cfg: NIF_N210808, validation: 'Calibration shot of the ICF model', validationStatus: 'calibration' },
   { id: 'DIRECT', name: 'Direct-drive ICF', desc: '1.9 MJ, CH ablator', cfg: DIRECT_DRIVE },
   { id: 'Z', name: 'Z Machine (MagLIF)', desc: '20 MA, 100 ns, Be liner, 12 T, 2 kJ preheat', cfg: ZMACHINE },
   { id: 'GF', name: 'General Fusion (piston)', desc: 'Liquid-metal piston MTF, 3 ms compression', cfg: GF_PISTON },

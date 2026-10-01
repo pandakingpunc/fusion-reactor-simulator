@@ -1,5 +1,6 @@
 import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Method, ReactorConfig } from '../../physics/types';
+import type { Preset, ValidationStatus } from '../../physics/presets';
 import { Field } from './Field';
 import type { AdvancedStep, CrossIssue } from './schema';
 import { ADVANCED_STEPS, METHOD_DEFAULT, METHOD_INFO, PRESETS, STEP_IDS, STEP_TITLES, StepId, advancedApplies, advancedOverrides, crossFieldIssues, fieldLabel, fieldVisible, getPath, missingRequired, setPath, stepsFor } from './schema';
@@ -175,7 +176,7 @@ export function Wizard({ cfg, setCfg, name, setName, onRun, scenarioStep, scenar
                 <span className="name">{wt(p.name)}</span>
                 <span className="muted small">{wt(METHOD_INFO[p.cfg.method].name)}</span>
                 <span className="desc">{wt(p.desc)}</span>
-                {p.validation && <span className="val">✓ {wt(p.validation)}</span>}
+                {p.validation && <PresetValidation preset={p} text={wt(p.validation)} />}
               </button>
               <button type="button" className="btn sm primary preset-run" title={t('wiz.runPreset')} aria-label={`${t('wiz.runPreset')}: ${wt(p.name)}`}
                 onClick={() => { pickPreset(p.id); onRun(p.cfg); }}>▶</button>
@@ -184,6 +185,21 @@ export function Wizard({ cfg, setCfg, name, setName, onRun, scenarioStep, scenar
         </div>
       </aside>
     </div>
+  );
+}
+
+/** glyph of each validation status; the tick is for a plain pass only (the label says the rest in words, for the screen reader and the tooltip) */
+export const VALIDATION_GLYPH: Record<ValidationStatus, string> = { ok: '✓', benchmarked: '≈', calibration: '◎', miss: '✗' };
+
+/** The validation line of a preset card, with the glyph and the accessible label of its status (npm run validate is the source of the status). */
+function PresetValidation({ preset, text }: { preset: Preset; text: string }) {
+  const t = useT();
+  const status = preset.validationStatus ?? 'ok';
+  const label = t(`wiz.val.${status}`);
+  return (
+    <span className={`val ${status}`}>
+      <span role="img" aria-label={label} title={label}>{VALIDATION_GLYPH[status]}</span> {text}
+    </span>
   );
 }
 

@@ -43,9 +43,9 @@ export function TemplatePanel({ ctx, onAdd }: Props) {
 
   return (
     <div className="scn-templates">
-      <div className="row" role="tablist" aria-label={t('scn.templates')}>
+      <div className="row" role="group" aria-label={t('scn.templates')}>
         {TEMPLATE_KINDS.map((k) => (
-          <button key={k} type="button" role="tab" aria-selected={kind === k} className={`btn sm${kind === k ? ' primary' : ''}`} onClick={() => pick(k)}>{t(`scn.tpl.${k}` as const)}</button>
+          <button key={k} type="button" aria-pressed={kind === k} className={`btn sm${kind === k ? ' primary' : ''}`} onClick={() => pick(k)}>{t(`scn.tpl.${k}` as const)}</button>
         ))}
       </div>
       <p className="hint">{t(`scn.tpl.${kind}.hint` as const)}</p>

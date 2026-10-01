@@ -154,7 +154,9 @@ export default function ScenarioEditor({ scenario, ctx, onChange, modelError, co
         </>
       )}
 
-      <div role={issues.length ? 'alert' : 'status'} className={`diag-box ${issues.length ? '' : 'ok'}`} style={{ margin: '12px 0 8px' }}>
+      {/* one polite announcement of the number of problems (a live region that swaps between alert and status would repeat on every nudge of a point) */}
+      <p className="sr-only" role="status">{issues.length ? t('scn.problemsCount', { n: issues.length }) : t('scn.noProblems')}</p>
+      <div data-testid="scn-problems" className={`diag-box ${issues.length ? '' : 'ok'}`} style={{ margin: '12px 0 8px' }}>
         {issues.length === 0
           ? <span className="ok small">{ctx ? t('scn.ok') : t('scn.noModel')}</span>
           : <>

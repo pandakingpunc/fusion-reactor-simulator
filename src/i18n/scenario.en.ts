@@ -20,6 +20,7 @@ export const scenarioEn = {
   'scn.lanesHint': 'One lane per control. Drag a point to move it, double-click a lane to add a point; with a point focused the arrow keys nudge it (Shift: ten times more) and Delete removes it. Before its first point a control keeps its configured value (dashed line).',
   'scn.noLanes': 'No waveforms yet: add a lane, or use a template.',
   'scn.laneLabel': 'Waveform of {label}',
+  'scn.laneActual': 'programmed line, and the value the run gave it: {value} at the end',
   'scn.kind': 'Shape',
   'scn.kind.pwl': 'Ramps (piecewise linear)',
   'scn.kind.step': 'Steps (hold)',
@@ -87,6 +88,8 @@ export const scenarioEn = {
 
   'scn.problems': 'Problems with this scenario',
   'scn.ok': 'The scenario is valid for this configuration.',
+  'scn.problemsCount': 'Problems found in the scenario: {n}',
+  'scn.noProblems': 'No problems found in the scenario',
   'scn.json': 'Text form (JSON)',
   'scn.jsonApply': 'Apply text',
   'scn.jsonCopy': 'Copy',

@@ -43,6 +43,7 @@ export class DisruptionEvents implements EventModel {
       ctx.lastDiag.ignited = 0;
       // and the fast ions are lost with the plasma (the quench diagnostics report no fast-ion energy; the 0D pools decay in 1 ms)
       ctx.WfAlpha = 0; ctx.WfBeam = 0;
+      ctx.fast?.clear();
       ev.push({ t, kind: 'disruption', msg: `DISRUPTION: ${DISRUPTION_LABELS[cause]} — ${diag}` });
     }
   }

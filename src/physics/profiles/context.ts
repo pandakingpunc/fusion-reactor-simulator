@@ -18,6 +18,9 @@ import { checkProfileSettings, type SettingNote } from './settings';
 import { CurrentProgramme, currentWaveform, IP_PROGRAMME_FLOOR } from './control/plasmaCurrent';
 import { gridSpec, type GridSpec, type TransportGeometry } from './geometry1d';
 import { FluxLedger } from './current/flux';
+import type { CurrentDriveParts } from './cd/nbcd';
+import { beamComponents } from './fastions/components';
+import { FastIonProfile } from './fastions/pool';
 import { CurrentSolver, DensitySolver, HeatSolver } from './fvsolver';
 import { impurityStateSize } from './impurity/config';
 import type { ImpurityModel } from './impurity/model';
@@ -169,6 +172,13 @@ export class ProfileContext {
    */
   WfAlpha = 0;
   WfBeam = 0;
+  /**
+   * The fast-ion energy fields on the radial grid (ProfileSettings.fastIonModel = 'profile'; fastions/), or null for the scalar pools above.
+   * With the fields, WfAlpha and WfBeam are their volume integrals.
+   */
+  readonly fast: FastIonProfile | null;
+  /** the neutral-beam and electron-cyclotron current drive of the last evaluation, per cell (cdModel = 'physics'; cd/), or null for the legacy scalings */
+  readonly cdParts: CurrentDriveParts | null;
   /** ignition state (P_α ≥ P_rad + W/τ_E, with hysteresis): a diagnostic and the report's ignition time */
   ignited = false;
   /** heating.autoOff: the time at which the external heating starts to ramp down (Infinity = it stays on) */
@@ -215,6 +225,8 @@ export class ProfileContext {
     this.layout = new StateLayout(this.N, impurityStateSize(cfg, this.ps, this.N));
     this.w = allocateWorkArrays(this.N);
     this.flux = new FluxLedger(this.N);
+    this.fast = this.ps.fastIonModel === 'profile' ? new FastIonProfile(this.N, beamComponents(cfg.heating.E_NBI_keV)) : null;
+    this.cdParts = this.ps.cdModel === 'physics' ? { nbcd: new Float64Array(this.N), eccd: new Float64Array(this.N) } : null;
     const g0 = cfg.geometry;
     // the LCFS shape of the boundary is the one the 0D volume, surface and scalings use (geometry.boundaryShape): an edited geometry.kappa or
     // geometry.delta of a preset that carries profiles.lcfsRef95 (ITER15, DEMO15) moves it in the ratio to the 95 % shape (bitwise unchanged at the presets)

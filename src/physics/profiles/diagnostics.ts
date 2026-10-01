@@ -94,15 +94,15 @@ export interface PowerTotals {
   P_fus: number; P_chg: number; P_neut: number; P_bt: number;
   /** absorbed auxiliary heating (NBI + ICRH + ECRH) */
   P_aux_abs: number;
-  /** absorbed NBI heating (part of P_aux_abs) */
+  /** NBI heating deposited in the plasma (the absorbed beam power; with the 'profile' fast-ion model the delivered heating, which lags it) */
   P_beam: number;
   P_oh: number;
-  /** alpha (charged-product) heating, = P_chg */
+  /** alpha (charged-product) heating, = P_chg (with the 'profile' fast-ion model the delivered heating, which lags the birth power P_chg) */
   P_alpha: number;
   P_brems: number; P_line: number; P_sync: number; P_rad: number;
   /** radiation of the core, ρ < RHO_CORE (all of the synchrotron radiation counts as core) */
   P_rad_core: number;
-  /** P_aux_abs + P_oh + P_alpha */
+  /** P_aux_abs + P_oh + P_alpha (with the 'profile' fast-ion model the beam power in it is the delivered heating P_beam) */
   P_heat: number;
   /**
    * energy content of the steady slowing-down distributions of the fast charged fusion products and of
@@ -137,17 +137,31 @@ export function powerTotals(ctx: ProfileContext, K: StepConstants): PowerTotals 
   const w = ctx.w, g = ctx.tg;
   const I = (a: Float64Array) => volumeIntegral(g, a);
   const P_fus = I(w.Pfus), P_chg = I(w.Pchg), P_neut = I(w.Pneut), P_bt = I(w.Pbt);
+  const fast = ctx.fast;
   const P_beam = I(w.PnbiE) + I(w.PnbiI);
-  const P_aux_abs = P_beam + I(w.PicE) + I(w.PicI) + I(w.PecE);
-  const P_oh = I(w.Poh), P_alpha = P_chg;
+  // the 'profile' fast-ion model delivers the heating of the beam ions and of the fusion products with the slowing-down delay: P_beam and
+  // P_alpha are then the delivered heating (as the pools of the 0D model), while the absorbed beam power that Q is measured against is
+  // the birth power of the components
+  let P_beam_birth = P_beam;
+  if (fast) { P_beam_birth = 0; for (const b of fast.beamBirth) P_beam_birth += I(b); }
+  const P_rf = I(w.PicE) + I(w.PicI) + I(w.PecE);
+  const P_aux_abs = fast ? P_beam_birth + P_rf : P_beam + I(w.PicE) + I(w.PicI) + I(w.PecE);
+  const P_oh = I(w.Poh), P_alpha = fast ? I(w.PaE) + I(w.PaI) : P_chg;
   const P_brems = I(w.Pbr), P_line = I(w.Pline), P_sync = K.Psync, P_rad = P_brems + P_line + P_sync;
   // core radiation: bremsstrahlung and line radiation inside ρ < RHO_CORE (the cell that straddles it
   // counts by its share), synchrotron entirely
   let core = 0;
   for (let i = 0; i < g.N; i++) core += Math.min(1, Math.max(0, (RHO_CORE - g.rhoF[i]) / g.dRhoC[i])) * (w.Pbr[i] + w.Pline[i]) * g.dV[i];
   const P_rad_core = core + P_sync;
-  const P_heat = P_aux_abs + P_oh + P_alpha;
+  const P_heat = fast ? P_rf + P_beam + P_oh + P_alpha : P_aux_abs + P_oh + P_alpha;
   return { P_fus, P_chg, P_neut, P_bt, P_aux_abs, P_beam, P_oh, P_alpha, P_brems, P_line, P_sync, P_rad, P_rad_core, P_heat, Wss_alpha: I(w.Walpha), Wss_beam: I(w.Wbeam) };
+}
+
+/** cdModel 'physics': the current driven by the neutral beams and by the electron-cyclotron waves [MA] (the total is f_cd, the fraction of I_p) */
+function currentDriveChannels(ctx: ProfileContext): Record<string, number> {
+  const g = ctx.tg, p = ctx.cdParts!;
+  const I = (jB: Float64Array) => volumeIntegral(g, jB.map((jb, i) => jb / (2 * Math.PI * g.RgeoC[i] * g.B0))) / 1e6;
+  return { I_nbcd: I(p.nbcd), I_eccd: I(p.eccd) };
 }
 
 /**
@@ -175,7 +189,8 @@ export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: Globa
   const betaN = (betaT * 100 * g.a * g.B0) / Math.max(Ip_MA, 0.01);
   const betaN_th = (betaThermal * 100 * g.a * g.B0) / Math.max(Ip_MA, 0.01);
   const Bpa = (MU0 * Ip) / g.perimeter;
-  const betaP = (2 * MU0 * pAvg) / (Bpa * Bpa);
+  // (with the 'profile' fast-ion model the equilibrium's pressure table carries the fast ions, and so does β_p)
+  const betaP = (2 * MU0 * (ctx.fast ? pAvg + ((2 / 3) * Wfast) / g.volume : pAvg)) / (Bpa * Bpa);
   // ℓ_i(3) = 2∫B_p² dV/(μ0² I_p² R0), B_p² ≈ g2 ψ'²
   let bp2 = 0;
   for (let i = 0; i < N; i++) { const dps = 0.5 * (w.dpsiF[i] + w.dpsiF[i + 1]); bp2 += g.g2C[i] * dps * dps * g.dV[i]; }
@@ -196,7 +211,9 @@ export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: Globa
   const Tped = g.uniform ? v.Te[cellIndex(g, rhoPed)] : interpCells(g, v.Te, rhoPed);
   // pressure at the separatrix: the last face of the α check on a packed grid (alphaMHD)
   const pSep = (ctx.bc.n * ctx.bc.Te + ctx.bc.n * (w.ni[N - 1] / Math.max(v.ne[N - 1], 1)) * ctx.bc.Ti) * KEV;
-  const aMax = alphaMHD(g, w.p, w.qF, rhoPed - 0.02, w.alphaF, pSep);
+  // the ballooning drive is the gradient of the total pressure: with the 'profile' fast-ion model the fast ions are in it (not in the bootstrap current, which reads w.p)
+  const pMhd = ctx.fast ? ctx.fast.totalPressure(w.p) : w.p;
+  const aMax = alphaMHD(g, pMhd, w.qF, rhoPed - 0.02, w.alphaF, pSep);
   const aCrit = alphaCritical(ctx.geomB.kappa, ctx.geomB.delta, ctx.ps.alphaCritFactor);
   ctx.alphaRatio = aMax / aCrit;
   const rho1 = rhoOfQ(g, w.qF, 1);
@@ -221,12 +238,13 @@ export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: Globa
     ...edgeChannels1D(ctx, q95v, Ip),
     ...(X.H ? { H98y2: X.H.H98y2, HITPA20: X.H.HITPA20 } : {}),
     ...(ctx.ped ? ctx.ped.diagnostics(ctx, st, q95v) : {}),
+    ...(ctx.cdParts ? currentDriveChannels(ctx) : {}),
   };
   // profile-resolved He ash and impurities: fHe and cZ from the profiles, and their own keys (impurity/)
   ctx.impurity?.diagnostics(st, ctx.lastDiag);
   // profiles
   const mer = w.mercF, bal = w.ballF;
-  stabilityProfiles(g, w.p, w.qF, mer, bal);
+  stabilityProfiles(g, pMhd, w.qF, mer, bal);
   const r = (a: ArrayLike<number>, sc = 1) => Array.from(a, (x) => x * sc);
   const jfac = (_i: number) => 1 / (g.B0 * 1e6);
   ctx.lastProf = {
@@ -236,6 +254,7 @@ export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: Globa
     chie: Array.from(g.rhoC, (_, i) => 0.5 * (w.chiE[i] + w.chiE[i + 1])), chii: Array.from(g.rhoC, (_, i) => 0.5 * (w.chiI[i] + w.chiI[i + 1])),
     Palpha: r(w.Pchg, 1e-6), Paux: Array.from(g.rhoC, (_, i) => (w.PnbiE[i] + w.PnbiI[i] + w.PicE[i] + w.PicI[i] + w.PecE[i]) * 1e-6),
     Prad: r(w.Prad, 1e-6), Pohm: r(w.Poh, 1e-6), p: r(w.p, 1e-3), Zeff: r(w.Zeff),
+    ...(ctx.fast ? { pfast: r(ctx.fast.pFast, 1e-3) } : {}),
     shear: Array.from(g.rhoC, (rr, i) => (rr * (w.qF[i + 1] - w.qF[i]) / g.dRhoC[i]) / Math.max(w.q[i], 1e-6)),
     alpha: Array.from(g.rhoC, (_, i) => 0.5 * (w.alphaF[i] + w.alphaF[i + 1])),
   };

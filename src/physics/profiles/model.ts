@@ -121,7 +121,7 @@ export class ProfileModel implements SimModel {
     // profile-resolved He ash and impurities (ProfileSettings.impurityTransport): a source model (line radiation of the third species, the
     // advance after each accepted step, its checkpoint) that also owns the composition of the state
     if (impurityMode(ctx.ps) !== 'legacy') ctx.impurity = new ImpurityModel(ctx);
-    const sources = [...(modules.sources ?? defaultSources()), ...(ctx.impurity ? [ctx.impurity] : [])];
+    const sources = [...(modules.sources ?? defaultSources(ctx)), ...(ctx.impurity ? [ctx.impurity] : [])];
     this.physics = new PhysicsPipeline(ctx, modules.transport ?? createTransportModel(ctx.ps.transportModel), sources);
     this.fueling = new FuelingControl(ctx);
     const ev = defaultEvents(modules.events);

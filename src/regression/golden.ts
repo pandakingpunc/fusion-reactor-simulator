@@ -112,6 +112,11 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
   { id: 'ITER15-impurity-neo', preset: 'ITER15', tEnd: 30, overrides: { profiles: { impurityTransport: 'facit', impuritySetpoint: 'separatrix', impurityDoverDe: 0.05, impurityPinchOverPe: 0.05 } } },
   // WS6a: the EPED1-type pedestal and the Loarte ELM energy loss switched on (opt-in modules of profiles/pedestal/); 30 s: L-H at 8 s, ELMs from 12 s
   { id: 'ITER15-EPED', preset: 'ITER15', tEnd: 30, overrides: { profiles: { pedestalModel: 'eped1', elmLoss: 'loarte' } } },
+  // the opt-in physics of WS6d, one short case each: fast-ion energy fields with the delayed heating and NBCD (Start and Cordey); ECCD (Lin-Liu et al.)
+  // with NBCD on a DIII-D plasma; the Porcelli trigger with the helical-flux reset on the MAST-U plasma that sawteeth early
+  { id: 'JET15-fast', preset: 'JET15', tEnd: 1.5, overrides: { profiles: { fastIonModel: 'profile', cdModel: 'physics' } } },
+  { id: 'DIIID15-eccd', preset: 'DIIID', tEnd: 1.5, overrides: { fidelity: '1.5D', profiles: { cdModel: 'physics', eccd: { rho: 0.35, nPar: 0.35 } } } },
+  { id: 'MASTU15-saw', preset: 'MASTU', tEnd: 0.5, overrides: { fidelity: '1.5D', profiles: { sawtoothTrigger: 'porcelli', sawtoothReconnection: 'kadomtsev' } } },
 ];
 
 /** Quick cases compared by `npm test` (0D magnetic, two pulsed models, short 1.5D). */

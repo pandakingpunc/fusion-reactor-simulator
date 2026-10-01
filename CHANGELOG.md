@@ -5,6 +5,7 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 ## [Unreleased]
 
 ### Added
+- Opt-in fast-ion energy profiles, delayed heating and orbit smoothing, NBCD/ECCD current drive, Porcelli sawtooth triggering and Kadomtsev reconnection, with seeded bitwise chunk-invariance guards.
 - Opt-in EPED1-type pedestal and Loarte ELM energy closure, dynamic pedestal diagnostics, discriminating acceptance tests and a dedicated combined golden case.
 - Opt-in profile-resolved impurity and helium-ash transport, anomalous/FACIT closures, local radiation/composition, conservative inventory ledgers and dedicated neoclassical golden guards.
 - Current/flux ledgers, conservative equilibrium remapping, plasma-current-triggered equilibrium updates, a 0D plasma circuit and opt-in Redl bootstrap closure; CS reports retain plasma flux requirements while gating solenoid swing/margin on supplied designs.

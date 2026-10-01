@@ -37,6 +37,27 @@ export type FuelingMethod = 'gas' | 'pellet' | 'nbi' | 'mixed';
 /** Model doğruluğu: 0D güç dengesi veya 1.5D profil taşınımı + Grad–Shafranov dengesi */
 export type Fidelity = '0D' | '1.5D';
 
+/**
+ * Electron-cyclotron launcher of the 'physics' current-drive model (ProfileSettings.eccd): the wave frequency and harmonic set where the
+ * resonance is, the parallel refractive index the direction and the Doppler shift of the resonance, the poloidal angle where the wave is absorbed
+ * the trapping the driven electrons meet (profiles/cd/eccd.ts). APPROXIMATION: no ray or beam tracing; the deposition is a Gaussian layer at the
+ * aim `rho`, the whole ECRH power is absorbed there.
+ */
+export interface EccdLauncher {
+  /** cyclotron harmonic of the absorption, an integer 1 to 3 (default 2) */
+  harmonic?: number;
+  /** wave frequency [GHz]; if absent the frequency is the one whose Doppler-shifted resonance is at the aim (y = ℓ ω_c/ω fixed by n∥ and T_e) */
+  freq_GHz?: number;
+  /** parallel refractive index, n∥ > 0 co-current drive, n∥ < 0 counter-current (default 0.3) */
+  nPar?: number;
+  /** poloidal angle of the absorption [deg] on the flux surface: 0 outboard midplane, 180 inboard (default 0) */
+  thetaP_deg?: number;
+  /** aim: normalised radius of the deposition layer (default ProfileSettings.ecrhRho) */
+  rho?: number;
+  /** rms width of the layer over the radius (default ProfileSettings.ecrhWidth) */
+  width?: number;
+}
+
 /** 1.5D profil modeli ayarları (yalnız tokamak / ST) */
 export interface ProfileSettings {
   /** radyal hücre sayısı (ρ_tor) */
@@ -163,6 +184,37 @@ export interface ProfileSettings {
   /** akım sürme verimleri γ [10²⁰ A W⁻¹ m⁻²] */
   nbcdEff: number;
   eccdEff: number;
+  /**
+   * Fast ions (NBI ions and the charged fusion products). 'scalar' (default): two scalar energy pools that give β its fast-ion pressure, the
+   * heating instantaneous and local (profiles/fastIons.ts). 'profile': energy fields on the radial grid, one per beam energy component and one
+   * for the fusion products, with the slowing-down delay of the heating and an orbit-width smoothing of the source; the fast pressure enters β,
+   * the Grad–Shafranov pressure table and the ballooning drive (not the bootstrap current), and the beam-target rate follows the fields
+   * (profiles/fastions/).
+   */
+  fastIonModel?: 'scalar' | 'profile';
+  /** multiplier of the rms orbit width of the fast ions in the 'profile' model (default 1; 0: no orbit smoothing) */
+  fastOrbitScale?: number;
+  /**
+   * Current drive of the 1.5D model. 'legacy' (default): I_CD = γ P/(n̄₂₀ R0) with the efficiency factors `nbcdEff`, `eccdEff` and the Gaussian ECRH
+   * deposition of `ecrhRho`. 'physics': neutral-beam current drive from the fast-ion current of the slowing-down distribution (Gaffey, Cordey) with the
+   * electron shielding and trapped-electron correction of Start and Cordey (Phys. Fluids 23 (1980) 1477), and electron-cyclotron current drive
+   * from the launcher `eccd` with the efficiency of Lin-Liu, Chan and Prater (Phys. Plasmas 10 (2003) 4064) (profiles/cd/); no free efficiency factor.
+   */
+  cdModel?: 'legacy' | 'physics';
+  /** ECCD launcher of cdModel 'physics' (defaults: second harmonic, n∥ 0.3, outboard midplane, aimed at ecrhRho with the width ecrhWidth) */
+  eccd?: EccdLauncher;
+  /**
+   * Sawtooth trigger. 'shear' (default): s₁ > `sawtoothShear` at q = 1 (the simplified shear form). 'porcelli': the three conditions of Porcelli,
+   * Boucher and Rosenbluth (Plasma Phys. Control. Fusion 38 (1996) 2163, equations 13-15) on the ideal, trapped-ion and fast-ion energy of the
+   * internal kink, the diamagnetic stabilisation and the growth rate of the ion-kinetic layer.
+   */
+  sawtoothTrigger?: 'shear' | 'porcelli';
+  /**
+   * Sawtooth reconnection. 'legacy' (default): T_e, T_i, n_e flattened inside the mixing radius and q raised to 1.01 there. 'kadomtsev': the same
+   * mixing and the poloidal flux reset of Kadomtsev's full reconnection, which conserves the helical flux ψ* = ψ − Φ/2π (reconnected surfaces
+   * of equal ψ*, volume conserved): q of the mixed region rises above 1 continuously from the axis.
+   */
+  sawtoothReconnection?: 'legacy' | 'kadomtsev';
   /** sabit ayırıcı sıcaklığı [keV]; verilmezse iki-nokta modeli */
   Tsep_keV?: number;
   /** n_sep / ⟨n_e⟩ */

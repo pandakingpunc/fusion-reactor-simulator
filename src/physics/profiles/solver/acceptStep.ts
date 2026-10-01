@@ -28,7 +28,8 @@ export function acceptStep(ctx: ProfileContext, fueling: FuelingControl, physics
   const K = ctx.lastK!;
   // volume integrals [W]
   const P = powerTotals(ctx, K);
-  advanceFastIons(ctx, P, dt);
+  // the scalar pools; the energy fields of the 'profile' model are advanced by their source's accepted hook (fastions/source.ts)
+  if (!ctx.fast) advanceFastIons(ctx, P, dt);
   const Rfus = volumeIntegral(g, w.Rfus), Nn = volumeIntegral(g, w.Nfus), ashRate = volumeIntegral(g, w.ash);
   // stored energy: one definition (ctx.storedEnergy), with the ion density of the old composition for the old state
   const W = ctx.storedEnergy(v);

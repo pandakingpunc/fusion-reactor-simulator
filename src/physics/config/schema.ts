@@ -55,6 +55,10 @@ const NONLINEAR_SOLVERS = keysOf<NonNullable<ProfileSettings['nonlinearSolver']>
 const NEOCLASSICAL_MODELS = keysOf<NonNullable<ProfileSettings['neoclassicalModel']>>({ sauter: 0, redl: 0 });
 const IMPURITY_TRANSPORTS = keysOf<NonNullable<ProfileSettings['impurityTransport']>>({ legacy: 0, anomalous: 0, facit: 0 });
 const IMPURITY_SETPOINTS = keysOf<NonNullable<ProfileSettings['impuritySetpoint']>>({ average: 0, separatrix: 0 });
+const FAST_ION_MODELS = keysOf<NonNullable<ProfileSettings['fastIonModel']>>({ scalar: 0, profile: 0 });
+const CD_MODELS = keysOf<NonNullable<ProfileSettings['cdModel']>>({ legacy: 0, physics: 0 });
+const SAWTOOTH_TRIGGERS = keysOf<NonNullable<ProfileSettings['sawtoothTrigger']>>({ shear: 0, porcelli: 0 });
+const SAWTOOTH_RECONNECTIONS = keysOf<NonNullable<ProfileSettings['sawtoothReconnection']>>({ legacy: 0, kadomtsev: 0 });
 const EDGE_LOSS_FITS = keysOf<NonNullable<EdgeOptions['lossFit']>>({ stangeby1: 0, stangeby2: 0, body2025: 0 });
 const EDGE_RADIATIONS = keysOf<NonNullable<EdgeOptions['radiation']>>({ prescribed: 0, lengyel: 0 });
 const MAGNETIC_METHODS = keysOf<MagneticConfig['method']>({ tokamak: 0, spherical_tokamak: 0, stellarator: 0 });
@@ -157,6 +161,19 @@ const profileSettings = partial<ProfileSettings>({
   nbiRtan: num({ exMin: 0, max: 2, def: PS.nbiRtan, doc: 'NBI tangency radius over the major radius.' }),
   nbcdEff: num({ min: 0, max: 10, def: PS.nbcdEff, doc: 'Neutral-beam current-drive efficiency factor.' }),
   eccdEff: num({ min: 0, max: 10, def: PS.eccdEff, doc: 'Electron-cyclotron current-drive efficiency factor.' }),
+  fastIonModel: opt(oneOf(FAST_ION_MODELS, "Fast ions (NBI ions, charged fusion products) of the 1.5D model. 'scalar': two scalar energy pools for the fast-ion pressure of beta, instantaneous local heating. 'profile': energy fields on the radial grid with the slowing-down delay of the heating and an orbit-width smoothing of the source; the fast pressure enters beta, the Grad-Shafranov pressure table and the ballooning drive (not the bootstrap current).", 'scalar')),
+  fastOrbitScale: opt(num({ min: 0, max: 10, def: 1, doc: "Multiplier of the rms orbit width of the fast ions in the 'profile' fast-ion model (0: no orbit smoothing)." })),
+  cdModel: opt(oneOf(CD_MODELS, "Current drive of the 1.5D model. 'legacy': I_CD = gamma P / (n R0) with the efficiency factors nbcdEff and eccdEff. 'physics': neutral-beam current drive from the fast-ion current of the slowing-down distribution with the shielding and trapped-electron correction of Start and Cordey (1980), electron-cyclotron current drive from the launcher `eccd` with the efficiency of Lin-Liu, Chan and Prater (2003); nbcdEff and eccdEff are not used.", 'legacy')),
+  eccd: opt(object<NonNullable<ProfileSettings['eccd']>>({
+    harmonic: opt(int({ min: 1, max: 3, def: 2, doc: 'Cyclotron harmonic of the absorption, 1 to 3 (default 2).' })),
+    freq_GHz: opt(num({ exMin: 0, max: 1000, unit: 'GHz', doc: 'Wave frequency; if absent the frequency is the one whose Doppler-shifted resonance is at the aim.' })),
+    nPar: opt(num({ min: -0.99, max: 0.99, def: 0.3, doc: 'Parallel refractive index; positive drives current along the plasma current, negative against it (default 0.3).' })),
+    thetaP_deg: opt(num({ min: -180, max: 180, unit: 'deg', def: 0, doc: 'Poloidal angle of the absorption on the flux surface: 0 outboard midplane, 180 inboard.' })),
+    rho: opt(num({ min: 0, exMax: 1, unit: 'rho_tor', doc: 'Aim: normalised radius of the deposition layer (default ecrhRho).' })),
+    width: opt(num({ exMin: 0, max: 1, unit: 'rho_tor', doc: 'Width of the deposition layer (default ecrhWidth).' })),
+  }, { doc: "ECCD launcher of cdModel 'physics': harmonic, frequency, parallel index, poloidal angle of the absorption, aim and width of the layer." })),
+  sawtoothTrigger: opt(oneOf(SAWTOOTH_TRIGGERS, "Sawtooth trigger. 'shear': s1 > sawtoothShear at q = 1. 'porcelli': the three conditions of Porcelli, Boucher and Rosenbluth (1996), equations 13-15 (ideal, trapped-ion and fast-ion energy of the internal kink, diamagnetic stabilisation, growth rate of the ion-kinetic layer).", 'shear')),
+  sawtoothReconnection: opt(oneOf(SAWTOOTH_RECONNECTIONS, "Sawtooth reconnection. 'legacy': T_e, T_i, n_e flattened inside the mixing radius, q raised to 1.01 there. 'kadomtsev': the same mixing with the poloidal flux reset of Kadomtsev's full reconnection (helical flux conserved).", 'legacy')),
   Tsep_keV: opt(num({ exMin: 0, max: 10, unit: 'keV', doc: 'Fixed separatrix temperature; the two-point model if absent.' })),
   nsepFrac: num({ exMin: 0, max: 1, def: PS.nsepFrac, doc: 'Separatrix density over the volume-averaged electron density.' }),
   edgeModel: opt(oneOf(EDGE_MODELS, "Separatrix temperature of the 1.5D boundary. 'legacy': conduction-limited two-point T_sep (outboard share 0.6, clamped to 0.03-0.5 keV); 'twoPoint': T_sep of the edge model (Eich lambda_q, divertor spreading, outer-leg power share), guard band 5 eV - 2 keV. The edge diagnostics use the edge model either way.", 'legacy')),

@@ -28,6 +28,19 @@ describe('1.5D: chunk invariance', () => {
       await tick();
     }
   }, 180000);
+
+  it('JET 1.5D fast ions + current drive (0.6 s): 6 seeded random chunk schedules equal runAll() bitwise', async () => {
+    const base = presetCfg('JET15', 0.6) as MagneticConfig;
+    const cfg: MagneticConfig = {
+      ...base, profiles: { ...base.profiles, fastIonModel: 'profile', cdModel: 'physics' },
+    };
+    const ref = referenceRun(cfg);
+    expect(ref.digest).not.toBe(referenceRun(base).digest); // the opt-in physics changes the run
+    for (let s = 1; s <= 6; s++) {
+      expectSameRun(runChunked(cfg, 3100 + s), ref, `JET15-fast schedule ${s}`);
+      await tick();
+    }
+  }, 180000);
 });
 
 describe('1.5D: actuator log', () => {

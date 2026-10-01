@@ -33,6 +33,8 @@ export function elmMargin(ctx: ProfileContext, st: TriggerState, sc: TriggerScra
   triggerProfiles(ctx, st, sc);
   const N = ctx.N, bc = ctx.bc;
   const rhoPed = 1 - ctx.pedWidth;
+  // the 'profile' fast-ion model: the fast pressure of the last accepted step (fixed over a step) is part of the ballooning drive, as in diagnostics.ts
+  if (ctx.fast) for (let i = 0; i < N; i++) sc.p[i] += ctx.fast.pFast[i];
   const pSep = (bc.n * bc.Te + bc.n * st.niOverNe[N - 1] * bc.Ti) * KEV;
   const aMax = alphaMHD(ctx.tg, sc.p, sc.qF, rhoPed - 0.02, undefined, pSep);
   return aMax / alphaCritical(ctx.geomB.kappa, ctx.geomB.delta, ctx.ps.alphaCritFactor) - 1;

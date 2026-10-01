@@ -52,6 +52,7 @@ export interface GoldenCase {
   /**
    * Settings changed from the preset, for combinations no preset uses (the wizard offers every
    * fuel for every method and 1.5D for both tokamak methods). Plain data: cases go to workers.
+   * `profiles` are 1.5D profile settings on top of the preset's (an opt-in physics module switched on).
    */
   overrides?: { fuel?: FuelType; fidelity?: Fidelity; n_target?: number; profiles?: Partial<ProfileSettings> };
 }
@@ -109,6 +110,8 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
   { id: 'ITER15-impurity', preset: 'ITER15', tEnd: 60, overrides: { profiles: { impurityTransport: 'facit' } } },
   // ws6e: the same with a weak anomalous transport and no set-point controller, so that the neoclassical D, K, H decide the impurity profiles (the guard of the FACIT wiring)
   { id: 'ITER15-impurity-neo', preset: 'ITER15', tEnd: 30, overrides: { profiles: { impurityTransport: 'facit', impuritySetpoint: 'separatrix', impurityDoverDe: 0.05, impurityPinchOverPe: 0.05 } } },
+  // WS6a: the EPED1-type pedestal and the Loarte ELM energy loss switched on (opt-in modules of profiles/pedestal/); 30 s: L-H at 8 s, ELMs from 12 s
+  { id: 'ITER15-EPED', preset: 'ITER15', tEnd: 30, overrides: { profiles: { pedestalModel: 'eped1', elmLoss: 'loarte' } } },
 ];
 
 /** Quick cases compared by `npm test` (0D magnetic, two pulsed models, short 1.5D). */

@@ -14,6 +14,7 @@ import { invertMonotone } from '../numerics/roots';
 import type { EqProfiles } from '../equilibrium/gs';
 import type { TracedSurfaces } from '../equilibrium/fluxsurface';
 import type { ProfileSettings } from '../types';
+import { PEDESTAL_GRID_WIDTH } from './pedestal/eped1';
 
 /**
  * The radial grid of the transport equations: N cells between the faces ρ_f (ρ_0 = 0 the axis,
@@ -64,10 +65,11 @@ export const PACKING_CENTER = 1.25;
 export const PACKING_WIDTH = 0.75;
 
 /** The packing of a shot from its settings (undefined: uniform grid) */
-export function gridSpec(ps: Pick<ProfileSettings, 'gridPacking' | 'pedestalWidth'>): GridSpec | undefined {
+export function gridSpec(ps: Pick<ProfileSettings, 'gridPacking' | 'pedestalWidth'> & Partial<Pick<ProfileSettings, 'pedestalModel'>>): GridSpec | undefined {
   const p = ps.gridPacking ?? 0;
   if (!(p > 0)) return undefined;
-  const pw = Math.max(ps.pedestalWidth, 1e-3);
+  // the EPED1-type pedestal has its own width (0.036 in ψ_N, about 0.045 in ρ̂), which the shot cannot report before its grid exists
+  const pw = Math.max(ps.pedestalModel === 'eped1' ? PEDESTAL_GRID_WIDTH : ps.pedestalWidth, 1e-3);
   return { packing: p, rhoT: 1 - PACKING_CENTER * pw, width: PACKING_WIDTH * pw };
 }
 

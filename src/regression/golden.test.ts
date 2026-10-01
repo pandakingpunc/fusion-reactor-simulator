@@ -281,6 +281,15 @@ describe('golden cases', () => {
     expect(() => caseConfig({ id: 'x', preset: 'JET', overrides: { profiles: { transportModel: 'bgb' } } })).toThrow(/does not run the 1\.5D profile model/);
   });
 
+  it('the EPED and Loarte overrides preserve the preset and require a profile model', () => {
+    const eped = caseConfig(goldenCase('ITER15-EPED')) as MagneticConfig;
+    expect(eped.profiles).toMatchObject({ pedestalModel: 'eped1', elmLoss: 'loarte', lcfsKappa: 1.85 });
+    expect(eped.t_end).toBe(30);
+    expect((PRESETS.find((p) => p.id === 'ITER15')!.cfg as MagneticConfig).profiles).not.toHaveProperty('pedestalModel');
+    expect(() => caseConfig({ id: 'x', preset: 'ITER', overrides: { profiles: { pedestalModel: 'eped1' } } })).toThrow(/does not run the 1\.5D profile model/);
+    expect(() => caseConfig({ id: 'x', preset: 'NIF', overrides: { profiles: {} } })).toThrow(/does not run the 1\.5D profile model/);
+  });
+
   it('the Redl override is opt-in and requires the profile model', () => {
     const redl = caseConfig(goldenCase('SPARC15-redl')) as MagneticConfig;
     expect(redl.profiles?.neoclassicalModel).toBe('redl');

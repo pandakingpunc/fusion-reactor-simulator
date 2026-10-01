@@ -112,6 +112,8 @@ interface StepSnapshot {
   geo: ProfileContext['geo']; pending: number; warned: ReadonlySet<string>; forcedSteps: number;
   /** the flux ledger integrates over the accepted steps: a step that is undone must not stay in it */
   flux: ReturnType<ProfileContext['flux']['snapshot']>;
+  /** the EPED1-type pedestal's state (pedestal/PedestalModel.ts), null with the fixed pedestal */
+  ped: Record<string, number> | null;
 }
 
 function snapshotStep(ctx: ProfileContext, forcedSteps: number): StepSnapshot {
@@ -120,14 +122,16 @@ function snapshotStep(ctx: ProfileContext, forcedSteps: number): StepSnapshot {
     alphaRatio: ctx.alphaRatio, WfAlpha: ctx.WfAlpha, WfBeam: ctx.WfBeam, Pbound: ctx.Pbound,
     bc: ctx.bc, lastK: ctx.lastK, lastDiag: ctx.lastDiag, lastProf: ctx.lastProf,
     geo: ctx.geo, pending: ctx.pending.length, warned: new Set(ctx.warned), forcedSteps, flux: ctx.flux.snapshot(),
+    ped: ctx.ped ? (() => { const rec: Record<string, number> = {}; ctx.ped!.save(rec); return rec; })() : null,
   };
 }
 
 /** Puts the context back; returns the number of forced steps of the snapshot */
 function restoreStep(ctx: ProfileContext, s: StepSnapshot): number {
-  const { geo, pending, warned, forcedSteps, flux, ...scalars } = s;
+  const { geo, pending, warned, forcedSteps, flux, ped, ...scalars } = s;
   Object.assign(ctx, scalars);
   ctx.flux.rollback(flux);
+  if (ped) ctx.ped!.restore(ped);
   if (ctx.geo !== geo) ctx.adoptGeometry(geo);
   ctx.pending.length = pending;
   ctx.warned = new Set(warned);

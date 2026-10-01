@@ -1151,3 +1151,13 @@ Node v24.19.0 · `npm run golden:update` · --only ITER15-impurity
 - Changed (1):
   - ITER15-impurity: 2628 keys moved; max rel. diff 8.64e-1
     - moved, largest change first: equilibrium.last.Zaxis, profiles.mid.prof.Pohm[48], profiles.mid.prof.Pohm[49], profiles.mid.prof.Pohm[47], profiles.mid.prof.Pohm[46], profiles.mid.prof.Pohm[45], profiles.mid.prof.Pohm[44], profiles.mid.prof.Pohm[43], history.V_loop.min, profiles.mid.prof.Pohm[42], history.V_loop.max, profiles.mid.prof.Pohm[41], … (+2616 more)
+
+## 2026-09-29 16:44 UTC — WS6a: new golden case ITER15-EPED (EPED1-type pedestal and Loarte ELM energy loss switched on); no existing case moves
+
+ITER15-EPED is the ITER15 preset shortened to 30 s with ProfileSettings.pedestalModel = 'eped1' and elmLoss = 'loarte' (profiles/pedestal/): the pedestal width from the KBM constraint 0.076 sqrt(beta_p,ped), the pedestal-top pressure limit from the peeling-ballooning height anchored to the DIII-D fit of Groebner et al. (GA-A26243), an adaptive transport barrier that holds the pedestal at that limit, an ELM when the pressure reaches it, and the ELM energy f(nu*_ped) W_ped of Loarte et al. (2003). L-H at about 8 s, ELMs from about 12 s. It guards the two opt-in modules (the default path is guarded by the other 30 cases, all unchanged by this lane: golden compare before and after the lane passes at 1e-9 on all 30).
+
+Added with --only ITER15-EPED; the other files are untouched.
+
+Node v24.19.0 · `npm run golden:update` · --only ITER15-EPED
+
+- Added (1): ITER15-EPED

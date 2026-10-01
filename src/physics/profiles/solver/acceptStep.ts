@@ -67,4 +67,6 @@ export function acceptStep(ctx: ProfileContext, fueling: FuelingControl, physics
   // state of plug-in modules
   physics.accepted(t, dt, o, v);
   writeDiagnostics(ctx, v, { ...P, W, dWdt, W_alpha: ctx.WfAlpha, W_beam: ctx.WfBeam, tauE, tauScal, P_loss, nbar, P_bound: ctx.Pbound, H });
+  // the barrier depth of the EPED1-type pedestal follows the pressure ratio of the new state (pedestal/PedestalModel.ts)
+  ctx.ped?.advance(ctx, dt);
 }

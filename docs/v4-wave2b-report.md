@@ -742,3 +742,34 @@ roles, locale-aware numbers, Turkish catalog for the physics layer's texts, firs
 far: NIF calibrated on N210808 alone and N221204 and N230729 predicted blind, calibration and blind roles in `validate`, benchmarked
 wording, W-7X OP1.2). They are merged after this gate, with `ci:local` re-run; the 4 Advanced-section tests they still report failing
 are the ones `ba56db9` fixes.
+
+## 11. Addendum after the gate: grid-independent NTM island flattening
+
+The convergence miss of section 1 (ITER15 flat-top Q -1.74 % between 50 and 100 radial cells against the Wave-2A target of
+1 %) was investigated after the gate (`scratch/claude-conv-investigation.md`, archived with the Claude handoff). The trigger was
+the Kadomtsev mixing-radius fix `37e3c90`, which is correct (the flat-top crash period is now 5.8 +- 0.8 s on every grid from 45 to
+140 cells); the cause was older: the NTM island flattening in `profiles/transport/coefficients.ts` added its extra diffusivity only
+on faces with |rho - r_s| < w/2, a hard on/off face test present since v3.0.0, so the flattened width depended on the grid (0.78 of
+the island at 25 and 50 cells, 1.12 at 35, 0.98 at 100) and ITER15 flat-top Q followed the (3,2) island width with r = -0.998 over
+19 grids. The Wave-2A value of -0.20 % was two biases cancelling.
+
+`8b90fb4` weights the extra diffusivity by the share of each face's control interval inside the island
+(`profiles/transport/islandCoverage.ts`; the flattened width now equals the island width on any grid to round-off). Measured:
+
+- ITER15 flat-top Q at 25 / 50 / 100 cells: 10.4442 / 10.6912 / 10.5054 before, 10.1629 / 10.4503 / 10.5094 after; the 50 -> 100
+  change is +0.566 % (target 1 % met). The 25/50/100 triple is now monotone (Richardson order 2.28, GCI 0.18 %); that is a
+  property of this triple only. Over ten grids of 45 cells and more the standard deviation of Q falls from 0.65 % to 0.31 %.
+- Not met: T_ped changes -1.098 % between 50 and 100 cells (oscillatory with the grid; before, -0.02 % was a chance value of the
+  same scatter). Below 50 cells the fix exposes a regime about 3 % lower in Q (25 cells has 5 cells across the pedestal); the
+  default grid is 50 cells.
+- The weighting conserves the integral of the extra diffusivity across the island, not the island's thermal resistance; whether
+  that is the better approximation is a hypothesis.
+- Golden (`595216c`): only ITER15 and ITER15-impurity move (the two cases with an NTM island; 37 are byte-identical). ITER15 Q
+  10.691193708423413 -> 10.450311385999676 (-2.25 %), P_fus 537.655 -> 525.615 MW, l_i -1.18 %, T_ped +1.59 %, sawtooth crashes
+  51 -> 62; ITER15-impurity Q 11.277040403297628 -> 11.298194586188112 (+0.19 %).
+- `npm run validate`: 36 pass, 6 known, 0 unexpected, no check changes status (DEMO15 full-shot P_fus -0.93 %).
+- Independent review: weighting exact to 3.3e-14 over 56 grids, every cited number matches the committed JSON, 279 files / 3670
+  tests pass, strict at its baseline.
+
+The ITER15 numbers in sections 5 to 7 and the 947f38b -> a229d7c table are measured before this fix; the current values are in
+`test/golden/ITER15.json` and the 2026-10-01 ledger entry of `test/golden/CHANGES.md`.

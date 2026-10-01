@@ -139,8 +139,9 @@ export function q95(g: Geometry, B0: number, Ip_MA: number): number {
  * The (1 − ε²)⁻² factor of the Uckan formula diverges as ε → 1 (MAST-U, ε = 0.76: q95 = 34); this fit
  * stays bounded through (1 − 0.74 ε)⁻¹. It has the same form as the 'Sauter' current scaling of PROCESS.
  * The constants (4.1, 1.2, 0.56, 0.09, 0.16, 0.45, 0.74, w07 = 1) agree with the UKAEA PROCESS documentation
- * (plasma current, i_plasma_current = 8, which cites Sauter) and with arXiv:2407.06439 App. A (eq. 8), which quotes
- * the fit; PROCESS evaluates it with the separatrix κ and δ, and the model's κ, δ are used as given.
+ * (plasma current, i_plasma_current = 8, which cites Sauter) and with eq. (8) of arXiv:2407.06439v2 (main text), which prints
+ * the fit as F(κ95, δ95, ε) for the 95 % surface (validation/primarySources.test.ts pins the constants to it; the primary paper
+ * was not read); PROCESS evaluates it with the separatrix κ and δ, and the model's κ, δ are used as given.
  */
 export function q95Sauter(g: Geometry, B0: number, Ip_MA: number): number {
   if (Ip_MA <= 0) return Infinity;

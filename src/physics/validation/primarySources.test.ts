@@ -19,12 +19,23 @@
  * the value of secondary quotations and of the UKAEA PROCESS documentation; eq. (5) of the manuscript and table 10 give
  * 0.147 / 0.1473, and since v4.0 the code has 0.147: 0.003 in the exponent is 0.7 % in τ_E at n̄ = 10²⁰ m⁻³.)
  *
- * The Sauter (2016) low-aspect-ratio q95 constants are not covered here: the primary paper (Fusion Eng. Des.
- * 112 (2016) 633, doi:10.1016/j.fusengdes.2016.04.033) could not be retrieved, only its transcriptions in the
- * PROCESS documentation and arXiv:2407.06439 App. A, eq. (8) (F(κ95, δ95, ε), which prints the same constants for the
- * 95 % surface); they stay unverified against the primary text.
+ * The Sauter (2016) low-aspect-ratio q95 constants (geometry.ts q95Sauter) are checked against a secondary quotation: the
+ * primary paper (Fusion Eng. Des. 112 (2016) 633, doi:10.1016/j.fusengdes.2016.04.033) could not be retrieved again when the
+ * table was reviewed for v4.0 (2026-10-01: the EPFL reprint at crppwww.epfl.ch resets the connection from this machine, the
+ * Infoscience record holds metadata and a licence file only, ScienceDirect and ResearchGate are not reachable). What was read is
+ * eq. (8) of A. Balestri, J. Ball and S. Coda, "On the feasibility of Ohmically heated negative triangularity tokamak power plants"
+ * (arXiv:2407.06439v2, EPFL Swiss Plasma Center; the text of the PDF, main text, not an appendix), which prints
+ *   F(κ95, δ95, ε) = 4.1 × 10⁶ (1 + 1.2(κ95 − 1) + 0.56(κ95 − 1)²)(1 + 0.09δ95 + 0.16δ95²)(1 + 0.45δ95 ε)/(1 − 0.74 ε)
+ * "used to correctly express the current density in terms of I_p [Sauter 2016] for shaped plasmas", with κ95 and δ95 "the elongation
+ * and triangularity at the flux surface enclosing 95 % of the poloidal flux". The paper prints F, not q95: the relation
+ * I_p = F a² B/(R q95) is the one q95Sauter inverts, and the constants are the printed ones. That the fit takes the shape of the 95 %
+ * surface (and not the separatrix) is the reading of this quotation; the abstract of the primary paper, as found through a search summary,
+ * speaks of the effective parameters of the last closed flux surface, so which surface the preset shape values should be
+ * is open (the sensitivity is tested below). The primary text stays unverified.
  */
 import { describe, expect, it } from 'vitest';
+import { q95Sauter } from '../geometry';
+import { MASTU } from '../presets';
 import { ITPA20_IL_PARAMS, ITPA20_PARAMS, tauFromParams, tauITPA20, tauITPA20IL, type ConfinementScalingParams } from '../transport';
 
 /** eq. (7) and table 16 (WLS), engineering variables */
@@ -81,5 +92,37 @@ describe('ITPA20 and ITPA20-IL against Verdoolaege et al. 2021 (eq. 5 and 7, tab
     const at = (p: ConfinementScalingParams) => tauFromParams(p, ITER.g, ITER.Ip, ITER.B, ITER.n, 87e6, ITER.M);
     expect(Math.abs(at(asParams(ITPA20_TABLE16)) / 3.067 - 1)).toBeLessThan(0.005); // table 16: 3.067 s
     expect(Math.abs(at(asParams(ITPA20_IL_TABLE10)) / 2.902 - 1)).toBeLessThan(0.005); // table 10: 2.902 s
+  });
+});
+
+/** F(κ, δ, ε) as printed in eq. (8) of Balestri, Ball and Coda (arXiv:2407.06439v2), restated here on purpose */
+const F_PRINTED = (kappa: number, delta: number, eps: number): number =>
+  4.1e6 * (1 + 1.2 * (kappa - 1) + 0.56 * (kappa - 1) ** 2) * (1 + 0.09 * delta + 0.16 * delta ** 2) * (1 + 0.45 * delta * eps) / (1 - 0.74 * eps);
+
+describe('Sauter (2016) q95 fit against the printed F(κ95, δ95, ε) of Balestri et al., eq. (8)', () => {
+  it('q95Sauter is the inverse of I_p = F a² B/(R q95) with the printed F, for conventional, spherical and negative-triangularity shapes', () => {
+    for (const [R, a, kappa, delta, B, Ip] of [
+      [0.8, 0.5, 2.1, 0.47, 0.55, 0.75], // MAST-U scenario
+      [6.2, 2.0, 1.7, 0.33, 5.3, 15], // ITER (95 % shape)
+      [1.85, 0.57, 1.97, 0.54, 12.2, 8.7], // a compact high-field shape
+      [5.0, 1.5, 1.5, -0.4, 5.0, 12], // negative triangularity, the case the paper of Sauter 2016 is about
+      [0.7, 0.55, 1.0, 0.0, 0.5, 1.0], // circular, ε = 0.79
+    ] as const) {
+      const q = q95Sauter({ R, a, kappa, delta }, B, Ip);
+      const q_printed = (F_PRINTED(kappa, delta, a / R) * a * a * B) / (R * Ip * 1e6);
+      expect(q / q_printed, `R ${R} κ ${kappa} δ ${delta}`).toBeCloseTo(1, 12);
+    }
+  });
+
+  it('the preset of MAST-U gives 6.39 and the fit is 8 % per 0.1 in κ there, so the choice of the surface the shape refers to matters at that level', () => {
+    const g = MASTU.geometry;
+    const at = (kappa: number) => q95Sauter({ ...g, kappa }, MASTU.B0, MASTU.Ip_MA);
+    expect(at(g.kappa)).toBeCloseTo(6.39, 2);
+    expect(at(g.kappa + 0.1) / at(g.kappa) - 1).toBeCloseTo(0.081, 2);
+    // d ln q95 / dκ = (1.2 + 1.12 (κ − 1)) / (1 + 1.2 (κ − 1) + 0.56 (κ − 1)²)
+    const k = g.kappa - 1;
+    expect((1.2 + 1.12 * k) / (1 + 1.2 * k + 0.56 * k * k)).toBeCloseTo(0.811, 3);
+    // the elongation of the 95 % surface of a D-shaped plasma lies below that of the separatrix: the q95 of the same current is lower
+    expect(at(g.kappa - 0.2)).toBeLessThan(at(g.kappa));
   });
 });

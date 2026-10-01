@@ -31,12 +31,16 @@
  * to any value of the table with a published one.
  *
  * Wording (evaluate.ts). A check whose model value deviates by more than 20 % from the published value is reported as
- * 'benchmarked (deviation X %)', one within 20 % as 'validated' (a bound of kind sanity as 'sanity bound').
+ * 'benchmarked (deviation X %)', one within 20 % as 'validated' (a bound of kind sanity as 'sanity bound'). The deviation is
+ * measured from the `value` of the check, which for a bound or a mid-point of a band is not a measurement: read the row with its kind.
  *
  * Known failures. When the current model falls outside a defensible range, the check is kept and
  * `knownFailure` says why: validate prints it as KNOWN-FAIL, lists it in the summary and does not fail
  * the exit code. A known failure that starts passing is reported (XPASS) so the marker can be removed.
- * Model values quoted in `knownFailure` texts are those of v4.0 development (branch v4/integration).
+ * Model values quoted in `knownFailure` texts, and in the review notes of `basis` texts (marked 'Review'), are those of v4.0 development (branch v4/integration).
+ *
+ * Source limitations. A published value whose source text could not be read is kept with the number and `sourceLimitation` says what was and was not
+ * verified; the accept range is never widened for it, and a reading that later contradicts the number is a change of the table, not of the model.
  */
 import type { MetricPath } from './metrics';
 
@@ -73,7 +77,11 @@ export interface ReferenceCheck {
   /** full citation */
   source: string;
   doi?: string;
-  /** why there is no `doi` for a measured value: the source could not be verified as a peer-reviewed paper */
+  /**
+   * what of the published value could not be verified against the text of its source: required for a value without a `doi`
+   * (the source could not be verified as a peer-reviewed paper), optional for one with a `doi` whose text could not be read
+   * (or not in the part that states this number) when the check was reviewed. Printed with the table, never a reason to widen `accept`.
+   */
   sourceLimitation?: string;
   /** accepted model range [lo, hi], inclusive */
   accept: readonly [number, number];
@@ -189,7 +197,12 @@ const ALPHA_SHARE = (preset: string): ReferenceCheck => ({
   ref: 'ITER Physics Basis ch. 1, 1999', source: SRC.ipb1999ch1, doi: DOI.ipb1999ch1, accept: [0, 0.213], tolerance: 'stated', kind: 'sanity',
   basis: 'a bound from the energetics of D + T → ⁴He (3.561 MeV) + n (14.028 MeV): the alphas carry 3.561/17.589 = 0.2025 of the fusion power ' +
     'and P_alpha, the deposited heating of the charged products alone, cannot exceed it; +5 % of slack (0.2126, rounded up to 0.213) because P_alpha = W_α/τ lags a ' +
-    'P_fus that is not exactly steady on the flat top. Guards the v3 bookkeeping that counted the NBI heating in P_alpha (0.24 for ITER)',
+    'P_fus that is not exactly steady on the flat top. Guards the v3 bookkeeping that counted the NBI heating in P_alpha (0.24 for ITER). ' +
+    'Review of the tolerance (v4.0 development, the four 0D D-T presets): the flat-top means are ITER 0.207, JET 0.203, SPARC 0.204 and DEMO 0.209, ' +
+    'and the instantaneous share scatters between 0.196 and 0.216 inside one flat top (P_alpha lags the sawtooth- and ELM-modulated P_fus by the slowing-down time, ' +
+    'and the flat-top mean is taken over samples of the history), so the slack is about the width of that scatter: the margin to the bound is 1.8 % for DEMO, 2.7 % ' +
+    'for ITER, and the bound is not set from these values (the +5 % is a stated tolerance, the 0.213 follows from 0.2025). A v3-type error (0.24) is ' +
+    '13 % above the bound; widening the slack to cover a noisier model would defeat the check, so a failure is a reason to look at the P_alpha bookkeeping first',
 });
 
 /**
@@ -205,7 +218,16 @@ const MASTU_Q95 = (preset: 'MASTU'): ReferenceCheck => ({
     'the band, whose mid-point is the value. The accepted range is the band itself, a bound on both sides: q95 follows from I_p, B0 and ' +
     'the shape through the low-aspect-ratio fit of Sauter (2016), no reduced-model energy balance enters, so nothing is widened. The preset is a scenario of the ' +
     'campaign (R 0.8 m, a 0.5 m, κ 2.1, δ 0.47, 0.75 MA, 0.55 T; Harrison 2024 and Imada et al. 2024, whose EFIT q95 of three such discharges is 6.3–6.7): the ' +
-    'fit gives 6.4 for it. With the design-maximum shape of the machine (R 0.85 m, a 0.65 m, κ 2.5) it gave 18.2',
+    'fit gives 6.4 for it. With the design-maximum shape of the machine (R 0.85 m, a 0.65 m, κ 2.5) it gave 18.2. ' +
+    'The Sauter fit: its seven constants (4.1, 1.2, 0.56, 0.09, 0.16, 0.45, 0.74) are those printed as F(κ95, δ95, ε) in eq. (8) of Balestri, Ball and Coda (arXiv:2407.06439v2, ' +
+    'which cites Sauter 2016 for it), see primarySources.test.ts; it is written for the elongation and triangularity of the 95 % flux surface there, and the preset uses its ' +
+    'κ and δ as given (the discharge values of the papers above, not converted to the 95 % surface): the fit moves by 8 % per 0.1 in κ at κ = 2.1. The 5–10 band is a statement of ' +
+    'operation, not of one discharge, and a 0D model reproduces it only through the shape, field and current of the preset',
+  sourceLimitation: 'the 5 < q95 < 10 band is quoted from Berkery et al. 2023 (PPCF 65 045001), whose text could not be read when the check was reviewed (IOPscience stands behind a ' +
+    'bot check and the OSTI record has no full text): what was verified is its abstract (operation stayed out of the low-q, low-density region of the Hugill diagram), the open ' +
+    'slides of the same authors (ISTW 2022: plasma currents 400–750 kA, MAST-U yet to reach the low-q95 region) and, in the open text of Harrison et al. 2024 (PPCF 66 065019), ' +
+    'the ranges 450–1000 kA, 0.42–0.64 T and κ 2.0–2.2; the EFIT q95 of 6.3–6.7 and the discharge shapes of Imada et al. 2024 (table 1) could not be re-read. The primary text of ' +
+    'Sauter 2016 could not be read either (the EPFL copy resets the connection, Infoscience holds the record without the full text)',
 });
 
 /** The yield of N230729 is not in a paper that could be read: the facility's own record (no DOI), see `sourceLimitation`. */
@@ -303,9 +325,22 @@ export const REFERENCE_CHECKS: readonly ReferenceCheck[] = [
   {
     id: 'W7X.Ti0', preset: 'W7X', metric: 'T_i(0) (flat-top)', path: 'flatTop.Ti0', value: 1.5, uncertainty: 0.2, unit: 'keV',
     ref: 'Beurskens 2021', source: SRC.beurskens2021, doi: DOI.beurskens2021, accept: [0.91, 2.21], tolerance: 'temperature', kind: 'validation',
-    basis: 'gas-fuelled ECRH plasmas (this preset: 7.5 MW ECRH, no pellets): central T_i clamped at 1.5 ± 0.2 keV by ion-scale ' +
+    basis: 'gas-fuelled ECRH plasmas of the OP1.2 campaign (this preset: 7.5 MW ECRH; its "pellet" fuelling is a fuelling efficiency and delay of the 0D model, ' +
+      'not the pellet-train regime with a transient peaked density that reached T_i,0 > 3 keV): central T_i clamped at 1.5 ± 0.2 keV by ion-scale ' +
       'turbulence; ±30 % temperature tolerance. The 0D model (ISS04 energy balance, prescribed profile peaking) has no turbulent ' +
       'clamping, so this bounds its energy balance only',
+  },
+  {
+    id: 'W7X.HISS04', preset: 'W7X', metric: 'τ_E / τ_ISS04 (flat-top)', path: 'derived.HISS04', value: 0.65, band: [0.6, 0.65], unit: '',
+    ref: 'Beurskens 2021', source: SRC.beurskens2021, doi: DOI.beurskens2021, accept: [0.448, 0.869], tolerance: 'confinement', kind: 'validation',
+    basis: 'gas-fuelled ECRH plasmas, which are almost all the stationary plasmas of W7-X (OP1.2): the maximum-density plasma (n̄ = 1.4e20 m⁻³, 6 MW) has τ_E/τ_ISS04 ≈ 0.6 ' +
+      'and the documented discharge 20180927.042 (3.9 MW, W_dia = 0.5 MJ, τ_E = 130 ms) 0.65; the pellet-fuelled record plasmas, 40 % above ISS04, are another regime and not the band. ' +
+      '×/÷ exp(2·0.145) (the confinement tolerance of the policy; the RMS error of the ISS04 fit itself was not read). Not a test of a transport model: the 0D model sets ' +
+      'τ_E = H_ISS04 × τ_ISS04 with the preset\'s H_ISS04 = f_ren × H98 = 0.8, at its own loss power and density, and ISS04 is evaluated here independently at the flat-top n̄ and P_heat ' +
+      '(f_ren = 1, the preset\'s ι_2/3 = 0.9), so the check compares that input renormalisation with experiment. The preset is a generic 7.5 MW case, not a documented discharge ' +
+      '(P_ECRH 3.9–6 MW in the papers); a W_dia comparison (0.5 MJ at 3.9 MW) was not made because the power differs by a factor 2',
+    sourceLimitation: 'the ISS04 prefactor and exponents are those of a secondary quotation (Warmer et al., EUROfusion WPS2-PR(15)02, eq. 1, with f_ren in front); Yamada et al. 2005 ' +
+      '(doi:10.1088/0029-5515/45/12/024) was not read, nor was the W7-X value of ι_2/3 behind the preset\'s 0.9',
   },
   // ─── EU DEMO (0D) ────────────────────────────────────────────────────────────────────────────
   {
@@ -343,12 +378,23 @@ export const REFERENCE_CHECKS: readonly ReferenceCheck[] = [
   {
     id: 'ITER15.Tped', preset: 'ITER15', metric: 'T_e pedestal', path: 'flatTop.Tped', value: 4.5, uncertainty: 0.5, unit: 'keV',
     ref: 'Snyder 2011', source: SRC.snyder2011, doi: DOI.snyder2011, accept: [2, 7], tolerance: 'stated', kind: 'benchmark',
-    basis: 'EPED prediction for the ITER baseline, T_ped ≈ 4–5 keV; −50 %/+40 % of that band because the model uses an α-limited, not EPED, pedestal',
+    basis: 'EPED prediction for the ITER baseline, T_ped ≈ 4–5 keV; −50 %/+40 % of that band because the model uses an α-limited, not EPED, pedestal. ' +
+      'Review (v4.0 development): the model gives 3.49 keV, 22 % below the 4.5 keV of the table (benchmarked), and the interval is kept as it was. The published EPED1.6 numbers ' +
+      'that were read (Snyder et al., slides of the same results, APS-DPP 2010 and PET 2011): for the ITER baseline β_N,ped ≈ 0.6 (a pedestal pressure of 95 kPa for 15 MA, 5.3 T, a = 2 m; ' +
+      '92 kPa in a search summary of the paper), a width ≈ 0.04 in ψ_N and n_ped ≈ 7e19 m⁻³: with T_i = T_e and n_i = n_e that is T_ped = p/(2 n_ped e) = 4.1–4.2 keV, inside ' +
+      'the band 4–5 keV but not its centre. The preset uses the fixed pedestal of the model (profiles.pedestalModel = \'eped1\', which also reports the pedestal pressure, is off), so its T_ped ' +
+      'is taken at a pedestal density that is not the EPED one: a pressure comparison would be the like-for-like quantity and is an open item for the pedestal owner',
+    sourceLimitation: 'the 4.5 ± 0.5 keV (T_ped ≈ 4–5 keV) was not found as a printed number in the readable sources: the text of Snyder et al. 2011 (Nucl. Fusion 51 103016) could not be read ' +
+      '(IOPscience stands behind a bot check, the OSTI record has no full text); the temperature above is derived from β_N,ped and n_ped of the authors\' slides, and the abstract ' +
+      '(only a summary of it was seen) quotes no temperature',
   },
   {
     id: 'ITER15.nG', preset: 'ITER15', metric: 'n̄/n_G', path: 'flatTop.nG_frac', value: 0.85, unit: '',
     ref: 'Shimada 2007', source: SRC.shimada2007, doi: DOI.shimada2007, accept: [0.6, 1.0], tolerance: 'stated', kind: 'benchmark',
-    basis: 'inductive scenario n̄/n_G = 0.85; up to the Greenwald limit, down to −30 %',
+    basis: 'inductive scenario n̄/n_G = 0.85 with n̄ the line-averaged density (as for ITER.nG); up to the Greenwald limit, down to −30 %. Review (v4.0 development): ' +
+      'the 1.5D model regulates the line average, the preset sets n_target = 1.0e20 m⁻³ = 0.84 n_G (n_G = I_p/(π a²) = 1.194e20), and the flat top reads n̄ = 0.955e20 m⁻³ = 0.80 n_G, ' +
+      '4.5 % below the set-point and 6 % below the published 0.85 (validated by the 20 % rule). The 0D preset targets the volume average 0.914e20 (0.85 n_G on the line) and ' +
+      'reads 0.85, so the two fidelities differ by 0.05 n_G in the line average at the same published reference',
   },
   // ─── JET DTE2 · 1.5D ─────────────────────────────────────────────────────────────────────────
   {
@@ -423,7 +469,10 @@ export const REFERENCE_CHECKS: readonly ReferenceCheck[] = [
   {
     id: 'Z.yield', preset: 'Z', metric: 'D-D neutron yield', path: 'report.neutronYield', value: 1.1e13, unit: '',
     ref: 'Gomez 2020', source: SRC.gomez2020, doi: DOI.gomez2020, accept: [3.66e12, 3.3e13], tolerance: 'yield', kind: 'validation',
-    basis: 'best MagLIF shots at ~20 MA with enhanced B_z and preheat: primary D-D yield 1.1 × 10¹³ (2 kJ D-T equivalent); ×/÷ 3 (pulsed yield tolerance)',
+    basis: 'best MagLIF shots at ~20 MA with enhanced B_z and preheat: primary D-D yield 1.1 × 10¹³ (2 kJ D-T equivalent); ×/÷ 3 (pulsed yield tolerance). ' +
+      'Read against the abstract of the paper (a copy in Europe PMC, 2026-10-01): the yield rose by more than an order of magnitude to 1.1 × 10¹³ with B_z from 10.4 to 15.9 T, ' +
+      'laser preheat energy from 0.46 to 1.2 kJ and current coupling from 16 to 20 MA. The preset is not that shot (20 MA, B_z 12 T, 2 kJ of preheat): ' +
+      'it lies inside the scanned ranges, below the best field. The uncertainty of the yield (a table of the paper) was not read, none is used',
     knownFailure: 'the 0D MagLIF model over-predicts the yield by more than an order of magnitude (2.0 × 10¹⁴ against 1.1 × 10¹³, ' +
       'since v4.0 with a burn of ≈ 2 ns instead of ≈ 30 ns): its ideal compression to ' +
       'CR = 30 has no liner–fuel mix, end losses, preheat losses or Be radiation, which limit the experiments',
@@ -431,7 +480,8 @@ export const REFERENCE_CHECKS: readonly ReferenceCheck[] = [
   {
     id: 'Z.Ti', preset: 'Z', metric: 'T_i (burn-averaged)', path: 'burn.Ti', value: 3.1, unit: 'keV',
     ref: 'Gomez 2020', source: SRC.gomez2020, doi: DOI.gomez2020, accept: [2.17, 4.03], tolerance: 'temperature', kind: 'validation',
-    basis: 'burn-averaged ion temperature of the best shots, 3.1 keV (neutron time of flight); ±30 % temperature tolerance',
+    basis: 'burn-averaged ion temperature of the best shots, 3.1 keV (neutron time of flight); ±30 % temperature tolerance. The abstract of the paper (Europe PMC copy, 2026-10-01) ' +
+      'states that it doubled to 3.1 keV with the same increase of B_z, preheat and current as the yield (15.9 T, 1.2 kJ, 20 MA), which is not the preset (12 T, 2 kJ); no uncertainty was read, none is used',
   },
   // ─── General Fusion piston MTF ───────────────────────────────────────────────────────────────
   {

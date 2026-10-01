@@ -97,8 +97,43 @@ describe('reference table integrity', () => {
       if (c.kind !== 'sanity' && c.doi === undefined) {
         expect(c.sourceLimitation?.length ?? 0, `${c.id} needs a DOI or a sourceLimitation`).toBeGreaterThan(60);
       }
-      if (c.doi !== undefined) expect(c.sourceLimitation, `${c.id} has a DOI: no source limitation`).toBeUndefined();
+      // with a DOI a limitation says what of the value could not be read in the source; it is optional but never empty
+      if (c.sourceLimitation !== undefined) expect(c.sourceLimitation.length, `${c.id} source limitation`).toBeGreaterThan(60);
     }
+  });
+
+  it('the checks whose source text could not be read, in whole or in part, say so (reviewed for v4.0)', () => {
+    const limited = REFERENCE_CHECKS.filter((c) => c.sourceLimitation !== undefined).map((c) => c.id).sort();
+    expect(limited).toEqual(['ITER15.Tped', 'MASTU.q95', 'NIF.G_N230729', 'W7X.HISS04']);
+    // with a DOI and a limitation the published value still has the numbers of the policy: nothing is widened for a missing read
+    for (const id of ['ITER15.Tped', 'MASTU.q95', 'W7X.HISS04']) {
+      const c = REFERENCE_CHECKS.find((x) => x.id === id)!;
+      expect(c.doi, id).toBeDefined();
+      expect(c.kind, id).not.toBe('sanity');
+    }
+  });
+
+  it('W7-X OP1.2: τ_E/τ_ISS04 of the gas-fuelled ECRH plasmas, 0.6–0.65 (Beurskens 2021), is a validation check on the band', () => {
+    const c = REFERENCE_CHECKS.find((x) => x.id === 'W7X.HISS04')!;
+    expect(c).toMatchObject({ preset: 'W7X', path: 'derived.HISS04', kind: 'validation', tolerance: 'confinement', doi: '10.1088/1741-4326/ac1653' });
+    expect(c.band).toEqual([0.6, 0.65]);
+    expect(c.value).toBe(0.65);
+    expect(c.accept).toEqual(widen('confinement', [0.6, 0.65]));
+    expect(c.accept).toEqual([0.448, 0.869]);
+    expect(c.basis).toMatch(/not a test of a transport model/i);
+    // the model's own renormalisation input (0.8) is inside the accepted range and above the published one: optimistic, benchmarked (+24 %)
+    expect(evaluateCheck(c, 0.807).status).toBe('pass');
+    expect(evaluateCheck(c, 0.807).wording).toBe('benchmarked (deviation +24 %)');
+    expect(evaluateCheck(c, 1.4).status).toBe('fail'); // the pellet-fuelled regime is not the band
+  });
+
+  it('the MagLIF rows are the 3.1 keV and 1.1e13 of the abstract of Gomez 2020, with the policy ranges', () => {
+    const y = REFERENCE_CHECKS.find((x) => x.id === 'Z.yield')!, T = REFERENCE_CHECKS.find((x) => x.id === 'Z.Ti')!;
+    expect([y.value, T.value]).toEqual([1.1e13, 3.1]);
+    expect(y.accept).toEqual(widen('yield', [1.1e13, 1.1e13]));
+    expect(T.accept).toEqual(widen('temperature', [3.1, 3.1]));
+    expect(y.doi).toBe('10.1103/PhysRevLett.125.155002');
+    for (const c of [y, T]) expect(c.basis, c.id).toMatch(/15\.9 T/);
   });
 
   it('the NIF split: one calibration check (N210808) and blind checks (N221204, N230729); a role is only given to a published value of the model', () => {

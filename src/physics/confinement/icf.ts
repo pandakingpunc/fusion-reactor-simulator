@@ -174,7 +174,6 @@ export class ICFModel extends PulsedBase {
   private fuelData: ICFFuelData;
   private E_laser_J: number;
   private E_fus_total: number; // toplam füzyon enerjisi [J]
-  private N_fus_total: number; // toplam füzyon reaksiyonu
   private N_n_total: number; // total number of neutrons
   private rhoR_eff: number; // g/cm²
   private chi_ig: number; // ateşleme parametresi
@@ -199,7 +198,6 @@ export class ICFModel extends PulsedBase {
     this.rhoR_eff = st.rhoR_eff;
     this.chi_ig = st.chi_ig;
     this.ignited = st.ignited;
-    this.N_fus_total = st.N_fus_total;
     this.E_fus_total = st.E_fus_total;
     this.N_n_total = st.N_n_total;
     this.T_hs = st.T_hs;

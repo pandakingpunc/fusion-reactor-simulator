@@ -10,8 +10,9 @@
  *    β_N,th > 0.75 β_N,lim), w_d = 0.012 a/2. The drive is the bootstrap current of the THERMAL
  *    pressure gradient, so the thermal β_N (fast ions carry no bootstrap current) is compared with
  *    the Troyon limit, which is a limit on the total β_N (as in the 0D model).
- *  - Effects: χ_e and χ_i + 5 m²/s across the island (flattening, transport/coefficients.ts), and
- *    the belt-model confinement degradation ΔW/W ≈ −4 Σ ρ_s² w/a (control/confinement.ts).
+ *  - Effects: χ_e and χ_i + 5 m²/s across the island width (flattening, transport/coefficients.ts: each face gets the share of the
+ *    5 m²/s that its control interval has inside the island, transport/islandCoverage.ts, so the flattened width is the island width on any
+ *    radial grid), and the belt-model confinement degradation ΔW/W ≈ −4 Σ ρ_s² w/a (control/confinement.ts).
  *  - Events: onset above w/a = 0.02 and decay; a 2/1 island above w/a = 0.1 locks
  *    (events/disruption.ts).
  */

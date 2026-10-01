@@ -3,13 +3,14 @@
  * transport model, then the parts common to every model (see TransportModel.ts for the order):
  * edge transport barrier, particle diffusivity D = (D/χ)·χ_e + 0.02 m²/s with the inward pinch
  * v = −2 P ρ D ⟨|∇ρ|²⟩/⟨|∇ρ|⟩ that makes the source-free profile n ∝ exp(−P ρ²), NTM islands
- * (+5 m²/s), the neoclassical ion floor and a 0.01 m²/s numerical floor.
+ * (+5 m²/s weighted by the island coverage of the face, islandCoverage.ts), the neoclassical ion floor and a 0.01 m²/s numerical floor.
  */
 import type { ProfileContext } from '../context';
 import { faceValue } from '../geometry1d';
 import type { ProfileState } from '../state';
 import { islandRegions } from '../events/ntm';
 import { barrierFactor } from './pedestal';
+import { ISLAND_CHI, islandCoverage } from './islandCoverage';
 import type { TransportModel } from './TransportModel';
 
 /** Writes w.chiE, w.chiI, w.D, w.v (and the anomalous parts w.chiTurbE, w.chiTurbI) for the iterate st */
@@ -25,7 +26,12 @@ export function transportCoefficients(ctx: ProfileContext, model: TransportModel
       chiT *= sup; chiTi *= sup;
     }
     let chiE = chiT, chiI = chiTi;
-    for (const [rs, dr] of islands) if (Math.abs(rho - rs) < 0.5 * dr) { chiE += 5; chiI += 5; }
+    // NTM islands: the extra χ of the face is weighted by the part of its control interval inside the island, so that the flattened
+    // width is the island width on any grid (transport/islandCoverage.ts)
+    for (const [rs, dr] of islands) {
+      const extra = ISLAND_CHI * islandCoverage(g, f, rs, dr);
+      chiE += extra; chiI += extra;
+    }
     // neoclassical ion floor
     chiI += f > 0 && f < N ? faceValue(g, w.chiNeo, f) : w.chiNeo[Math.min(N - 1, f)];
     w.chiE[f] = chiE + 0.01;

@@ -23,9 +23,9 @@ export interface Criterion { label: string; get: (r: ShotReport) => number; lo: 
 /**
  * A test of the panel. `knownMiss`: the model is documented to miss this one (a known failure of npm run validate, references.ts): when it
  * misses, the badge says so instead of FAIL, and the panel points at the documentation. It is a statement about a result that exists, never a
- * reason to move a range.
+ * reason to move a range. `calibration`: the model is fitted to this shot, so a pass is by construction; a finished run carries a note that says so.
  */
-export interface TestDef { id: string; presetId: string; title: string; criteria: Criterion[]; knownMiss?: boolean }
+export interface TestDef { id: string; presetId: string; title: string; criteria: Criterion[]; knownMiss?: boolean; calibration?: boolean }
 
 // Beklenen değerler yayınlanmış deney/tasarım sonuçlarından (eğitsel toleranslarla).
 // The NIF ranges are those of the literature table (src/physics/validation/references.ts, rows NIF210808.G and NIF.G; the yield of N210808 by the
@@ -58,7 +58,7 @@ export const TESTS: TestDef[] = [
   },
   {
     // the calibration shot: the ICF model's one constant is fitted to this yield, so a pass here is by construction and not a validation
-    id: 'nif210808', presetId: 'NIF210808', title: 'NIF N210808 — gain 0.72 (calibration shot)',
+    id: 'nif210808', presetId: 'NIF210808', title: 'NIF N210808 — gain 0.72 (calibration shot)', calibration: true,
     criteria: [
       { label: 'Gain (Q)', get: (r) => r.Q_sci_max, lo: 0.36, hi: 1.44, unit: '', source: '1.917 MJ laser → 1.37 MJ fusion (Aug 2021); the ICF model is fitted to this yield' },
       { label: 'E_fusion', get: (r) => r.E_fusion_MJ, lo: 0.456, hi: 4.11, unit: 'MJ', source: '1.37 MJ (the calibration target)' },
@@ -198,6 +198,7 @@ export function Validation({ createWorker, pool: given, tests = TESTS, presets =
             {pending(it.status) && <div className="val-bar" aria-hidden="true"><span style={{ width: `${Math.round(it.pct * 100)}%` }} /></div>}
             {it.error && <pre className="err">{it.error}</pre>}
             {known && <div className="small muted">{t('val.knownNote')}</div>}
+            {row && def.calibration && <div className="small muted">{t('val.calNote')}</div>}
             <table className="kv"><tbody>
               {def.criteria.map((c) => {
                 const v = row ? c.get(row) : undefined;
@@ -231,7 +232,7 @@ export function Validation({ createWorker, pool: given, tests = TESTS, presets =
                 return (
                   <tr key={p.id}>
                     <td>{wt(p.name)}</td>
-                    <td className="small muted">{p.validation ?? '—'}</td>
+                    <td className="small muted">{p.validation ? wt(p.validation) : '—'}</td>
                     {r ? (
                       <>
                         <td>{fmtNum(r.Q_sci_max)}</td><td>{fmtNum(r.Tmax_keV)}</td><td>{fmtNum(r.E_fusion_MJ)}</td>

@@ -342,6 +342,7 @@ export const eduTr: EduDict = {
   'val.fail': 'KALDI',
   'val.known': 'BELGELİ SAPMA',
   'val.knownNote': 'Belgelenmiş bir sapma, testin hatası değil: model yalnızca N210808 üzerinde kalibre edildi ve bu atışı ondan ayıran bir girdisi yok (npm run validate, NIF.G denetimi).',
+  'val.calNote': 'Yapı gereği geçer (kalibrasyon atışı): modelin tek ICF sabiti bu verime göre ayarlandı, bu yüzden kazanç ve verim bir doğrulama değildir. T_i belgelenmiş bir sapmadır (npm run validate, NIF210808.Ti denetimi).',
   'val.run': 'çalıştır',
   'val.termination': 'Bitiş',
   'val.scanTitle': 'Hazır ayar taraması',

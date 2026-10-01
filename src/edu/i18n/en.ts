@@ -342,6 +342,7 @@ export const eduEn = {
   'val.fail': 'FAIL',
   'val.known': 'DOCUMENTED MISS',
   'val.knownNote': 'A documented miss, not a fault of the test: the model is calibrated on N210808 alone and has no input that separates this shot from it (npm run validate, check NIF.G).',
+  'val.calNote': 'Passes by construction (calibration shot): the one ICF constant of the model is fitted to this yield, so the gain and the yield are not a validation. T_i is a documented miss (npm run validate, check NIF210808.Ti).',
   'val.run': 'run',
   'val.termination': 'Termination',
   'val.scanTitle': 'Preset scan',

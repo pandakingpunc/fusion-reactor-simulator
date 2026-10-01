@@ -13,9 +13,11 @@ afterEach(cleanup);
 
 const drive = (workers: FakeWorker[]) => act(() => { for (const w of workers) if (!w.terminated) { w.process(); w.deliver(); } });
 
+// the validation line of the real NIF preset: it has a Turkish text in the wizard dictionary (src/i18n/wizard.tr.ts)
+const NIF_LINE = 'Published G = 1.5; model 0.67, a documented miss';
 // small tests and presets, so that a run takes milliseconds
 const PRESET_LIST: Preset[] = [
-  { id: 'NIF', name: 'NIF small', desc: '', cfg: NIF, validation: 'Gain ≈ 1–2' },
+  { id: 'NIF', name: 'NIF small', desc: '', cfg: NIF, validation: NIF_LINE },
   { id: 'TAE', name: 'TAE small', desc: '', cfg: { ...TAE, t_end: 0.01 } },
   { id: 'TAE2', name: 'TAE second', desc: '', cfg: { ...TAE, t_end: 0.01, seed: 2 } },
 ];
@@ -74,7 +76,7 @@ describe('Validation view', () => {
     await waitFor(() => expect(screen.getByText('3 of 3 finished')).toBeTruthy());
     const table = screen.getByText('Preset scan').closest('.panel') as HTMLElement;
     expect([...table.querySelectorAll('tbody tr')].map((r) => r.querySelector('td')!.textContent)).toEqual(['NIF small', 'TAE small', 'TAE second']);
-    expect(within(table).getByText('Gain ≈ 1–2')).toBeTruthy();
+    expect(within(table).getByText(NIF_LINE)).toBeTruthy();
   });
 
   it('cancel stops the whole batch: queued runs never start, running ones lose their worker; then it can run again', async () => {
@@ -164,6 +166,58 @@ describe('Validation view', () => {
     fireEvent.click(screen.getByRole('button', { name: 'İptal' }));
     await waitFor(() => expect(screen.getAllByText('iptal edildi').length).toBe(2));
     await act(async () => { await store.actions.setLocale('en'); });
+  });
+
+  it('the validation column of the preset scan is translated: Turkish text in Turkish mode, English back in English mode', async () => {
+    const store = createAppStore();
+    const { f } = mount(3, store);
+    await act(async () => { await store.actions.setLocale('tr'); });
+    fireEvent.click(await screen.findByRole('button', { name: 'Tüm hazır ayarları tara' }));
+    drive(f.workers);
+    await waitFor(() => expect(screen.getByText('Hazır ayar taraması')).toBeTruthy());
+    const table = screen.getByText('Hazır ayar taraması').closest('.panel') as HTMLElement;
+    // the cell goes through the wizard translator (the dictionary loads with the locale): Turkish text, no English left
+    await waitFor(() => expect(within(table).getByText('Yayınlanan G = 1,5; model 0,67, belgelenmiş bir sapma')).toBeTruthy());
+    expect(within(table).queryByText(NIF_LINE)).toBeNull();
+    await act(async () => { await store.actions.setLocale('en'); });
+    await waitFor(() => expect(within(table).getByText(NIF_LINE)).toBeTruthy());
+  });
+
+  it('the calibration shot carries a note that its pass is by construction and that T_i is a documented miss; other tests have none', async () => {
+    const f = fakeWorkerFactory();
+    const pool = new RunPool(f.create, 2);
+    const tests: TestDef[] = [
+      { id: 'cal', presetId: 'NIF', title: 'Calibration', calibration: true, criteria: [{ label: 'Gain', get: (r) => r.Q_sci_max, lo: 0.5, hi: 1, unit: '', source: 'N210808' }] },
+      { id: 'plain', presetId: 'NIF', title: 'Plain', criteria: [{ label: 'Gain', get: (r) => r.Q_sci_max, lo: 0.5, hi: 1, unit: '', source: 'N210808' }] },
+    ];
+    const store = createAppStore();
+    render(<AppStoreContext.Provider value={store}><Validation createWorker={f.create} pool={pool} tests={tests} presets={PRESET_LIST} /></AppStoreContext.Provider>);
+    const cal = () => screen.getByText('Calibration').closest('.panel') as HTMLElement;
+    // no note before the run
+    expect(within(cal()).queryByText(/by construction/i)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Run 2 tests' }));
+    drive(f.workers);
+    await waitFor(() => expect(screen.getAllByText('PASS')).toHaveLength(2));
+    // the pass of the calibration shot is badged PASS and says what it is worth
+    expect(within(cal()).getByText('PASS')).toBeTruthy();
+    expect(within(cal()).getByText(/Passes by construction \(calibration shot\)/)).toBeTruthy();
+    expect(within(cal()).getByText(/T_i is a documented miss/)).toBeTruthy();
+    expect(within(screen.getByText('Plain').closest('.panel') as HTMLElement).queryByText(/by construction/i)).toBeNull();
+    // and in Turkish
+    await act(async () => { await store.actions.setLocale('tr'); });
+    expect(await within(cal()).findByText(/Yapı gereği geçer \(kalibrasyon atışı\)/)).toBeTruthy();
+    expect(within(cal()).getByText(/T_i belgelenmiş bir sapmadır/)).toBeTruthy();
+    await act(async () => { await store.actions.setLocale('en'); });
+  });
+
+  it('only the calibration shot of the published tests is marked as one, and it is the row that npm run validate calls a calibration', async () => {
+    const { REFERENCE_CHECKS } = await import('../../physics/validation/references');
+    expect(TESTS.filter((t) => t.calibration).map((t) => t.id)).toEqual(['nif210808']);
+    const row = REFERENCE_CHECKS.find((c) => c.id === 'NIF210808.G')!;
+    expect(row.role).toBe('calibration');
+    expect(row.preset).toBe(TESTS.find((t) => t.id === 'nif210808')!.presetId);
+    // the shot's T_i is the documented miss the note names
+    expect(REFERENCE_CHECKS.find((c) => c.id === 'NIF210808.Ti')!.knownFailure).toBeDefined();
   });
 
   it('the published tests point at existing presets and their criteria have sensible ranges', async () => {

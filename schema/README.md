@@ -27,6 +27,9 @@ Editor use (VS Code, `.vscode/settings.json` or user settings):
 { "json.schemas": [{ "fileMatch": ["*.reactor.json"], "url": "./schema/fusion-sim.schema.json" }] }
 ```
 
+A table of every field (type, unit, default, range, description; the opt-in modules marked) is generated from this schema as
+`docs/config-reference.md` (`npm run docs:config`).
+
 Check a file from the command line: `fusion-sim schema --check my.reactor.json` (exit 0 valid, 1 invalid with every
 problem and its path, 2 unreadable).
 

@@ -157,7 +157,7 @@ const MAGNETIC_STEPS: StepDef[] = [
     { path: 'events.sawteeth', label: 'Sawteeth', type: 'bool' },
     { path: 'events.ntm', label: 'NTM', type: 'bool' },
     // ---- 1.5D profil modeli (yalnız fidelity = 1.5D)
-    { path: 'profiles.transportModel', label: '1.5D · transport model', type: 'select', def: PS.transportModel, options: [{ value: 'scaling', label: 'τ_E-scaling constrained (validated)' }, { value: 'cgm', label: 'Critical-gradient model (predictive, experimental)' }] },
+    { path: 'profiles.transportModel', label: '1.5D · transport model', type: 'select', def: PS.transportModel, options: [{ value: 'scaling', label: 'τ_E-scaling constrained (validated)' }, { value: 'cgm', label: 'Critical-gradient model (predictive, experimental)' }, { value: 'bgb', label: 'Bohm/gyro-Bohm (predictive, experimental)' }, { value: 'ifspppl', label: 'IFS-PPPL (L-mode fit, experimental)' }] },
     { path: 'profiles.nRho', label: '1.5D · radial cells N_ρ', min: 16, max: 200, step: 1, def: PS.nRho },
     { path: 'profiles.eqNR', label: '1.5D · Grad–Shafranov grid N_R', min: 25, max: 129, step: 2, def: PS.eqNR },
     { path: 'profiles.chiShape', label: '1.5D · χ shape c in (1 + cρ²)', min: 0, max: 10, step: 0.1, def: PS.chiShape },

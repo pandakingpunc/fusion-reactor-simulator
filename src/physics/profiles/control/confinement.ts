@@ -42,6 +42,22 @@ export function scalingTauE(ctx: ProfileContext, Ip_MA: number, nbar: number, P_
   return c.H89 * tauITER89P(gS, Math.max(Ip_MA, 0.05), g.B0, nbar, P_loss, ctx.M);
 }
 
+/**
+ * The H factors a predictive run arrives at (the closure does not know the scalings): τ_E = W/P_loss over the IPB98(y,2) and the ITPA20
+ * ELMy H-mode scalings at the same loss power, line-averaged density and geometry as `scalingTauE`, with H = 1 and without the NTM
+ * degradation (an island's effect on the transport is inside τ_E already). During the L-mode phase they compare an L-mode τ_E with the
+ * H-mode scalings.
+ */
+export function emergentH(ctx: ProfileContext, Ip_MA: number, nbar: number, P_loss: number, tauE: number): { H98y2: number; HITPA20: number } {
+  const g = ctx.tg;
+  const gS: Geometry = { R: g.R0, a: g.a, kappa: ctx.kappaA, delta: ctx.geomB.delta };
+  const I = Math.max(Ip_MA, 0.05);
+  return {
+    H98y2: tauE / tauHmode('IPB98y2', gS, I, g.B0, nbar, P_loss, ctx.M),
+    HITPA20: tauE / tauHmode('ITPA20', gS, I, g.B0, nbar, P_loss, ctx.M),
+  };
+}
+
 export interface ConfinementTimes {
   /** scaling-law τ_E with the NTM degradation: the target of the C_χ controller [s] */
   tauScal: number;

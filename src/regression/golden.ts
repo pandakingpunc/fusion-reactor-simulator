@@ -32,7 +32,7 @@ import { Simulation } from '../physics/simulation';
 import { ProfileModel, supportsProfiles } from '../physics/profiles/model';
 import { flatTopAverages } from '../physics/analysis/flatTop';
 import type { FuelType } from '../physics/reactivity';
-import type { EqSnapshot, Fidelity, HistoryFrame, MagneticConfig, ReactorConfig, ShotReport } from '../physics/types';
+import type { EqSnapshot, Fidelity, HistoryFrame, MagneticConfig, ProfileSettings, ReactorConfig, ShotReport } from '../physics/types';
 
 /** 2: + meta.fuel, history, geometry, profiles, equilibrium (a format change: schema-1 values are unchanged) */
 export const GOLDEN_SCHEMA = 2;
@@ -53,7 +53,7 @@ export interface GoldenCase {
    * Settings changed from the preset, for combinations no preset uses (the wizard offers every
    * fuel for every method and 1.5D for both tokamak methods). Plain data: cases go to workers.
    */
-  overrides?: { fuel?: FuelType; fidelity?: Fidelity; n_target?: number };
+  overrides?: { fuel?: FuelType; fidelity?: Fidelity; n_target?: number; profiles?: Partial<ProfileSettings> };
 }
 
 /**
@@ -99,6 +99,10 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
   { id: 'MASTU15', preset: 'MASTU', overrides: { fidelity: '1.5D' } },
   { id: 'TAE-pB11', preset: 'TAE', overrides: { fuel: 'pB11' } },
   { id: 'MIRROR-DHe3', preset: 'MIRROR', overrides: { fuel: 'DHe3' } },
+  // the opt-in predictive closures of ws6b (the emergent H98 keys appear only with a predictive model): the ITER15 ramp-up through the L-H
+  // transition with the mixed Bohm/gyro-Bohm model, the JET15 ramp-up and first H-mode with IFS-PPPL
+  { id: 'ITER15-bgb', preset: 'ITER15', tEnd: 16, overrides: { profiles: { transportModel: 'bgb' } } },
+  { id: 'JET15-ifspppl', preset: 'JET15', tEnd: 1.5, overrides: { profiles: { transportModel: 'ifspppl' } } },
 ];
 
 /** Quick cases compared by `npm test` (0D magnetic, two pulsed models, short 1.5D). */
@@ -138,6 +142,10 @@ export function caseConfig(c: GoldenCase): ReactorConfig {
   if (o.n_target !== undefined) {
     if (!('n_target' in cfg)) throw new Error(`golden case ${c.id}: preset ${c.preset} (${cfg.method}) has no n_target setting`);
     cfg = { ...cfg, n_target: o.n_target } as ReactorConfig;
+  }
+  if (o.profiles !== undefined) {
+    if (!runsProfiles(cfg)) throw new Error(`golden case ${c.id}: preset ${c.preset} (${cfg.method}) does not run the 1.5D profile model`);
+    cfg = { ...cfg, profiles: { ...(cfg as MagneticConfig).profiles, ...o.profiles } } as ReactorConfig;
   }
   if (c.tEnd === undefined) return cfg;
   if (!('t_end' in cfg)) throw new Error(`golden case ${c.id}: preset ${c.preset} (${cfg.method}) has no t_end to shorten`);

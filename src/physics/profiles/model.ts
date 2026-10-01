@@ -15,7 +15,7 @@
  *   qprofile.ts          ψ → q, ψ', enclosed current; q95
  *   boundary/sol.ts      separatrix values (two-point model), P_SOL
  *   sources/             SourceModel plug-ins: NBI, RF, fusion, radiation, exchange; current sources
- *   transport/           TransportModel plug-ins ('scaling', 'cgm'), barrier, neoclassical floor
+ *   transport/           TransportModel plug-ins ('scaling', 'cgm', 'bgb', 'ifspppl'), barrier, neoclassical floor
  *   control/             actuators, fueling feedback, confinement (τ_E scaling, C_χ controller)
  *   solver/              evaluation pipeline, coupled TR-BDF2 step (Δt control, event localisation), accepted-step update
  *   coupling/            Grad–Shafranov coupling (initial solve, update policy, guarded updates)
@@ -25,7 +25,8 @@
  * Transport ('scaling' mode) is τ_E-constrained: χ(ρ) = C_χ(t)·(1 + c ρ²) with C_χ set by a PI
  * controller so that W follows the τ_E scaling, while the profile shape comes from the physics
  * (Artaud et al., Nucl. Fusion 58 (2018) 105001); 'cgm' is the predictive critical-gradient model
- * (Garbet et al., Plasma Phys. Control. Fusion 46 (2004) 1351).
+ * (Garbet et al., Plasma Phys. Control. Fusion 46 (2004) 1351); 'bgb' (Erba et al. 1997, 1998) and 'ifspppl' (Kotschenreuther et al. 1995) are
+ * the published predictive closures (transport/gyrobohm, transport/ifspppl), and every predictive model reports the emergent H98(y,2) and H(ITPA20).
  */
 import { DISRUPTION_FIXES } from '../disruption';
 import { checkMagnet, MAGNET_TECH, MagnetCheck } from '../engineering';
@@ -323,6 +324,12 @@ export class ProfileModel implements SimModel {
         'Forced transport steps': this.forcedSteps,
         'Transport steps (accepted / rejected by the error test)': `${this.stepper.stats.accepted} / ${this.stepper.stats.rejected}`,
         ...(this.stepper.stats.newtonIters > 0 ? { 'Newton iterations / Jacobians / Picard fallbacks': `${this.stepper.stats.newtonIters} / ${this.stepper.stats.jacobians} / ${this.stepper.stats.fallbacks}` } : {}),
+        // a predictive transport model leaves confinement to the physics: what it arrives at, against the H-mode scalings at the same loss power
+        ...(this.physics.transport.predictive ? {
+          'Emergent τ_E (flat-top mean, s)': +avg('tauE').toFixed(2),
+          'Emergent H98(y,2) (flat-top mean)': +avg('H98y2').toFixed(2),
+          'Emergent H(ITPA20) (flat-top mean)': +avg('HITPA20').toFixed(2),
+        } : {}),
       },
       extraExtras: {
         'T_e axis (final, keV)': +(d.Te0 ?? 0).toFixed(2), 'T_ped (final, keV)': +(d.Tped ?? 0).toFixed(2), 'T_sep (final, keV)': +(d.Tsep ?? 0).toFixed(3),

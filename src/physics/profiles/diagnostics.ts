@@ -9,7 +9,7 @@ import { divertorHeatFlux, neutronWallLoad } from '../engineering';
 import { LAWSON_DT } from '../confinement/magneticReport';
 import type { DiagSpec } from '../types';
 import { KEV, MU0, ProfileContext, StepConstants } from './context';
-import { lossPower } from './control/confinement';
+import { emergentH, lossPower } from './control/confinement';
 import { HEAT_CONVECTION } from './fvsolver';
 import { cellIndex, interpCells } from './geometry1d';
 import { q95 } from './qprofile';
@@ -55,6 +55,8 @@ export const PROFILE_DIAGS: DiagSpec[] = [
   { key: 'P_LH', label: 'P_LH threshold', unit: 'MW', group: 'Confinement' },
   { key: 'P_loss', label: 'P_L = P_heat − P_rad,core − dW/dt', unit: 'MW', group: 'Confinement' },
   { key: 'chi_mult', label: 'Transport multiplier C_χ', unit: 'm²/s', group: 'Confinement' },
+  { key: 'H98y2', label: 'H98(y,2) = τ_E/τ_IPB98(y,2) (predictive transport)', unit: '', group: 'Confinement' },
+  { key: 'HITPA20', label: 'H(ITPA20) = τ_E/τ_ITPA20 (predictive transport)', unit: '', group: 'Confinement' },
   { key: 'betaN', label: 'β_N', unit: '', group: 'MHD' },
   { key: 'betaN_th', label: 'β_N (thermal plasma only)', unit: '', group: 'MHD' },
   { key: 'betaP', label: 'β_p', unit: '', group: 'MHD' },
@@ -121,6 +123,11 @@ export interface GlobalTotals extends PowerTotals {
    * dW/dt = P_heat − P_rad − P_bound up to the Picard tolerance (discrete energy conservation)
    */
   P_bound: number;
+  /**
+   * the H factors of a predictive transport model (control/confinement.ts `emergentH`): the keys H98y2 and HITPA20 are written only when it is
+   * given, so the frames of the 'scaling' transport keep their keys
+   */
+  H?: { H98y2: number; HITPA20: number };
 }
 
 export function powerTotals(ctx: ProfileContext, K: StepConstants): PowerTotals {
@@ -208,6 +215,7 @@ export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: Globa
     q_div: qdiv, n_wall: nw, P_heat: X.P_heat / 1e6, P_charged: X.P_chg / 1e6, P_neutron: X.P_neut / 1e6,
     Efus_MJ: s.Efus / 1e6, Ein_MJ: s.Ein / 1e6, Nn: s.Nn, P_loss: X.P_loss / 1e6, dWdt: X.dWdt / 1e6, dWdt_s: ctx.dWdtS / 1e6, P_bound: X.P_bound / 1e6,
     ...edgeChannels1D(ctx, q95v, Ip),
+    ...(X.H ? { H98y2: X.H.H98y2, HITPA20: X.H.HITPA20 } : {}),
   };
   // profiles
   const mer = w.mercF, bal = w.ballF;
@@ -251,7 +259,9 @@ export function stateDiagnostics(ctx: ProfileContext, st: ProfileState, K: StepC
   const P = powerTotals(ctx, K);
   const P_loss = lossPower(ctx, P.P_heat, P.P_rad_core, ctx.dWdtS);
   const tauE = predictive ? W / P_loss : tauPrev;
-  writeDiagnostics(ctx, st, { ...P, W, dWdt: 0, W_alpha: ctx.WfAlpha, W_beam: ctx.WfBeam, tauE, tauScal, P_loss, nbar: ctx.lineAvg(st.ne), P_bound: boundaryPower(ctx, st) });
+  const nbar = ctx.lineAvg(st.ne);
+  const H = predictive ? emergentH(ctx, st.s.Ip / 1e6, nbar, P_loss, tauE) : undefined;
+  writeDiagnostics(ctx, st, { ...P, W, dWdt: 0, W_alpha: ctx.WfAlpha, W_beam: ctx.WfBeam, tauE, tauScal, P_loss, nbar, P_bound: boundaryPower(ctx, st), H });
 }
 
 /** Diagnostics during the quench phases of a disruption: only the quantities the quench changes */

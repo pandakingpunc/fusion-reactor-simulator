@@ -145,6 +145,8 @@ export const wizardTr: Readonly<Record<string, string>> = {
   '1.5D · transport model': '1.5D · taşınım modeli',
   'τ_E-scaling constrained (validated)': 'τ_E ölçeklemesiyle kısıtlı (doğrulanmış)',
   'Critical-gradient model (predictive, experimental)': 'Kritik gradyan modeli (öngörücü, deneysel)',
+  'Bohm/gyro-Bohm (predictive, experimental)': 'Bohm/gyro-Bohm (öngörücü, deneysel)',
+  'IFS-PPPL (L-mode fit, experimental)': 'IFS-PPPL (L-modu uyumu, deneysel)',
   '1.5D · radial cells N_ρ': '1.5D · radyal hücre sayısı N_ρ',
   '1.5D · Grad–Shafranov grid N_R': '1.5D · Grad–Shafranov ızgarası N_R',
   '1.5D · χ shape c in (1 + cρ²)': '1.5D · χ şekli, (1 + cρ²) içindeki c',

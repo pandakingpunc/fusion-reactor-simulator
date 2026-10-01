@@ -46,7 +46,7 @@ const FIDELITIES = keysOf<Fidelity>({ '0D': 0, '1.5D': 0 });
 const SPECIES = keysOf<ImpuritySpecies>(IMPURITIES);
 const ABLATORS = keysOf<ICFConfig['ablator']>({ CH: 0, HDC: 0, Be: 0 });
 const SCALINGS = keysOf<MagneticConfig['scaling']>({ IPB98y2: 0, ITPA20: 0, 'ITPA20-IL': 0, ST_Valovic: 0 });
-const TRANSPORT_MODELS = keysOf<ProfileSettings['transportModel']>({ scaling: 0, cgm: 0 });
+const TRANSPORT_MODELS = keysOf<ProfileSettings['transportModel']>({ scaling: 0, cgm: 0, bgb: 0, ifspppl: 0 });
 const EDGE_MODELS = keysOf<NonNullable<ProfileSettings['edgeModel']>>({ legacy: 0, twoPoint: 0 });
 const NONLINEAR_SOLVERS = keysOf<NonNullable<ProfileSettings['nonlinearSolver']>>({ auto: 0, picard: 0, newton: 0, pc: 0 });
 const EDGE_LOSS_FITS = keysOf<NonNullable<EdgeOptions['lossFit']>>({ stangeby1: 0, stangeby2: 0, body2025: 0 });
@@ -110,7 +110,7 @@ const profileSettings = partial<ProfileSettings>({
   rtol: opt(num({ exMin: 0, max: 1, def: PS.rtol, doc: 'Relative tolerance of the error control of the transport time step (TR-BDF2). The model replaces a value outside its domain by the default at run time.' })),
   atol: opt(num({ min: 0, max: 1, def: PS.atol, doc: 'Absolute tolerance of the error control of the transport time step, as a fraction of the profile maximum (0: a purely relative tolerance).' })),
   dtMax: opt(num({ min: STEP_DT_MIN, max: 1e5, unit: 's', def: PS.dtMax, doc: 'Longest transport time step.' })),
-  nonlinearSolver: opt(oneOf(NONLINEAR_SOLVERS, "Solver of the nonlinear system of a transport stage. 'auto': Newton-Raphson for a predictive transport model ('cgm'), Picard iteration with Anderson mixing for 'scaling'; 'picard', 'newton' (with the Pereverzev-Corrigan Picard iteration as its fallback) and 'pc' (that stabilised Picard iteration alone) force one.", 'auto')),
+  nonlinearSolver: opt(oneOf(NONLINEAR_SOLVERS, "Solver of the nonlinear system of a transport stage. 'auto': Newton-Raphson for a predictive transport model ('cgm'), the Pereverzev-Corrigan Picard iteration for the closures that ask for it ('bgb', 'ifspppl': Newton costs more than it buys there), Picard iteration with Anderson mixing for 'scaling'; 'picard', 'newton' (with the Pereverzev-Corrigan Picard iteration as its fallback) and 'pc' (that stabilised Picard iteration alone) force one.", 'auto')),
   IpWaveform: opt(series({
     x: { min: 0, max: 1e7, unit: 's' }, y: { exMin: 0, max: 200, unit: 'MA' }, minItems: 1, maxItems: 10000,
     doc: 'Plasma-current programme I_p(t): the boundary condition of the current diffusion as points [t (s), I_p (MA)] in increasing time, linearly interpolated and held constant beyond the first and last point. Ip_MA is what the initial equilibrium is solved for and should equal the programme at t = 0. Absent: I_p constant (and a live control).',
@@ -123,7 +123,7 @@ const profileSettings = partial<ProfileSettings>({
     kappa: num({ min: 1, max: 5, doc: 'Elongation of the 95 % surface that lcfsKappa belongs to.' }),
     delta: num({ min: -1, max: 1, doc: 'Triangularity of the 95 % surface that lcfsDelta belongs to.' }),
   }, { doc: 'The 95 % surface shape (kappa95, delta95) that lcfsKappa and lcfsDelta belong to. The 0D volume, surface and cross-section then follow an edited `geometry.kappa` or `geometry.delta` in the ratio kappa/kappa95 and delta/delta95 (the ITER and DEMO presets); without it the LCFS values are absolute.' })),
-  transportModel: oneOf(TRANSPORT_MODELS, "'scaling': transport constrained by the tau_E scaling law (validated global dynamics); 'cgm': critical-gradient model (predictive, uncalibrated).", PS.transportModel),
+  transportModel: oneOf(TRANSPORT_MODELS, "'scaling': transport constrained by the tau_E scaling law (validated global dynamics); 'cgm': critical-gradient model (predictive, uncalibrated); 'bgb': mixed Bohm/gyro-Bohm model of Erba et al. (predictive, JET-validated coefficients; the Bohm term is non-local in the edge temperature); 'ifspppl': IFS-PPPL ITG critical gradient and stiffness of Kotschenreuther et al. 1995 (predictive). Every model but 'scaling' is predictive: tau_E and H98 emerge (the diagnostics H98y2 and HITPA20).", PS.transportModel),
   chiShape: num({ min: 0, max: 100, def: PS.chiShape, doc: 'Shape of chi, proportional to 1 + chiShape rho^2.' }),
   stiffness: num({ min: 0, max: 100, def: PS.stiffness, doc: 'Profile stiffness: chi is multiplied by 1 + stiffness max(0, (R/L_T)/critGrad - 1).' }),
   critGrad: num({ exMin: 0, max: 100, def: PS.critGrad, doc: 'Critical normalised temperature gradient R/L_T (ITG/TEM).' }),

@@ -1031,3 +1031,15 @@ Node v24.19.0 · `npm run golden:update` · all cases
   - DIIID15: 0 keys moved; 2 keys removed (scalars 2)
     - removed: scalars.engineering.CS flux swing (V s), scalars.engineering.Flux margin
 - Unchanged (12): NIF, DIRECT, Z, GF, FRXL, ZAP, TAE, MIRROR, MUON, MASTU15, TAE-pB11, MIRROR-DHe3
+
+## 2026-09-29 16:23 UTC — ws6b: two golden cases for the opt-in predictive transport closures, 'bgb' (mixed Bohm/gyro-Bohm, Erba et al.) and 'ifspppl' (IFS-PPPL, Kotschenreuther et al.); no existing case moves
+
+Cause. Nothing that a default shot runs changed: the closures are selected only by profiles.transportModel = 'bgb' or 'ifspppl' (the default stays 'scaling'), the new diagnostics H98y2 and HITPA20 are written only when the transport model is predictive, and the new TransportModel.prepare hook and TransportModel.preferredSolver are unused by 'scaling' and 'cgm'. So the 30 recorded cases match at 1e-9 (checked with npm run golden before this record) and only the two added files are new. GoldenCase.overrides gets a transportModel field for the two cases, which no preset uses.
+
+ITER15-bgb: ITER15 with transportModel 'bgb' to 16 s (the ramp-up, the L-H transition at about 10 s, one sawtooth; the 'auto' nonlinear solver is the Pereverzev-Corrigan Picard iteration for this closure). Flat-top means of the last 30 % of the shortened shot: Q 2.50, P_fus 123 MW, W 136 MJ, tau_E 2.65 s (IPB98(y,2) scaling 4.14 s), H98(y,2) 0.64, H(ITPA20) 0.69, T_e0 21.8 keV, T_ped 1.61 keV, alpha_ped/alpha_crit 0.18: the barrier of the preset (etbFactor 0.08) is not strong enough to bring the predicted pedestal to the ballooning limit on ITER (docs: the pedestal, not the closure, is what keeps H98 below 1 there).
+
+JET15-ifspppl: JET15 with transportModel 'ifspppl' to 1.5 s (ramp-up, the L-H transition at about 0.3 s, four sawteeth; no ELM yet). Flat-top means: Q 0.176, P_fus 5.9 MW, W 4.4 MJ, tau_E 0.132 s (scaling 0.259 s), H98(y,2) 0.43, H(ITPA20) 0.45, T_e0 6.2 keV, T_i0 4.1 keV, T_ped 0.93 keV, alpha_ped/alpha_crit 0.95. The IFS-PPPL fit was made for circular L-mode plasmas (its authors: 'cannot yet be used to compare quantitatively to most H modes'), and its confinement is set by the temperature at r/a = 0.8, here the pedestal of the model.
+
+Node v24.19.0 · `npm run golden:update` · --only ITER15-bgb,JET15-ifspppl
+
+- Added (2): ITER15-bgb, JET15-ifspppl

@@ -273,6 +273,21 @@ describe('golden cases', () => {
     expect(iter.n_target).not.toBe(1.0e20);
     expect(iter.fuel).toBe('DT');
     expect(() => caseConfig({ id: 'x', preset: 'NIF', overrides: { n_target: 1e20 } })).toThrow(/has no n_target setting/);
+    // a transport model: replaced in a copy of the profile settings; a 0D preset has none
+    const jet = PRESETS.find((p) => p.id === 'JET15')!.cfg as MagneticConfig;
+    const bgb = caseConfig({ id: 'x', preset: 'JET15', tEnd: 1, overrides: { profiles: { transportModel: 'bgb' } } }) as MagneticConfig;
+    expect(bgb.profiles).toMatchObject({ ...jet.profiles, transportModel: 'bgb' });
+    expect(jet.profiles?.transportModel).not.toBe('bgb');
+    expect(() => caseConfig({ id: 'x', preset: 'JET', overrides: { profiles: { transportModel: 'bgb' } } })).toThrow(/does not run the 1\.5D profile model/);
+  });
+
+  it('the predictive-closure cases are stored with the emergent H factors, which the default transport does not write', () => {
+    for (const id of ['ITER15-bgb', 'JET15-ifspppl']) {
+      const s = parseSnapshot(readFileSync(goldenFile(id), 'utf8'));
+      expect(Object.keys(s.history), id).toEqual(expect.arrayContaining(['H98y2', 'HITPA20']));
+      expect(s.history.H98y2.nonFinite + s.history.H98y2.missing, id).toBe(0);
+    }
+    expect(Object.keys(parseSnapshot(readFileSync(goldenFile('JET15'), 'utf8')).history)).not.toContain('H98y2');
   });
 
   it('the stored suite keeps a shot that ends in a disruption, so that the quench frames, the disruption report and its termination label are under golden', () => {

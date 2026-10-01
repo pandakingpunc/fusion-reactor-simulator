@@ -84,8 +84,10 @@ export interface ProfileSettings {
    */
   lcfsRef95?: { kappa: number; delta: number };
   /** 'scaling': τ_E ölçeklemesiyle kısıtlanmış taşınım (doğrulanmış global dinamik, fiziksel profil şekli);
-   *  'cgm': kritik-gradyan modeli (öngörücü, kalibrasyonsuz) */
-  transportModel: 'scaling' | 'cgm';
+   *  'cgm': kritik-gradyan modeli (öngörücü, kalibrasyonsuz);
+   *  'bgb': mixed Bohm/gyro-Bohm model of Erba et al. (1997, 1998), JET-validated coefficients, non-local Bohm term (predictive);
+   *  'ifspppl': IFS-PPPL ITG critical gradient and stiffness of Kotschenreuther et al. (1995) (predictive) */
+  transportModel: 'scaling' | 'cgm' | 'bgb' | 'ifspppl';
   /** χ şekli ∝ 1 + chiShape·ρ² */
   chiShape: number;
   /** profil sertliği: χ ×= 1 + stiffness·max(0, (R/L_T)/critGrad − 1) (ITG/TEM kritik gradyanı) */

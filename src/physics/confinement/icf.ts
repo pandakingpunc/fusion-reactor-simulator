@@ -6,9 +6,11 @@
  * hesaplanır; ateşleme eşiği (hız, ρR, asimetri, pürüzlülük) bir "cliff" çarpanıyla
  * modellenir. Yanma zaman içinde bang-time çevresinde Gauss darbesi olarak verilir.
  *
- * Kalibrasyon: NIF N221204 preset'i G ≈ 1.5 verir (Abu-Shawareb 2024).
+ * Calibration: ICF_CAL (ρR scale) is the one constant tuned to an experiment. Since v4.0 it is calibrated on NIF N210808 alone
+ * (1.37 MJ, Abu-Shawareb 2022; icfCalibration.ts: what, to which shot and how); N221204 (3.15 MJ, G = 1.5) and N230729 (3.88 MJ) are
+ * blind predictions of the model (validation/references.ts). Until v4.0 ICF_CAL = 0.07 was tuned to N221204.
  * Fuel: the energy and the neutron number per reaction, H_B and the ignition threshold come from the selected fuel (icfFuelData);
- * the D-T values keep the calibration exactly.
+ * the D-T values are those of the D-T-only model of v3.0.0 exactly.
  * Durum y: [0] E_fus [J]  [1] E_in [J]  [2] N_n
  * APPROXIMATION: 0D, tek noktalı hotspot; hidrodinamik ayrıntı yok.
  */
@@ -21,8 +23,12 @@ import { PulsedBase } from './common';
 
 const IDX = { Efus: 0, Ein: 1, Nn: 2 } as const;
 const NSTATE = 3;
-const H_B_DT = 7.0; // g/cm², D-T burn parameter (Atzeni & Meyer-ter-Vehn 2004; calibration point)
-export const ICF_CAL = 0.07; // geometrik ρR → gerçekçi ρR kalibrasyonu (NIF'e ayarlı)
+const H_B_DT = 7.0; // g/cm², D-T burn parameter (Atzeni & Meyer-ter-Vehn 2004, whose optimum is ≈ 7.3); held fixed when ICF_CAL is calibrated
+/**
+ * Calibration knob: geometric ρR → effective ρR, ρR_eff = ICF_CAL · ρR_geo · √(2.8/α). The root of E_fus(ICF_CAL) = 1.37 MJ for the NIF_N210808 preset
+ * (N210808), rounded to four significant digits: 0.03931 (0.07 until v4.0, tuned to N221204); reproduced by icfCalibration.test.ts.
+ */
+export const ICF_CAL = 0.03931;
 /** Default driver (laser) wall-plug efficiency and thermal conversion efficiency (used when ICFConfig gives none) */
 const DRIVER_EFF_DEFAULT = 0.1;
 const THERMAL_EFF_DEFAULT = 0.4;
@@ -49,7 +55,7 @@ export interface ICFFuelData {
  * is dn/dt = −n² K, K = Σ_ch 2 x_ch ⟨σv⟩_ch (x_ch = x_a x_b or x_a²/2; each reaction consumes two
  * ions) and the same derivation gives H(T) = 4 m_f c_s/K (D-T: K = ⟨σv⟩/2 → 8 m_f c_s/⟨σv⟩);
  * c_s = √((1+Z̄)T/m_f) is the isothermal sound speed. The minimum of H(T) is ≈ 7.3 g/cm² for D-T (T ≈ 39 keV);
- * the calibrated D-T value of the model, 7 g/cm², is kept and the other fuels are scaled by the ratio:
+ * the D-T value of the model, 7 g/cm², is kept and the other fuels are scaled by the ratio:
  *   H_B,fuel = 7 · min_T H_fuel / min_T H_DT.
  * The energy and neutron number per reaction use the branching ratios at this optimal burn temperature.
  * The ignition threshold (Lawson-type figure of merit at constant pressure, self-heating ∝ p² ⟨σv⟩E_ch/((1+Z̄)²T²)) is scaled

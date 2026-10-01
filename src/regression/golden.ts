@@ -85,6 +85,7 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
   { id: 'SPARC15-short', preset: 'SPARC15', tEnd: 3 },
   { id: 'DEMO15', preset: 'DEMO15', tEnd: 500 },
   { id: 'NIF', preset: 'NIF' },
+  { id: 'NIF210808', preset: 'NIF210808' },
   { id: 'DIRECT', preset: 'DIRECT' },
   { id: 'Z', preset: 'Z' },
   { id: 'GF', preset: 'GF' },

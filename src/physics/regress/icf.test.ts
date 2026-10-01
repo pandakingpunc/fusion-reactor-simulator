@@ -35,10 +35,10 @@ describe('ICF burn uses the selected fuel', () => {
     expect(icfFuelData('pB11').neutronsPerReaction).toBe(0);
   });
 
-  it('NIF with D-T is unchanged: G ≈ 1.49, one neutron per 17.6 MeV', () => {
+  it('NIF with D-T: one neutron per 17.6 MeV; G = 0.67 since the ρR scale was calibrated on N210808 (it was 1.49 with the scale tuned to N221204, see icfCalibration.test.ts)', () => {
     const r = run(NIF);
-    expect(r.Q_sci_max).toBeGreaterThan(1.45);
-    expect(r.Q_sci_max).toBeLessThan(1.53);
+    expect(r.Q_sci_max).toBeGreaterThan(0.66);
+    expect(r.Q_sci_max).toBeLessThan(0.68);
     expect((r.E_fusion_MJ * 1e6) / (r.neutronYield * 17.589 * MEV)).toBeCloseTo(1, 6);
   });
 

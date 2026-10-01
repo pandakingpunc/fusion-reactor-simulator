@@ -46,6 +46,12 @@ describe('step-control notes', () => {
     expect(localizeWarning('TF coil stress 900 MPa > 800 MPa limit.', bad, tr)).toBe('TF coil stress 900 MPa > 800 MPa limit.');
   });
 
+  it('writes a fractional value the user gave with the decimal mark of the language', () => {
+    const half = withProfiles({ rtol: -0.5 });
+    expect(localizeWarning('ProfileSettings.rtol = -0.5 is not a positive number: 0.01 is used.', half, tr)).toBe('ProfileSettings.rtol = -0,5 pozitif bir sayı değil: bunun yerine 0,01 kullanılıyor.');
+    expect(localizeWarning('ProfileSettings.rtol = -0.5 is not a positive number: 0.01 is used.', half, en)).toBe('ProfileSettings.rtol = -0.5 is not a positive number: 0.01 is used.');
+  });
+
   it('shows the notes in the log even after a rewind to before the first step dropped their events', () => {
     const later: SimEvent = { t: 2.5, kind: 'ELM', msg: 'ELM' };
     // the run is back at its start: no events, the notes are still there

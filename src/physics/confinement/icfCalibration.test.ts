@@ -1,13 +1,14 @@
 /**
  * The calibration of the ICF model on N210808 (icfCalibration.ts): the stored ICF_CAL is reproduced from the preset and the
- * published yield by a 1-D root solve; the solve is monotone and exact on both sides of the ignition cliff; nothing but ICF_CAL
- * changed (the v3.0.0 constant and the N221204 preset of v3.0.0 still give the v3.0.0 yield); and the blind predictions are
- * what they are, a model that runs the same capsule for every shot of the platform.
+ * published yield by a 1-D root solve; the solve is monotone and exact on both sides of the ignition cliff; no model constant but
+ * ICF_CAL changed (the v3.0.0 constant and the N221204 preset of v3.0.0 still give the v3.0.0 yield; the one input that changed with
+ * it is the fuel mass of the NIF presets, 220 -> 210 µg); and the blind predictions are what they are, a model that runs the same
+ * capsule for every shot of the platform.
  */
 import { describe, expect, it } from 'vitest';
 import { ICF_CAL, icfFuelData, icfStagnation } from './icf';
 import { ICF_CALIBRATION_SHOT, calibrateRhoRScale } from './icfCalibration';
-import { DIRECT_DRIVE, NIF, NIF_N210808 } from '../presets';
+import { DIRECT_DRIVE, NIF, NIF_N210808, PRESETS } from '../presets';
 import { Simulation } from '../simulation';
 
 const MJ = 1e6;
@@ -72,7 +73,7 @@ describe('ICF_CAL is the root of E_fus = 1.37 MJ for the N210808 capsule', () =>
   });
 });
 
-describe('nothing but ICF_CAL was changed', () => {
+describe('the model constants other than ICF_CAL are unchanged', () => {
   it('the D-T burn data are those of v3.0.0: H_B = 7 g/cm², 17.589 MeV, one neutron per reaction, ignition scale 1', () => {
     expect(icfFuelData('DT')).toMatchObject({ H_B: 7, E_rx_MeV: expect.closeTo(17.589, 10), neutronsPerReaction: 1, ignitionScale: 1 });
   });
@@ -84,6 +85,15 @@ describe('nothing but ICF_CAL was changed', () => {
     expect(v3.E_fus_total / (2.05 * MJ)).toBeCloseTo(1.4889, 3);
     expect(v3.chi_ig).toBeCloseTo(1.7745, 4);
     expect(v3.ignited).toBe(true);
+  });
+
+  it('the one input that did change is the NIF fuel mass, 220 -> 210 µg (v3.0.0 -> v4.0), set from the post-shot analysis of N221204 itself: it moves the constant by 5.7 %', () => {
+    expect(NIF.fuelMass_ug).toBe(210);
+    expect(NIF_N210808.fuelMass_ug).toBe(210);
+    const base = calibrateRhoRScale(NIF_N210808, 1.37 * MJ);
+    expect(calibrateRhoRScale({ ...NIF_N210808, fuelMass_ug: 220 }, 1.37 * MJ) / base - 1).toBeCloseTo(-0.0565, 3);
+    // so the v3.0.0 mass (220 µg) does not give the calibration yield with the calibrated constant
+    expect(icfStagnation({ ...NIF, fuelMass_ug: 220 }, ICF_CAL).E_fus_total).not.toBe(icfStagnation(NIF).E_fus_total);
   });
 
   it('what the calibrated constant does to the other shots and presets: every shot of the platform runs the same capsule, χ_ig = 0.951 is 5 % below the model threshold', () => {
@@ -115,6 +125,12 @@ describe('blind predictions of the calibrated model', () => {
     const r = run(NIF);
     expect(r.E_fusion_MJ / 3.88).toBeCloseTo(0.353, 3);
     expect(r.Q_sci_max / (3.88 / 2.05)).toBeCloseTo(0.353, 3);
+  });
+
+  it('the wizard card of the NIF preset states the miss with the model value it has, not a bare "published G = 1.5"', () => {
+    const nif = PRESETS.find((p) => p.id === 'NIF')!;
+    expect(nif.validation).toContain(`model ${run(NIF).Q_sci_max.toFixed(2)}`);
+    expect(nif.validation).toMatch(/documented miss/);
   });
 
   it('the direct-drive preset, never calibrated, drops from G = 3.10 to 0.39 as a side effect of the shared constant (its capsule falls below the threshold, χ_ig = 0.61)', () => {

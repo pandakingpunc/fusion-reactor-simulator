@@ -7,7 +7,8 @@
  *   validation  a measured experimental value (or a record) of the device the preset describes
  *   benchmark   a published design-scenario prediction, integrated-modelling result or empirical
  *               scaling evaluated for the preset (no measurement exists, or the preset is a design)
- *   sanity      a physical bound or an order-of-magnitude comparison where no firm reference exists
+ *   sanity      a physical bound or an order-of-magnitude comparison where no firm reference exists, or where the number of the
+ *               reference could not be read in its source (MASTU.q95)
  *
  * Acceptance policy. An accept range is derived from the literature, never fitted to the model output:
  * the published band — the published value with its published uncertainty, or the spread of the
@@ -219,8 +220,9 @@ const ALPHA_SHARE = (preset: string): ReferenceCheck => ({
 const MASTU_Q95 = (preset: 'MASTU'): ReferenceCheck => ({
   id: `${preset}.q95`, preset, metric: 'q95 (flat-top)', path: 'flatTop.q95', value: 7.5, band: [5, 10], unit: '',
   ref: 'Berkery 2023', source: `${SRC.berkery2023}; shape, field and current of the campaign: ${SRC.harrisonSuperX2024}; ${SRC.imada2024}`, doi: DOI.berkery2023,
-  accept: [5, 10], tolerance: 'stated', kind: 'validation',
-  basis: 'first physics campaign of MAST-U (I_p 450–1000 kA, B0 0.42–0.64 T; Harrison et al. 2024, Super-X paper): almost all operation between 5 < q95 < 10, ' +
+  accept: [5, 10], tolerance: 'stated', kind: 'sanity',
+  basis: 'Kind sanity until the band is read in the text of Berkery 2023 (sourceLimitation): the 5–10 is not a number verified in a source, so the check is not worded as a validation. ' +
+    'First physics campaign of MAST-U (I_p 450–1000 kA, B0 0.42–0.64 T; Harrison et al. 2024, Super-X paper): almost all operation between 5 < q95 < 10, ' +
     'the band, whose mid-point is the value. The accepted range is the band itself, a bound on both sides: q95 follows from I_p, B0 and ' +
     'the shape through the low-aspect-ratio fit of Sauter (2016), no reduced-model energy balance enters, so nothing is widened. The preset is a scenario of the ' +
     'campaign (R 0.8 m, a 0.5 m, κ 2.1, δ 0.47, 0.75 MA, 0.55 T; Harrison 2024 and Imada et al. 2024, whose EFIT q95 of three such discharges is 6.3–6.7): the ' +
@@ -457,11 +459,14 @@ export const REFERENCE_CHECKS: readonly ReferenceCheck[] = [
   {
     id: 'NIF.G', preset: 'NIF', metric: 'Gain G (N221204, blind)', path: 'report.Q_sci_max', value: 1.5, uncertainty: 0.1, unit: '',
     ref: 'Abu-Shawareb 2024', source: `${SRC.abushawareb2024}; uncertainty: ${SRC.pak2024}`, doi: DOI.abushawareb2024, accept: [1.0, 3.0], tolerance: 'stated', kind: 'validation', role: 'blind',
-    basis: 'N221204 (5 December 2022): 3.15 MJ from 2.05 MJ of laser energy, G = 1.5 ± 0.1. A BLIND prediction in a limited sense: the ICF model is calibrated on N210808 alone ' +
+    basis: 'N221204 (5 December 2022): 3.1 MJ from 2.05 MJ of laser energy, G = 1.5 (the abstract of Abu-Shawareb et al. 2024; 3.15 MJ is the figure of the abstract of Kritcher et al. 2024 and 3.14 MJ ' +
+      'that of the text of Pak et al. 2024, which gives G = 1.5 ± 0.1). A BLIND prediction in a limited sense: the ICF model is calibrated on N210808 alone ' +
       '(NIF210808.G) and ICF_CAL is not re-fitted for this shot, but nothing else of the model is blind to it. The ignition-cliff constants (0.2 g/cm², 360 km/s, the asymmetry and ' +
       'roughness scales) and the platform inputs (v_imp 390 km/s, CR 30, α 2.8, asymmetry 1.5 %, roughness 20 nm) are those of v3.0.0, shared by the three shots, and date from when ' +
-      'ICF_CAL was tuned to N221204 itself (the v3.0.0 source says that the constant was set for NIF and that the N221204 preset gives G ≈ 1.5). The model yield does not depend on what differs between the shots (laser energy, ablator mass), so it is ' +
-      '1.37 MJ for every shot of the platform and this row is the published yield ratio 3.15/1.37 = 2.3 of the shot to the calibration shot, seen through the gain, not an independent test. ' +
+      'ICF_CAL was tuned to N221204 itself (the v3.0.0 source says that the constant was set for NIF and that the N221204 preset gives G ≈ 1.5). The fuel mass of the preset (210 µg) is newer: ' +
+      'v4.0 took it from 220 µg on the post-shot analysis of N221204 itself (the hot-spot mass of 84 µg is 40 % of the ice, Pak et al. 2024), and it moves the calibrated constant by 5.7 %, so it too was ' +
+      'chosen with this shot in view. The model yield does not depend on what differs between the shots (laser energy, ablator mass), so it is ' +
+      '1.37 MJ for every shot of the platform and this row is the published yield ratio 3.15/1.37 = 2.3 of the shot to the calibration shot, seen through the gain (3.1/1.37 = 2.3 with the 3.1 MJ of the abstract of Abu-Shawareb et al. 2024), not an independent test. ' +
       'Lower bound G = 1, the result the shot is known for (target gain above unity); upper bound ×2 (gain tolerance)',
     knownFailure: 'the model has no input for what separates N221204 from the calibration shot N210808 (an ablator 6 µm thicker, 7 % more laser energy, better low-mode ' +
       'symmetry and capsule quality), so it runs the same capsule and predicts the calibration yield, 1.37 MJ: G = 0.67 against 1.5 (model/published 0.45, yield ' +
@@ -474,8 +479,8 @@ export const REFERENCE_CHECKS: readonly ReferenceCheck[] = [
     accept: [1.0, 3.78], tolerance: 'stated', kind: 'validation', role: 'blind',
     basis: 'N230729 (fired 30 July 2023 UTC; NIF notation NYYMMDD is the day the countdown began, the shot is also quoted as N230730): 3.88 MJ from 2.05 MJ of laser ' +
       'energy (the abstract of Kritcher et al. 2024), G = 1.89; the repeat of the N221204 design with a higher-quality diamond capsule. No yield uncertainty was verified, none is used. ' +
-      'A BLIND prediction with the configuration of the NIF preset (the model has no input that separates the shot from N221204), blind in the sense of the NIF.G basis: ' +
-      'ICF_CAL was not re-fitted, and this row is the published yield ratio 3.88/1.37 = 2.8 of the shot to the calibration shot, seen through the gain. Lower bound G = 1 as for N221204; upper bound ×2 (gain tolerance)',
+      'A BLIND prediction with the configuration of the NIF preset (the model has no input that separates the shot from N221204), blind in the sense of the NIF.G basis ' +
+      '(the inputs set with N221204 in view include the fuel mass, 210 µg): ICF_CAL was not re-fitted, and this row is the published yield ratio 3.88/1.37 = 2.8 of the shot to the calibration shot, seen through the gain. Lower bound G = 1 as for N221204; upper bound ×2 (gain tolerance)',
     knownFailure: 'as for N221204 the model predicts the calibration yield, 1.37 MJ, for every shot of the platform: G = 0.67 against 1.89 (model/published 0.35). ' +
       'The capsule quality that raised the yield of N230729 above that of N221204 (fewer high-Z inclusions and defects) enters the model only through the surface roughness, ' +
       'which acts on the ignition parameter and not on the burn-up of an ignited or marginal shot',

@@ -6,8 +6,9 @@
  * areal density ρR_eff = ICF_CAL · ρR_geo · √(2.8/α). ρR_eff sets the burn-up fraction Φ = ρR_eff/(ρR_eff + H_B) and the
  * ignition parameter χ_ig. Every other constant keeps the value it had: the D-T burn parameter H_B = 7 g/cm² (the literature
  * minimum of Atzeni & Meyer-ter-Vehn, scaled to the other fuels), the energy per reaction and the constants of the ignition
- * cliff (0.2 g/cm², 360 km/s, the asymmetry and roughness scales). Until v4.0 ICF_CAL = 0.07 was tuned to the N221204 preset
- * (G = 1.49), which made the N221204 check of validate a fit, not a prediction.
+ * cliff (0.2 g/cm², 360 km/s, the asymmetry and roughness scales). One input of the NIF presets did change with it, the DT fuel
+ * mass (220 -> 210 µg, see "What blind means here"). Until v4.0 ICF_CAL = 0.07 was tuned to the N221204 preset (G = 1.49),
+ * which made the N221204 check of validate a fit, not a prediction.
  *
  * To what. The one calibration shot is N210808 (8 August 2021, the first shot above the Lawson criterion): a yield of 1.37 MJ
  * (Abu-Shawareb et al., Phys. Rev. Lett. 129 (2022) 075001, doi:10.1103/PhysRevLett.129.075001, table I, from 1.917 MJ of
@@ -28,8 +29,11 @@
  * ignition cliff), so it predicts the calibration yield for all of them; the misses are reported there as known failures.
  *
  * What blind means here. ICF_CAL is not re-fitted for those shots, nothing more: the cliff constants and the platform inputs
- * (v_imp 390 km/s, CR 30, α 2.8, asymmetry 1.5 %, roughness 20 nm, the fuel mass) are shared by the three shots, date from v3.0.0 and
- * were set when ICF_CAL was tuned to N221204 itself, so they were not chosen without knowledge of that shot. As the yield depends on none
+ * (v_imp 390 km/s, CR 30, α 2.8, asymmetry 1.5 %, roughness 20 nm) are shared by the three shots, date from v3.0.0 and
+ * were set when ICF_CAL was tuned to N221204 itself, so they were not chosen without knowledge of that shot. The fuel mass is the one
+ * input that is newer: v4.0 took it from 220 to 210 µg on the post-shot analysis of N221204 itself (the hot-spot mass of 84 µg is
+ * 40 % of the initial ice, Pak et al. 2024), a value the three shots share, so it too was set with that shot in view; it moves the
+ * calibrated constant by 5.7 % (icfCalibration.test.ts). As the yield depends on none
  * of what differs between the shots, the two blind rows are the published yield ratios 3.15/1.37 and 3.88/1.37 of those shots to the
  * calibration shot, seen through the gain, not independent tests. The hot spot of the calibration shot is below the model's ignition threshold
  * (T_hs = 1.32 keV, the experiments show about 9–10 keV): references.ts carries that miss as NIF210808.Ti.

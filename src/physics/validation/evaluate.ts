@@ -40,10 +40,13 @@ export interface CheckOutcome {
 /** Above this relative deviation from the published value a check is "benchmarked", not "validated". */
 export const BENCHMARK_DEVIATION = 0.2;
 
-/** A signed percentage: one decimal below 10 %, none above ("+35 %", "-0.7 %"). */
+/**
+ * A signed percentage: one decimal below 10 % and where a whole number would read as the benchmark threshold (19.5 to 20.5 %), none elsewhere
+ * ("+35 %", "-0.7 %", "-20.4 %"), so that a deviation of 20.4 % is not printed as "20 %" next to the word 'benchmarked' (beyond 20 %), nor 19.6 % as "20 %" next to 'validated'.
+ */
 export function fmtDeviation(deviation: number): string {
-  const pct = deviation * 100;
-  const body = Math.abs(pct) < 10 ? Math.abs(pct).toFixed(1) : Math.abs(pct).toFixed(0);
+  const pct = deviation * 100, a = Math.abs(pct);
+  const body = a < 10 || Math.round(a) === BENCHMARK_DEVIATION * 100 ? a.toFixed(1) : a.toFixed(0);
   return `${pct < 0 && Number(body) !== 0 ? '-' : '+'}${body} %`;
 }
 

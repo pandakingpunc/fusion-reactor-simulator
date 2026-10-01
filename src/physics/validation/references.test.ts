@@ -109,7 +109,9 @@ describe('reference table integrity', () => {
     for (const id of ['ITER15.Tped', 'MASTU.q95', 'NIF.G_N230729', 'NIF210808.Ti', 'W7X.HISS04']) {
       const c = REFERENCE_CHECKS.find((x) => x.id === id)!;
       expect(c.doi, id).toBeDefined();
-      expect(c.kind, id).not.toBe('sanity');
+      // the 5 < q95 < 10 of Berkery 2023 is not a number that was verified in a source (its text could not be read): a sanity bound, never worded 'validated'.
+      // ITER15.Tped is a benchmark (an EPED prediction, 'benchmarked (deviation -22 %)' at the current model); the other three were read in an abstract or the accepted manuscript
+      expect(c.kind === 'sanity', id).toBe(id === 'MASTU.q95');
     }
   });
 
@@ -299,9 +301,19 @@ describe('wording of a comparison: validated, benchmarked, calibrated', () => {
     expect(evaluateCheck(c, 1, 'worker crashed')).toMatchObject(none);
   });
 
-  it('prints a signed percentage with one decimal below 10 % and none above', () => {
-    expect([0.35, -0.35, 0.073, -0.007, 0.0004, -0.0004, 1, 0.2049].map(fmtDeviation)).toEqual(
-      ['+35 %', '-35 %', '+7.3 %', '-0.7 %', '+0.0 %', '+0.0 %', '+100 %', '+20 %']);
+  it('prints a signed percentage with one decimal below 10 % and where a whole number would read as the 20 % threshold, none elsewhere', () => {
+    expect([0.35, -0.35, 0.073, -0.007, 0.0004, -0.0004, 1, 0.126, 0.2049, -0.2041, 0.1951, -0.1951, 0.2, 0.209, 0.191, 0.2101].map(fmtDeviation)).toEqual(
+      ['+35 %', '-35 %', '+7.3 %', '-0.7 %', '+0.0 %', '+0.0 %', '+100 %', '+13 %', '+20.5 %', '-20.4 %', '+19.5 %', '-19.5 %', '+20.0 %', '+21 %', '+19 %', '+21 %']);
+  });
+
+  it('a printed deviation never contradicts the 20 % rule of the wording: "benchmarked" shows more than 20.0 %, "validated" at most 20.0 %', () => {
+    const c = { ...REFERENCE_CHECKS.find((x) => x.id === 'MASTU.H98')! };
+    for (const f of [0.7959, 0.8001, 0.7951, 1.1951, 1.2049, 1.2051]) {
+      const w = compareWithPublished(c, c.value * f).wording;
+      const shown = /\(deviation [+-]([\d.]+) %\)/.exec(w);
+      if (shown) expect(Number(shown[1]), `x${f}`).toBeGreaterThan(20);
+      else expect(w, `x${f}`).toBe('validated');
+    }
   });
 
   it('every check of the table gets a wording from the published value alone: none of them is "validated" beyond 20 %, and a bound is never "benchmarked"', () => {

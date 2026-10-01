@@ -12,7 +12,7 @@ hand.
 ## Checklist
 
 1. **Local CI is green.** `npm run ci:local` (type check, unit tests, literature validation, golden
-   regression, build and the main-chunk budget) must pass on Node 24, the version the golden snapshots are recorded with. Useful
+   regression, figure reproducibility, build and the main-chunk budget) must pass on Node 24, the version the golden snapshots are recorded with. Useful
    extras: `npm run build`, `npm run coverage` (per-directory thresholds), `npm run typecheck:strict`
    (no file above its baseline).
 

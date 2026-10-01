@@ -33,6 +33,7 @@ development) without opening an issue first; most needs are met by the existing 
 | `npm run build` | Type check and production build of the app. |
 | `npm run validate` | Literature validation of every preset (`--only ITER15,JET15`, `--threads N`). |
 | `npm run golden` | Golden regression: every case against `test/golden/*.json`. |
+| `npm run figures:check` | The paper figures in `docs/figures` are the ones in `figures.manifest.json`, and regenerating them gives the same SHA-256 hashes. |
 | `npm run schema:check`, `npm run schema:scenario:check`, `npm run docs:config:check` | The generated schemas and the configuration reference are current. |
 | `npm run ci:local` | What CI runs, in sequence, stopping at the first failure. |
 
@@ -44,8 +45,9 @@ CI_LOCAL_WORKERS=2 CI_LOCAL_THREADS=2 npm run ci:local     # POSIX shells
 $env:CI_LOCAL_WORKERS = 2; $env:CI_LOCAL_THREADS = 2; npm run ci:local     # PowerShell
 ```
 
-`CI_LOCAL_WORKERS` is the number of Vitest workers, `CI_LOCAL_THREADS` the worker threads of the validation
-and golden steps, and `CI_LOCAL_BUNDLE=0` skips the build and bundle-budget steps. `npm run ci:local -- --dry-run`
+`CI_LOCAL_WORKERS` is the number of Vitest workers, `CI_LOCAL_THREADS` the worker threads of the validation,
+golden and figures steps, `CI_LOCAL_FIGURES=0` skips the figures step (it regenerates all nine figures, several minutes)
+and `CI_LOCAL_BUNDLE=0` skips the build and bundle-budget steps. `npm run ci:local -- --dry-run`
 lists the steps without running them.
 
 The golden snapshots are compared at a tight tolerance and are recorded on Node 24. On another Node major the

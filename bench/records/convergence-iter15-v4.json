@@ -1,0 +1,374 @@
+{
+  "provenance": {
+    "comment": "Record behind the ITER15 convergence tables of docs/technical-report.md (section 9). Written by: npm run bench:convergence -- --threads 3 --out FILE (the body below is that file, unchanged). Measured on the tree of the NTM island-flattening fix (commit 8b90fb4, ITER15 golden re-recorded in 595216c): the nRho=50 run equals test/golden/ITER15.json to 1e-9 (checked by src/regression/technicalReport.test.ts). Three runs in parallel on a shared machine: wall times are not a performance baseline.",
+    "command": "npm run bench:convergence -- --threads 3 --out scratch/claude-ntmfix-convergence.json",
+    "recordedBy": "Claude (Sonnet 5.5), build_techreport"
+  },
+  "schema": 1,
+  "preset": "ITER15",
+  "t_end_s": 400,
+  "baseGrid": 50,
+  "baseRtol": 0.01,
+  "gridPacking": 4,
+  "pedestalWidth": 0.06,
+  "node": "v24.19.0",
+  "cpu": "AMD Ryzen 5 5600 6-Core Processor              ",
+  "date": "2026-10-01T11:32:16.599Z",
+  "wall_s": 223.57435439999998,
+  "series": [
+    {
+      "parameter": "nRho",
+      "values": [
+        25,
+        50,
+        100
+      ],
+      "h": [
+        0.04,
+        0.02,
+        0.01
+      ],
+      "runs": [
+        {
+          "value": 25,
+          "ok": true,
+          "ms": 22890.9437,
+          "steps": 20568,
+          "nElm": 1309,
+          "stats": {
+            "accepted": 20568,
+            "rejected": 2698,
+            "failed": 0,
+            "localised": 1064,
+            "picardIters": 164374,
+            "newtonIters": 0,
+            "jacobians": 0,
+            "newtonEvals": 0,
+            "fallbacks": 0
+          },
+          "cellsAcrossPedestal": 5,
+          "metrics": {
+            "Q": 10.162916089240392,
+            "f_bs": 0.23029335972203813,
+            "li": 0.7138313096867068,
+            "Tped": 3.5061429030678064
+          }
+        },
+        {
+          "value": 50,
+          "ok": true,
+          "ms": 46408.6993,
+          "steps": 20903,
+          "nElm": 1317,
+          "stats": {
+            "accepted": 20903,
+            "rejected": 3622,
+            "failed": 0,
+            "localised": 1155,
+            "picardIters": 196709,
+            "newtonIters": 0,
+            "jacobians": 0,
+            "newtonEvals": 0,
+            "fallbacks": 0
+          },
+          "cellsAcrossPedestal": 10,
+          "metrics": {
+            "Q": 10.450311385999676,
+            "f_bs": 0.23060661249890135,
+            "li": 0.7194870995550975,
+            "Tped": 3.548727613973553
+          }
+        },
+        {
+          "value": 100,
+          "ok": true,
+          "ms": 106489.9681,
+          "steps": 22710,
+          "nElm": 1322,
+          "stats": {
+            "accepted": 22710,
+            "rejected": 4364,
+            "failed": 0,
+            "localised": 1164,
+            "picardIters": 240612,
+            "newtonIters": 0,
+            "jacobians": 0,
+            "newtonEvals": 0,
+            "fallbacks": 0
+          },
+          "cellsAcrossPedestal": 20,
+          "metrics": {
+            "Q": 10.509424980506319,
+            "f_bs": 0.2310672439084393,
+            "li": 0.7212729718381051,
+            "Tped": 3.509772373854703
+          }
+        }
+      ],
+      "richardson": {
+        "Q": {
+          "kind": "monotone",
+          "p": 2.281474598208329,
+          "extrapolated": 10.524732458157898,
+          "error": 0.015307477651578536,
+          "gci": 0.0018206844903469995
+        },
+        "f_bs": {
+          "kind": "no-fit",
+          "p": null,
+          "extrapolated": null,
+          "error": 0.00046063140953794823,
+          "gci": 0.0059804851836179
+        },
+        "li": {
+          "kind": "monotone",
+          "p": 1.6630996106308356,
+          "extrapolated": 0.7220971082029882,
+          "error": 0.0008241363648830645,
+          "gci": 0.0014282671004273535
+        },
+        "Tped": {
+          "kind": "oscillatory",
+          "p": null,
+          "extrapolated": null,
+          "error": 0.04258471090574645,
+          "gci": 0.03639954934653779
+        }
+      }
+    },
+    {
+      "parameter": "rtol",
+      "values": [
+        0.01,
+        0.001,
+        0.0001
+      ],
+      "h": [
+        0.01,
+        0.001,
+        0.0001
+      ],
+      "runs": [
+        {
+          "value": 0.01,
+          "ok": true,
+          "ms": 48055.83469999999,
+          "steps": 20903,
+          "nElm": 1317,
+          "stats": {
+            "accepted": 20903,
+            "rejected": 3622,
+            "failed": 0,
+            "localised": 1155,
+            "picardIters": 196709,
+            "newtonIters": 0,
+            "jacobians": 0,
+            "newtonEvals": 0,
+            "fallbacks": 0
+          },
+          "metrics": {
+            "Q": 10.450311385999676,
+            "f_bs": 0.23060661249890135,
+            "li": 0.7194870995550975,
+            "Tped": 3.548727613973553
+          }
+        },
+        {
+          "value": 0.001,
+          "ok": true,
+          "ms": 75009.1658,
+          "steps": 28491,
+          "nElm": 1320,
+          "stats": {
+            "accepted": 28491,
+            "rejected": 6004,
+            "failed": 0,
+            "localised": 1077,
+            "picardIters": 308430,
+            "newtonIters": 0,
+            "jacobians": 0,
+            "newtonEvals": 0,
+            "fallbacks": 0
+          },
+          "metrics": {
+            "Q": 10.475846767581265,
+            "f_bs": 0.2312180536875862,
+            "li": 0.7194831398146687,
+            "Tped": 3.534751388883952
+          }
+        },
+        {
+          "value": 0.0001,
+          "ok": true,
+          "ms": 108931.16630000001,
+          "steps": 37604,
+          "nElm": 1321,
+          "stats": {
+            "accepted": 37604,
+            "rejected": 7211,
+            "failed": 0,
+            "localised": 1076,
+            "picardIters": 475854,
+            "newtonIters": 0,
+            "jacobians": 0,
+            "newtonEvals": 0,
+            "fallbacks": 0
+          },
+          "metrics": {
+            "Q": 10.485894591313238,
+            "f_bs": 0.2312703782510213,
+            "li": 0.7196747252783595,
+            "Tped": 3.5377631069108504
+          }
+        }
+      ],
+      "richardson": {
+        "Q": {
+          "kind": "monotone",
+          "p": 0.40507034433818623,
+          "extrapolated": 10.492413292500938,
+          "error": 0.0065187011877001376,
+          "gci": 0.0007770797630729073
+        },
+        "f_bs": {
+          "kind": "monotone",
+          "p": 1.0676490773446474,
+          "extrapolated": 0.23127527501104425,
+          "error": 0.000004896760022925268,
+          "gci": 0.000026466640799164057
+        },
+        "li": {
+          "kind": "oscillatory",
+          "p": null,
+          "extrapolated": null,
+          "error": 0.0001915854636908021,
+          "gci": 0.0007986335644205083
+        },
+        "Tped": {
+          "kind": "oscillatory",
+          "p": null,
+          "extrapolated": null,
+          "error": 0.013976225089600725,
+          "gci": 0.011851747559608081
+        }
+      }
+    },
+    {
+      "parameter": "dtMax",
+      "values": [
+        0.5,
+        0.05,
+        0.01
+      ],
+      "h": [
+        0.5,
+        0.05,
+        0.01
+      ],
+      "runs": [
+        {
+          "value": 0.5,
+          "ok": true,
+          "ms": 50710.859200000006,
+          "steps": 20903,
+          "nElm": 1317,
+          "stats": {
+            "accepted": 20903,
+            "rejected": 3622,
+            "failed": 0,
+            "localised": 1155,
+            "picardIters": 196709,
+            "newtonIters": 0,
+            "jacobians": 0,
+            "newtonEvals": 0,
+            "fallbacks": 0
+          },
+          "metrics": {
+            "Q": 10.450311385999676,
+            "f_bs": 0.23060661249890135,
+            "li": 0.7194870995550975,
+            "Tped": 3.548727613973553
+          }
+        },
+        {
+          "value": 0.05,
+          "ok": true,
+          "ms": 51085.38310000001,
+          "steps": 21885,
+          "nElm": 1319,
+          "stats": {
+            "accepted": 21885,
+            "rejected": 3589,
+            "failed": 0,
+            "localised": 1077,
+            "picardIters": 201717,
+            "newtonIters": 0,
+            "jacobians": 0,
+            "newtonEvals": 0,
+            "fallbacks": 0
+          },
+          "metrics": {
+            "Q": 10.452435717241459,
+            "f_bs": 0.23081802324563597,
+            "li": 0.7196499453108374,
+            "Tped": 3.53805271134483
+          }
+        },
+        {
+          "value": 0.01,
+          "ok": true,
+          "ms": 65828.5147,
+          "steps": 45791,
+          "nElm": 1325,
+          "stats": {
+            "accepted": 45791,
+            "rejected": 7,
+            "failed": 0,
+            "localised": 458,
+            "picardIters": 287175,
+            "newtonIters": 0,
+            "jacobians": 0,
+            "newtonEvals": 0,
+            "fallbacks": 0
+          },
+          "metrics": {
+            "Q": 10.488036844314173,
+            "f_bs": 0.23123895095831148,
+            "li": 0.7198088991369425,
+            "Tped": 3.538019872752362
+          }
+        }
+      ],
+      "richardson": {
+        "Q": {
+          "kind": "no-fit",
+          "p": null,
+          "extrapolated": null,
+          "error": 0.03560112707271479,
+          "gci": 0.010183352976686495
+        },
+        "f_bs": {
+          "kind": "no-fit",
+          "p": null,
+          "extrapolated": null,
+          "error": 0.0004209277126755173,
+          "gci": 0.00546094476208816
+        },
+        "li": {
+          "kind": "no-fit",
+          "p": null,
+          "extrapolated": null,
+          "error": 0.00016284575573988214,
+          "gci": 0.0006787041224488987
+        },
+        "Tped": {
+          "kind": "monotone",
+          "p": 2.5055687230897874,
+          "extrapolated": 3.5380192800511696,
+          "error": 5.927011927021645e-7,
+          "gci": 2.0940427626862065e-7
+        }
+      }
+    }
+  ]
+}

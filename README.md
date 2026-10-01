@@ -3,239 +3,455 @@
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22259861.svg)](https://doi.org/10.5281/zenodo.22259861)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> A time-resolved fusion reactor simulation engine: **0D** power balance and (new in v3.0)
-> **1.5D radial transport coupled to a Grad–Shafranov equilibrium**. Tokamak, spherical tokamak,
-> stellarator, laser ICF, MTF/MagLIF/Z-pinch, FRC, magnetic mirror and muon-catalysed fusion, with
-> real-machine presets (ITER, JET, SPARC, DEMO, W7-X, NIF, …). Runs in the browser, no runtime
-> dependencies beyond React.
+English | [Türkçe](README.tr.md)
 
-The 1.5D model evolves T_e, T_i, n_e and the poloidal flux on ρ_tor, coupled to a fixed-boundary
-Grad–Shafranov equilibrium, with Sauter bootstrap current, NBI/RF sources, beam–target fusion,
-sawteeth, ELMs and NTMs. It is verified against manufactured solutions and validated against
-ITER, JET DTE2, SPARC, EU DEMO and NIF. Publication-quality SVG/PDF figures and multi-core
-parameter scans are built in.
+> A time-resolved simulator of fusion reactors for research and education: a zero-dimensional (0D) power balance
+> for <!--n:methods-->12 confinement methods, and a 1.5D radial transport model coupled to a Grad–Shafranov equilibrium for
+> tokamaks and spherical tokamaks. Tokamak, spherical tokamak, stellarator, laser ICF, MTF/MagLIF/Z-pinch, FRC,
+> magnetic mirror and muon-catalysed fusion, with <!--n:presets-->22 built-in presets (ITER, JET, SPARC, DEMO, W7-X, NIF, ...).
+> Deterministic and reproducible, and open about where its numbers disagree with the published ones.
+
+It runs in the browser (no runtime dependency beyond React), as a Node.js library, as a command line (`fusion-sim`,
+with NetCDF, IMAS-like JSON and CSV output) and from Python.
 
 <p align="center">
-  <img src="docs/figures/fig01_equilibrium.svg" alt="Grad–Shafranov equilibrium" width="92%">
+  <img src="docs/figures/fig01_equilibrium.svg" alt="Grad–Shafranov equilibrium of the ITER 1.5D discharge" width="92%">
 </p>
 
----
+## What it is, and what it is not
 
-## What's new in v3.0
+- **A reduced model.** The 0D model is a volume-averaged power and particle balance. The 1.5D model evolves T_e, T_i,
+  n_e and the poloidal flux on ρ̂ = √(Φ/Φ_b) and is coupled, quasi-statically, to a fixed-boundary Grad–Shafranov
+  equilibrium. Transport, the pedestal, ELMs, sawteeth and NTMs are closures with a few constants, several of them
+  empirical; simplifications are marked `APPROXIMATION` in the code.
+- **Not a design code.** It is a tool for research, teaching, pre-conceptual design and scenario exploration. It is
+  not a free-boundary, turbulence or nonlinear MHD code, it has no coil set, and it must not be used as the primary
+  source for machine design. Its limits are listed under [Known limits](#known-limits-and-unmet-targets).
+- **Honest about its agreement with the references.** A model value within 20 % of a published one is called
+  *validated*; beyond 20 % it is called *benchmarked*, with the deviation. Some checks fail and are documented as known
+  failures, and the one tuned constant of the ICF model is fitted to one shot, so that shot is not a test.
+  See [Validation summary](#validation-summary).
 
-| Area | Change |
+<!-- table: glance -->
+
+| Built into the repository | Count |
 |---|---|
-| **1.5D transport** | T_e, T_i, n_e, ψ on ρ̂ = √(Φ/Φ_b); implicit finite volume on an edge-packed radial grid, TR-BDF2 (second order, L-stable) with error control and event localisation, Anderson-accelerated Picard or Newton–Raphson (block-tridiagonal Jacobian) per stage, 2×2 block-tridiagonal T_e/T_i, Scharfetter–Gummel density flux, current diffusion in the Hinton–Hazeltine form (I_p as the boundary condition) |
-| **Grad–Shafranov equilibrium** | Fixed boundary (Miller), Shortley–Weller finite differences, banded LU (factorised once), Picard; flux-surface tracing, exact trapped-particle fraction, q, ℓ_i, β_p, Shafranov shift; quasi-static coupling to transport |
-| **Neoclassical** | Sauter bootstrap current and conductivity, Chang–Hinton ion floor |
-| **Sources** | 3-component NBI beam attenuation + beam–target fusion, Gaussian ECRH/ICRH deposition, NBCD/ECCD |
-| **MHD** | Kadomtsev sawtooth (shear-triggered), type-I ELM (α_crit + KBM), modified Rutherford NTM, L–H hysteresis |
-| **Numerical verification** | GS 2nd order (2.05), FV heat 2nd order (1.94), backward Euler 1st order (0.99), DP5 vs RK4/Euler work–precision; 44 unit tests |
-| **POPCON** | Same physics as the 0D model: dilution (Be/Ar/He ash), line + synchrotron radiation, loss power P_L = P_heat − P_rad,core (steady state; the 0D and 1.5D models also subtract dW/dt) |
-| **Figures** | Dependency-free plotting engine → SVG + PDF (Times/Symbol, mini-TeX labels, Okabe–Ito palette, journal column widths); `npm run figures` |
-| **Multi-core** | `worker_threads` pool: validation and parameter scans run in parallel |
-| **User interface** | 0D/1.5D choice and 1.5D settings in the wizard, live radial profile plot, cross-section with GS flux surfaces, SVG/PDF figure export from the report, 1.5D validation test |
+| Confinement methods (`method`) | 12 |
+| Presets | 22 |
+| Golden regression cases (`test/golden`) | 40 |
+| Literature checks of `npm run validate` | 46 |
+| Paper figures (`docs/figures`) | 9 |
+| Learn missions | 10 |
+
+## What is new in v4
+
+**Deterministic kernel and exact rewind.** Any sequence of `advance()` calls gives bitwise the same frames, events and
+report as `runAll()`; `rewindTo()` restores the exact model state in 0D and 1.5D, so a rewound run replays bit for bit;
+every live control change is logged and replays bitwise; `runFingerprint()` (SHA-256 of a canonical serialisation) names a
+run by its inputs. All random numbers are seeded.
+
+**1.5D solver.** Implicit finite volumes on an edge-packed radial grid, advanced by TR-BDF2 (second order, L-stable) with
+error control. The events (L–H transition, ELM, sawtooth crash, NTM onset) are localised in time with a root finder
+instead of being stepped over. Each stage is solved by Anderson-accelerated Picard iteration or Newton–Raphson with a
+block-tridiagonal Jacobian; the current diffusion has the Hinton–Hazeltine form with I_p as the boundary condition. The
+convergence of the solver is measured, and one number of it misses its target: see [Verification](#verification-and-convergence).
+
+**Self-consistent Grad–Shafranov coupling.** The table mode of the equilibrium solver scales only FF′ to meet I_p, so the
+reported pressure, β_p and stored energy stay in force balance; the surface table is clustered towards the edge; when a new
+equilibrium is adopted the state is remapped conservatively (particle number, energy and enclosed current are kept), with
+flux ledgers for the loop voltage, the resistive and inductive flux and the central-solenoid budget.
+
+**Corrections of the 0D model.** Separate alpha and beam fast-ion pools (no spurious ignition with NBI on), the loss power
+P_L = P_heat − P_rad,core − dW/dt, scalings and Greenwald limit at the line-averaged density, D-D and D-³He side channels,
+exact D-T energies, Miller volume and surface, and a density feed-forward controller.
+
+**Opt-in physics modules of the 1.5D model (WS6).** Each is behind a switch of `profiles.*` and is off by default, so a
+configuration that does not name it behaves as before. They need `fidelity` `"1.5D"`.
+
+<!-- table: modules -->
+
+| Module | Switch | Default | Opt-in values |
+|---|---|---|---|
+| Predictive transport | `profiles.transportModel` | `"scaling"` | `"cgm"`, `"bgb"`, `"ifspppl"` |
+| EPED1-type pedestal | `profiles.pedestalModel` | `"fixed"` | `"eped1"` |
+| ELM energy loss (Loarte) | `profiles.elmLoss` | `"fixed"` | `"loarte"` |
+| Impurity and helium-ash transport | `profiles.impurityTransport` | `"legacy"` | `"anomalous"`, `"facit"` |
+| Fast-ion energy profiles | `profiles.fastIonModel` | `"scalar"` | `"profile"` |
+| NBCD and ECCD current drive | `profiles.cdModel` | `"legacy"` | `"physics"` |
+| Porcelli sawtooth trigger | `profiles.sawtoothTrigger` | `"shear"` | `"porcelli"` |
+| Kadomtsev reconnection | `profiles.sawtoothReconnection` | `"legacy"` | `"kadomtsev"` |
+| Redl bootstrap coefficients | `profiles.neoclassicalModel` | `"sauter"` | `"redl"` |
+| Two-point edge model for T_sep | `profiles.edgeModel` | `"legacy"` | `"twoPoint"` |
+
+The modules are reduced closures implemented as published and tested against their own limits. They are guarded by unit and
+integration tests and, for most of them, by golden cases; they are not validated as predictive models, and several of their unmet
+targets are stated under [Known limits](#known-limits-and-unmet-targets). Every field is described in the [configuration reference](docs/config-reference.md).
+
+**Edge, systems engineering, uncertainty and optimisation.** A two-point divertor model (Stangeby loss factors, Eich λ_q with
+divertor spreading, Lengyel seed-impurity radiation, a detachment qualifier) shared by the 0D model, the 1.5D boundary and POPCON;
+a systems-lite package (TF coil winding pack and stress, central-solenoid flux budget, cryoplant, radial build, tritium breeding,
+PROCESS 1990 cost accounts); seeded uncertainty quantification (Sobol' / Latin hypercube / Monte Carlo ensembles, P(Q ≥ 10),
+P(disruption), Sobol' indices with bootstrap intervals); and design optimisation on the steady-state power balance (augmented
+Lagrangian with Nelder–Mead or CMA-ES, NSGA-II Pareto fronts). The engineering and optimisation results carry an "educational"
+caveat: the models behind them are heuristic.
+
+**Headless library, command line, data formats, Python.** `src/physics/index.ts` is the public API (a barrel with `@public`
+and `@experimental` tags); every configuration is validated at run time with path-specific errors and has a JSON Schema;
+`fusion-sim` runs, scans, lists presets, checks configurations and writes G-EQDSK (COCOS 11); runs export as JSON, CSV, NDJSON,
+NetCDF-3 (CF attributes) and IMAS-like JSON, each with a provenance block, byte-identical for the same configuration;
+`python/fusion_sim` wraps the command line.
+
+**Web application.** A scenario editor (programmed waveforms and triggers per control, templates, recording of a live run);
+share links, embed views and hash routes; runs saved in the browser and run files that re-simulate on import and show a
+verified-reproduction badge; a POPCON map computed off the main thread, with the run trajectory, click-to-steer and
+divertor-edge maps; a 3D view (raw WebGL2, loaded on demand) with ELM and disruption effects; a Learn tab with <!--n:missions-->10 missions,
+a glossary and a power-flow diagram; Compare with radar, overlay and configuration diff; the interface in English and Turkish
+with locale-aware numbers, tested for hard-coded text and for accessibility (see
+[interface language and accessibility](docs/interface-language-and-accessibility.md), which also states what the tests cannot check).
+
+**Validation v2 and the publication engine.** A table of literature references with DOIs and accepted ranges, check roles
+(calibration, blind) and the validated / benchmarked wording; PDF figures with embedded STIX Two fonts and a provenance
+manifest, reproduced bit for bit by `npm run figures:check`.
 
 ## Quick start
 
-Requirements: Node.js 20+.
+Requirements: Node.js 20 or newer (`.nvmrc` pins the major the golden files were recorded with).
+
+### Web application
 
 ```bash
-npm install
-npm run dev        # user interface (Vite) → http://localhost:5173
-npm test           # unit, CLI and fast golden-regression tests (vitest)
-npm run validate   # 22 presets, 46 literature checks (8 documented known failures), on a worker pool (measured 215–222 s on 3 threads)
-npm run golden     # golden regression: 40 cases compared with test/golden (~12 s on 4 threads)
-npm run ci:local   # type check + schema checks + tests + validate + golden + figures check + build + bundle budget, in sequence, stops at the first failure
-npm run check:bundle  # after a build: fails when the main JS chunk is above 250 kB (85 kB gzip)
-npm run figures    # paper figures → docs/figures/*.svg|pdf + captions.md + figures.manifest.json (~1 MB, 222 s on 3 threads)
-npm run figures:check  # docs/figures match the manifest and regenerate with identical SHA-256 hashes (197 s on 3 threads)
-npm run build      # type check + production build
-npm run build:lib  # the library and the fusion-sim command line -> build/lib (ESM + CommonJS, declarations)
-npm run schema     # regenerate schema/fusion-sim.schema.json (npm run schema:check verifies it is current)
+npm ci
+npm run dev        # http://localhost:5173
+npm run build      # type check and production build (static files, base './')
 ```
 
-Every command-line tool accepts `--help`, rejects unknown or malformed flags with exit code 2 and
-takes `--threads N` (default: cores − 1).
+### Command line
 
-- `validate`: `--only ITER15,JET15`, `--kind validation,benchmark,sanity`, `--json` (machine-readable,
-  schema 3: per check the preset, metric, kind, role, published value with uncertainty, source and DOI,
-  model value, `ratio` = model / published, `deviationPct`, accepted range, `status`, `pass` and a
-  `wording`; the top level adds `wordings`, the count of each wording). The wording compares the model
-  value with the published one: `validated` within 20 %, `benchmarked (deviation X %)` beyond 20 %
-  (a model far from the published value is compared with it, not validated against it), `calibrated`
-  for the one NIF shot (N210808) the ICF model's only tuned constant is fitted to, so its pass is by
-  construction, and `sanity bound` for a check of kind sanity (a bound is not a measurement). A check
-  with the role `blind` is a prediction made after that calibration, with the constant not re-fitted
-  for it. Exit code 0 if every executed check passes or is a documented known failure, 1 if a check
-  or run fails or no check was executed, 2 on a usage error. Plain `npm run` writes its `> script`
-  banner to stdout before the JSON, so capture it silently:
-  `npm run -s validate -- --json > results.json` (or `npx tsx src/cli/validate.cli.ts --json`).
-- `figures`: `--only popcon,mhd`, `--scan 7` (scan grid), `--formats pdf`, `--out DIR`.
-- `missions`: plays the ten missions of the Learn screen headless (untouched, with a negative control, with the
-  solution script); exit code 0 if every mission is solvable and not trivial, `--only hmode,fuel`, `--json`.
-- `golden`: `--only NIF,ITER15`; `--update` with `--reason TEXT` or `--reason-file FILE`. See
-  [Regression testing](#regression-testing).
-- `uq`: uncertainty quantification of a preset by an ensemble of full simulations (seeded Sobol' /
-  Latin hypercube / Monte Carlo design, priors on H98, density, impurities and 1.5D profile
-  settings): P(Q >= 10), P(disruption), P(n/n_G > 1), quantiles, rank correlations and, with
-  `--analysis sensitivity`, Sobol' first-order and total indices with bootstrap intervals.
-  `npm run -s uq -- --preset ITER --n 128 --json uq-iter.json`; the same `--seed` gives byte-identical
-  JSON at any `--threads`. `scan`: parameter grid or sampled scan by full simulations
-  (`--param H98=0.8:1.2:5`). `optimize`: design optimisation of a tokamak preset on the steady-state
-  power balance (`--objective major-radius|plasma-volume|aux-power|fusion-power|gain`, `--pareto A,B`
-  for a two-objective front). All three write JSON/CSV and carry an "educational" caveat; the
-  library is in `src/analysis` (see its README).
-- `fusion-sim` (`npx tsx src/cli/fusion-sim.ts <command>`, or `node build/lib/fusion-sim.js <command>` after
-  `npm run build:lib`): `run` (one shot to json, csv, ndjson, netcdf or IMAS-like json), `scan` (a grid of
-  parameter values on worker threads), `presets`, `schema` (print the JSON Schema of a configuration, or check a
-  configuration file) and `export-eqdsk` (the G-EQDSK of a 1.5D run, COCOS 11). Every output
-  carries a provenance block and is byte-identical for the same configuration. This `scan` runs a configuration
-  scan; the `scan` above is the analysis one. See `src/cli/fusionSim/README.md`.
-- Library: `src/physics/index.ts` is the public API (a documented barrel with `@public` and `@experimental`
-  tags; browser-safe, no Node API), built by `npm run build:lib`; `src/io` has the browser-safe CSV, NDJSON,
-  NetCDF-3 and IMAS-like writers and readers; every configuration is validated at run time with path-specific
-  errors (`src/physics/config`, `schema/fusion-sim.schema.json`). `python/fusion_sim` wraps the command line.
-- `npm run stress:exit -- 300 8` (opt-in soak): starts 300 `validate` and `golden` processes on
-  fixture inputs (independent of the physics), 8 at a time, and checks that each ends with its
-  documented exit code (0 or 1) and no signal. A short version of it is part of `npm test`.
+```bash
+npx tsx src/cli/fusion-sim.ts presets
+npx tsx src/cli/fusion-sim.ts run --preset JET --series Q,P_fus,Ti --format csv > jet.csv
+npx tsx src/cli/fusion-sim.ts run --preset SPARC --set fuel=DD --format text
+npx tsx src/cli/fusion-sim.ts run --preset ITER15 --format netcdf --out iter15.nc
+npx tsx src/cli/fusion-sim.ts scan --preset ITER --param heating.P_NBI_MW=10:50:10 --param H98=0.9,1.0,1.1 --metric flatTop.Q --out scan.csv
+npx tsx src/cli/fusion-sim.ts export-eqdsk --preset ITER15 --out iter15.geqdsk
+npx tsx src/cli/fusion-sim.ts schema --check my.reactor.json
+npm run -s uq -- --preset ITER --n 128 --json uq-iter.json
+npm run -s optimize -- --preset ITER --objective major-radius --json opt.json
+```
+
+After `npm run build:lib` the same program is `node build/lib/fusion-sim.js <command>`. Every command accepts `--help`, rejects
+unknown or malformed flags with exit code 2 and takes `--threads N` where it runs in parallel. The commands are described in
+[`src/cli/fusionSim/README.md`](src/cli/fusionSim/README.md); the formats in [`src/io/README.md`](src/io/README.md).
+
+### Library
+
+The package is not published to npm (`package.json` is `private`); build it and import the bundle, or run from source with `tsx`.
+
+```ts
+import { presets, validateConfig, runShot } from './build/lib/index.js';   // npm run build:lib
+
+const cfg = { ...presets.find((p) => p.id === 'JET')!.cfg, t_end: 2 };
+const check = validateConfig(cfg);                    // { ok: true, config } or { ok: false, issues }
+const { report, flatTop, events, sim } = runShot(cfg);
+console.log(report.E_fusion_MJ, flatTop.Q, sim.fingerprint('4.0.0'));
+```
+
+### Python
+
+```python
+import fusion_sim as fs
+
+doc = fs.run("ITER", set={"heating.P_NBI_MW": 20}, t_end=100)   # dict: report, flatTop, burn, events, config, provenance
+doc["report"]["Q_sci_max"], doc["flatTop"]["Q"]
+fs.scan({"heating.P_NBI_MW": "10:50:10"}, preset="ITER", metrics=["flatTop.Q"])["points"]
+```
+
+The wrapper is a standard-library subprocess front end of the command line ([`python/README.md`](python/README.md)).
+
+### Checks
+
+```bash
+npm test               # unit, component, CLI and fast golden tests (vitest)
+npm run validate       # all presets against the literature table; a few minutes
+npm run golden         # golden regression: every case at 1e-9
+npm run figures:check  # docs/figures match figures.manifest.json and regenerate identically
+npm run ci:local       # type checks, schema checks, tests, validate, golden, figures check, build, bundle budget; stops at the first failure
+```
+
+`npm run validate -- --json` writes the machine-readable result (schema 3); capture it with `npm run -s validate -- --json > results.json`
+(plain `npm run` prints its banner to stdout). `npm run validate -- --markdown` prints the table of checks.
 
 ## Validation summary
 
-| Quantity | Reference | 0D | 1.5D |
-|---|---|---|---|
-| ITER Q (flat top) | 10 | 14.0 | **9.8** |
-| ITER P_fus | 500 MW | 715 MW | **491 MW** |
-| ITER f_bs / ℓ_i(3) / q95 | ≈0.2 / 0.85 / 3.0 | — | 0.22 / 0.73 / 3.5 |
-| JET DTE2 E_fus | 59 MJ | 58 MJ | 85 MJ¹ |
-| SPARC P_fus | 140 MW | 182 MW | 157 MW |
-| EU DEMO P_fus | 2 GW | 2.2 GW | 1.95 GW |
-| NIF N221204 gain | 1.5 | 0.67² | — |
+`npm run validate` runs every preset and compares <!--n:checks-->46 model outputs with published values. A check has a published value with
+its uncertainty, a source with DOI, an accepted range and a kind: *validation* (a measured value of the device), *benchmark*
+(a published design or modelling value) or *sanity* (a physical bound). The accepted range is derived from the literature and a
+stated reduced-model tolerance, never fitted to the model. Each result also carries a wording that compares the model value with
+the published one: *validated* within 20 %, *benchmarked (deviation X %)* beyond 20 % (a model far from the published value is
+compared with it, not validated against it), *calibrated* for the one shot a model constant is fitted to (its pass is by
+construction) and *sanity bound* for a check of kind sanity (a bound is not a measurement). A check with the role *blind* is a
+prediction made after that calibration with the constant not re-fitted.
 
-¹ In 1.5D about 60 % of the fusion yield comes from NBI beam–target reactions (qualitatively
-consistent with TRANSP analyses); the share is sensitive to the fast-ion slowing-down model.
+<!-- table: validation-counts -->
 
-² A blind miss, not a validation: the ICF model's one tuned constant is calibrated on NIF N210808
-(1.37 MJ, G = 0.72, reproduced by construction) and N221204 is predicted with it unchanged. The model
-has no input that separates the two shots, so it predicts the calibration yield for both and reaches
-0.45 of the published gain (before v4.0 the constant was tuned to N221204 itself and read 1.49, a fit
-that looked like a prediction). `npm run validate` lists it, and N230729 (model/published 0.35), as
-documented known failures. The other rows of this table are v3.0.0 values.
-Details: [technical report](docs/technical-report.md) §7.
+| Result of `npm run validate` | Checks |
+|---|---|
+| Checks executed | 46 |
+| Inside the accepted range | 38 |
+| Documented known failures | 8 |
+| Unexpected failures | 0 |
+| Wording *validated* (within 20 %) | 16 |
+| Wording *benchmarked* (beyond 20 %) | 16 |
+| Wording *calibrated* | 1 |
+| Wording *sanity bound* | 13 |
+| Kind *validation* | 15 |
+| Kind *benchmark* | 18 |
+| Kind *sanity* | 13 |
+
+Passing the range check is not the same as agreeing with the reference: the accepted ranges are wide, and only <!--n:validated-->16 of the <!--n:checks-->46 results
+carry the wording *validated*. The headline quantities, against the published values (flat-top means; ratio = model / published):
+
+<!-- table: headline -->
+
+| Quantity | Published | 0D | 0D / pub. | 1.5D | 1.5D / pub. | Wording |
+|---|---|---|---|---|---|---|
+| ITER Q | 10 | 10.08 | 1.01 | 10.45 | 1.05 | validated / validated |
+| ITER P_fus (MW) | 500 | 516.6 | 1.03 | 525.6 | 1.05 | validated / validated |
+| ITER n_e,line / n_G | 0.85 | 0.848 | 1.00 | 0.800 | 0.94 | validated / validated |
+| ITER q95 | 3.0 | 3.00 | 1.00 | 3.50 | 1.17 | validated / validated |
+| ITER f_bs | 0.2 ± 0.05 | — | — | 0.231 | 1.15 | validated |
+| ITER ℓ_i(3) | 0.85 ± 0.15 | — | — | 0.719 | 0.85 | validated |
+| ITER T_e,ped (keV) | 4.5 ± 0.5 | — | — | 3.55 | 0.79 | benchmarked |
+| JET E_fus (MJ) | 59 ± 6 | 66.6 | 1.13 | 81.8 | 1.39 | validated / benchmarked |
+| SPARC Q | 11 | 7.84 | 0.71 | 6.29 | 0.57 | benchmarked / benchmarked |
+| SPARC P_fus (MW) | 140 | 205.0 | 1.46 | 161.5 | 1.15 | benchmarked / validated |
+| DEMO P_fus (MW) | 2000 | 1903 | 0.95 | 2007 | 1.00 | validated / validated |
+| NIF N221204 G (blind) | 1.5 ± 0.1 | 0.668 | 0.45 | — | — | benchmarked |
+| NIF N230729 G (blind) | 1.89 | 0.668 | 0.35 | — | — | benchmarked |
+| NIF N210808 G (calibration) | 0.72 | 0.715 | 0.99 | — | — | calibrated |
+
+The ICF rows are 0D models. The DEMO row is the full 2000 s preset, the run `npm run validate` makes (the golden DEMO cases are
+shortened). The SPARC P_fus reference is the design value of Creely et al. 2020 and has no check in `npm run validate`. The
+before-and-after of these numbers against the previous release, with the cause of each move, is in
+[docs/v4-numbers-diff.md](docs/v4-numbers-diff.md).
 
 <p align="center">
-  <img src="docs/figures/fig03_timetraces.svg" alt="ITER 1.5D time traces" width="92%">
+  <img src="docs/figures/fig05_validation.svg" alt="Ratio of simulated to published values for the 0D and 1.5D models" width="80%">
 </p>
 
-## Physics model
+The <!--n:known-->8 documented known failures (the model falls outside the accepted range; each is explained in
+[`references.ts`](src/physics/validation/references.ts), and none was closed by moving a range):
+
+<!-- table: known-failures -->
+
+| Check | Model | Published | Accepted | Model / published | Cause |
+|---|---|---|---|---|---|
+| `JET15.Efus` | 81.8 MJ | 59 ± 6 MJ | 40–80 | 1.39 | beam–target fusion of the 3-component NBI deposition in 1.5D; no beam–beam fusion or fast-ion loss model |
+| `NIF210808.Ti` | 1.32 keV | 9.55 keV | 6.3–13.2 | 0.14 | the model sits below its own ignition threshold on the calibration shot: the yield is matched, the hot spot is 7 times too cold |
+| `NIF.G` (blind) | 0.668 | 1.5 ± 0.1 | 1–3 | 0.45 | N221204: no model input separates it from N210808, so the calibration yield is predicted again |
+| `NIF.G_N230729` (blind) | 0.668 | 1.89 | 1–3.78 | 0.35 | N230729: the same prediction as for N221204 |
+| `Z.yield` | 2.0e14 | 1.1e13 | 3.66e12–3.3e13 | 18.18 | ideal MagLIF compression without liner–fuel mix, end or preheat losses |
+| `TAE.Ttot` | 1.21 keV | 3 keV | 1.5–6 | 0.40 | single-temperature FRC; the hot beam-driven ions are not modelled |
+| `MIRROR.Te` | 9.53 keV | 0.66 ± 0.05 keV | 0.33–1.8 | 14.44 | single-temperature mirror; electrons cooled by axial loss are not modelled |
+| `MUON.Yf` | 106 | 150 ± 20.4 | 109–191 | 0.71 | the preset's sticking and cycling rate give 106 fusions per muon |
+
+Until v4 the ICF constant was tuned to N221204 itself, which made that shot look like a validation. It is now calibrated on
+N210808 alone, and N221204 and N230729 are blind predictions that miss. The direct-drive preset (`DIRECT.G`) passes its range
+and is benchmarked at a deviation of -47 %; its capsule was never calibrated.
+
+## Verification and convergence
+
+Code verification against exact solutions (the figure [fig07_verification](docs/figures/fig07_verification.svg)):
+
+<!-- table: orders -->
+
+| Test | Observed order | Expected order |
+|---|---|---|
+| Grad–Shafranov solver against the exact Solov'ev solution | 2.05 | 2 |
+| Finite-volume heat solver, steady diffusion with a uniform source | 1.94 | 2 |
+| Backward-Euler decay of a Bessel eigenmode (self-convergence) | 0.99 | 1 |
+
+The order of TR-BDF2 itself is checked on scalar problems in the unit tests. The convergence of the 1.5D discharge is measured by
+`npm run bench:convergence` on ITER15 (400 s, flat-top means; <!--n:nrho-->50 cells, `rtol` <!--n:rtol-->1e-2 and `dtMax` <!--n:dtmax-->0.5 s are the defaults). The change
+is the finest run against the middle one:
+
+<!-- table: convergence -->
+
+| Study | Metric | Coarse | Middle | Fine | Change | Target | Status |
+|---|---|---|---|---|---|---|---|
+| Radial cells 25 / 50 / 100 | Q | 10.16 | 10.45 | 10.51 | +0.57 % | < 1 % | met |
+| Radial cells 25 / 50 / 100 | f_bs | 0.2303 | 0.2306 | 0.2311 | +0.20 % | < 1 % | met |
+| Radial cells 25 / 50 / 100 | ℓ_i(3) | 0.7138 | 0.7195 | 0.7213 | +0.25 % | < 1 % | met |
+| Radial cells 25 / 50 / 100 | T_ped (keV) | 3.506 | 3.549 | 3.510 | -1.10 % | < 1 % | **not met** |
+| Tolerance `rtol` 1e-2 / 1e-3 / 1e-4 | Q | 10.45 | 10.48 | 10.49 | +0.10 % | < 1 % | met |
+| Tolerance `rtol` 1e-2 / 1e-3 / 1e-4 | f_bs | 0.2306 | 0.2312 | 0.2313 | +0.02 % | < 1 % | met |
+| Tolerance `rtol` 1e-2 / 1e-3 / 1e-4 | ℓ_i(3) | 0.7195 | 0.7195 | 0.7197 | +0.03 % | < 1 % | met |
+| Tolerance `rtol` 1e-2 / 1e-3 / 1e-4 | T_ped (keV) | 3.549 | 3.535 | 3.538 | +0.09 % | < 1 % | met |
+| Step limit `dtMax` 0.5 / 0.05 / 0.01 s | ELM count | 1317 | 1319 | 1325 | +0.45 % | < 2 % | met |
+
+T_ped misses its target: it is oscillatory with the grid (<!--n:tped_change-->-1.10 % between 50 and 100 cells; 25 cells put only <!--n:cells25-->5 cells across the
+pedestal and read <!--n:q25_lower-->2.75 % lower in Q), so the pedestal temperature is not converged to 1 %; the default grid has <!--n:cells50-->10 cells across the
+pedestal. Radial cells and tolerance are discretisation parameters of the solver, not physics inputs. The q(0) and the number of
+sawtooth crashes are not part of the table and are the least converged numbers of the 1.5D model: never quote them as converged physics.
+
+A 400 s ITER 1.5D shot takes tens of seconds and the 2000 s DEMO 1.5D shot a few minutes (median wall times of `npm run bench:perf`
+on an idle 6-core desktop, `bench/perf-baseline.json`, recorded when the 1.5D solver was merged; later physics fixes changed the step
+counts, so a shared machine reads higher):
+
+<!-- table: runtime -->
+
+| Preset | Median wall time (s) |
+|---|---|
+| ITER (0D, 400 s) | 2.0 |
+| ITER15 (1.5D, 400 s) | 23.8 |
+| DEMO15 (1.5D, 2000 s) | 139.5 |
+
+## Known limits and unmet targets
+
+These are stated plainly because a green software gate (`npm run ci:local`: the code does what the tests say and the golden
+files did not change) does not show that any closure predicts a real plasma. The numbers are those of
+[docs/v4-wave2b-report.md](docs/v4-wave2b-report.md) (section 8.1; the grid convergence of T_ped is in section 11).
+
+<!-- table: limits -->
+
+| Target | Measured | Status |
+|---|---|---|
+| EPED1 pedestal within 15 % of the published EPED prediction (ITER15, at the ELM onset) | pressure +21.1 %, T_ped +15.4 % | **not met** (the acceptance test enforces the 25 % that a reduced closure can honestly claim); grid convergence between 50 and 100 cells met |
+| Emergent H98(y,2) of the Bohm/gyro-Bohm closure in 0.8–1.2 | ITER15 0.701, JET15 1.024, SPARC15 0.644 | met on JET15 only |
+| Emergent H98(y,2) of the IFS-PPPL closure in 0.8–1.2 | ITER15 0.287, JET15 0.442, SPARC15 0.304 | **not met** (ITER15 stays in L-mode with this closure); no coefficient was tuned |
+| JET DTE2 #99971 thermal / beam-target split within 15 % of the published trend | thermal fraction 36.7 % against a trend of about 50 % | **open**: the paper gives no split for #99971, only a trend for the baseline scheme; beam–beam fusion and fast-ion losses are not modelled |
+
+Further limits:
+
+- **ITER15 sawtooth crashes rest on a hollow-core Kadomtsev convention.** In the gate measurement every ITER15 crash occurred with q(0)
+  above 1 (measured before the NTM-flattening fix, not repeated since), while the crash model was written for a q = 1 surface that starts at
+  the axis; the mixing radius of a hollow core follows a convention, defined by the helical flux, that is not validated, and neither are the
+  crash rate and the trigger thresholds. The NTM that the crashes seed inherits this.
+- **The density controller is not a safety claim near the Greenwald limit.** The systematic overshoot of a density ramp is small, but a stochastic,
+  non-monotone band within about 2 % of n_G remains in which a shot may or may not disrupt, and the outcome depends on the seed and on `t_end`.
+  No unconditional statement "safe below n_G" is made.
+- **The ICF model has one tuned constant** and no input that separates the three NIF shots; the predictions of N221204 and N230729 miss
+  (table above), and the hot spot of the calibration shot is too cold.
+- **FACIT and the pedestal and ELM closures are reduced forms** compared with their sources term by term or with a published fit, not benchmarked
+  against NEO, Aurora or EPED output beyond what is stated above.
+- **Sentences written by the physics layer stay English** in the Turkish interface (events, warnings, termination reasons, report notes).
+- **The 1.5D model is about <!--n:slower-->5 times slower** than it was before the TR-BDF2 solver with error control and event localisation: the price of
+  the convergence above ([docs/v4-numbers-diff.md](docs/v4-numbers-diff.md), section 6).
+
+## Headline physics models
+
+<!-- table: models -->
 
 | Area | Model | Reference |
 |---|---|---|
 | Reactivity ⟨σv⟩ | Bosch–Hale (D-T, D-D, D-³He), numerical Maxwellian average for p-¹¹B | Bosch & Hale, *NF* **32** (1992) 611; Nevins & Swain (2000) |
-| Confinement | IPB98(y,2), ITER89-P, ISS04, ST; L–H threshold (Martin 2008) | ITER Physics Basis (1999) |
-| 1.5D transport | τ_E-scaled χ (PI controller) + critical-gradient stiffness, ETB, neoclassical floor; CGM alternative | METIS (Artaud 2018); Garbet (2004) |
-| Equilibrium | Fixed-boundary Grad–Shafranov; Cerfon–Freidberg Solov'ev (verification) | Cerfon & Freidberg (2010); Jeon (2015) |
-| Bootstrap / conductivity | Sauter–Angioni–Lin-Liu | *Phys. Plasmas* **6** (1999) 2834 |
-| MHD events | Kadomtsev, α_crit ELM, modified Rutherford NTM | Kadomtsev (1975); La Haye (2006) |
+| Confinement | IPB98(y,2), ITPA20 and ITPA20-IL, ITER89-P, ISS04, ST; L–H threshold (Martin 2008, Ryter 2014 low-density branch) | ITER Physics Basis (1999); Verdoolaege (2021) |
+| 1.5D transport | τ_E-scaled χ (PI controller) with critical-gradient stiffness, ETB and neoclassical floor; critical-gradient, Bohm/gyro-Bohm and IFS-PPPL closures | METIS (Artaud 2018); Erba (1997); Kotschenreuther (1995) |
+| Equilibrium | Fixed-boundary Grad–Shafranov (Miller boundary, Shortley–Weller stencils); Cerfon–Freidberg Solov'ev for verification | Cerfon & Freidberg (2010) |
+| Bootstrap and conductivity | Sauter–Angioni–Lin-Liu; Redl et al. as an option | *Phys. Plasmas* **6** (1999) 2834; Redl (2021) |
+| MHD events | Kadomtsev and Porcelli sawteeth, α_crit and EPED1-type ELMs, modified Rutherford NTM | Kadomtsev (1975); Porcelli (1996); La Haye (2006) |
 | Radiation | Bremsstrahlung (relativistic), Albajar synchrotron, Mavrin line radiation | Albajar (2001); Mavrin (2018) |
-| Edge | Two-point SOL model, Eich λ_q | Stangeby (2000); Eich (2013) |
-| Limits / disruptions | Greenwald, Troyon β_N, q95; TQ/CQ, halo, runaway electrons | Greenwald (1988); Hender (2007) |
-| Time integration | 0D: Dormand–Prince RK5(4); 1.5D: TR-BDF2 with error control, Anderson-accelerated Picard / Newton–Raphson | Hairer–Nørsett–Wanner |
+| Edge | Two-point divertor model, Eich λ_q, Lengyel radiation, detachment qualifier | Stangeby (2018); Eich (2013); Kallenbach (2018) |
+| Limits and disruptions | Greenwald, Troyon β_N, q95; thermal and current quench, halo currents, runaway electrons | Greenwald (1988); Hender (2007) |
+| Time integration | 0D: Dormand–Prince RK5(4); 1.5D: TR-BDF2 with error control and event localisation | Hairer–Nørsett–Wanner |
 
-Constants are CODATA 2018 and all internal calculations use SI units; simplifications are marked
-with an `APPROXIMATION` tag in the code.
+Constants are CODATA 2018 and all internal calculations use SI units. The full list of closures, with the equations and the
+numerical methods, is in the [technical report](docs/technical-report.md).
+
+## Figures
+
+The <!--n:figures-->9 paper figures are generated by `npm run figures` (SVG for the web, PDF 1.4 with embedded STIX Two subsets for journals) with
+captions in [`docs/figures/captions.md`](docs/figures/captions.md) and the provenance of every file (version, commit, configuration hash,
+seeds, SHA-256) in [`figures.manifest.json`](docs/figures/figures.manifest.json). `npm run figures:check` regenerates them and compares the hashes.
+
+<p align="center">
+  <img src="docs/figures/fig03_timetraces.svg" alt="Time traces of the ITER 1.5D discharge" width="92%">
+</p>
+
+1. [Equilibrium](docs/figures/fig01_equilibrium.svg) ([PDF](docs/figures/fig01_equilibrium.pdf))
+2. [Radial profiles](docs/figures/fig02_profiles.svg) ([PDF](docs/figures/fig02_profiles.pdf))
+3. [Time traces](docs/figures/fig03_timetraces.svg) ([PDF](docs/figures/fig03_timetraces.pdf))
+4. [POPCON](docs/figures/fig04_popcon.svg) ([PDF](docs/figures/fig04_popcon.pdf))
+5. [Validation](docs/figures/fig05_validation.svg) ([PDF](docs/figures/fig05_validation.pdf))
+6. [Reactivity and Lawson diagram](docs/figures/fig06_reactivity_lawson.svg) ([PDF](docs/figures/fig06_reactivity_lawson.pdf))
+7. [Verification](docs/figures/fig07_verification.svg) ([PDF](docs/figures/fig07_verification.pdf))
+8. [MHD events](docs/figures/fig08_mhd.svg) ([PDF](docs/figures/fig08_mhd.pdf))
+9. [Operating-space scan](docs/figures/fig09_scan.svg) ([PDF](docs/figures/fig09_scan.pdf))
 
 ## Regression testing
 
-Two independent safety nets guard the physics:
-
-- **Literature validation** (`npm run validate`) checks selected outputs of every preset against
-  published ranges. The ranges are wide: it catches order-of-magnitude and consistency errors.
-- **Golden regression** (`npm run golden`) catches *any* numerical drift. For 40 cases (all 22
-  presets, covering every method in 0D and 1.5D, a 3 s SPARC 1.5D variant, and 17 variants for
-  what no preset uses: other fuels in 0D and 1.5D, the optional 1.5D bootstrap, transport, impurity,
-  pedestal, fast-ion, ECCD and sawtooth models, and 1.5D DIII-D and MAST-U) it stores a
-  deterministic snapshot in `test/golden/<case>.json`: every finite scalar of the shot report,
-  flat-top averages of all diagnostics, whole-run minimum, maximum and mean of every diagnostic
-  together with the number of frames in which it is missing or not finite (so a NaN anywhere in
-  the run fails the check), event counts by kind, frame and step counts, 20 samples of 5–8 key
-  time traces, the model geometry and, for 1.5D runs, every radial profile on the full ρ grid at
-  mid-run and at the end plus a digest of the last Grad–Shafranov equilibrium. Numbers are
-  compared with a relative tolerance of 1e-9 when the file was written by the same Node.js major
-  version (1e-6 otherwise); a mismatch prints a table of preset, key, old value, new value and
-  relative difference and exits with code 1. Long discharges are shortened (e.g. DEMO 600 s,
-  DEMO15 500 s; recorded in each file) so the suite runs in about 12 s on 4 threads. `npm test`
-  runs a fast subset (JET, NIF, Z, SPARC15-short).
-
-When a change is *meant* to move the numbers, re-record them and say why:
+Two independent safety nets guard the physics. The **literature validation** (`npm run validate`) checks selected outputs of every
+preset against published ranges; it catches order-of-magnitude and consistency errors. The **golden regression** (`npm run golden`)
+catches any numerical drift: for <!--n:cases-->40 cases (all presets, plus variants for the other fuels, most opt-in modules and 1.5D DIII-D and MAST-U) it
+stores a deterministic snapshot in `test/golden/<case>.json` (every finite scalar of the shot report, flat-top averages, whole-run
+statistics of every diagnostic, event counts, key time traces, the geometry and, in 1.5D, every radial profile and a digest of the last
+equilibrium) and compares it at a relative tolerance of 1e-9 (1e-6 across Node.js major versions). Long discharges are shortened in the
+golden cases (recorded in each file). When a change is meant to move the numbers, re-record them and say why:
 
 ```bash
-npm run golden:update -- --reason "switch ELM model to …"        # all cases
-npm run golden:update -- --reason "…" --only ITER15,DEMO15       # a subset
-npm run golden:update -- --reason-file reason.txt                # a long reason from a file
+npm run golden:update -- --reason "switch the ELM model to ..."
+npm run golden:update -- --reason "..." --only ITER15,DEMO15
 ```
 
-This rewrites the affected files and appends a dated entry listing the moved presets and keys to
-the append-only log [`test/golden/CHANGES.md`](test/golden/CHANGES.md). It refuses to run without
-`--reason` or `--reason-file` (the two are mutually exclusive). In a `--reason-file` (UTF-8, LF or
-CRLF) the first paragraph is the title of the entry and the further blank-line separated
-paragraphs follow it, so a reason that does not fit on a Windows command line (`npm.cmd` rejects
-a long `--reason`) can still list every headline move and its cause. For each changed case the
-entry names the moved keys (largest relative change first), the added keys and the removed keys
-under their own labels. A change of the file format is logged the same way: files of the previous
-schema are compared too, so a format-only re-record reads "0 keys moved" plus the keys it added.
+The reason is appended to the append-only log [`test/golden/CHANGES.md`](test/golden/CHANGES.md) with the moved keys of every case.
+The numbers of this README (and of README.tr.md) are held to the golden files, the literature table and the benchmark records by
+[`src/docs/readme.test.ts`](src/docs/readme.test.ts), so they cannot go stale silently.
 
 ## Project layout
 
-```
-src/physics/
-  confinement/        0D models (magnetic, icf, mtf, frc, mirror, muon) + shared shot report
-  profiles/           1.5D model: geometry1d, fvsolver, neoclassical, sources, beamtarget, mhd, model, defaults
-  equilibrium/        Grad–Shafranov: miller (boundary), solovev (analytic), gs (solver), fluxsurface (averages)
-  numerics/           linalg (Thomas, block, banded LU), quadrature, interp (spline/PCHIP/bicubic), roots, rk4
-  analysis/           flatTop (shared flat-top averaging)
-  popcon.ts           Steady-state POPCON (same physics as 0D)
-  integrator.ts       Dormand–Prince RK5(4)
-  simulation.ts       Common driver (0D/1.5D selection, recording, rewind)
-src/cli/              Node command-line tools: args (strict flag parser), pool (worker_threads),
-                      presetRunner.worker, validate.cli (npm run validate), figures.cli (npm run figures),
-                      golden.cli (npm run golden / golden:update), missions.cli (npm run missions), uq.cli / scan.cli / optimize.cli
-                      (npm run uq / scan / optimize), fusion-sim (run | scan | presets | schema | export-eqdsk)
-src/physics/index.ts  The public library API (barrel); src/physics/config: runtime validation, JSON Schema, dotted paths, runShot
-src/io/               Browser-safe CSV, NDJSON, NetCDF-3 and IMAS-like writers and readers
-src/analysis/         Uncertainty quantification and optimisation (samplers, Sobol' indices, ensembles, Nelder-Mead,
-                      augmented Lagrangian, CMA-ES, NSGA-II); DOM-free, Node only in analysis/node
-src/regression/       Golden snapshot extraction, comparator and pool worker
-src/plot/             Plotting engine: figure, svg, pdf, png, mathtext, fonts, ticks, contour, colors
-  figures/            Paper figures (equilibrium, profiles, timetrace, popcon, validation, reactivity, verification, mhd, scan, generic)
-src/worker/, src/ui/  Web worker and React user interface
-scripts/              ci-local (npm run ci:local), build-lib (npm run build:lib), gen-schema (npm run schema)
-schema/               fusion-sim.schema.json, the JSON Schema of a configuration (generated)
-python/               fusion_sim, a standard-library wrapper of the fusion-sim command line
-test/golden/          Golden regression snapshots and their change log
-docs/
-  technical-report.md Technical report (equations, numerical methods, verification, validation, figures)
-  figures/            Generated figures (SVG + PDF) and captions.md
-  interface-language-and-accessibility.md  What the Turkish interface and the accessibility checks guarantee, and the manual checks before a release
+```text
+src/physics/          the physics core (browser-safe, no DOM or Node APIs)
+  confinement/        0D models (magnetic, icf, mtf, frc, mirror, muon) and the shared shot report
+  profiles/           1.5D model: grid, finite-volume solver, TR-BDF2, sources, transport closures, pedestal, impurities, fast ions, events
+  equilibrium/        Grad–Shafranov: Miller boundary, solver, flux-surface averages, Solov'ev, free-boundary building blocks
+  edge/  systems/     two-point divertor model; TF, central solenoid, cryoplant, radial build, costs
+  kernel/             fingerprint, canonical serialisation, SHA-256, errors
+  config/             runtime validation, JSON Schema, dotted paths, runShot
+  validation/         references.ts (the literature table), metrics, evaluation
+  index.ts            the public library API
+src/cli/              validate, golden, figures, missions, uq, scan, optimize and fusion-sim; worker pool
+src/io/               CSV, NDJSON, NetCDF-3, IMAS-like JSON and G-EQDSK writers and readers
+src/analysis/         uncertainty quantification and optimisation
+src/regression/       golden snapshots, comparator, numbers-diff test
+src/docs/             the test that holds the numbers of the READMEs to their sources
+src/plot/             plotting engine (SVG, PDF, fonts) and the paper figures
+src/ui/  src/worker/  React interface and the simulation workers
+src/i18n/  src/edu/   English and Turkish texts; the Learn missions and the glossary
+schema/               JSON Schemas of a configuration and of a scenario (generated)
+python/               fusion_sim, a standard-library wrapper of the command line
+test/golden/          golden snapshots and their change log
+bench/  scripts/      convergence and performance benchmarks; ci:local, build:lib, release:check and the generators
+docs/                 config-reference.md, technical-report.md, v4-numbers-diff.md, the wave reports, figures/
 ```
 
-## Resource usage
+## Documentation
 
-Simulations write no raw data or log files; history frames are kept at the regular output
-interval and radial profiles are attached only to those frames. The whole figure set is about
-1 MB. The worker pool uses `cores − 1` threads by default (limit it with `--threads`).
+- [Configuration reference](docs/config-reference.md): every field of a reactor configuration and of a scenario, generated from the JSON Schemas.
+- [Technical report](docs/technical-report.md): equations, numerical methods, verification and validation.
+- [Numbers before and after](docs/v4-numbers-diff.md): the headline numbers against the previous release, with the cause of each move.
+- Gate reports of the v4 development: [wave 1](docs/v4-wave1-report.md), [wave 2A](docs/v4-wave2a-report.md), [wave 2B](docs/v4-wave2b-report.md).
+- [Interface language and accessibility](docs/interface-language-and-accessibility.md), [CHANGELOG](CHANGELOG.md), [releasing](docs/RELEASING.md).
 
-> **Scientific accuracy disclaimer:** this is a tool for education, pre-conceptual design and
-> scenario exploration; it is not a full free-boundary, turbulence or nonlinear MHD code. Its
-> limitations are listed in §11 of the technical report. It must not be used as a primary source
-> for machine design.
+## Contributing, security, code of conduct
+
+Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) (set-up, the checks, the golden regression and validation policies, translations).
+Security problems are reported privately: [SECURITY.md](SECURITY.md). Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Citation
 
-If you use this project, please cite it with the information in `CITATION.cff` (**"Cite this
-repository"** on GitHub). Concept DOI covering all versions:
-[10.5281/zenodo.22259861](https://doi.org/10.5281/zenodo.22259861). DOI of v3.0.0:
-[10.5281/zenodo.22925078](https://doi.org/10.5281/zenodo.22925078).
+If you use this software, please cite it with the information in [`CITATION.cff`](CITATION.cff) ("Cite this repository" on GitHub).
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22259861.svg)](https://doi.org/10.5281/zenodo.22259861)
+
+> Karatum, M. *Fusion Reactor Simulator*. Zenodo. [10.5281/zenodo.22259861](https://doi.org/10.5281/zenodo.22259861)
+
+This is the concept DOI, which covers all versions and always resolves to the latest one. The DOI of each version is listed on Zenodo.
+
+## AI assistance
+
+The software was developed by the author, an independent researcher, with substantial help from AI coding assistants (Claude Code by
+Anthropic, Codex by OpenAI and MiMo), under the author's direction and review. The evidence for the numbers is the tests, the golden
+regression and the literature table, not the assistants' statements.
 
 ## License
 

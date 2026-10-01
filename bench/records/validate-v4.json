@@ -1,0 +1,1445 @@
+{
+  "provenance": {
+    "comment": "Output of npm run -s validate -- --json (schema 3) of the v4 tree, recorded for docs/technical-report.md section 10; the body below is that output, unchanged. 46 checks, 8 documented known failures, 0 unexpected, exit 0. A full run takes about four minutes (--threads 2: 240 s); src/regression/technicalReport.test.ts recomputes every check that a golden file covers and compares the rest with this record, and with TECHREPORT_VALIDATE_JSON=<file of a fresh run> it compares the whole record.",
+    "command": "npm run -s validate -- --threads 2 --json",
+    "head": "8b4cfc8",
+    "date": "2026-10-01"
+  },
+  "schema": 3,
+  "threads": 2,
+  "wall_s": 240.19660380000002,
+  "presets": [
+    {
+      "id": "ITER",
+      "ok": true,
+      "Q_sci_max": 12.73533331190829,
+      "E_fusion_MJ": 203632.0256838313,
+      "Tmax_keV": 20.350681218510804,
+      "score": 95,
+      "steps": 11162,
+      "cpu_s": 3.033001000000004
+    },
+    {
+      "id": "JET",
+      "ok": true,
+      "Q_sci_max": 0.4764142798470996,
+      "E_fusion_MJ": 66.63614242626056,
+      "Tmax_keV": 8.279884031723016,
+      "score": 50,
+      "steps": 1501,
+      "cpu_s": 0.36759929999998714
+    },
+    {
+      "id": "SPARC",
+      "ok": true,
+      "Q_sci_max": 10.154001597725454,
+      "E_fusion_MJ": 1723.2944534291503,
+      "Tmax_keV": 22.26776595897779,
+      "score": 91,
+      "steps": 1505,
+      "cpu_s": 0.27082970000000206
+    },
+    {
+      "id": "DIIID",
+      "ok": true,
+      "Q_sci_max": 0.0003463083783020808,
+      "E_fusion_MJ": 0.02271830733549815,
+      "Tmax_keV": 5.209807101707562,
+      "score": 25,
+      "steps": 1503,
+      "cpu_s": 0.5463660999999993
+    },
+    {
+      "id": "JT60SA",
+      "ok": true,
+      "Q_sci_max": 0.0038814252900776004,
+      "E_fusion_MJ": 13.3939731018249,
+      "Tmax_keV": 11.25734237350719,
+      "score": 36,
+      "steps": 4496,
+      "cpu_s": 1.915248499999987
+    },
+    {
+      "id": "MASTU",
+      "ok": true,
+      "Q_sci_max": 0.00010346732536476556,
+      "E_fusion_MJ": 0.00027826296824282304,
+      "Tmax_keV": 1.9631940310739462,
+      "score": 22,
+      "steps": 1003,
+      "cpu_s": 0.3789880000000121
+    },
+    {
+      "id": "W7X",
+      "ok": true,
+      "Q_sci_max": 0.000008850344232254113,
+      "E_fusion_MJ": 0.0013663057468950735,
+      "Tmax_keV": 2.01393707076248,
+      "score": 22,
+      "steps": 1507,
+      "cpu_s": 0.23907749999999942
+    },
+    {
+      "id": "DEMO",
+      "ok": true,
+      "Q_sci_max": 21.04285456463417,
+      "E_fusion_MJ": 3807984.216090314,
+      "Tmax_keV": 27.83068170916244,
+      "score": 98,
+      "steps": 50292,
+      "cpu_s": 13.833970099999998
+    },
+    {
+      "id": "ITER15",
+      "ok": true,
+      "Q_sci_max": 16.24850345698855,
+      "E_fusion_MJ": 210968.73320048716,
+      "Tmax_keV": 28.930662887681336,
+      "score": 94,
+      "steps": 20903,
+      "cpu_s": 45.3091177
+    },
+    {
+      "id": "JET15",
+      "ok": true,
+      "Q_sci_max": 0.9060592983675834,
+      "E_fusion_MJ": 81.84452148751515,
+      "Tmax_keV": 12.133729824081348,
+      "score": 54,
+      "steps": 3043,
+      "cpu_s": 6.093854500000001
+    },
+    {
+      "id": "SPARC15",
+      "ok": true,
+      "Q_sci_max": 6.6307539520822525,
+      "E_fusion_MJ": 1323.340215280667,
+      "Tmax_keV": 26.57060772702551,
+      "score": 83,
+      "steps": 1091,
+      "cpu_s": 3.3261928000000043
+    },
+    {
+      "id": "DEMO15",
+      "ok": true,
+      "Q_sci_max": 23.890161451049906,
+      "E_fusion_MJ": 4220910.660090703,
+      "Tmax_keV": 43.57898290480519,
+      "score": 99,
+      "steps": 132437,
+      "cpu_s": 239.6071557
+    },
+    {
+      "id": "NIF",
+      "ok": true,
+      "Q_sci_max": 0.6684093625945734,
+      "E_fusion_MJ": 1.3698970795619398,
+      "Tmax_keV": 1.3215532055481172,
+      "score": 57,
+      "steps": 1002,
+      "cpu_s": 0.009940500000011525
+    },
+    {
+      "id": "NIF210808",
+      "ok": true,
+      "Q_sci_max": 0.714783095106351,
+      "E_fusion_MJ": 1.3698970795619398,
+      "Tmax_keV": 1.3215532055481172,
+      "score": 58,
+      "steps": 1002,
+      "cpu_s": 0.005730299999995623
+    },
+    {
+      "id": "DIRECT",
+      "ok": true,
+      "Q_sci_max": 0.3905709192014861,
+      "E_fusion_MJ": 0.7419500503712873,
+      "Tmax_keV": 1.2546501175617892,
+      "score": 37,
+      "steps": 1001,
+      "cpu_s": 0.0031592000000091503
+    },
+    {
+      "id": "Z",
+      "ok": true,
+      "Q_sci_max": 0.00007799599898970834,
+      "E_fusion_MJ": 0.0002341866714650911,
+      "Tmax_keV": 3.39578428583072,
+      "score": 27,
+      "steps": 1000,
+      "cpu_s": 0.013688299999994342
+    },
+    {
+      "id": "GF",
+      "ok": true,
+      "Q_sci_max": 7.71265254803909e-7,
+      "E_fusion_MJ": 0.0000771220761049019,
+      "Tmax_keV": 1.411720037399834,
+      "score": 3,
+      "steps": 1002,
+      "cpu_s": 0.008626900000002933
+    },
+    {
+      "id": "FRXL",
+      "ok": true,
+      "Q_sci_max": 0.000015238228671226154,
+      "E_fusion_MJ": 0.00018289207767993056,
+      "Tmax_keV": 1.430278977531235,
+      "score": 4,
+      "steps": 1000,
+      "cpu_s": 0.007939100000003236
+    },
+    {
+      "id": "ZAP",
+      "ok": true,
+      "Q_sci_max": 2.7312508300651032e-8,
+      "E_fusion_MJ": 1.365874357165495e-8,
+      "Tmax_keV": 1,
+      "score": 2,
+      "steps": 1000,
+      "cpu_s": 0.005128699999986565
+    },
+    {
+      "id": "TAE",
+      "ok": true,
+      "Q_sci_max": 1.239259883615144e-10,
+      "E_fusion_MJ": 7.988271430330309e-11,
+      "Tmax_keV": 0.6060661233301636,
+      "score": 21,
+      "steps": 803,
+      "cpu_s": 0.007838900000002468
+    },
+    {
+      "id": "MIRROR",
+      "ok": true,
+      "Q_sci_max": 0.0017797633088318752,
+      "E_fusion_MJ": 0.008788480918353879,
+      "Tmax_keV": 9.531773248244267,
+      "score": 39,
+      "steps": 802,
+      "cpu_s": 0.008566600000005564
+    },
+    {
+      "id": "MUON",
+      "ok": true,
+      "Q_sci_max": 0.37451089653300945,
+      "E_fusion_MJ": 0.030001630380178806,
+      "Tmax_keV": 0.0000775559993696662,
+      "score": 37,
+      "steps": 801,
+      "cpu_s": 0.005932000000000699
+    }
+  ],
+  "checks": [
+    {
+      "id": "ITER.Q",
+      "preset": "ITER",
+      "metric": "Q (flat-top avg.)",
+      "kind": "benchmark",
+      "value": 10.084010178476294,
+      "unit": "",
+      "expected": {
+        "lo": 5,
+        "hi": 20
+      },
+      "published": 10,
+      "reference": {
+        "value": 10,
+        "source": "M. Shimada et al., \"Chapter 1: Overview and summary\" (Progress in the ITER Physics Basis), Nucl. Fusion 47 (2007) S1–S17",
+        "doi": "10.1088/0029-5515/47/6/S01"
+      },
+      "ratio": 1.0084010178476295,
+      "deviationPct": 0.8401017847629477,
+      "wording": "validated",
+      "tolerance": "gain",
+      "status": "pass",
+      "pass": true,
+      "ref": "Shimada 2007"
+    },
+    {
+      "id": "ITER.Pfus",
+      "preset": "ITER",
+      "metric": "P_fusion (flat-top)",
+      "kind": "benchmark",
+      "value": 516.6380753205701,
+      "unit": "MW",
+      "expected": {
+        "lo": 300,
+        "hi": 800
+      },
+      "published": 500,
+      "reference": {
+        "value": 500,
+        "source": "M. Shimada et al., \"Chapter 1: Overview and summary\" (Progress in the ITER Physics Basis), Nucl. Fusion 47 (2007) S1–S17",
+        "doi": "10.1088/0029-5515/47/6/S01"
+      },
+      "ratio": 1.0332761506411403,
+      "deviationPct": 3.327615064114031,
+      "wording": "validated",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "Shimada 2007"
+    },
+    {
+      "id": "ITER.H98",
+      "preset": "ITER",
+      "metric": "H98(y,2) (flat-top)",
+      "kind": "sanity",
+      "value": 1.0908774695581107,
+      "unit": "",
+      "expected": {
+        "lo": 0.748,
+        "hi": 1.34
+      },
+      "published": 1,
+      "reference": {
+        "value": 1,
+        "source": "ITER Physics Expert Group on Confinement and Transport et al., \"Chapter 2: Plasma confinement and transport\" (ITER Physics Basis), Nucl. Fusion 39 (1999) 2175–2249",
+        "doi": "10.1088/0029-5515/39/12/302"
+      },
+      "ratio": 1.0908774695581107,
+      "deviationPct": 9.08774695581107,
+      "wording": "sanity bound",
+      "tolerance": "confinement",
+      "status": "pass",
+      "pass": true,
+      "ref": "ITER Physics Basis 1999"
+    },
+    {
+      "id": "ITER.nG",
+      "preset": "ITER",
+      "metric": "n̄/n_G (flat-top)",
+      "kind": "benchmark",
+      "value": 0.8483152087896285,
+      "unit": "",
+      "expected": {
+        "lo": 0.6,
+        "hi": 1
+      },
+      "published": 0.85,
+      "reference": {
+        "value": 0.85,
+        "source": "M. Shimada et al., \"Chapter 1: Overview and summary\" (Progress in the ITER Physics Basis), Nucl. Fusion 47 (2007) S1–S17",
+        "doi": "10.1088/0029-5515/47/6/S01"
+      },
+      "ratio": 0.9980178926936807,
+      "deviationPct": -0.1982107306319314,
+      "wording": "validated",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "Shimada 2007"
+    },
+    {
+      "id": "ITER.alphaShare",
+      "preset": "ITER",
+      "metric": "P_alpha / P_fusion (flat-top)",
+      "kind": "sanity",
+      "value": 0.20734275147692083,
+      "unit": "",
+      "expected": {
+        "lo": 0,
+        "hi": 0.213
+      },
+      "published": 0.2,
+      "reference": {
+        "value": 0.2,
+        "source": "ITER Physics Expert Group et al., \"Chapter 1: Overview and summary\" (ITER Physics Basis), Nucl. Fusion 39 (1999) 2137–2174",
+        "doi": "10.1088/0029-5515/39/12/301"
+      },
+      "ratio": 1.0367137573846041,
+      "deviationPct": 3.671375738460414,
+      "wording": "sanity bound",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "ITER Physics Basis ch. 1, 1999"
+    },
+    {
+      "id": "JET.Efus",
+      "preset": "JET",
+      "metric": "E_fusion",
+      "kind": "validation",
+      "value": 66.63614242626056,
+      "unit": "MJ",
+      "expected": {
+        "lo": 40,
+        "hi": 80
+      },
+      "published": 59,
+      "reference": {
+        "value": 59,
+        "uncertainty": 6,
+        "source": "M. Maslov et al., \"JET D-T scenario with optimized non-thermal fusion\", Nucl. Fusion 63 (2023) 112002",
+        "doi": "10.1088/1741-4326/ace2d8"
+      },
+      "ratio": 1.1294261428179757,
+      "deviationPct": 12.942614281797571,
+      "wording": "validated",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "Maslov 2023"
+    },
+    {
+      "id": "JET.alphaShare",
+      "preset": "JET",
+      "metric": "P_alpha / P_fusion (flat-top)",
+      "kind": "sanity",
+      "value": 0.2028244249161458,
+      "unit": "",
+      "expected": {
+        "lo": 0,
+        "hi": 0.213
+      },
+      "published": 0.2,
+      "reference": {
+        "value": 0.2,
+        "source": "ITER Physics Expert Group et al., \"Chapter 1: Overview and summary\" (ITER Physics Basis), Nucl. Fusion 39 (1999) 2137–2174",
+        "doi": "10.1088/0029-5515/39/12/301"
+      },
+      "ratio": 1.014122124580729,
+      "deviationPct": 1.4122124580729034,
+      "wording": "sanity bound",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "ITER Physics Basis ch. 1, 1999"
+    },
+    {
+      "id": "SPARC.Q",
+      "preset": "SPARC",
+      "metric": "Q (flat-top avg.)",
+      "kind": "benchmark",
+      "value": 7.8425050580137965,
+      "unit": "",
+      "expected": {
+        "lo": 2,
+        "hi": 20
+      },
+      "published": 11,
+      "reference": {
+        "value": 11,
+        "source": "A.J. Creely et al., \"Overview of the SPARC tokamak\", J. Plasma Phys. 86 (2020) 865860502",
+        "doi": "10.1017/S0022377820001257"
+      },
+      "ratio": 0.7129550052739815,
+      "deviationPct": -28.704499472601853,
+      "wording": "benchmarked (deviation -29 %)",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "Creely 2020"
+    },
+    {
+      "id": "SPARC.alphaShare",
+      "preset": "SPARC",
+      "metric": "P_alpha / P_fusion (flat-top)",
+      "kind": "sanity",
+      "value": 0.20373541669437495,
+      "unit": "",
+      "expected": {
+        "lo": 0,
+        "hi": 0.213
+      },
+      "published": 0.2,
+      "reference": {
+        "value": 0.2,
+        "source": "ITER Physics Expert Group et al., \"Chapter 1: Overview and summary\" (ITER Physics Basis), Nucl. Fusion 39 (1999) 2137–2174",
+        "doi": "10.1088/0029-5515/39/12/301"
+      },
+      "ratio": 1.0186770834718746,
+      "deviationPct": 1.8677083471874578,
+      "wording": "sanity bound",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "ITER Physics Basis ch. 1, 1999"
+    },
+    {
+      "id": "DIIID.H98",
+      "preset": "DIIID",
+      "metric": "H98(y,2) (flat-top)",
+      "kind": "sanity",
+      "value": 0.8825966037544938,
+      "unit": "",
+      "expected": {
+        "lo": 0.748,
+        "hi": 1.34
+      },
+      "published": 1,
+      "reference": {
+        "value": 1,
+        "source": "ITER Physics Expert Group on Confinement and Transport et al., \"Chapter 2: Plasma confinement and transport\" (ITER Physics Basis), Nucl. Fusion 39 (1999) 2175–2249",
+        "doi": "10.1088/0029-5515/39/12/302"
+      },
+      "ratio": 0.8825966037544938,
+      "deviationPct": -11.740339624550622,
+      "wording": "sanity bound",
+      "tolerance": "confinement",
+      "status": "pass",
+      "pass": true,
+      "ref": "ITER Physics Basis 1999"
+    },
+    {
+      "id": "DIIID.Palpha",
+      "preset": "DIIID",
+      "metric": "P_alpha, D-D charged products (flat-top)",
+      "kind": "sanity",
+      "value": 0.0025514471015859077,
+      "unit": "MW",
+      "expected": {
+        "lo": 0,
+        "hi": 0.0225
+      },
+      "published": 0.0225,
+      "reference": {
+        "value": 0.0225,
+        "source": "E.A. Lazarus et al., \"Higher fusion power gain with profile control in DIII-D tokamak plasmas\", Nucl. Fusion 37 (1997) 7–12",
+        "doi": "10.1088/0029-5515/37/1/I11"
+      },
+      "ratio": 0.11339764895937368,
+      "deviationPct": -88.66023510406264,
+      "wording": "sanity bound",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "Lazarus 1997"
+    },
+    {
+      "id": "JT60SA.W",
+      "preset": "JT60SA",
+      "metric": "W_th (flat-top)",
+      "kind": "benchmark",
+      "value": 20.379286126711616,
+      "unit": "MJ",
+      "expected": {
+        "lo": 15.8,
+        "hi": 31.2
+      },
+      "published": 22,
+      "reference": {
+        "value": 22,
+        "band": [
+          21.2,
+          23.3
+        ],
+        "source": "L. Garzotti et al., \"Analysis of JT-60SA operational scenarios\", Nucl. Fusion 58 (2018) 026029 (scenario 2, table 1)",
+        "doi": "10.1088/1741-4326/aa9e15"
+      },
+      "ratio": 0.9263311875778008,
+      "deviationPct": -7.366881242219925,
+      "wording": "validated",
+      "tolerance": "confinement",
+      "status": "pass",
+      "pass": true,
+      "ref": "Garzotti 2018"
+    },
+    {
+      "id": "JT60SA.tauE",
+      "preset": "JT60SA",
+      "metric": "τ_E (flat-top)",
+      "kind": "benchmark",
+      "value": 0.4786714289736969,
+      "unit": "s",
+      "expected": {
+        "lo": 0.389,
+        "hi": 0.856
+      },
+      "published": 0.64,
+      "reference": {
+        "value": 0.64,
+        "band": [
+          0.52,
+          0.64
+        ],
+        "source": "L. Garzotti et al., \"Analysis of JT-60SA operational scenarios\", Nucl. Fusion 58 (2018) 026029 (scenario 2, table 1)",
+        "doi": "10.1088/1741-4326/aa9e15"
+      },
+      "ratio": 0.7479241077714014,
+      "deviationPct": -25.20758922285986,
+      "wording": "benchmarked (deviation -25 %)",
+      "tolerance": "confinement",
+      "status": "pass",
+      "pass": true,
+      "ref": "Garzotti 2018"
+    },
+    {
+      "id": "MASTU.H98",
+      "preset": "MASTU",
+      "metric": "H98(y,2) (flat-top)",
+      "kind": "validation",
+      "value": 0.9153820205189118,
+      "unit": "",
+      "expected": {
+        "lo": 0.748,
+        "hi": 1.74
+      },
+      "published": 1.15,
+      "reference": {
+        "value": 1.15,
+        "uncertainty": 0.15,
+        "source": "J.R. Harrison et al., \"Overview of physics results from MAST Upgrade towards core-pedestal-exhaust integration\", Nucl. Fusion 64 (2024) 112017",
+        "doi": "10.1088/1741-4326/ad6011"
+      },
+      "ratio": 0.7959843656686191,
+      "deviationPct": -20.401563433138094,
+      "wording": "benchmarked (deviation -20.4 %)",
+      "tolerance": "confinement",
+      "status": "pass",
+      "pass": true,
+      "ref": "Harrison 2024"
+    },
+    {
+      "id": "MASTU.q95",
+      "preset": "MASTU",
+      "metric": "q95 (flat-top)",
+      "kind": "sanity",
+      "value": 6.393286797428502,
+      "unit": "",
+      "expected": {
+        "lo": 5,
+        "hi": 10
+      },
+      "published": 7.5,
+      "reference": {
+        "value": 7.5,
+        "band": [
+          5,
+          10
+        ],
+        "source": "J.W. Berkery et al., \"Operational space and performance limiting events in the first physics campaign of MAST-U\", Plasma Phys. Control. Fusion 65 (2023) 045001; shape, field and current of the campaign: J.R. Harrison et al., \"Benefits of the Super-X divertor configuration for scenario integration on MAST Upgrade\", Plasma Phys. Control. Fusion 66 (2024) 065019; K. Imada et al., \"Observation of a new pedestal stability regime in MAST Upgrade H-mode plasmas\", Nucl. Fusion 64 (2024) 086002",
+        "doi": "10.1088/1361-6587/acb464",
+        "sourceLimitation": "the 5 < q95 < 10 band is quoted from Berkery et al. 2023 (PPCF 65 045001), whose text could not be read when the check was reviewed (IOPscience stands behind a bot check and the OSTI record has no full text): what was verified is its abstract (operation stayed out of the low-q, low-density region of the Hugill diagram), the open slides of the same authors (ISTW 2022: plasma currents 400–750 kA, MAST-U yet to reach the low-q95 region) and, in the open text of Harrison et al. 2024 (PPCF 66 065019), the ranges 450–1000 kA, 0.42–0.64 T and κ 2.0–2.2; the EFIT q95 of 6.3–6.7 and the discharge shapes of Imada et al. 2024 (table 1) could not be re-read. The primary text of Sauter 2016 could not be read either (the EPFL copy resets the connection, Infoscience holds the record without the full text)"
+      },
+      "ratio": 0.8524382396571336,
+      "deviationPct": -14.75617603428664,
+      "wording": "sanity bound",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "Berkery 2023"
+    },
+    {
+      "id": "W7X.Ti0",
+      "preset": "W7X",
+      "metric": "T_i(0) (flat-top)",
+      "kind": "validation",
+      "value": 2.003947667629135,
+      "unit": "keV",
+      "expected": {
+        "lo": 0.91,
+        "hi": 2.21
+      },
+      "published": 1.5,
+      "reference": {
+        "value": 1.5,
+        "uncertainty": 0.2,
+        "source": "M.N.A. Beurskens et al., \"Ion temperature clamping in Wendelstein 7-X electron cyclotron heated plasmas\", Nucl. Fusion 61 (2021) 116072",
+        "doi": "10.1088/1741-4326/ac1653"
+      },
+      "ratio": 1.3359651117527565,
+      "deviationPct": 33.596511175275644,
+      "wording": "benchmarked (deviation +34 %)",
+      "tolerance": "temperature",
+      "status": "pass",
+      "pass": true,
+      "ref": "Beurskens 2021"
+    },
+    {
+      "id": "W7X.HISS04",
+      "preset": "W7X",
+      "metric": "τ_E / τ_ISS04 (flat-top)",
+      "kind": "validation",
+      "value": 0.8067999880999354,
+      "unit": "",
+      "expected": {
+        "lo": 0.448,
+        "hi": 0.869
+      },
+      "published": 0.65,
+      "reference": {
+        "value": 0.65,
+        "band": [
+          0.6,
+          0.65
+        ],
+        "source": "M.N.A. Beurskens et al., \"Ion temperature clamping in Wendelstein 7-X electron cyclotron heated plasmas\", Nucl. Fusion 61 (2021) 116072",
+        "doi": "10.1088/1741-4326/ac1653",
+        "sourceLimitation": "the ISS04 prefactor and exponents are those of a secondary quotation (Warmer et al., EUROfusion WPS2-PR(15)02, eq. 1, with f_ren in front); Yamada et al. 2005 (doi:10.1088/0029-5515/45/12/024) was not read, nor was the W7-X value of ι_2/3 behind the preset's 0.9"
+      },
+      "ratio": 1.2412307509229774,
+      "deviationPct": 24.12307509229774,
+      "wording": "benchmarked (deviation +24 %)",
+      "tolerance": "confinement",
+      "status": "pass",
+      "pass": true,
+      "ref": "Beurskens 2021"
+    },
+    {
+      "id": "DEMO.Pfus",
+      "preset": "DEMO",
+      "metric": "P_fusion (flat-top)",
+      "kind": "benchmark",
+      "value": 1903.345921181523,
+      "unit": "MW",
+      "expected": {
+        "lo": 1000,
+        "hi": 3000
+      },
+      "published": 2000,
+      "reference": {
+        "value": 2000,
+        "source": "G. Federici et al., \"Overview of the DEMO staged design approach in Europe\", Nucl. Fusion 59 (2019) 066013",
+        "doi": "10.1088/1741-4326/ab1178"
+      },
+      "ratio": 0.9516729605907615,
+      "deviationPct": -4.832703940923855,
+      "wording": "validated",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "Federici 2019"
+    },
+    {
+      "id": "DEMO.alphaShare",
+      "preset": "DEMO",
+      "metric": "P_alpha / P_fusion (flat-top)",
+      "kind": "sanity",
+      "value": 0.20919231881024977,
+      "unit": "",
+      "expected": {
+        "lo": 0,
+        "hi": 0.213
+      },
+      "published": 0.2,
+      "reference": {
+        "value": 0.2,
+        "source": "ITER Physics Expert Group et al., \"Chapter 1: Overview and summary\" (ITER Physics Basis), Nucl. Fusion 39 (1999) 2137–2174",
+        "doi": "10.1088/0029-5515/39/12/301"
+      },
+      "ratio": 1.0459615940512488,
+      "deviationPct": 4.596159405124878,
+      "wording": "sanity bound",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "ITER Physics Basis ch. 1, 1999"
+    },
+    {
+      "id": "ITER15.Q",
+      "preset": "ITER15",
+      "metric": "Q (flat-top avg.)",
+      "kind": "benchmark",
+      "value": 10.450311385999676,
+      "unit": "",
+      "expected": {
+        "lo": 5,
+        "hi": 20
+      },
+      "published": 10,
+      "reference": {
+        "value": 10,
+        "source": "M. Shimada et al., \"Chapter 1: Overview and summary\" (Progress in the ITER Physics Basis), Nucl. Fusion 47 (2007) S1–S17",
+        "doi": "10.1088/0029-5515/47/6/S01"
+      },
+      "ratio": 1.0450311385999675,
+      "deviationPct": 4.503113859996755,
+      "wording": "validated",
+      "tolerance": "gain",
+      "status": "pass",
+      "pass": true,
+      "ref": "Shimada 2007"
+    },
+    {
+      "id": "ITER15.Pfus",
+      "preset": "ITER15",
+      "metric": "P_fusion (flat-top)",
+      "kind": "benchmark",
+      "value": 525.6153095962217,
+      "unit": "MW",
+      "expected": {
+        "lo": 300,
+        "hi": 800
+      },
+      "published": 500,
+      "reference": {
+        "value": 500,
+        "source": "M. Shimada et al., \"Chapter 1: Overview and summary\" (Progress in the ITER Physics Basis), Nucl. Fusion 47 (2007) S1–S17",
+        "doi": "10.1088/0029-5515/47/6/S01"
+      },
+      "ratio": 1.0512306191924434,
+      "deviationPct": 5.123061919244343,
+      "wording": "validated",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "Shimada 2007"
+    },
+    {
+      "id": "ITER15.fbs",
+      "preset": "ITER15",
+      "metric": "Bootstrap fraction",
+      "kind": "benchmark",
+      "value": 0.23060661249890135,
+      "unit": "",
+      "expected": {
+        "lo": 0.1,
+        "hi": 0.4
+      },
+      "published": 0.2,
+      "reference": {
+        "value": 0.2,
+        "uncertainty": 0.05,
+        "source": "A.C.C. Sips, \"Advanced scenarios for ITER operation\", Plasma Phys. Control. Fusion 47 (2005) A19–A40",
+        "doi": "10.1088/0741-3335/47/5A/003"
+      },
+      "ratio": 1.1530330624945067,
+      "deviationPct": 15.303306249450666,
+      "wording": "validated",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "Sips 2005"
+    },
+    {
+      "id": "ITER15.li",
+      "preset": "ITER15",
+      "metric": "ℓ_i(3)",
+      "kind": "benchmark",
+      "value": 0.7194870995550975,
+      "unit": "",
+      "expected": {
+        "lo": 0.6,
+        "hi": 1.1
+      },
+      "published": 0.85,
+      "reference": {
+        "value": 0.85,
+        "uncertainty": 0.15,
+        "source": "M. Shimada et al., \"Chapter 1: Overview and summary\" (Progress in the ITER Physics Basis), Nucl. Fusion 47 (2007) S1–S17",
+        "doi": "10.1088/0029-5515/47/6/S01"
+      },
+      "ratio": 0.8464554112412912,
+      "deviationPct": -15.354458875870879,
+      "wording": "validated",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "Shimada 2007"
+    },
+    {
+      "id": "ITER15.q95",
+      "preset": "ITER15",
+      "metric": "q95",
+      "kind": "benchmark",
+      "value": 3.503445695589063,
+      "unit": "",
+      "expected": {
+        "lo": 2.7,
+        "hi": 4
+      },
+      "published": 3,
+      "reference": {
+        "value": 3,
+        "source": "M. Shimada et al., \"Chapter 1: Overview and summary\" (Progress in the ITER Physics Basis), Nucl. Fusion 47 (2007) S1–S17",
+        "doi": "10.1088/0029-5515/47/6/S01"
+      },
+      "ratio": 1.167815231863021,
+      "deviationPct": 16.781523186302106,
+      "wording": "validated",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "Shimada 2007"
+    },
+    {
+      "id": "ITER15.Tped",
+      "preset": "ITER15",
+      "metric": "T_e pedestal",
+      "kind": "benchmark",
+      "value": 3.548727613973553,
+      "unit": "keV",
+      "expected": {
+        "lo": 2,
+        "hi": 7
+      },
+      "published": 4.5,
+      "reference": {
+        "value": 4.5,
+        "uncertainty": 0.5,
+        "source": "P.B. Snyder et al., \"A first-principles predictive model of the pedestal height and width: development, testing and ITER optimization with the EPED model\", Nucl. Fusion 51 (2011) 103016",
+        "doi": "10.1088/0029-5515/51/10/103016",
+        "sourceLimitation": "the 4.5 ± 0.5 keV (T_ped ≈ 4–5 keV) was not found as a printed number in the readable sources: the text of Snyder et al. 2011 (Nucl. Fusion 51 103016) could not be read (IOPscience stands behind a bot check, the OSTI record has no full text); the temperature above is derived from β_N,ped and n_ped of the authors' slides, and the abstract (only a summary of it was seen) quotes no temperature"
+      },
+      "ratio": 0.7886061364385673,
+      "deviationPct": -21.139386356143277,
+      "wording": "benchmarked (deviation -21 %)",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "Snyder 2011"
+    },
+    {
+      "id": "ITER15.nG",
+      "preset": "ITER15",
+      "metric": "n̄/n_G",
+      "kind": "benchmark",
+      "value": 0.7999742906729633,
+      "unit": "",
+      "expected": {
+        "lo": 0.6,
+        "hi": 1
+      },
+      "published": 0.85,
+      "reference": {
+        "value": 0.85,
+        "source": "M. Shimada et al., \"Chapter 1: Overview and summary\" (Progress in the ITER Physics Basis), Nucl. Fusion 47 (2007) S1–S17",
+        "doi": "10.1088/0029-5515/47/6/S01"
+      },
+      "ratio": 0.9411462243211334,
+      "deviationPct": -5.885377567886662,
+      "wording": "validated",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "Shimada 2007"
+    },
+    {
+      "id": "JET15.Efus",
+      "preset": "JET15",
+      "metric": "E_fusion",
+      "kind": "validation",
+      "value": 81.84452148751515,
+      "unit": "MJ",
+      "expected": {
+        "lo": 40,
+        "hi": 80
+      },
+      "published": 59,
+      "reference": {
+        "value": 59,
+        "uncertainty": 6,
+        "source": "M. Maslov et al., \"JET D-T scenario with optimized non-thermal fusion\", Nucl. Fusion 63 (2023) 112002",
+        "doi": "10.1088/1741-4326/ace2d8"
+      },
+      "ratio": 1.3871952794494093,
+      "deviationPct": 38.719527944940936,
+      "wording": "benchmarked (deviation +39 %)",
+      "tolerance": "stated",
+      "status": "known-fail",
+      "pass": false,
+      "ref": "Maslov 2023",
+      "knownFailure": "the 1.5D model over-predicts the record pulse by about 40 % (preset note \"1.5D: +40 %\"): beam-target fusion from the 3-component NBI deposition and a T_i(0) near 10 keV together over-predict the neutron rate of the record pulse"
+    },
+    {
+      "id": "JET15.Ti0",
+      "preset": "JET15",
+      "metric": "T_i axis",
+      "kind": "validation",
+      "value": 10.199843890032954,
+      "unit": "keV",
+      "expected": {
+        "lo": 6,
+        "hi": 15
+      },
+      "published": 10,
+      "reference": {
+        "value": 10,
+        "source": "M. Maslov et al., \"JET D-T scenario with optimized non-thermal fusion\", Nucl. Fusion 63 (2023) 112002",
+        "doi": "10.1088/1741-4326/ace2d8"
+      },
+      "ratio": 1.0199843890032954,
+      "deviationPct": 1.9984389003295355,
+      "wording": "validated",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "Maslov 2023"
+    },
+    {
+      "id": "SPARC15.Q",
+      "preset": "SPARC15",
+      "metric": "Q (flat-top avg.)",
+      "kind": "benchmark",
+      "value": 6.289156883896872,
+      "unit": "",
+      "expected": {
+        "lo": 2,
+        "hi": 20
+      },
+      "published": 11,
+      "reference": {
+        "value": 11,
+        "source": "A.J. Creely et al., \"Overview of the SPARC tokamak\", J. Plasma Phys. 86 (2020) 865860502",
+        "doi": "10.1017/S0022377820001257"
+      },
+      "ratio": 0.5717415348997157,
+      "deviationPct": -42.825846510028434,
+      "wording": "benchmarked (deviation -43 %)",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "Creely 2020"
+    },
+    {
+      "id": "DEMO15.Pfus",
+      "preset": "DEMO15",
+      "metric": "P_fusion (flat-top)",
+      "kind": "benchmark",
+      "value": 2007.4915593436826,
+      "unit": "MW",
+      "expected": {
+        "lo": 1000,
+        "hi": 3000
+      },
+      "published": 2000,
+      "reference": {
+        "value": 2000,
+        "source": "G. Federici et al., \"Overview of the DEMO staged design approach in Europe\", Nucl. Fusion 59 (2019) 066013",
+        "doi": "10.1088/1741-4326/ab1178"
+      },
+      "ratio": 1.0037457796718414,
+      "deviationPct": 0.37457796718414205,
+      "wording": "validated",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "Federici 2019"
+    },
+    {
+      "id": "DEMO15.fbs",
+      "preset": "DEMO15",
+      "metric": "Bootstrap fraction",
+      "kind": "benchmark",
+      "value": 0.3745281597847269,
+      "unit": "",
+      "expected": {
+        "lo": 0.2,
+        "hi": 0.6
+      },
+      "published": 0.35,
+      "reference": {
+        "value": 0.35,
+        "source": "M. Siccinio et al., \"DEMO physics challenges beyond ITER\", Fusion Eng. Des. 156 (2020) 111603",
+        "doi": "10.1016/j.fusengdes.2020.111603"
+      },
+      "ratio": 1.0700804565277913,
+      "deviationPct": 7.008045652779127,
+      "wording": "validated",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "Siccinio 2020"
+    },
+    {
+      "id": "NIF210808.G",
+      "preset": "NIF210808",
+      "metric": "Gain G (N210808, calibration)",
+      "kind": "validation",
+      "value": 0.714783095106351,
+      "unit": "",
+      "expected": {
+        "lo": 0.36,
+        "hi": 1.44
+      },
+      "published": 0.72,
+      "reference": {
+        "value": 0.72,
+        "source": "H. Abu-Shawareb et al. (Indirect Drive ICF Collaboration), \"Lawson criterion for ignition exceeded in an inertial fusion experiment\", Phys. Rev. Lett. 129 (2022) 075001 (table I)",
+        "doi": "10.1103/PhysRevLett.129.075001"
+      },
+      "ratio": 0.9927542987588208,
+      "deviationPct": -0.7245701241179181,
+      "wording": "calibrated (deviation -0.7 %)",
+      "role": "calibration",
+      "tolerance": "gain",
+      "status": "pass",
+      "pass": true,
+      "ref": "Abu-Shawareb 2022"
+    },
+    {
+      "id": "NIF210808.Ti",
+      "preset": "NIF210808",
+      "metric": "T_i (N210808)",
+      "kind": "validation",
+      "value": 1.3215532055481172,
+      "unit": "keV",
+      "expected": {
+        "lo": 6.3,
+        "hi": 13.2
+      },
+      "published": 9.55,
+      "reference": {
+        "value": 9.55,
+        "band": [
+          9,
+          10.1
+        ],
+        "source": "A. Pak et al., \"Observations and properties of the first laboratory fusion experiment to exceed a target gain of unity\", Phys. Rev. E 109 (2024) 025203",
+        "doi": "10.1103/PhysRevE.109.025203",
+        "sourceLimitation": "read in the accepted manuscript of the paper (OSTI 2377242, LLNL-JRNL-856035, 2026-10-01), not in the typeset article: the 10.1 keV is printed in its conclusion without an uncertainty, the 9 keV in section V as an approximate value for two shots, and the manuscript quotes N210808 as 1.33 ± 0.13 MJ where Abu-Shawareb et al. 2022 (table I) give 1.37 MJ"
+      },
+      "ratio": 0.13838253461236827,
+      "deviationPct": -86.16174653876317,
+      "wording": "benchmarked (deviation -86 %)",
+      "tolerance": "temperature",
+      "status": "known-fail",
+      "pass": false,
+      "ref": "Pak 2024",
+      "knownFailure": "the model puts N210808 below its own ignition threshold (χ_ig = 0.951 with ICF_CAL = 0.03931, fitted to the yield only), so no α heating raises the hot spot: its temperature is the kinematic one of the compression, 1.32 keV, a factor 7 below the experiment, while the calibrated yield (1.37 MJ) is reproduced. The temperature is the clearest sign that the calibration matches the yield with a wrong hot spot: the ignition-cliff constants, set when ICF_CAL was 0.07, are not part of it"
+    },
+    {
+      "id": "NIF.G",
+      "preset": "NIF",
+      "metric": "Gain G (N221204, blind)",
+      "kind": "validation",
+      "value": 0.6684093625945734,
+      "unit": "",
+      "expected": {
+        "lo": 1,
+        "hi": 3
+      },
+      "published": 1.5,
+      "reference": {
+        "value": 1.5,
+        "uncertainty": 0.1,
+        "source": "H. Abu-Shawareb et al. (Indirect Drive ICF Collaboration), \"Achievement of target gain larger than unity in an inertial fusion experiment\", Phys. Rev. Lett. 132 (2024) 065102; uncertainty: A. Pak et al., \"Observations and properties of the first laboratory fusion experiment to exceed a target gain of unity\", Phys. Rev. E 109 (2024) 025203",
+        "doi": "10.1103/PhysRevLett.132.065102"
+      },
+      "ratio": 0.4456062417297156,
+      "deviationPct": -55.43937582702845,
+      "wording": "benchmarked (deviation -55 %)",
+      "role": "blind",
+      "tolerance": "stated",
+      "status": "known-fail",
+      "pass": false,
+      "ref": "Abu-Shawareb 2024",
+      "knownFailure": "the model has no input for what separates N221204 from the calibration shot N210808 (an ablator 6 µm thicker, 7 % more laser energy, better low-mode symmetry and capsule quality), so it runs the same capsule and predicts the calibration yield, 1.37 MJ: G = 0.67 against 1.5 (model/published 0.45, yield ratio 0.43). The 2.3-fold increase of the yield between the two shots lies above the ignition cliff, which a model calibrated at one point on the cliff does not resolve; the cliff constants were not re-tuned. Before v4.0 ICF_CAL = 0.07 was tuned to N221204 itself and the check read G = 1.49, a fit that looked like a prediction"
+    },
+    {
+      "id": "NIF.G_N230729",
+      "preset": "NIF",
+      "metric": "Gain G (N230729, blind)",
+      "kind": "validation",
+      "value": 0.6684093625945734,
+      "unit": "",
+      "expected": {
+        "lo": 1,
+        "hi": 3.78
+      },
+      "published": 1.89,
+      "reference": {
+        "value": 1.89,
+        "source": "A.L. Kritcher et al., \"Design of first experiment to achieve fusion target gain > 1\", Phys. Plasmas 31 (2024) 070502; shot label and date: K. Fournier et al. (LLNL), \"What's New for Users at the NIF...\", NIF & JLF User Group Meeting (2024), LLNL-PRES-859704, slide 3: N230729, 3.88 MJ yield; lasers.llnl.gov/science/achieving-fusion-ignition: \"July 30, 2023: The NIF laser again delivered 2.05 MJ of energy to the target, resulting in 3.88 MJ of fusion energy output\"",
+        "doi": "10.1063/5.0210904",
+        "sourceLimitation": "verified: the abstract of Kritcher et al. 2024 (the Crossref record of doi:10.1063/5.0210904, read 2026-10-01) gives the maximum fusion energy of the platform to date as 3.88 MJ from 2.05 MJ of incident laser energy, and 3.15 MJ for N221204. Not verified: the full text of the paper, so no uncertainty of the 3.88 MJ is known (none is used), and the shot label and date, which the abstract does not state and which come from the facility record of LLNL (N230729, 30 July 2023)"
+      },
+      "ratio": 0.3536557474045362,
+      "deviationPct": -64.63442525954638,
+      "wording": "benchmarked (deviation -65 %)",
+      "role": "blind",
+      "tolerance": "stated",
+      "status": "known-fail",
+      "pass": false,
+      "ref": "Kritcher 2024",
+      "knownFailure": "as for N221204 the model predicts the calibration yield, 1.37 MJ, for every shot of the platform: G = 0.67 against 1.89 (model/published 0.35). The capsule quality that raised the yield of N230729 above that of N221204 (fewer high-Z inclusions and defects) enters the model only through the surface roughness, which acts on the ignition parameter and not on the burn-up of an ignited or marginal shot"
+    },
+    {
+      "id": "DIRECT.G",
+      "preset": "DIRECT",
+      "metric": "Gain G",
+      "kind": "benchmark",
+      "value": 0.3905709192014861,
+      "unit": "",
+      "expected": {
+        "lo": 0.3,
+        "hi": 1.76
+      },
+      "published": 0.74,
+      "reference": {
+        "value": 0.74,
+        "uncertainty": 0.14,
+        "source": "V. Gopalaswamy et al., \"Demonstration of a hydrodynamically equivalent burning plasma in direct-drive inertial confinement fusion\", Nat. Phys. 20 (2024) 751–757",
+        "doi": "10.1038/s41567-023-02361-4"
+      },
+      "ratio": 0.5277985394614677,
+      "deviationPct": -47.22014605385323,
+      "wording": "benchmarked (deviation -47 %)",
+      "tolerance": "gain",
+      "status": "pass",
+      "pass": true,
+      "ref": "Gopalaswamy 2024"
+    },
+    {
+      "id": "Z.yield",
+      "preset": "Z",
+      "metric": "D-D neutron yield",
+      "kind": "validation",
+      "value": 199971825241927.1,
+      "unit": "",
+      "expected": {
+        "lo": 3660000000000,
+        "hi": 33000000000000
+      },
+      "published": 11000000000000,
+      "reference": {
+        "value": 11000000000000,
+        "source": "M.R. Gomez et al., \"Performance scaling in magnetized liner inertial fusion experiments\", Phys. Rev. Lett. 125 (2020) 155002",
+        "doi": "10.1103/PhysRevLett.125.155002"
+      },
+      "ratio": 18.17925684017519,
+      "deviationPct": 1717.925684017519,
+      "wording": "benchmarked (deviation +1718 %)",
+      "tolerance": "yield",
+      "status": "known-fail",
+      "pass": false,
+      "ref": "Gomez 2020",
+      "knownFailure": "the 0D MagLIF model over-predicts the yield by more than an order of magnitude (2.0 × 10¹⁴ against 1.1 × 10¹³, since v4.0 with a burn of ≈ 2 ns instead of ≈ 30 ns): its ideal compression to CR = 30 has no liner–fuel mix, end losses, preheat losses or Be radiation, which limit the experiments"
+    },
+    {
+      "id": "Z.Ti",
+      "preset": "Z",
+      "metric": "T_i (burn-averaged)",
+      "kind": "validation",
+      "value": 3.1686968754553604,
+      "unit": "keV",
+      "expected": {
+        "lo": 2.17,
+        "hi": 4.03
+      },
+      "published": 3.1,
+      "reference": {
+        "value": 3.1,
+        "source": "M.R. Gomez et al., \"Performance scaling in magnetized liner inertial fusion experiments\", Phys. Rev. Lett. 125 (2020) 155002",
+        "doi": "10.1103/PhysRevLett.125.155002"
+      },
+      "ratio": 1.022160282404955,
+      "deviationPct": 2.2160282404954934,
+      "wording": "validated",
+      "tolerance": "temperature",
+      "status": "pass",
+      "pass": true,
+      "ref": "Gomez 2020"
+    },
+    {
+      "id": "GF.Tmax",
+      "preset": "GF",
+      "metric": "T_max (compressed)",
+      "kind": "sanity",
+      "value": 1.411720037399834,
+      "unit": "keV",
+      "expected": {
+        "lo": 0.3,
+        "hi": 6.463
+      },
+      "published": 6.463,
+      "reference": {
+        "value": 6.463,
+        "source": "I.R. Lindemuth and R.C. Kirkpatrick, \"Parameter space for magnetized fuel targets in inertial confinement fusion\", Nucl. Fusion 23 (1983) 263–284",
+        "doi": "10.1088/0029-5515/23/3/001"
+      },
+      "ratio": 0.21843107494968805,
+      "deviationPct": -78.1568925050312,
+      "wording": "sanity bound",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "Lindemuth 1983"
+    },
+    {
+      "id": "FRXL.Tmax",
+      "preset": "FRXL",
+      "metric": "T_max (compressed)",
+      "kind": "sanity",
+      "value": 1.430278977531235,
+      "unit": "keV",
+      "expected": {
+        "lo": 0.3,
+        "hi": 6.463
+      },
+      "published": 6.463,
+      "reference": {
+        "value": 6.463,
+        "source": "I.R. Lindemuth and R.C. Kirkpatrick, \"Parameter space for magnetized fuel targets in inertial confinement fusion\", Nucl. Fusion 23 (1983) 263–284",
+        "doi": "10.1088/0029-5515/23/3/001"
+      },
+      "ratio": 0.22130264235358735,
+      "deviationPct": -77.86973576464126,
+      "wording": "sanity bound",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "Lindemuth 1983"
+    },
+    {
+      "id": "ZAP.Te",
+      "preset": "ZAP",
+      "metric": "T_e (flat-top)",
+      "kind": "sanity",
+      "value": 1,
+      "unit": "keV",
+      "expected": {
+        "lo": 0.7,
+        "hi": 3.9
+      },
+      "published": 2,
+      "reference": {
+        "value": 2,
+        "uncertainty": 1,
+        "source": "B. Levitt et al., \"Elevated electron temperature coincident with observed fusion reactions in a sheared-flow-stabilized Z pinch\", Phys. Rev. Lett. 132 (2024) 155101",
+        "doi": "10.1103/PhysRevLett.132.155101"
+      },
+      "ratio": 0.5,
+      "deviationPct": -50,
+      "wording": "sanity bound",
+      "tolerance": "temperature",
+      "status": "pass",
+      "pass": true,
+      "ref": "Levitt 2024"
+    },
+    {
+      "id": "TAE.Te",
+      "preset": "TAE",
+      "metric": "T_e (flat-top)",
+      "kind": "validation",
+      "value": 0.6060661233301651,
+      "unit": "keV",
+      "expected": {
+        "lo": 0.25,
+        "hi": 1
+      },
+      "published": 0.5,
+      "reference": {
+        "value": 0.5,
+        "source": "H. Gota et al., \"Overview of C-2W: high temperature, steady-state beam-driven field-reversed configuration plasmas\", Nucl. Fusion 61 (2021) 106039",
+        "doi": "10.1088/1741-4326/ac2521"
+      },
+      "ratio": 1.2121322466603301,
+      "deviationPct": 21.213224666033014,
+      "wording": "benchmarked (deviation +21 %)",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "Gota 2021"
+    },
+    {
+      "id": "TAE.Ttot",
+      "preset": "TAE",
+      "metric": "T_e + T_i (flat-top)",
+      "kind": "validation",
+      "value": 1.2121322466603301,
+      "unit": "keV",
+      "expected": {
+        "lo": 1.5,
+        "hi": 6
+      },
+      "published": 3,
+      "reference": {
+        "value": 3,
+        "source": "H. Gota et al., \"Overview of C-2W: high temperature, steady-state beam-driven field-reversed configuration plasmas\", Nucl. Fusion 61 (2021) 106039",
+        "doi": "10.1088/1741-4326/ac2521"
+      },
+      "ratio": 0.40404408222011007,
+      "deviationPct": -59.595591777988986,
+      "wording": "benchmarked (deviation -60 %)",
+      "tolerance": "stated",
+      "status": "known-fail",
+      "pass": false,
+      "ref": "Gota 2021",
+      "knownFailure": "the single-temperature FRC model has T_i = T_e ≈ 0.6 keV, so T_e + T_i ≈ 1.2 keV; the hot beam-driven ion population of C-2W (T_i several times T_e) is not modelled"
+    },
+    {
+      "id": "MIRROR.Te",
+      "preset": "MIRROR",
+      "metric": "T_e (flat-top)",
+      "kind": "sanity",
+      "value": 9.531773248244315,
+      "unit": "keV",
+      "expected": {
+        "lo": 0.33,
+        "hi": 1.8
+      },
+      "published": 0.66,
+      "reference": {
+        "value": 0.66,
+        "uncertainty": 0.05,
+        "source": "P.A. Bagryansky et al., \"Threefold increase of the bulk electron temperature of plasma discharges in a magnetic mirror device\", Phys. Rev. Lett. 114 (2015) 205001",
+        "doi": "10.1103/PhysRevLett.114.205001"
+      },
+      "ratio": 14.442080679158053,
+      "deviationPct": 1344.2080679158053,
+      "wording": "sanity bound",
+      "tolerance": "stated",
+      "status": "known-fail",
+      "pass": false,
+      "ref": "Bagryansky 2015",
+      "knownFailure": "the single-temperature mirror model sets T_e = T_i ≈ 9.5 keV (with the Pastukhov plug factor of v4.0); mirror electrons are cooled by axial heat loss to the end walls, which limits every open trap built so far to T_e ≲ 1 keV and is not modelled"
+    },
+    {
+      "id": "MUON.Yf",
+      "preset": "MUON",
+      "metric": "Fusions per muon",
+      "kind": "validation",
+      "value": 106.4616796102706,
+      "unit": "",
+      "expected": {
+        "lo": 109,
+        "hi": 191
+      },
+      "published": 150,
+      "reference": {
+        "value": 150,
+        "uncertainty": 20.4,
+        "source": "S.E. Jones et al., \"Observation of unexpected density effects in muon-catalyzed d-t fusion\", Phys. Rev. Lett. 56 (1986) 588–591",
+        "doi": "10.1103/PhysRevLett.56.588"
+      },
+      "ratio": 0.7097445307351373,
+      "deviationPct": -29.025546926486268,
+      "wording": "benchmarked (deviation -29 %)",
+      "tolerance": "stated",
+      "status": "known-fail",
+      "pass": false,
+      "ref": "Jones 1986",
+      "knownFailure": "Y_f = 1/(ω_s + 1/(λ_c τ_µ)) with the preset's ω_s = 0.56 % and λ_c = 1.2 × 10⁸ s⁻¹ gives 106 fusions per muon; the measured ≈150 implies a lower effective sticking (reactivation) or a faster cycling rate"
+    },
+    {
+      "id": "MUON.Q",
+      "preset": "MUON",
+      "metric": "Q_scientific",
+      "kind": "sanity",
+      "value": 0.37451089653300945,
+      "unit": "",
+      "expected": {
+        "lo": 0,
+        "hi": 0.99
+      },
+      "published": 0.528,
+      "reference": {
+        "value": 0.528,
+        "source": "S.E. Jones et al., \"Observation of unexpected density effects in muon-catalyzed d-t fusion\", Phys. Rev. Lett. 56 (1986) 588–591",
+        "doi": "10.1103/PhysRevLett.56.588"
+      },
+      "ratio": 0.709300940403427,
+      "deviationPct": -29.069905959657305,
+      "wording": "sanity bound",
+      "tolerance": "stated",
+      "status": "pass",
+      "pass": true,
+      "ref": "Jones 1986"
+    }
+  ],
+  "checksExecuted": 46,
+  "failures": 0,
+  "knownFailures": 8,
+  "unexpectedPasses": 0,
+  "wordings": {
+    "validated": 16,
+    "benchmarked": 16,
+    "calibrated": 1,
+    "sanity bound": 13,
+    "unavailable": 0
+  },
+  "passed": true
+}

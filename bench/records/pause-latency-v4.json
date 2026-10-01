@@ -1,0 +1,202 @@
+{
+  "comment": "Pause latency of the simulation worker: request-to-reply in a worker thread and task lengths of the playback loop, one 4 s run per row (so p99 equals the maximum of about 30 requests), --priority high, on a machine shared with the Wave-3 builders: not a controlled idle measurement. Parsed unchanged from the tables of bench/pause-latency.ts printed by the Wave-2B gate (commit a430821, Windows 11, Node v24.19.0, AMD Ryzen 5 5600). Used by docs/technical-report.md section 11 and checked by src/regression/technicalReport.test.ts.",
+  "commands": [
+    "node node_modules/tsx/dist/cli.mjs bench/pause-latency.ts --mode both --presets DEMO15,ITER15 --speeds 1,30,100 --priority high",
+    "node node_modules/tsx/dist/cli.mjs bench/pause-latency.ts --mode stretch --presets DEMO15,ITER15 --speeds 1,30,100 --priority high"
+  ],
+  "head": "a4308215ef2dd5667bc9a64086dc57b9d7206467",
+  "startUtc": "2026-10-01T07:12:17.727Z",
+  "node": "v24.19.0",
+  "wait": [
+    {
+      "preset": "DEMO15",
+      "speed": "1x",
+      "requests": 32,
+      "frames": 0,
+      "waitMs": {
+        "p50": 0.8,
+        "p95": 6.2,
+        "p99": 6.3,
+        "max": 6.3
+      }
+    },
+    {
+      "preset": "DEMO15",
+      "speed": "30x",
+      "requests": 31,
+      "frames": 7,
+      "waitMs": {
+        "p50": 3,
+        "p95": 9.6,
+        "p99": 10.6,
+        "max": 10.6
+      }
+    },
+    {
+      "preset": "DEMO15",
+      "speed": "100x",
+      "requests": 31,
+      "frames": 2,
+      "waitMs": {
+        "p50": 4.7,
+        "p95": 10,
+        "p99": 14.7,
+        "max": 14.7
+      }
+    },
+    {
+      "preset": "ITER15",
+      "speed": "1x",
+      "requests": 34,
+      "frames": 0,
+      "waitMs": {
+        "p50": 0.4,
+        "p95": 6,
+        "p99": 6.4,
+        "max": 6.4
+      }
+    },
+    {
+      "preset": "ITER15",
+      "speed": "30x",
+      "requests": 32,
+      "frames": 68,
+      "waitMs": {
+        "p50": 4.5,
+        "p95": 8.1,
+        "p99": 11.7,
+        "max": 11.7
+      }
+    },
+    {
+      "preset": "ITER15",
+      "speed": "100x",
+      "requests": 30,
+      "frames": 88,
+      "waitMs": {
+        "p50": 3.5,
+        "p95": 7,
+        "p99": 7.4,
+        "max": 7.4
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "preset": "DEMO15",
+      "speed": "1x",
+      "initMs": 164,
+      "frames": 6,
+      "tasks": 154,
+      "taskMs": {
+        "p50": 2.5,
+        "p95": 11.6,
+        "p99": 30,
+        "max": 34
+      },
+      "msgsAfterPause": 0
+    },
+    {
+      "preset": "DEMO15",
+      "speed": "30x",
+      "initMs": 42,
+      "frames": 124,
+      "tasks": 658,
+      "taskMs": {
+        "p50": 5.6,
+        "p95": 7.8,
+        "p99": 11,
+        "max": 18.2
+      },
+      "msgsAfterPause": 0
+    },
+    {
+      "preset": "DEMO15",
+      "speed": "100x",
+      "initMs": 39,
+      "frames": 136,
+      "tasks": 676,
+      "taskMs": {
+        "p50": 5.6,
+        "p95": 7.8,
+        "p99": 11.4,
+        "max": 14.9
+      },
+      "msgsAfterPause": 0
+    },
+    {
+      "preset": "ITER15",
+      "speed": "1x",
+      "initMs": 95,
+      "frames": 18,
+      "tasks": 133,
+      "taskMs": {
+        "p50": 1.9,
+        "p95": 11.7,
+        "p99": 17.6,
+        "max": 17.8
+      },
+      "msgsAfterPause": 0
+    },
+    {
+      "preset": "ITER15",
+      "speed": "30x",
+      "initMs": 32,
+      "frames": 240,
+      "tasks": 683,
+      "taskMs": {
+        "p50": 5.6,
+        "p95": 7.6,
+        "p99": 11.2,
+        "max": 13.7
+      },
+      "msgsAfterPause": 0
+    },
+    {
+      "preset": "ITER15",
+      "speed": "100x",
+      "initMs": 32,
+      "frames": 236,
+      "tasks": 690,
+      "taskMs": {
+        "p50": 5.5,
+        "p95": 7.6,
+        "p99": 11.3,
+        "max": 13.9
+      },
+      "msgsAfterPause": 0
+    }
+  ],
+  "stretch": [
+    {
+      "preset": "DEMO15",
+      "t": 30,
+      "steps": 548,
+      "yields": 1360,
+      "stretchMs": {
+        "p50": 0.52,
+        "p99": 5.4,
+        "max": 10.8
+      },
+      "taskMs": {
+        "p99": 9.4,
+        "max": 12.8
+      }
+    },
+    {
+      "preset": "ITER15",
+      "t": 30,
+      "steps": 1156,
+      "yields": 2731,
+      "stretchMs": {
+        "p50": 0.64,
+        "p99": 4.1,
+        "max": 9.9
+      },
+      "taskMs": {
+        "p99": 10.2,
+        "max": 11.6
+      }
+    }
+  ]
+}

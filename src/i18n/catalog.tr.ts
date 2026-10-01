@@ -218,6 +218,7 @@ export const catalogTr: Readonly<Record<string, string>> = {
   'ITER — Q ≈ 10 (design point)': 'ITER — Q ≈ 10 (tasarım noktası)',
   'ITER 1.5D — profiles, equilibrium, MHD': 'ITER 1.5D — profiller, denge, MHD',
   'NIF N221204 — gain ≈ 1.5': 'NIF N221204 — kazanç ≈ 1,5',
+  'NIF N210808 — gain 0.72 (calibration shot)': 'NIF N210808 — kazanç 0,72 (kalibrasyon atışı)',
   'Q_sci max': 'Q_sci en çok',
   'T_i max': 'T_i en çok',
   'No disruption': 'Disrupsiyon yok',
@@ -235,4 +236,6 @@ export const catalogTr: Readonly<Record<string, string>> = {
   'EPED prediction T_ped ≈ 4–5 keV': 'EPED öngörüsü T_ped ≈ 4–5 keV',
   'Sawteeth/ELMs/NTMs must not terminate the baseline': 'Testere dişi/ELM/NTM temel senaryoyu sonlandırmamalı',
   '2.05 MJ laser → 3.15 MJ fusion (Dec 2022)': '2,05 MJ lazer → 3,15 MJ füzyon (Ara 2022)',
+  '1.917 MJ laser → 1.37 MJ fusion (Aug 2021); the ICF model is fitted to this yield': '1,917 MJ lazer → 1,37 MJ füzyon (Ağu 2021); ICF modeli bu verime uydurulmuştur',
+  '1.37 MJ (the calibration target)': '1,37 MJ (kalibrasyon hedefi)',
 };

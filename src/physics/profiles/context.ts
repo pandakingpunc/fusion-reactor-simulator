@@ -19,6 +19,8 @@ import { CurrentProgramme, currentWaveform, IP_PROGRAMME_FLOOR } from './control
 import { gridSpec, type GridSpec, type TransportGeometry } from './geometry1d';
 import { FluxLedger } from './current/flux';
 import { CurrentSolver, DensitySolver, HeatSolver } from './fvsolver';
+import { impurityStateSize } from './impurity/config';
+import type { ImpurityModel } from './impurity/model';
 import { volumeIntegral } from './sources/deposition';
 import type { BootstrapCoeffs } from './neoclassical';
 import { ProfileState, StateLayout } from './state';
@@ -140,6 +142,8 @@ export class ProfileContext {
   sauter: BootstrapCoeffs[] = [];
   /** step constants of the last evaluation (read by the accepted-step update and diagnostics) */
   lastK: StepConstants | null = null;
+  /** profile-resolved He ash and impurities (impurity/, ProfileSettings.impurityTransport other than 'legacy'); null: the scalar inventories of composition.ts */
+  impurity: ImpurityModel | null = null;
 
   // ---------------------------------------------------------------- plasma and controller state
   phase: Phase = 'normal';
@@ -204,7 +208,7 @@ export class ProfileContext {
     for (const n of resolved.notes) this.warnOnce(`settings.${n.key}`, 0, `${n.message}.`);
     this.N = Math.max(16, Math.round(this.ps.nRho));
     this.grid = gridSpec(this.ps);
-    this.layout = new StateLayout(this.N);
+    this.layout = new StateLayout(this.N, impurityStateSize(cfg, this.ps, this.N));
     this.w = allocateWorkArrays(this.N);
     this.flux = new FluxLedger(this.N);
     const g0 = cfg.geometry;

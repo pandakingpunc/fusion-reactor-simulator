@@ -219,6 +219,8 @@ export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: Globa
     ...edgeChannels1D(ctx, q95v, Ip),
     ...(X.H ? { H98y2: X.H.H98y2, HITPA20: X.H.HITPA20 } : {}),
   };
+  // profile-resolved He ash and impurities: fHe and cZ from the profiles, and their own keys (impurity/)
+  ctx.impurity?.diagnostics(st, ctx.lastDiag);
   // profiles
   const mer = w.mercF, bal = w.ballF;
   stabilityProfiles(g, w.p, w.qF, mer, bal);
@@ -234,6 +236,7 @@ export function writeDiagnostics(ctx: ProfileContext, st: ProfileState, X: Globa
     shear: Array.from(g.rhoC, (rr, i) => (rr * (w.qF[i + 1] - w.qF[i]) / g.dRhoC[i]) / Math.max(w.q[i], 1e-6)),
     alpha: Array.from(g.rhoC, (_, i) => 0.5 * (w.alphaF[i] + w.alphaF[i + 1])),
   };
+  ctx.impurity?.profiles(st, ctx.lastProf);
 }
 
 /**

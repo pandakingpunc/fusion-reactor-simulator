@@ -63,6 +63,33 @@ export interface ProfileSettings {
    */
   nonlinearSolver?: 'auto' | 'picard' | 'newton' | 'pc';
   /**
+   * impurities and helium ash of the 1.5D model (profiles/impurity/). 'legacy' (default): the scalar inventories (one He-ash content with the
+   * confinement time τ_He* = (τ_He* over τ_E) τ_E, one uniform impurity concentration that relaxes to its set-point). 'anomalous': n_He(ρ) and the
+   * densities of the intrinsic impurity (`impurity.species`), of the seeded species and of an optional third species are state of the model,
+   * evolved on the finite-volume particle solver with the D and v of the electrons scaled by `impurityDoverDe` and `impurityPinchOverPe`, the helium
+   * ash sourced by the local fusion rate and exhausted with the confinement time τ_He* of `transport.tau_He_over_tau_E`, the impurities fixed
+   * at the separatrix to their concentration (`impurity.concentration` as a live control, `impurity.seedConcentration`, `impurityExtraConcentration`)
+   * and, for tungsten, a wall source. 'facit': the same with the neoclassical D, K, H of FACIT (Fajardo et al., Plasma Phys. Control. Fusion 64
+   * (2022) 055017) added. Both replace the scalar heuristics: the He confinement time enters as the exhaust only, the impurity profile is what the
+   * transport makes of the boundary value, and the tungsten inventory of the wall source is S_W times the confinement time of the transport instead
+   * of τ_Z (τ_W × 4 without ELMs and sawteeth; the crashes are in the profiles).
+   */
+  impurityTransport?: 'legacy' | 'anomalous' | 'facit';
+  /**
+   * meaning of the configured impurity concentrations (`impurity.concentration`, `impurity.seedConcentration`, `impurityExtraConcentration`) in the
+   * profile-resolved modes: 'average' (default) the volume-average concentration N_z/N_e, as in the scalar model (a slow controller sets the separatrix
+   * value that gives it, the steady inventory of a tungsten wall source is added to it); 'separatrix' the concentration at the separatrix (a fixed
+   * boundary value, the profile is what the transport makes of it)
+   */
+  impuritySetpoint?: 'average' | 'separatrix';
+  /** anomalous impurity diffusivity over electron D (default 1); zero disables anomalous particle flux, including its pinch, in 'anomalous' mode */
+  impurityDoverDe?: number;
+  /** anomalous impurity convection over the electron convection v (the turbulent pinch, independent of the charge; default 1) */
+  impurityPinchOverPe?: number;
+  /** third impurity species of the profile-resolved module (besides `impurity.species` and `impurity.seedSpecies`), with its concentration at the separatrix */
+  impurityExtraSpecies?: ImpuritySpecies;
+  impurityExtraConcentration?: number;
+  /**
    * plasma-current programme, the boundary condition of the current diffusion equation as a function of time: points [t (s), I_p (MA)] in increasing
    * time, linearly interpolated and held constant beyond the first and last point (profiles/control/plasmaCurrent.ts). `Ip_MA` is what the initial
    * equilibrium is solved for and should equal the programme at t = 0. Default: I_p constant. A function of time is given to the model as

@@ -48,7 +48,8 @@ export class ElmEvents implements EventModel {
     const before = ctx.crashHook ? ctx.crashSnapshot(st) : null;
     const dW = elmCrash(ctx.tg, st.Te, st.Ti, st.ne, ctx.w.ni, ctx.bc.Te, ctx.bc.Ti, ctx.bc.n, rhoPed, fW, 0.5 * fW, 0.15);
     if (before) ctx.crashHook!('ELM', t, before, ctx.crashSnapshot(st));
-    s.NHe *= 1 - 0.1 * fW; s.cZ *= 1 - 0.1 * fW;
+    if (ctx.impurity) ctx.impurity.elmCrash(st, rhoPed, 0.5 * fW, 0.15); // profile-resolved species: the same crash as n_e (impurity/)
+    else { s.NHe *= 1 - 0.1 * fW; s.cZ *= 1 - 0.1 * fW; }
     s.Pelm += dW / 1.0; // energy pulse into the exponential average (τ = 1 s)
     ctx.crashE += dW; // the loss power of the τ_E scaling counts it in dW/dt (acceptStep)
     this.lastElm = t;

@@ -105,6 +105,10 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
   // transition with the mixed Bohm/gyro-Bohm model, the JET15 ramp-up and first H-mode with IFS-PPPL
   { id: 'ITER15-bgb', preset: 'ITER15', tEnd: 16, overrides: { profiles: { transportModel: 'bgb' } } },
   { id: 'JET15-ifspppl', preset: 'JET15', tEnd: 1.5, overrides: { profiles: { transportModel: 'ifspppl' } } },
+  // ws6e: the profile-resolved He ash and impurities with the FACIT neoclassical coefficients (opt-in; every other case has them off)
+  { id: 'ITER15-impurity', preset: 'ITER15', tEnd: 60, overrides: { profiles: { impurityTransport: 'facit' } } },
+  // ws6e: the same with a weak anomalous transport and no set-point controller, so that the neoclassical D, K, H decide the impurity profiles (the guard of the FACIT wiring)
+  { id: 'ITER15-impurity-neo', preset: 'ITER15', tEnd: 30, overrides: { profiles: { impurityTransport: 'facit', impuritySetpoint: 'separatrix', impurityDoverDe: 0.05, impurityPinchOverPe: 0.05 } } },
 ];
 
 /** Quick cases compared by `npm test` (0D magnetic, two pulsed models, short 1.5D). */
@@ -140,6 +144,10 @@ export function caseConfig(c: GoldenCase): ReactorConfig {
     if (!MAGNETIC_METHODS.includes(cfg.method)) throw new Error(`golden case ${c.id}: preset ${c.preset} (${cfg.method}) has no fidelity setting`);
     cfg = { ...cfg, fidelity: o.fidelity } as ReactorConfig;
     if (o.fidelity === '1.5D' && !runsProfiles(cfg)) throw new Error(`golden case ${c.id}: ${cfg.method} has no 1.5D model`);
+  }
+  if (o.profiles !== undefined) {
+    if (!runsProfiles(cfg)) throw new Error(`golden case ${c.id}: profile settings need the 1.5D model`);
+    cfg = { ...cfg, profiles: { ...(cfg as MagneticConfig).profiles, ...o.profiles } } as ReactorConfig;
   }
   if (o.n_target !== undefined) {
     if (!('n_target' in cfg)) throw new Error(`golden case ${c.id}: preset ${c.preset} (${cfg.method}) has no n_target setting`);

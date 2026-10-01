@@ -5,6 +5,7 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 ## [Unreleased]
 
 ### Added
+- Opt-in profile-resolved impurity and helium-ash transport, anomalous/FACIT closures, local radiation/composition, conservative inventory ledgers and dedicated neoclassical golden guards.
 - Current/flux ledgers, conservative equilibrium remapping, plasma-current-triggered equilibrium updates, a 0D plasma circuit and opt-in Redl bootstrap closure; CS reports retain plasma flux requirements while gating solenoid swing/margin on supplied designs.
 - Opt-in Bohm/gyro-Bohm and IFS-PPPL transport closures with emergent confinement diagnostics, wizard options and dedicated golden cases; their documented model-validation gaps remain visible.
 - Published preset coil/pulse builds, neutron-power engineering inputs and a feed-forward density controller with explicit seed-dependent behavior near the Greenwald limit.

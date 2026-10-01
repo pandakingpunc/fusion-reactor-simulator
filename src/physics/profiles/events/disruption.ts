@@ -82,6 +82,7 @@ export class DisruptionEvents implements EventModel {
       v.Ti[i] = 0.005 + (v.Ti[i] - 0.005) * fT;
       v.ne[i] *= fN;
     }
+    ctx.impurity?.quench(v, fN); // profile-resolved He ash and impurities are lost with the plasma (impurity/)
     if (ctx.phase === 'current_quench') s.Ip *= Math.exp(-dt / tauCQ);
     composition(ctx, v.Te, v.ne, s);
     quenchDiagnostics(ctx, v);

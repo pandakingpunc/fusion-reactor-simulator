@@ -49,6 +49,8 @@ import type { ElmEvents } from './events/elm';
 import type { EquilibriumInitFailure, StepFailure } from './failures';
 import type { TransportGeometry } from './geometry1d';
 import type { GsAttempt } from './eqguard';
+import { ImpurityModel } from './impurity/model';
+import { impurityMode } from './impurity/config';
 import { currentProfiles, equilibriumCurrentScale, matchEdgeCurrent } from './qprofile';
 import { defaultSources, SourceModel } from './sources';
 import { acceptStep } from './solver/acceptStep';
@@ -116,7 +118,11 @@ export class ProfileModel implements SimModel {
     this.outputDt = Math.max(cfg.t_end / 800, 0.002);
     this.nState = ctx.layout.size;
     if (modules.plasmaCurrent) ctx.setCurrentProgramme(modules.plasmaCurrent);
-    this.physics = new PhysicsPipeline(ctx, modules.transport ?? createTransportModel(ctx.ps.transportModel), modules.sources ?? defaultSources());
+    // profile-resolved He ash and impurities (ProfileSettings.impurityTransport): a source model (line radiation of the third species, the
+    // advance after each accepted step, its checkpoint) that also owns the composition of the state
+    if (impurityMode(ctx.ps) !== 'legacy') ctx.impurity = new ImpurityModel(ctx);
+    const sources = [...(modules.sources ?? defaultSources()), ...(ctx.impurity ? [ctx.impurity] : [])];
+    this.physics = new PhysicsPipeline(ctx, modules.transport ?? createTransportModel(ctx.ps.transportModel), sources);
     this.fueling = new FuelingControl(ctx);
     const ev = defaultEvents(modules.events);
     this.events = ev.list; this.elm = ev.elm; this.disruption = ev.disruption;
@@ -200,6 +206,7 @@ export class ProfileModel implements SimModel {
     s.Ip = Ip0;
     s.Sfuel = 0;
     ctx.bc = { Te: 0.05, Ti: 0.05, n: fsep * n0 };
+    ctx.impurity?.initialise(ctx.view(y));
     composition(ctx, Te, ne, s);
     currentProfiles(ctx, psi, s.Ip);
     return y;
@@ -329,6 +336,10 @@ export class ProfileModel implements SimModel {
           'Emergent τ_E (flat-top mean, s)': +avg('tauE').toFixed(2),
           'Emergent H98(y,2) (flat-top mean)': +avg('H98y2').toFixed(2),
           'Emergent H(ITPA20) (flat-top mean)': +avg('HITPA20').toFixed(2),
+        } : {}),
+        ...(ctx.impurity ? {
+          'Impurity transport': ctx.impurity.mode === 'facit' ? 'profiles, anomalous + FACIT neoclassical' : 'profiles, anomalous',
+          'He ash fraction n_He/n_e (avg.)': +avg('fHe').toFixed(4), 'He ash fraction on axis (final)': +(d.fHe0 ?? 0).toFixed(4),
         } : {}),
       },
       extraExtras: {

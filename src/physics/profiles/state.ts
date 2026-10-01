@@ -45,10 +45,16 @@ export type ScalarName = (typeof SCALAR_NAMES)[number];
 /** Number of scalars after the profiles */
 export const N_SCALARS = SCALAR_NAMES.length;
 
-/** Named read/write access to the scalar block of a state vector (a view: writes go into y). */
+/** the extras of a shot without the impurity module: none */
+const NO_EXTRAS = new Float64Array(0);
+
+/**
+ * Named read/write access to the scalar block of a state vector (a view: writes go into y). `imp` is the block of profile-resolved
+ * impurity densities behind the scalars (impurity/: one block of N cells per species, He ash first; empty in the legacy mode).
+ */
 export interface ScalarView extends Record<ScalarName, number> {}
 export class ScalarView {
-  constructor(readonly raw: Float64Array) {}
+  constructor(readonly raw: Float64Array, readonly imp: Float64Array = NO_EXTRAS) {}
 }
 SCALAR_NAMES.forEach((name, k) => {
   Object.defineProperty(ScalarView.prototype, name, {
@@ -66,16 +72,22 @@ export interface ProfileState {
   s: ScalarView;
 }
 
-/** Layout of the state vector for N radial cells */
+/**
+ * Layout of the state vector for N radial cells: the four profiles, the scalars and `nExtra` further values (the impurity densities of
+ * impurity/, 0 unless `ProfileSettings.impurityTransport` asks for them, which leaves the layout of every other shot as it was).
+ */
 export class StateLayout {
   /** length of the state vector */
   readonly size: number;
-  constructor(readonly N: number) {
-    this.size = 4 * N + N_SCALARS;
+  constructor(readonly N: number, readonly nExtra = 0) {
+    this.size = 4 * N + N_SCALARS + nExtra;
   }
   /** Views into y (no copy) */
   view(y: Float64Array): ProfileState {
-    const N = this.N;
-    return { Te: y.subarray(0, N), Ti: y.subarray(N, 2 * N), ne: y.subarray(2 * N, 3 * N), psi: y.subarray(3 * N, 4 * N), s: new ScalarView(y.subarray(4 * N)) };
+    const N = this.N, k = 4 * N + N_SCALARS;
+    return {
+      Te: y.subarray(0, N), Ti: y.subarray(N, 2 * N), ne: y.subarray(2 * N, 3 * N), psi: y.subarray(3 * N, 4 * N),
+      s: new ScalarView(y.subarray(4 * N, k), this.nExtra > 0 ? y.subarray(k, k + this.nExtra) : NO_EXTRAS),
+    };
   }
 }

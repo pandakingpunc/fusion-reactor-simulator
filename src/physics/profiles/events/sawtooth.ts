@@ -50,6 +50,7 @@ export class SawtoothEvents implements EventModel {
     composition(ctx, v.Te, v.ne, v.s);
     const neBefore = Float64Array.from(v.ne), niBefore = Float64Array.from(w.ni);
     flattenConserving(g, v.ne, null, r1, rmix);
+    ctx.impurity?.sawtoothCrash(v, r1, rmix); // profile-resolved species: mixed like n_e (impurity/)
     flattenConserving(g, v.Te, v.ne, r1, rmix, neBefore);
     composition(ctx, v.Te, v.ne, v.s);
     flattenConserving(g, v.Ti, w.ni, r1, rmix, niBefore);

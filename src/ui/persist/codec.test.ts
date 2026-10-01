@@ -252,6 +252,19 @@ describe('share codec: decoding refuses what is not a configuration', () => {
     c.profiles.nonlinearSolver = 'quasi';
     expect(checkConfig(c).errors.join('; ')).toMatch(/profiles\.nonlinearSolver: 'quasi' is not one of 'auto', 'picard', 'newton', 'pc'/);
     c.profiles.nonlinearSolver = 'pc';
+    // the profile-resolved impurity module: known settings, typed, and its choices checked
+    Object.assign(c.profiles, { impurityTransport: 'facit', impuritySetpoint: 'separatrix', impurityDoverDe: 2, impurityPinchOverPe: 0.5, impurityExtraSpecies: 'Ne', impurityExtraConcentration: 1e-3 });
+    expect(checkConfig(c)).toEqual({ errors: [], warnings: [] });
+    expect(same(JSON.parse(JSON.stringify(c)), c)).toBe(true);
+    c.profiles.impurityTransport = 'neoclassical';
+    expect(checkConfig(c).errors.join('; ')).toMatch(/profiles\.impurityTransport: 'neoclassical' is not one of 'legacy', 'anomalous', 'facit'/);
+    c.profiles.impurityTransport = 'facit';
+    c.profiles.impurityExtraSpecies = 'Xx';
+    expect(checkConfig(c).errors.join('; ')).toMatch(/profiles\.impurityExtraSpecies: 'Xx' is not one of/);
+    c.profiles.impurityExtraSpecies = 'Ne';
+    c.profiles.impurityDoverDe = '2';
+    expect(checkConfig(c).errors.join('; ')).toMatch(/profiles\.impurityDoverDe: expected a number/);
+    for (const k of ['impurityTransport', 'impuritySetpoint', 'impurityDoverDe', 'impurityPinchOverPe', 'impurityExtraSpecies', 'impurityExtraConcentration']) delete c.profiles[k];
     c.profiles.rtol = '1e-3';
     expect(checkConfig(c).errors.join('; ')).toMatch(/profiles\.rtol: expected a number/);
     c.profiles.rtol = 1e-3;

@@ -25,6 +25,14 @@
  * physical bound, a ±2σ interval, a tolerance of its own) has tolerance 'stated', and its `basis` gives
  * the numbers. Each entry states its own derivation in `basis`.
  *
+ * Roles (optional). 'calibration' marks the one shot a model constant was fitted to: its model value matches the
+ * published one by construction, so it is not a test and validate labels it 'calibrated'. 'blind' marks a prediction made
+ * after that calibration with nothing adjusted for the shot. A check without a role compares a model that was not fitted
+ * to any value of the table with a published one.
+ *
+ * Wording (evaluate.ts). A check whose model value deviates by more than 20 % from the published value is reported as
+ * 'benchmarked (deviation X %)', one within 20 % as 'validated' (a bound of kind sanity as 'sanity bound').
+ *
  * Known failures. When the current model falls outside a defensible range, the check is kept and
  * `knownFailure` says why: validate prints it as KNOWN-FAIL, lists it in the summary and does not fail
  * the exit code. A known failure that starts passing is reported (XPASS) so the marker can be removed.
@@ -33,6 +41,8 @@
 import type { MetricPath } from './metrics';
 
 export type CheckKind = 'validation' | 'benchmark' | 'sanity';
+/** 'calibration': a model constant was fitted to this value; 'blind': predicted after that calibration, nothing adjusted */
+export type CheckRole = 'calibration' | 'blind';
 
 /** The reduced-model tolerances of the acceptance policy (see above). */
 export type PolicyTolerance = 'confinement' | 'temperature' | 'yield' | 'gain';
@@ -63,11 +73,15 @@ export interface ReferenceCheck {
   /** full citation */
   source: string;
   doi?: string;
+  /** why there is no `doi` for a measured value: the source could not be verified as a peer-reviewed paper */
+  sourceLimitation?: string;
   /** accepted model range [lo, hi], inclusive */
   accept: readonly [number, number];
   /** policy tolerance that widens the published band into `accept`, or 'stated' (derivation in `basis`) */
   tolerance: Tolerance;
   kind: CheckKind;
+  /** the part of this check in a calibration (see the header); absent for a check that no fit enters */
+  role?: CheckRole;
   /** how `accept` follows from the reference and the tolerances above */
   basis: string;
   /** why the current model is known to fall outside `accept`; the check then does not fail the run */
@@ -88,6 +102,8 @@ const SRC = {
   harrison2024: 'J.R. Harrison et al., "Overview of physics results from MAST Upgrade towards core-pedestal-exhaust integration", Nucl. Fusion 64 (2024) 112017',
   beurskens2021: 'M.N.A. Beurskens et al., "Ion temperature clamping in Wendelstein 7-X electron cyclotron heated plasmas", Nucl. Fusion 61 (2021) 116072',
   abushawareb2024: 'H. Abu-Shawareb et al. (Indirect Drive ICF Collaboration), "Achievement of target gain larger than unity in an inertial fusion experiment", Phys. Rev. Lett. 132 (2024) 065102',
+  abushawareb2022: 'H. Abu-Shawareb et al. (Indirect Drive ICF Collaboration), "Lawson criterion for ignition exceeded in an inertial fusion experiment", Phys. Rev. Lett. 129 (2022) 075001 (table I)',
+  pak2024: 'A. Pak et al., "Observations and properties of the first laboratory fusion experiment to exceed a target gain of unity", Phys. Rev. E 109 (2024) 025203',
   gopalaswamy2024: 'V. Gopalaswamy et al., "Demonstration of a hydrodynamically equivalent burning plasma in direct-drive inertial confinement fusion", Nat. Phys. 20 (2024) 751–757',
   gomez2020: 'M.R. Gomez et al., "Performance scaling in magnetized liner inertial fusion experiments", Phys. Rev. Lett. 125 (2020) 155002',
   lindemuth1983: 'I.R. Lindemuth and R.C. Kirkpatrick, "Parameter space for magnetized fuel targets in inertial confinement fusion", Nucl. Fusion 23 (1983) 263–284',
@@ -115,6 +131,8 @@ const DOI = {
   harrison2024: '10.1088/1741-4326/ad6011',
   beurskens2021: '10.1088/1741-4326/ac1653',
   abushawareb2024: '10.1103/PhysRevLett.132.065102',
+  abushawareb2022: '10.1103/PhysRevLett.129.075001',
+  pak2024: '10.1103/PhysRevE.109.025203',
   gopalaswamy2024: '10.1038/s41567-023-02361-4',
   gomez2020: '10.1103/PhysRevLett.125.155002',
   lindemuth1983: '10.1088/0029-5515/23/3/001',
@@ -189,6 +207,13 @@ const MASTU_Q95 = (preset: 'MASTU'): ReferenceCheck => ({
     'campaign (R 0.8 m, a 0.5 m, κ 2.1, δ 0.47, 0.75 MA, 0.55 T; Harrison 2024 and Imada et al. 2024, whose EFIT q95 of three such discharges is 6.3–6.7): the ' +
     'fit gives 6.4 for it. With the design-maximum shape of the machine (R 0.85 m, a 0.65 m, κ 2.5) it gave 18.2',
 });
+
+/** The yield of N230729 is not in a paper that could be read: the facility's own record (no DOI), see `sourceLimitation`. */
+const LLNL_NUG2024 = 'K. Fournier et al. (LLNL), "What\'s New for Users at the NIF...", NIF & JLF User Group Meeting (2024), LLNL-PRES-859704, slide 3: N230729, 3.88 MJ yield; ' +
+  'lasers.llnl.gov/science/achieving-fusion-ignition: "July 30, 2023: The NIF laser again delivered 2.05 MJ of energy to the target, resulting in 3.88 MJ of fusion energy output"';
+const LLNL_NUG2024_LIMIT = 'no peer-reviewed paper that states the yield of N230729 could be verified in this session (the design perspective of Kritcher et al., ' +
+  'Phys. Plasmas 31 (2024) 070502, doi:10.1063/5.0210904, discusses the platform but its text could not be read): the value is the facility record of the 2.05 MJ laser energy and the ' +
+  '3.88 MJ yield, without a published uncertainty';
 
 const r3 = (x: number) => Math.round(x * 1000) / 1000;
 /** lossless (adiabatic, γ = 5/3) temperature after radial compression of a cylinder by C: T0·C^(4/3) */
@@ -356,21 +381,43 @@ export const REFERENCE_CHECKS: readonly ReferenceCheck[] = [
     ref: 'Siccinio 2020', source: SRC.siccinio2020, doi: DOI.siccinio2020, accept: [0.2, 0.6], tolerance: 'stated', kind: 'benchmark',
     basis: 'pulsed DEMO baseline f_bs ≈ 0.35; −40 %/+70 % because f_bs depends on the pedestal pressure',
   },
-  // ─── NIF N221204 ─────────────────────────────────────────────────────────────────────────────
+  // ─── NIF Hybrid-E shots: N210808 calibrates the ICF model, N221204 and N230729 are blind predictions ──────────────
   {
-    id: 'NIF.G', preset: 'NIF', metric: 'Gain G', path: 'report.Q_sci_max', value: 1.5, unit: '',
-    ref: 'Abu-Shawareb 2024', source: SRC.abushawareb2024, doi: DOI.abushawareb2024, accept: [1.0, 3.0], tolerance: 'stated', kind: 'validation',
-    basis: 'N221204: 3.15 MJ from 2.05 MJ of laser energy, G = 1.5. Lower bound G = 1, the result the shot is known for (target ' +
-      'gain above unity); upper bound ×2 (gain tolerance)',
+    id: 'NIF210808.G', preset: 'NIF210808', metric: 'Gain G (N210808, calibration)', path: 'report.Q_sci_max', value: 0.72, unit: '',
+    ref: 'Abu-Shawareb 2022', source: SRC.abushawareb2022, doi: DOI.abushawareb2022, accept: [0.36, 1.44], tolerance: 'gain', kind: 'validation', role: 'calibration',
+    basis: 'N210808 (8 August 2021): 1.37 MJ of fusion yield from 1.917 MJ of laser light, G = 0.72 (table I). The shot the ICF model is calibrated on: ICF_CAL, ' +
+      'the one tuned constant, is the root of E_fus = 1.37 MJ for the capsule of this preset (confinement/icfCalibration.ts), so the model value is the published ' +
+      'yield over the laser energy by construction and the check tests the arithmetic of the calibration, not the model; ×/÷ 2 (gain tolerance)',
+  },
+  {
+    id: 'NIF.G', preset: 'NIF', metric: 'Gain G (N221204, blind)', path: 'report.Q_sci_max', value: 1.5, uncertainty: 0.1, unit: '',
+    ref: 'Abu-Shawareb 2024', source: `${SRC.abushawareb2024}; uncertainty: ${SRC.pak2024}`, doi: DOI.abushawareb2024, accept: [1.0, 3.0], tolerance: 'stated', kind: 'validation', role: 'blind',
+    basis: 'N221204 (5 December 2022): 3.15 MJ from 2.05 MJ of laser energy, G = 1.5 ± 0.1. A BLIND prediction: the ICF model is calibrated on N210808 alone ' +
+      '(NIF210808.G) and nothing is adjusted for this shot. Lower bound G = 1, the result the shot is known for (target gain above unity); upper bound ×2 (gain tolerance)',
+    knownFailure: 'the model has no input for what separates N221204 from the calibration shot N210808 (an ablator 6 µm thicker, 7 % more laser energy, better low-mode ' +
+      'symmetry and capsule quality), so it runs the same capsule and predicts the calibration yield, 1.37 MJ: G = 0.67 against 1.5 (model/published 0.45, yield ' +
+      'ratio 0.43). The 2.3-fold increase of the yield between the two shots lies above the ignition cliff, which a model calibrated at one point on the cliff does not ' +
+      'resolve; the cliff constants were not re-tuned. Before v4.0 ICF_CAL = 0.07 was tuned to N221204 itself and the check read G = 1.49, a fit that looked like a prediction',
+  },
+  {
+    id: 'NIF.G_N230729', preset: 'NIF', metric: 'Gain G (N230729, blind)', path: 'report.Q_sci_max', value: 1.89, unit: '',
+    ref: 'LLNL NIF 2024', source: LLNL_NUG2024, sourceLimitation: LLNL_NUG2024_LIMIT, accept: [1.0, 3.78], tolerance: 'stated', kind: 'validation', role: 'blind',
+    basis: 'N230729 (fired 30 July 2023 UTC; NIF notation NYYMMDD is the day the countdown began, the shot is also quoted as N230730): 3.88 MJ from 2.05 MJ of laser ' +
+      'energy, G = 1.89; the repeat of the N221204 design with a higher-quality diamond capsule. No yield uncertainty was verified, none is used. A BLIND prediction ' +
+      'with the configuration of the NIF preset (the model has no input that separates the shot from N221204). Lower bound G = 1 as for N221204; upper bound ×2 (gain tolerance)',
+    knownFailure: 'as for N221204 the model predicts the calibration yield, 1.37 MJ, for every shot of the platform: G = 0.67 against 1.89 (model/published 0.35). ' +
+      'The capsule quality that raised the yield of N230729 above that of N221204 (fewer high-Z inclusions and defects) enters the model only through the surface roughness, ' +
+      'which acts on the ignition parameter and not on the burn-up of an ignited or marginal shot',
   },
   // ─── Direct-drive ICF (1.9 MJ) ───────────────────────────────────────────────────────────────
   {
     id: 'DIRECT.G', preset: 'DIRECT', metric: 'Gain G', path: 'report.Q_sci_max', value: 0.74, uncertainty: 0.14, unit: '',
     ref: 'Gopalaswamy 2024', source: SRC.gopalaswamy2024, doi: DOI.gopalaswamy2024, accept: [0.3, 1.76], tolerance: 'gain', kind: 'benchmark',
     basis: 'hydro-equivalent scaling of the best OMEGA cryogenic implosions to 2.15 MJ: 1.6 ± 0.3 MJ of fusion yield, G = 0.74 ± 0.14 ' +
-      '(a burning, not ignited, plasma); ×/÷ 2 (gain tolerance). The preset\'s 1.9 MJ would give less',
-    knownFailure: 'the 0D implosion model ignites the 1.9 MJ CH capsule and returns G ≈ 3; laser–plasma instabilities, ' +
-      'hot-electron preheat and laser imprint, which limit direct drive today, are not modelled',
+      '(a burning, not ignited, plasma); ×/÷ 2 (gain tolerance). The preset\'s 1.9 MJ would give less. Not a validation of the direct-drive model: in v4.0 development the 0D model ' +
+      'ignited this capsule and returned G = 3.10 (a documented known failure); the value fell to 0.39 when the one tuned constant of the ICF model, ICF_CAL, was recalibrated on the ' +
+      'NIF shot N210808 (0.07 → 0.03931), which puts this capsule below the ignition threshold of the model (χ_ig = 0.61). The preset was not touched, and the effects that limit ' +
+      'direct drive in the experiments (laser–plasma instabilities, hot-electron preheat, laser imprint) are still not modelled; the model value is 0.53 of the published one',
   },
   // ─── Z machine MagLIF ────────────────────────────────────────────────────────────────────────
   {

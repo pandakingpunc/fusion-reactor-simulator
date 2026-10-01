@@ -10,7 +10,10 @@
  *   --only a,b         yalnız bu preset kimlikleri
  *   --kind k,…         only checks of these kinds (validation, benchmark, sanity)
  *   --json             machine-readable results on stdout instead of the report (use `npm run -s`: plain
- *                      `npm run` writes its banner to stdout before the JSON)
+ *                      `npm run` writes its banner to stdout before the JSON). Schema 3: one entry per check with the
+ *                      reference (published value, uncertainty, source, DOI), the model value, ratio = model/published,
+ *                      the accepted range, the pass status, the role (calibration, blind) and the wording of the
+ *                      comparison: 'validated' within 20 % of the published value, 'benchmarked (deviation X %)' beyond
  *   --markdown         a Markdown table of the checks with the model values instead of the report
  *   --list             print the selected checks without running anything (with --markdown: as a table)
  *   --timeout S        fail a preset whose run takes longer than S seconds
@@ -22,10 +25,10 @@
  */
 import { readFileSync } from 'node:fs';
 import { PRESETS } from '../physics/presets';
-import { REFERENCE_CHECKS, type CheckKind, type ReferenceCheck, type Tolerance } from '../physics/validation/references';
+import { REFERENCE_CHECKS, type CheckKind, type CheckRole, type ReferenceCheck, type Tolerance } from '../physics/validation/references';
 import { readMetric } from '../physics/validation/metrics';
 import {
-  type CheckOutcome, evaluateCheck, fmt, fmtRange, fmtReference, formatOutcomeLine, markdownTable, parseChecks, selectChecks, tally,
+  BENCHMARK_DEVIATION, type CheckOutcome, evaluateCheck, fmt, fmtRange, fmtReference, formatOutcomeLine, markdownTable, parseChecks, selectChecks, tally,
 } from '../physics/validation/evaluate';
 import { PoolAbortError, PoolConfigError, type PoolProgress, defaultThreads, runPool } from './pool';
 import { defineCli, exitUsage, parseArgsOrExit } from './args';
@@ -66,7 +69,17 @@ interface CheckResult {
   value: number | null;
   unit: string;
   expected: { lo: number; hi: number };
-  reference: { value: number; uncertainty?: number; band?: readonly [number, number]; source: string; doi?: string };
+  /** the published value of the check (also in `reference.value`) */
+  published: number;
+  reference: { value: number; uncertainty?: number; band?: readonly [number, number]; source: string; doi?: string; sourceLimitation?: string };
+  /** model / published value; null when there is no model value */
+  ratio: number | null;
+  /** 100 × (ratio − 1), the deviation of the model from the published value in percent; null as `ratio` */
+  deviationPct: number | null;
+  /** 'validated', 'benchmarked (deviation +35 %)' (beyond 20 %), 'sanity bound', 'calibrated (deviation …)' or 'n/a' */
+  wording: string;
+  /** 'calibration' (a model constant was fitted to this value) or 'blind' (predicted after that calibration); absent otherwise */
+  role?: CheckRole;
   tolerance: Tolerance;
   status: CheckOutcome['status'];
   /** value within the accepted range (status pass or xpass) */
@@ -89,6 +102,18 @@ interface PresetResult {
 }
 
 const finiteOrNull = (v: number): number | null => (Number.isFinite(v) ? v : null);
+
+/** how many checks of each wording ('benchmarked (deviation +35 %)' counts as 'benchmarked'; 'n/a' as 'unavailable') */
+function wordingTally(outcomes: readonly CheckOutcome[]): Record<'validated' | 'benchmarked' | 'calibrated' | 'sanity bound' | 'unavailable', number> {
+  const t = { validated: 0, benchmarked: 0, calibrated: 0, 'sanity bound': 0, unavailable: 0 };
+  for (const o of outcomes) {
+    const w = o.wording.split(' ')[0];
+    if (w === 'validated' || w === 'benchmarked' || w === 'calibrated') t[w]++;
+    else if (o.wording === 'sanity bound') t['sanity bound']++;
+    else t.unavailable++;
+  }
+  return t;
+}
 
 async function main() {
   const args = parseArgsOrExit(CLI);
@@ -164,13 +189,18 @@ async function main() {
     say(formatOutcomeLine(o));
   }
   const t = tally(outcomes);
+  const words = wordingTally(outcomes);
+  if (outcomes.length) {
+    say(`  wording: ${words.validated} validated, ${words.benchmarked} benchmarked (deviation above ${BENCHMARK_DEVIATION * 100} % from the published value), ` +
+      `${words.calibrated} calibrated, ${words['sanity bound']} sanity bounds${words.unavailable ? `, ${words.unavailable} without a model value` : ''}`);
+  }
   const failures = runFails + t.fail + t.error;
   const known = outcomes.filter((o) => o.status === 'known-fail');
   const xpass = outcomes.filter((o) => o.status === 'xpass');
   if (known.length) {
     say('\n=== KNOWN FAILURES (documented in src/physics/validation/references.ts; not counted as failures) ===');
     for (const o of known) {
-      say(`  ${o.check.id}: ${fmt(o.value)}${o.check.unit ? ` ${o.check.unit}` : ''}, accepted ${fmtRange(o.check)} — ${o.check.knownFailure}`);
+      say(`  ${o.check.id}: ${fmt(o.value)}${o.check.unit ? ` ${o.check.unit}` : ''}, accepted ${fmtRange(o.check)}, model/published ${fmt(o.ratio)}${o.check.role ? ` [${o.check.role}]` : ''} — ${o.check.knownFailure}`);
     }
   }
   if (xpass.length) {
@@ -182,8 +212,8 @@ async function main() {
   const none = outcomes.length === 0;
   if (args.json) {
     const out = {
-      schema: 2, threads, wall_s: wall / 1000, presets: presetResults, checks: outcomes.map(toJson),
-      checksExecuted: outcomes.length, failures, knownFailures: t.knownFail, unexpectedPasses: t.xpass,
+      schema: 3, threads, wall_s: wall / 1000, presets: presetResults, checks: outcomes.map(toJson),
+      checksExecuted: outcomes.length, failures, knownFailures: t.knownFail, unexpectedPasses: t.xpass, wordings: words,
       passed: failures === 0 && !none,
     };
     process.stdout.write(JSON.stringify(out, null, 2) + '\n');
@@ -207,10 +237,12 @@ function toJson(o: CheckOutcome): CheckResult {
   return {
     id: c.id, preset: c.preset, metric: c.metric, kind: c.kind, value: o.value, unit: c.unit,
     expected: { lo: c.accept[0], hi: c.accept[1] },
+    published: c.value,
     reference: {
       value: c.value, ...(c.uncertainty !== undefined ? { uncertainty: c.uncertainty } : {}), ...(c.band ? { band: c.band } : {}),
-      source: c.source, ...(c.doi ? { doi: c.doi } : {}),
+      source: c.source, ...(c.doi ? { doi: c.doi } : {}), ...(c.sourceLimitation ? { sourceLimitation: c.sourceLimitation } : {}),
     },
+    ratio: o.ratio, deviationPct: o.deviation === null ? null : 100 * o.deviation, wording: o.wording, ...(c.role ? { role: c.role } : {}),
     tolerance: c.tolerance, status: o.status, pass: o.status === 'pass' || o.status === 'xpass', ref: c.ref,
     ...(c.knownFailure ? { knownFailure: c.knownFailure } : {}), ...(o.error ? { error: o.error } : {}),
   };
@@ -218,7 +250,7 @@ function toJson(o: CheckOutcome): CheckResult {
 
 function printList(checks: ReturnType<typeof selectChecks>, json: boolean, markdown: boolean): void {
   if (json) {
-    process.stdout.write(JSON.stringify({ schema: 2, checks }, null, 2) + '\n');
+    process.stdout.write(JSON.stringify({ schema: 3, checks }, null, 2) + '\n');
   } else if (markdown) {
     process.stdout.write(markdownTable(checks) + '\n');
   } else {

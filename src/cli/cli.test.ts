@@ -27,7 +27,8 @@ function validate(...args: string[]) {
 interface JsonCheck {
   id: string; preset: string; metric: string; kind: string; tolerance: string; value: number | null;
   expected: { lo: number; hi: number }; status: string; pass: boolean; knownFailure?: string;
-  reference: { value: number; uncertainty?: number; band?: [number, number]; source: string; doi?: string };
+  published: number; ratio: number | null; deviationPct: number | null; wording: string; role?: string;
+  reference: { value: number; uncertainty?: number; band?: [number, number]; source: string; doi?: string; sourceLimitation?: string };
 }
 interface JsonOut {
   schema: number;
@@ -37,6 +38,7 @@ interface JsonOut {
   failures: number;
   knownFailures: number;
   unexpectedPasses: number;
+  wordings: Record<string, number>;
   passed: boolean;
 }
 
@@ -102,7 +104,7 @@ describe('validate CLI exit codes', { timeout: 60_000 }, () => {
   it('--only NIF --json → machine-readable results for NIF only, consistent with the table', () => {
     const r = validate('--threads', '2', '--only', 'NIF', '--json');
     const out = JSON.parse(r.stdout) as JsonOut;
-    expect(out.schema).toBe(2);
+    expect(out.schema).toBe(3);
     expect(out.presets.map((p) => p.id)).toEqual(['NIF']);
     const nif = REFERENCE_CHECKS.filter((c) => c.preset === 'NIF');
     expect(out.checksExecuted).toBe(nif.length);
@@ -114,9 +116,37 @@ describe('validate CLI exit codes', { timeout: 60_000 }, () => {
       expect(Number.isFinite(c.value)).toBe(true);
       expect(['pass', 'fail', 'known-fail', 'xpass']).toContain(c.status);
       expect(c.pass).toBe(c.status === 'pass' || c.status === 'xpass');
+      // the comparison with the published value: ratio, deviation, wording, role (schema 3)
+      expect(c.published).toBe(nif[i].value);
+      expect(c.ratio).toBeCloseTo(c.value! / nif[i].value, 12);
+      expect(c.deviationPct).toBeCloseTo(100 * (c.ratio! - 1), 9);
+      expect(c.wording).toBe(Math.abs(c.ratio! - 1) > 0.2 ? `benchmarked (deviation ${c.deviationPct! < 0 ? '-' : '+'}${Math.abs(c.deviationPct!).toFixed(0)} %)` : 'validated');
+      expect(c.role).toBe(nif[i].role);
     }
+    expect(out.wordings.benchmarked + out.wordings.validated).toBe(out.checksExecuted);
     expect(out.passed).toBe(out.failures === 0);
     expect(r.code).toBe(out.passed ? 0 : 1);
+  });
+
+  it('--only NIF210808,NIF --json → the calibration shot is calibrated, the others blind; ratios and wording as the report prints them', () => {
+    const r = validate('--threads', '2', '--only', 'NIF210808,NIF', '--json');
+    const out = JSON.parse(r.stdout) as JsonOut;
+    const byId = new Map(out.checks.map((c) => [c.id, c]));
+    expect([...byId.keys()].sort()).toEqual(['NIF.G', 'NIF.G_N230729', 'NIF210808.G']);
+    const cal = byId.get('NIF210808.G')!;
+    expect(cal).toMatchObject({ role: 'calibration', status: 'pass', published: 0.72 });
+    expect(cal.wording).toMatch(/^calibrated \(deviation [+-]\d\.\d %\)$/);
+    expect(Math.abs(cal.ratio! - 1)).toBeLessThan(0.01);
+    for (const id of ['NIF.G', 'NIF.G_N230729']) expect(byId.get(id)).toMatchObject({ role: 'blind', wording: expect.stringMatching(/^benchmarked \(deviation -\d\d %\)$/) });
+    expect(byId.get('NIF.G_N230729')!.reference).toMatchObject({ source: expect.stringContaining('LLNL-PRES-859704'), sourceLimitation: expect.stringContaining('no peer-reviewed paper') });
+    expect(byId.get('NIF.G_N230729')!.reference.doi).toBeUndefined();
+    expect(byId.get('NIF.G')!.reference.doi).toBe('10.1103/PhysRevLett.132.065102');
+    expect(out.wordings).toMatchObject({ calibrated: 1, benchmarked: 2 });
+    const text = validate('--threads', '2', '--only', 'NIF210808,NIF');
+    expect(text.stdout).toMatch(/^\s+PASS\s+NIF210808 Gain G \(N210808, calibration\) = 0\.715 .*calibrated \(deviation -0\.7 %\)$/m);
+    expect(text.stdout).toMatch(/^\s+KNOWN-FAIL\s+NIF\s+Gain G \(N221204, blind\) = 0\.668 .*benchmarked \(deviation -55 %\)$/m);
+    expect(text.stdout).toMatch(/wording: 0 validated, 2 benchmarked \(deviation above 20 % from the published value\), 1 calibrated, 0 sanity bounds/);
+    expect(text.stdout).toMatch(/NIF\.G: 0\.668, accepted 1–3, model\/published 0\.446 \[blind\] — /);
   });
 
   it('--help explains how to capture --json through npm (npm run adds a banner to stdout)', () => {
@@ -141,11 +171,11 @@ describe('validate CLI exit codes', { timeout: 60_000 }, () => {
     expect(r.stdout).toMatch(/^\s+PASS\s+NIF\s+gain pass = /m);
     expect(r.stdout).toMatch(/^\s+KNOWN-FAIL\s+NIF\s+gain known = /m);
     expect(r.stdout).toMatch(/^\s+XPASS\s+NIF\s+gain xpass = /m);
-    expect(r.stdout).toMatch(/=== KNOWN FAILURES .*===\n\s+NIF\.known: .*, accepted 1\.00e\+6–2\.00e\+6 — fixture: a documented failure/);
+    expect(r.stdout).toMatch(/=== KNOWN FAILURES .*===\n\s+NIF\.known: .*, accepted 1\.00e\+6–2\.00e\+6, model\/published [-\d.e+]+ — fixture: a documented failure/);
     expect(r.stdout).toMatch(/=== KNOWN FAILURES THAT NOW PASS .*===\n\s+NIF\.xpass: .* within 0–1\.00e\+6/);
     expect(r.stdout).toMatch(/✓ NO UNEXPECTED FAILURES: 2 passed, 1 known failures/);
     const j = JSON.parse(validate('--threads', '2', '--only', 'NIF', '--checks', KNOWN, '--json').stdout) as JsonOut;
-    expect(j).toMatchObject({ schema: 2, checksExecuted: 3, failures: 0, knownFailures: 1, unexpectedPasses: 1, passed: true });
+    expect(j).toMatchObject({ schema: 3, checksExecuted: 3, failures: 0, knownFailures: 1, unexpectedPasses: 1, passed: true });
     expect(j.checks.map((c) => [c.id, c.status, c.pass])).toEqual([
       ['NIF.pass', 'pass', true], ['NIF.known', 'known-fail', false], ['NIF.xpass', 'xpass', true],
     ]);
@@ -163,9 +193,9 @@ describe('validate CLI exit codes', { timeout: 60_000 }, () => {
   it('--markdown prints a table with model values; --list prints the checks without running', () => {
     const md = validate('--threads', '2', '--only', 'NIF', '--checks', KNOWN, '--markdown');
     expect(md.code).toBe(0);
-    expect(md.stdout).toMatch(/^\| Check \| Kind \| Metric \| Reference \| Accepted \| Model \| Status \| Source \|$/m);
-    expect(md.stdout).toMatch(/^\| `NIF\.pass` \| validation \| gain pass \| 5\.00e\+5 \| 0–1\.00e\+6 \| [-\d.e+]+ \| PASS \| Fixture 2020 \|$/m);
-    expect(md.stdout).toMatch(/^\| `NIF\.known` \| .* \| KNOWN-FAIL \| Fixture 2020 \|$/m);
+    expect(md.stdout).toMatch(/^\| Check \| Kind \| Metric \| Reference \| Accepted \| Model \| Ratio \| Status \| Wording \| Source \|$/m);
+    expect(md.stdout).toMatch(/^\| `NIF\.pass` \| validation \| gain pass \| 5\.00e\+5 \| 0–1\.00e\+6 \| [-\d.e+]+ \| [-\d.e+]+ \| PASS \| benchmarked \(deviation -[\d.]+ %\) \| Fixture 2020 \|$/m);
+    expect(md.stdout).toMatch(/^\| `NIF\.known` \| .* \| KNOWN-FAIL \| benchmarked \(deviation .* %\) \| Fixture 2020 \|$/m);
     expect(md.stdout).toMatch(/^- `NIF\.known` \(known failure\): fixture: a documented failure$/m);
     expect(md.stdout).toMatch(/2 of 3 checks within the accepted range; 1 known failures; 0 unexpected failures\./);
     const list = validate('--list', '--markdown');

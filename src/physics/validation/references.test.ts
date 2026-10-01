@@ -9,7 +9,8 @@ import { describe, expect, it } from 'vitest';
 import { PRESETS } from '../presets';
 import { CONFINEMENT_FACTOR, REFERENCE_CHECKS, type PolicyTolerance, type ReferenceCheck, publishedBand, roundOutward, widen } from './references';
 import {
-  evaluateCheck, fmt, fmtReference, formatOutcomeLine, isFailure, markdownTable, parseChecks, selectChecks, tableProblems, tally,
+  BENCHMARK_DEVIATION, compareWithPublished, evaluateCheck, fmt, fmtDeviation, fmtReference, formatOutcomeLine, isFailure, markdownTable, parseChecks, selectChecks,
+  tableProblems, tally,
 } from './evaluate';
 
 const GOLDEN_DIR = new URL('../../../test/golden/', import.meta.url);
@@ -92,9 +93,26 @@ describe('reference table integrity', () => {
       if (c.doi !== undefined) expect(c.doi, c.id).toMatch(/^10\.\d{4,9}\/\S+$/);
       expect(c.basis.length, c.id).toBeGreaterThan(20);
       expect(['validation', 'benchmark', 'sanity'], c.id).toContain(c.kind);
-      // measured values and design predictions must be traceable
-      if (c.kind !== 'sanity') expect(c.doi, `${c.id} needs a DOI`).toBeDefined();
+      // measured values and design predictions must be traceable: a DOI, or a stated reason why the source has none
+      if (c.kind !== 'sanity' && c.doi === undefined) {
+        expect(c.sourceLimitation?.length ?? 0, `${c.id} needs a DOI or a sourceLimitation`).toBeGreaterThan(60);
+      }
+      if (c.doi !== undefined) expect(c.sourceLimitation, `${c.id} has a DOI: no source limitation`).toBeUndefined();
     }
+  });
+
+  it('the NIF split: one calibration check (N210808) and blind checks (N221204, N230729); a role is only given to a published value of the model', () => {
+    const cal = REFERENCE_CHECKS.filter((c) => c.role === 'calibration');
+    const blind = REFERENCE_CHECKS.filter((c) => c.role === 'blind');
+    expect(cal.map((c) => c.id)).toEqual(['NIF210808.G']);
+    expect(blind.map((c) => c.id)).toEqual(['NIF.G', 'NIF.G_N230729']);
+    for (const c of [...cal, ...blind]) {
+      expect(c.kind, c.id).toBe('validation');
+      expect(c.path, c.id).toBe('report.Q_sci_max');
+      expect(c.basis, c.id).toMatch(c.role === 'calibration' ? /calibrated on|calibrat/ : /BLIND/);
+    }
+    // the only check without a DOI is the yield of N230729, which no paper that could be read states
+    expect(REFERENCE_CHECKS.filter((c) => c.doi === undefined && c.kind !== 'sanity').map((c) => c.id)).toEqual(['NIF.G_N230729']);
   });
 
   it('a known failure explains itself', () => {
@@ -145,29 +163,91 @@ describe('check evaluation', () => {
   it('tallies outcomes and selects checks by preset and kind', () => {
     const t = tally([evaluateCheck(base, 1), evaluateCheck(base, 9), evaluateCheck(known, 9), evaluateCheck(known, 1), evaluateCheck(base, 1, 'x')]);
     expect(t).toEqual({ executed: 5, pass: 1, fail: 1, error: 1, knownFail: 1, xpass: 1 });
-    expect(selectChecks(REFERENCE_CHECKS, ['NIF']).map((c) => c.id)).toEqual(['NIF.G']);
+    expect(selectChecks(REFERENCE_CHECKS, ['NIF']).map((c) => c.id)).toEqual(['NIF.G', 'NIF.G_N230729']);
+    expect(selectChecks(REFERENCE_CHECKS, ['NIF210808']).map((c) => c.id)).toEqual(['NIF210808.G']);
     expect(selectChecks(REFERENCE_CHECKS, ['TAE'], ['benchmark'])).toEqual([]);
     expect(selectChecks(REFERENCE_CHECKS, undefined, ['sanity']).every((c) => c.kind === 'sanity')).toBe(true);
   });
 
   it('formats report lines and numbers', () => {
-    expect(formatOutcomeLine(evaluateCheck(base, 1.234))).toBe('  PASS        X        q = 1.23 keV (expected 0.5–2)  [Doe 2020]');
+    expect(formatOutcomeLine(evaluateCheck(base, 1.1))).toBe('  PASS        X        q = 1.1 keV (expected 0.5–2)  [Doe 2020]  validated');
+    expect(formatOutcomeLine(evaluateCheck(base, 1.234))).toBe('  PASS        X        q = 1.23 keV (expected 0.5–2)  [Doe 2020]  benchmarked (deviation +23 %)');
     expect(formatOutcomeLine(evaluateCheck(known, 7))).toMatch(/^ {2}KNOWN-FAIL {2}X +q = 7 keV/);
     expect(formatOutcomeLine(evaluateCheck(base, 1, 'boom'))).toMatch(/^ {2}FAIL +X +q — run failed/);
     expect([fmt(1.1e13), fmt(0.000123), fmt(0), fmt(12345), fmt(null), fmt(NaN)]).toEqual(['1.10e+13', '1.23e-4', '0', '12300', 'n/a', 'n/a']);
   });
 
   it('renders a Markdown table with or without model values, with known-failure notes', () => {
-    const plain = markdownTable([base, known]).split('\n');
+    const plain = markdownTable([base, known, { ...base, id: 'X.b', role: 'blind' }]).split('\n');
     expect(plain[0]).toBe('| Check | Kind | Metric | Reference | Accepted | Source |');
     expect(plain[2]).toBe('| `X.q` | validation | q | 1 keV | 0.5–2 keV | Doe 2020 |');
+    expect(plain[4]).toBe('| `X.b` | validation (blind) | q | 1 keV | 0.5–2 keV | Doe 2020 |');
     expect(plain.at(-1)).toBe('- `X.k` (known failure): documented reason');
     const res = markdownTable([evaluateCheck(base, 1), evaluateCheck(known, 9)]).split('\n');
-    expect(res[0]).toContain('| Model | Status |');
-    expect(res[3]).toContain('| 9 keV | KNOWN-FAIL |');
+    expect(res[0]).toBe('| Check | Kind | Metric | Reference | Accepted | Model | Ratio | Status | Wording | Source |');
+    expect(res[2]).toBe('| `X.q` | validation | q | 1 keV | 0.5–2 keV | 1 keV | 1 | PASS | validated | Doe 2020 |');
+    expect(res[3]).toContain('| 9 keV | 9 | KNOWN-FAIL | benchmarked (deviation +800 %) |');
+    const noDoi = markdownTable([evaluateCheck({ ...base, sourceLimitation: 'no paper could be read' }, 1)]).split('\n');
+    expect(noDoi.at(-1)).toBe('- `X.q` (source limitation): no paper could be read');
     const full = markdownTable(REFERENCE_CHECKS);
     for (const c of REFERENCE_CHECKS) expect(full).toContain(`\`${c.id}\``);
     expect(full).toContain('[doi:10.1103/PhysRevLett.125.155002](https://doi.org/10.1103/PhysRevLett.125.155002)');
+  });
+});
+
+describe('wording of a comparison: validated, benchmarked, calibrated', () => {
+  const c: ReferenceCheck = {
+    id: 'X.q', preset: 'X', metric: 'q', path: 'flatTop.q', value: 10, unit: '', ref: 'Doe 2020',
+    source: 'J. Doe, "A value", J. Test 1 (2020) 1', accept: [1, 100], tolerance: 'stated', kind: 'validation', basis: 'test, factor',
+  };
+
+  it('is validated within 20 % of the published value and benchmarked beyond it, on both sides', () => {
+    expect(BENCHMARK_DEVIATION).toBe(0.2);
+    expect(compareWithPublished(c, 10)).toEqual({ ratio: 1, deviation: 0, wording: 'validated' });
+    expect(compareWithPublished(c, 12).wording).toBe('validated'); // exactly 20 % is not beyond it
+    expect(compareWithPublished(c, 8).wording).toBe('validated');
+    expect(compareWithPublished(c, 12.1).wording).toBe('benchmarked (deviation +21 %)');
+    expect(compareWithPublished(c, 7.9).wording).toBe('benchmarked (deviation -21 %)');
+    expect(compareWithPublished(c, 35)).toMatchObject({ ratio: 3.5, wording: 'benchmarked (deviation +250 %)' });
+    expect(compareWithPublished(c, 0.5)).toMatchObject({ ratio: 0.05, wording: 'benchmarked (deviation -95 %)' });
+  });
+
+  it('is independent of the status: a passing check far from the published value is benchmarked', () => {
+    const o = evaluateCheck(c, 35);
+    expect(o.status).toBe('pass');
+    expect(o).toMatchObject({ ratio: 3.5, wording: 'benchmarked (deviation +250 %)' });
+    expect(o.deviation).toBeCloseTo(2.5, 12);
+    expect(evaluateCheck(c, 150)).toMatchObject({ status: 'fail', wording: 'benchmarked (deviation +1400 %)' });
+  });
+
+  it('calls a calibration shot calibrated (with its residual), a bound of kind sanity a sanity bound, and a missing value n/a', () => {
+    expect(compareWithPublished({ ...c, role: 'calibration' }, 9.93).wording).toBe('calibrated (deviation -0.7 %)');
+    expect(compareWithPublished({ ...c, role: 'calibration' }, 20).wording).toBe('calibrated (deviation +100 %)');
+    expect(compareWithPublished({ ...c, role: 'blind' }, 10.5).wording).toBe('validated');
+    expect(compareWithPublished({ ...c, role: 'blind' }, 4).wording).toBe('benchmarked (deviation -60 %)');
+    expect(compareWithPublished({ ...c, kind: 'sanity' }, 9).wording).toBe('sanity bound');
+    expect(compareWithPublished({ ...c, kind: 'sanity' }, 50).wording).toBe('benchmarked (deviation +400 %)');
+    const none = { ratio: null, deviation: null, wording: 'n/a' };
+    expect(compareWithPublished(c, null)).toEqual(none);
+    expect(compareWithPublished(c, NaN)).toEqual(none);
+    expect(compareWithPublished({ ...c, value: 0 }, 1)).toEqual(none);
+    expect(evaluateCheck(c, NaN)).toMatchObject(none);
+    expect(evaluateCheck(c, 1, 'worker crashed')).toMatchObject(none);
+  });
+
+  it('prints a signed percentage with one decimal below 10 % and none above', () => {
+    expect([0.35, -0.35, 0.073, -0.007, 0.0004, -0.0004, 1, 0.2049].map(fmtDeviation)).toEqual(
+      ['+35 %', '-35 %', '+7.3 %', '-0.7 %', '+0.0 %', '+0.0 %', '+100 %', '+20 %']);
+  });
+
+  it('every check of the table gets a wording from the published value alone, none of them is "validated" beyond 20 %', () => {
+    for (const k of REFERENCE_CHECKS) {
+      for (const f of [0.5, 0.79, 0.81, 1, 1.19, 1.21, 2]) {
+        const w = compareWithPublished(k, k.value * f).wording;
+        expect(w.startsWith('benchmarked') || w.startsWith('calibrated'), `${k.id} x${f}: ${w}`).toBe(Math.abs(f - 1) > 0.2 || k.role === 'calibration');
+        if (Math.abs(f - 1) <= 0.2 && k.role !== 'calibration') expect(w, `${k.id} x${f}`).toBe(k.kind === 'sanity' ? 'sanity bound' : 'validated');
+      }
+    }
   });
 });
 
@@ -236,5 +316,10 @@ describe('table problems and JSON tables', () => {
     expect(() => parseChecks([{ ...ok, value: '1.5' }, 3], ids)).toThrow(/check #0 \(NIF\.G\): 'value' must be a finite number\n {2}check #1: must be an object/);
     expect(() => parseChecks([{ ...ok, accept: [1] }], ids)).toThrow(/'accept' must be \[lo, hi\]/);
     expect(() => parseChecks([{ ...ok, preset: 'ITER' }], ids)).toThrow(/NIF\.G: id must be <preset>\.<quantity>\n {2}NIF\.G: unknown preset 'ITER'/);
+    // roles and source limitations pass through; an unknown role or a role on a bound is a problem
+    expect(parseChecks([{ ...ok, role: 'blind', sourceLimitation: 'no DOI' }], ids)[0]).toMatchObject({ role: 'blind', sourceLimitation: 'no DOI' });
+    expect(tableProblems([{ ...ok, role: 'fitted' as never }], ids)).toContain('NIF.G: role must be one of calibration, blind');
+    expect(tableProblems([{ ...ok, role: 'blind', kind: 'sanity' }], ids)).toContain('NIF.G: a check with a role compares a published value of the model, not a bound: kind must not be sanity');
+    expect(() => parseChecks([{ ...ok, role: 3 }], ids)).toThrow(/'role' must be a string/);
   });
 });

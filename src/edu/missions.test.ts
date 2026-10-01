@@ -145,6 +145,29 @@ describe.each(MISSIONS)('mission $id', (m) => {
   }, 120_000);
 });
 
+describe('the NIF mission does not promise ignition', () => {
+  // The ICF model is calibrated on N210808 (G = 0.72), which it puts just below its own ignition threshold: with perfect symmetry the NIF capsule
+  // reaches G = 0.78 at the nominal adiabat and ignites only with a lower one. The mission asks for the gain of N210808, not for ignition, so its title and goal must not say otherwise.
+  const m = findMission('nif')!;
+
+  it('is titled for the symmetry, in both languages, and asks for the gain of N210808 (0.7), not for breakeven or ignition', () => {
+    for (const dict of [eduEn, eduTr]) expect(dict[missionKey('nif', 'title')], missionKey('nif', 'title')).not.toMatch(/ignit|ateşle/i);
+    expect(eduEn[missionKey('nif', 'title')]).toBe('Squeeze the capsule evenly');
+    expect(m.goals.find((g) => g.metric === 'gain')).toMatchObject({ op: '>=', target: 0.7 });
+    expect(m.goals.some((g) => g.metric === 'ignited')).toBe(false);
+  });
+
+  it('the solution reaches that gain without an ignition event, and the answer says the model does not call it ignition', () => {
+    const solved = playMission(m, solveMission(m));
+    expect(solved.outcome.passed).toBe(true);
+    expect(runMetrics(solved.run!).gain).toBeGreaterThan(0.7);
+    expect(runMetrics(solved.run!).gain).toBeLessThan(1); // below scientific breakeven
+    expect(solved.run!.events.some((e) => e.kind === 'ignition')).toBe(false);
+    expect(eduEn[missionKey('nif', 'answer')]).toMatch(/Nor does it call this ignition/);
+    expect(eduTr[missionKey('nif', 'answer')]).toMatch(/ateşleme de saymaz/);
+  }, 60_000);
+});
+
 describe('the density mission text', () => {
   const m = findMission('density')!;
   const cfg = buildConfig(m, {}) as MagneticConfig;

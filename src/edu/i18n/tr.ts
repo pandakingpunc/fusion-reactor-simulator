@@ -157,12 +157,12 @@ export const eduTr: EduDict = {
   'mis.fuel.lesson': 'D-T en düşük sıcaklıkta en büyük tesir kesitine sahiptir; bu yüzden her manyetik füzyon reaktör planı onu kullanır. Dengeli bir karışım D-T çifti sayısını en çoğa çıkarır.',
   'mis.fuel.answer': '50/50 D-T karışımı yaklaşık 64 MJ verir. %90 döteryumlu karışım yalnızca 14 MJ verir. Trityumca zengin bir plazma da işe yarar, çünkü döteryum demetleri trityum hedefiyle kaynaşır.',
 
-  'mis.nif.title': 'Kapsülü ateşle',
+  'mis.nif.title': 'Kapsülü eşit biçimde sık',
   'mis.nif.brief': 'NIF %8 sürücü asimetrisiyle bir dolaylı-sürüş atışı yapıyor: sıcak nokta eşit olmayan biçimde sıkışıyor ve zar zor yanıyor. Hedef kazancını 0,7\'nin üstüne çıkarın; bu, Lawson ölçütünü aşan ilk atışa (N210808) yakın bir değerdir.',
   'mis.nif.hint1': 'İmplozyon bozuldukça kazanç hızla çöker (düşük modlu asimetrilerin Rayleigh-Taylor büyümesi).',
   'mis.nif.hint2': 'Yaklaşık %1 asimetriyi hedefleyin. Daha düşük bir adyabat da biraz yardımcı olur.',
   'mis.nif.lesson': 'Ataletsel füzyon, kararsızlıklara karşı bir yarıştır: simetrik bir implozyon aynı lazer enerjisini çok daha fazla füzyon verimine çevirir.',
-  'mis.nif.answer': 'Yaklaşık %1 asimetri, modelin kalibre edildiği N210808 atışının 0,72\'sine yakın, 0,75 dolayında bir kazanç verir. %3 hâlâ fazladır. Model, Aralık 2022\'deki 1,5\'lik kazancı yeniden üretmez: o atışın daha kalın kapsülü ve ek lazer enerjisi için girdisi yoktur.',
+  'mis.nif.answer': 'Yaklaşık %1 asimetri, modelin kalibre edildiği N210808 atışının 0,72\'sine yakın, 0,75 dolayında bir kazanç verir. %3 hâlâ fazladır. Model, Aralık 2022\'deki 1,5\'lik kazancı yeniden üretmez: o atışın daha kalın kapsülü ve ek lazer enerjisi için girdisi yoktur. Bunu ateşleme de saymaz: kapsül, kalibrasyondan sonra N210808 gibi, modelin ateşleme eşiğinin hemen altında kalır.',
 
   'mis.tungsten.title': 'Çekirdeği temiz tut',
   'mis.tungsten.brief': 'Çekirdekte 3e-4 tungsten ile SPARC: safsızlık plazmayı ışıyarak tüketir ve atış 0,1 s içinde ışımalı çöküşle biter. Plazma dayanacak ve ortalama Q_sci 3\'ü aşacak kadar tungsteni azaltın.',

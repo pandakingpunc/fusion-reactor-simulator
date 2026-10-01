@@ -224,7 +224,7 @@ describe('Learn screen', () => {
 
   it('plays a run mission: a failing shot, a solving one, the verdict, the lesson, the saved progress', async () => {
     const { f } = mount();
-    openMission('Ignite the capsule');
+    openMission('Squeeze the capsule evenly');
     expect(screen.getByText(/Starting point: NIF/)).toBeTruthy();
     expect(slider('Drive asymmetry').value).toBe('8');
     expect(screen.getAllByText('Target gain')).toHaveLength(2); // the glossary chip and the goal
@@ -253,7 +253,7 @@ describe('Learn screen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /All missions/ }));
     expect(screen.getByText('1 of 10 missions solved')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Ignite the capsule/ }).classList.contains('solved')).toBe(true);
+    expect(screen.getByRole('button', { name: /Squeeze the capsule evenly/ }).classList.contains('solved')).toBe(true);
   });
 
   it('shows the progress kept by an earlier visit', () => {
@@ -265,7 +265,7 @@ describe('Learn screen', () => {
 
   it('cancels a running shot and frees the controls', async () => {
     const { f, pool } = mount();
-    openMission('Ignite the capsule');
+    openMission('Squeeze the capsule evenly');
     fireEvent.click(screen.getByRole('button', { name: 'Run the shot' }));
     expect(screen.getByRole('progressbar')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
@@ -278,7 +278,7 @@ describe('Learn screen', () => {
 
   it('reports a worker that fails', async () => {
     const { f } = mount();
-    openMission('Ignite the capsule');
+    openMission('Squeeze the capsule evenly');
     fireEvent.click(screen.getByRole('button', { name: 'Run the shot' }));
     act(() => f.workers[0].crash('boom'));
     const alert = await screen.findByRole('alert');
@@ -288,7 +288,7 @@ describe('Learn screen', () => {
 
   it('gives two hints one after the other, then shows a solution and its explanation', async () => {
     mount();
-    openMission('Ignite the capsule');
+    openMission('Squeeze the capsule evenly');
     const hint = screen.getByRole('button', { name: 'Hint' });
     fireEvent.click(hint);
     expect(screen.getByText(/The gain collapses quickly/)).toBeTruthy();
@@ -311,7 +311,7 @@ describe('Learn screen', () => {
   it('every mission opens, has a control for each lever and a goal list', () => {
     mount();
     for (const m of MISSIONS) {
-      openMission(m.id === 'hmode' ? 'Reach H-mode' : { density: 'Stay below the density limit', beta: 'Beat the beta limit', kink: 'Carry more current', sparcQ: 'Q above 3 on SPARC', ignition: 'Find ignition in POPCON', elm: 'Survive an ELM storm', fuel: 'Fuel JET for the record', nif: 'Ignite the capsule', tungsten: 'Keep the core clean' }[m.id]!);
+      openMission(m.id === 'hmode' ? 'Reach H-mode' : { density: 'Stay below the density limit', beta: 'Beat the beta limit', kink: 'Carry more current', sparcQ: 'Q above 3 on SPARC', ignition: 'Find ignition in POPCON', elm: 'Survive an ELM storm', fuel: 'Fuel JET for the record', nif: 'Squeeze the capsule evenly', tungsten: 'Keep the core clean' }[m.id]!);
       expect(screen.getAllByRole('listitem')).toHaveLength(m.goals.length);
       expect(document.querySelectorAll('.lever')).toHaveLength(m.levers.length);
       fireEvent.click(screen.getByRole('button', { name: /All missions/ }));
@@ -378,7 +378,7 @@ describe('Learn screen', () => {
 
   it('opens the glossary at a term from a mission popover', () => {
     mount();
-    openMission('Ignite the capsule');
+    openMission('Squeeze the capsule evenly');
     const chips = screen.getByLabelText('Terms in this mission');
     fireEvent.click(within(chips).getByRole('button', { name: 'Explain Target gain' }));
     fireEvent.click(screen.getByRole('button', { name: 'Open in the glossary' }));
@@ -406,7 +406,7 @@ describe('Learn screen', () => {
   it('stops its workers when the screen goes away', () => {
     const f = fakeWorkerFactory();
     const { unmount } = withStore(<LearnView createWorker={f.create} />);
-    openMission('Ignite the capsule');
+    openMission('Squeeze the capsule evenly');
     fireEvent.click(screen.getByRole('button', { name: 'Run the shot' }));
     expect(f.workers).toHaveLength(1);
     unmount();

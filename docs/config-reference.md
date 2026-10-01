@@ -576,7 +576,7 @@ Waveforms of the actuator controls and triggers on the frame diagnostics that dr
 | `schema` | constant, required | — | — | `1` | version of the JSON form |
 | `name` | string | — | — | 0 to 120 characters | free label (not part of the fingerprint of a run) |
 | `rampStep` | number | — | — | ≥ 0.000001 | upper bound of the time between step boundaries on a ramping segment of a pwl waveform (default: none); at least 0.000001, and at least t_end / 10000 for the shot it is used with |
-| `waveforms` | object | — | — | — | waveform of a control, by the key of the control (the keys the model exposes; the known ones are listed here with their limits) |
+| `waveforms` | object | — | — | 0 to 64 entries | waveform of a control, by the key of the control (the keys the model exposes; the known ones are listed here with their limits) |
 | `triggers` | array of object | — | — | 0 to 128 items | — |
 
 Rules the JSON Schema cannot express (the loader enforces them):
@@ -622,10 +622,12 @@ Other keys are accepted if the model of the run exposes them (rule `known-keys`)
 | `triggers[].value` | number, required | — | — | — | — |
 | `triggers[].hold` | number | — | — | ≥ 0 | dwell time (default 0): the condition must have held on consecutive frames for this long |
 | `triggers[].after` | number | — | — | ≥ 0 | earliest firing time (default 0), independent of hold |
-| `triggers[].set` | object, required | — | — | — | control values written when the trigger fires |
+| `triggers[].set` | object, required | — | — | 1 to 32 entries | control values written when the trigger fires |
 | `triggers[].mode` | enum | — | — | `"once"`, `"repeat"` | 'once' (default) or 'repeat' |
 | `triggers[].hysteresis` | number | — | — | ≥ 0 | repeat only: how far the diagnostic must cross back over value before the trigger re-arms (default 0) |
-| `triggers[].release` | object | — | — | — | repeat only: control values written when the trigger re-arms |
+| `triggers[].release` | object | — | — | 1 to 32 entries | repeat only: control values written when the trigger re-arms |
+
+Constraint across fields: a trigger whose `mode` is not `"repeat"` (`"once"` is the default) must not have a `release` and needs `hysteresis` 0.
 
 ---
 

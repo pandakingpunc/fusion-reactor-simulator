@@ -112,6 +112,14 @@ export const OPT_IN_MODULES: readonly OptInModule[] = [
   },
 ];
 
+/**
+ * Enum settings of `profiles` that have a default but are not opt-in modules of the v4 model (a numerical or
+ * placement choice, not a physics module that is off by default). Every other enum-with-default of
+ * `profiles` must be in OPT_IN_MODULES: the generator throws otherwise, so a switch added to the schema
+ * cannot go unmarked.
+ */
+export const NON_MODULE_SWITCHES: readonly string[] = ['nonlinearSolver', 'impuritySetpoint'];
+
 /** Groups of the flat `profiles` settings, in reading order; a setting not named here is listed under "Other". */
 export const PROFILE_GROUPS: readonly { readonly title: string; readonly keys: readonly string[] }[] = [
   { title: 'Numerics', keys: ['nRho', 'gridPacking', 'rtol', 'atol', 'dtMax', 'nonlinearSolver'] },
@@ -260,6 +268,9 @@ class Renderer {
       if (n.minItems !== undefined || n.maxItems !== undefined) {
         parts.push(`${n.minItems ?? 0} to ${n.maxItems ?? 'any number of'} items`);
       }
+    }
+    if (n.type === 'object' && (n.minProperties !== undefined || n.maxProperties !== undefined)) {
+      parts.push(`${n.minProperties ?? 0} to ${n.maxProperties ?? 'any number of'} entries`);
     }
     if (n.type === 'string') {
       if (n.minLength !== undefined || n.maxLength !== undefined) parts.push(`${n.minLength ?? 0} to ${n.maxLength ?? 'any number of'} characters`);
@@ -431,6 +442,13 @@ export function renderConfigReference(configSchema: Node, scenarioSchema: Node):
     '| Module | Switch | Default (off) | Opt-in values | Settings used only when on | What it changes |',
     '|---|---|---|---|---|---|',
   );
+  const listed = new Set(OPT_IN_MODULES.map((m) => m.key));
+  for (const [k, v] of Object.entries((profileNode.properties ?? {}) as Node)) {
+    const n = cfg.resolve(v as Node);
+    if (Array.isArray(n.enum) && n.default !== undefined && !listed.has(`profiles.${k}`) && !NON_MODULE_SWITCHES.includes(k)) {
+      throw new Error(`profiles.${k} is an enum with a default but is neither in OPT_IN_MODULES nor in NON_MODULE_SWITCHES; classify it`);
+    }
+  }
   for (const m of OPT_IN_MODULES) {
     const node = cfg.at(magnetic, m.key);
     if (!Array.isArray(node.enum) || node.default === undefined) throw new Error(`opt-in switch ${m.key} must be an enum with a default in the schema`);
@@ -531,6 +549,15 @@ function renderScenario(sc: Schema): string[] {
   const defs = (root.$defs ?? {}) as Node;
   r.object(defs.waveform, 'waveforms.<control>', 3, { title: q('waveforms.<control>') + ': a waveform' });
   r.object(defs.trigger, 'triggers[]', 3, { title: q('triggers[]') + ': a trigger on a frame diagnostic', skipNested: ['set', 'release'] });
+  // the if/then of the trigger is not a property: state it, and fail if the schema no longer says what the note says
+  const t = defs.trigger as Node;
+  if (t.then?.not?.required?.[0] !== 'release' || t.then?.properties?.hysteresis?.maximum !== 0) {
+    throw new Error('the if/then of the trigger schema changed; update the note under the trigger table');
+  }
+  r.out.push(
+    `Constraint across fields: a trigger whose ${q('mode')} is not ${code('repeat')} (${code('once')} is the default) must not have a ${q('release')} and needs ${q('hysteresis')} 0.`,
+    '',
+  );
   return r.out;
 }
 

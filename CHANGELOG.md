@@ -6,6 +6,7 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 
 ### Added
 - Generated configuration reference `docs/config-reference.md` (every field of the reactor configuration and of the scenario with type, unit, default, range and description; the opt-in modules of the 1.5D profile model marked with their default-off value): `npm run docs:config` writes it, `npm run docs:config:check` exits 1 when it is stale, and `src/cli/configReference.test.ts` runs the same check.
+- `npm run ci:local` now also runs `schema:scenario:check` and `docs:config:check`; the generator fails when an enum switch with a default is added to the profile settings without being classified as an opt-in module.
 - Community files: CONTRIBUTING.md, CODE_OF_CONDUCT.md (Contributor Covenant 2.1 by reference), SECURITY.md (private vulnerability reporting), issue forms and a pull-request template.
 - Combined profile-module integration conserves species/energy at equilibrium adoption, books ELM losses from actual composition, rolls back complete suspended-step state, and validates every optional profile setting on import.
 - Opt-in fast-ion energy profiles, delayed heating and orbit smoothing, NBCD/ECCD current drive, Porcelli sawtooth triggering and Kadomtsev reconnection, with seeded bitwise chunk-invariance guards.

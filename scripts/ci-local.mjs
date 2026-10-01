@@ -34,6 +34,8 @@ function buildSteps(env = process.env, bundle = existsSync(join(root, 'scripts',
   const steps = [
     ['type check', 'npx', ['tsc', '--noEmit', '-p', 'tsconfig.json']],
     ['config schema up to date', 'npm', ['run', 'schema:check']],
+    ['scenario schema up to date', 'npm', ['run', 'schema:scenario:check']],
+    ['config reference up to date', 'npm', ['run', 'docs:config:check']],
     ['unit tests', 'npx', ['vitest', 'run', ...(workers ? [`--maxWorkers=${workers}`] : [])]],
     ['validation', 'npm', ['run', 'validate', '--', '--threads', String(threads)]],
     ['golden regression', 'npm', ['run', 'golden', '--', '--threads', String(threads)]],

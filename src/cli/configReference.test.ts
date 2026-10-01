@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { OPT_IN_MODULES, PROFILE_GROUPS, rangeText, renderConfigReference, type Node } from '../../scripts/gen-config-reference';
+import { NON_MODULE_SWITCHES, OPT_IN_MODULES, PROFILE_GROUPS, rangeText, renderConfigReference, type Node } from '../../scripts/gen-config-reference';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const read = (f: string): Node => JSON.parse(readFileSync(join(ROOT, 'schema', f), 'utf8')) as Node;
@@ -81,6 +81,42 @@ describe('docs/config-reference.md', () => {
     }
     expect(keys).toContain('fidelity');
     expect(generated).toContain('| 1.5D profile model | `fidelity` | `"0D"` | `"1.5D"` |');
+  });
+
+  it('classifies every enum switch with a default in profileSettings: an opt-in module or an explicit non-module (so a new switch cannot go unmarked)', () => {
+    const modules = new Set(OPT_IN_MODULES.map((m) => m.key));
+    const switches = Object.entries(config.$defs.profileSettings.properties as Node)
+      .filter(([, v]) => Array.isArray(v.enum) && v.default !== undefined)
+      .map(([k]) => k);
+    expect(switches.length).toBeGreaterThan(10);
+    const unclassified = switches.filter((k) => !modules.has(`profiles.${k}`) && !NON_MODULE_SWITCHES.includes(k));
+    expect(unclassified, 'add these to OPT_IN_MODULES (v4 module, default off) or to NON_MODULE_SWITCHES').toEqual([]);
+    // the allowlist itself names real switches and no module
+    for (const k of NON_MODULE_SWITCHES) {
+      expect(switches, k).toContain(k);
+      expect(modules.has(`profiles.${k}`), k).toBe(false);
+    }
+  });
+
+  it('refuses to render a schema that gains an unclassified enum switch', () => {
+    const copy = JSON.parse(JSON.stringify(config)) as Node;
+    copy.$defs.profileSettings.properties.newModel = { enum: ['off', 'on'], default: 'off', description: 'a module added later' };
+    expect(() => renderConfigReference(copy, scenario)).toThrow(/profiles\.newModel.*OPT_IN_MODULES/);
+    // ... while a plain setting without a default or without an enum is not a switch
+    const plain = JSON.parse(JSON.stringify(config)) as Node;
+    plain.$defs.profileSettings.properties.newNumber = { type: 'number', default: 1, description: 'a number' };
+    expect(() => renderConfigReference(plain, scenario)).not.toThrow();
+  });
+
+  it('states the schema constraints that a table row cannot: property-count bounds and the trigger if/then', () => {
+    const rowOf = (name: string) => generated.split('\n').find((l) => l.startsWith(`| \`${name}\` |`)) ?? '';
+    expect(rowOf('triggers[].set')).toContain('1 to 32 entries');
+    expect(rowOf('triggers[].release')).toContain('1 to 32 entries');
+    expect(generated).toMatch(/must not have a `release` and needs `hysteresis` 0/);
+    // the note is tied to the schema: it fails loudly when the if/then goes away
+    const copy = JSON.parse(JSON.stringify(scenario)) as Node;
+    delete copy.$defs.trigger.then;
+    expect(() => renderConfigReference(config, copy)).toThrow(/if\/then/);
   });
 
   it('keeps the curated profile groups free of unknown or repeated keys', () => {

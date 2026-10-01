@@ -89,6 +89,8 @@ export const en = {
   'geom.a': 'Minor radius a',
   'geom.kappa': 'Elongation κ',
   'geom.delta': 'Triangularity δ',
+  'geom.kappaB': 'Boundary elongation κ_B',
+  'geom.deltaB': 'Boundary triangularity δ_B',
   'geom.B0': 'Toroidal field B₀',
   'geom.Ip_MA': 'Plasma current I_p',
   'geom.V': 'Plasma volume V',

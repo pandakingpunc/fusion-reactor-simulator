@@ -52,13 +52,13 @@ export function Wizard({ cfg, setCfg, name, setName, onRun, scenarioStep, scenar
     const base = METHOD_DEFAULT[m];
     const preset = PRESETS.find((p) => p.cfg === base);
     setCfg(base);
-    setName(preset ? preset.name : METHOD_INFO[m].name);
+    setName(wt(preset ? preset.name : METHOD_INFO[m].name));
   };
   const pickPreset = (id: string) => {
     const p = PRESETS.find((x) => x.id === id);
     if (!p) return;
     setCfg(p.cfg);
-    setName(p.name);
+    setName(wt(p.name));
   };
   const update = (path: string, v: unknown) => {
     setCfg(setPath(cfg, path, v));
@@ -161,7 +161,7 @@ export function Wizard({ cfg, setCfg, name, setName, onRun, scenarioStep, scenar
           {PRESETS.map((p) => (
             <div key={p.id} className={`preset ${activePreset === p.id ? 'active' : ''}`} onClick={() => pickPreset(p.id)}>
               <div className="row" style={{ justifyContent: 'space-between' }}>
-                <span className="name">{p.name}</span>
+                <span className="name">{wt(p.name)}</span>
                 <span className="row" style={{ gap: 6 }}>
                   <span className="muted small">{wt(METHOD_INFO[p.cfg.method].name)}</span>
                   <button className="btn sm primary" title={t('wiz.runPreset')}
@@ -249,7 +249,7 @@ function RunSummary({ cfg, name, onRun, missing, issues, blocked, goToStep, scen
                 <tbody>
                   {fields.map((f) => {
                     const v = getPath(cfg, f.path) ?? f.def;
-                    const shown = typeof v === 'number' ? fmtNum(v / (f.scale ?? 1)) : typeof v === 'boolean' ? (v ? t('field.on') : t('field.off')) : v === undefined || v === '' ? '—' : String(v);
+                    const shown = typeof v === 'number' ? fmtNum(v / (f.scale ?? 1)) : typeof v === 'boolean' ? (v ? t('field.on') : t('field.off')) : v === undefined || v === '' ? '—' : wt(f.options?.find((o) => o.value === v)?.label ?? String(v));
                     return <tr key={f.path}><td>{fieldLabel(f, t, wt)}</td><td className="num">{shown} <span className="muted small">{f.unit ? wt(f.unit) : ''}</span></td></tr>;
                   })}
                 </tbody>

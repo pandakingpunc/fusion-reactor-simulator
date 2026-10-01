@@ -5,6 +5,7 @@ import { LOCALES, LOCALE_NAMES, Locale, MessageKey } from './i18n';
 import { createSimWorker, useSim } from './ui/useSim';
 import { FrameScheduler, WorkerFactory, completedShotKey } from './ui/state/sim';
 import { useApp, useAppStore, useT } from './ui/state/store';
+import { useWizText } from './ui/wizard/wizText';
 import { SavedShot, SimStatus, Tab } from './ui/state/types';
 import { Wizard } from './ui/wizard/Wizard';
 import { ErrorBoundary } from './ui/ErrorBoundary';
@@ -56,6 +57,7 @@ interface Props {
 
 export default function App({ createWorker, schedule }: Props) {
   const t = useT();
+  const wt = useWizText();
   const store = useAppStore();
   const { actions } = store;
   const sim = useSim(createWorker, schedule);
@@ -141,7 +143,7 @@ export default function App({ createWorker, schedule }: Props) {
         </nav>
         <div className="spacer" />
         <span ref={setSlot} />
-        <span className="muted small">{state.cfg ? METHOD_LABELS[state.cfg.method] : METHOD_LABELS[cfg.method]} · {cfgName}</span>
+        <span className="muted small">{wt(METHOD_LABELS[(state.cfg ?? cfg).method])} · {cfgName}</span>
         {pill}
         <select value={locale} onChange={(e) => void actions.setLocale(e.target.value as Locale)} title={t('app.lang')} aria-label={t('app.lang')}
           style={{ width: 'auto', padding: '3px 6px' }}>

@@ -21,6 +21,7 @@ import {
   removeTrigger, setKind, setName, setRampStep, suggestRampStep, toText, updateTrigger, type EditorContext,
 } from './model';
 import { useScenarioT } from './useScenarioT';
+import { useWizText } from '../wizard/wizText';
 
 interface Props {
   scenario: ScenarioSpec | null;
@@ -47,6 +48,7 @@ const defaultDownload = (name: string, text: string): void => {
 
 export default function ScenarioEditor({ scenario, ctx, onChange, modelError, copy = defaultCopy, download = defaultDownload }: Props) {
   const t = useScenarioT();
+  const wt = useWizText();
   const spec = scenario ?? emptyScenario();
   const commit = (next: ScenarioSpec) => onChange(isBlank(next) && !next.name && next.rampStep === undefined ? null : next);
   const issues = problems(spec, ctx);
@@ -84,7 +86,7 @@ export default function ScenarioEditor({ scenario, ctx, onChange, modelError, co
             return (
               <div key={key} className={`scn-card${bad.length ? ' invalid' : ''}`} data-testid={`lane-${key}`}>
                 <div className="row" style={{ justifyContent: 'space-between' }}>
-                  <b>{info.label === key ? key : `${info.label} (${key})`}{info.unit && <span className="muted"> [{info.unit}]</span>}</b>
+                  <b>{info.label === key ? key : `${wt(info.label)} (${key})`}{info.unit && <span className="muted"> [{info.unit}]</span>}</b>
                   <span className="row" style={{ gap: 6 }}>
                     <select value={w.kind} aria-label={t('scn.kind')} onChange={(e) => commit(setKind(spec, key, e.target.value as WaveformKind, ctx.tEnd))} style={{ width: 'auto' }}>
                       <option value="pwl">{t('scn.kind.pwl')}</option>
@@ -93,7 +95,7 @@ export default function ScenarioEditor({ scenario, ctx, onChange, modelError, co
                     <button type="button" className="btn sm" aria-label={t('scn.removeLane')} title={t('scn.removeLane')} onClick={() => commit(removeLane(spec, key))}>×</button>
                   </span>
                 </div>
-                <WaveformLane ctlKey={key} label={info.label} unit={info.unit} wf={w} base={base} tEnd={ctx.tEnd} timeUnit={ctx.timeUnit} editable invalid={bad.length > 0}
+                <WaveformLane ctlKey={key} label={wt(info.label)} unit={info.unit} wf={w} base={base} tEnd={ctx.tEnd} timeUnit={ctx.timeUnit} editable invalid={bad.length > 0}
                   selected={sel} onSelect={(i) => setSelected(i === null ? null : { key, i })}
                   onMovePoint={(i, tt, v) => commit(movePoint(spec, key, i, tt, v, ctx.tEnd))}
                   onInsertPoint={(tt, v) => { const r = insertPoint(spec, key, tt, v, ctx.tEnd); commit(r.spec); if (r.index >= 0) setSelected({ key, i: r.index }); }}
@@ -127,7 +129,7 @@ export default function ScenarioEditor({ scenario, ctx, onChange, modelError, co
           <div className="row" style={{ marginBottom: 10 }}>
             <label className="row small" style={{ gap: 6 }}>{t('scn.addLane')}
               <select value={addKey} aria-label={t('scn.addLane')} onChange={(e) => setAdding(e.target.value)} style={{ width: 'auto' }} disabled={!free.length}>
-                {free.map((k) => <option key={k} value={k}>{controlInfo(k).label === k ? k : `${controlInfo(k).label} (${k})`}</option>)}
+                {free.map((k) => <option key={k} value={k}>{controlInfo(k).label === k ? k : `${wt(controlInfo(k).label)} (${k})`}</option>)}
               </select>
             </label>
             <button type="button" className="btn sm" disabled={!addKey} onClick={() => commit(addLane(spec, addKey, ctx))}>{t('scn.addLaneBtn')}</button>

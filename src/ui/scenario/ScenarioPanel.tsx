@@ -14,6 +14,7 @@ import { WaveformLane, type LaneSeries } from './WaveformLane';
 import { controlInfo, editorContext, laneKeys, scenarioFromActuatorLog } from './model';
 import { probeOnce } from './useModel';
 import { useScenarioT } from './useScenarioT';
+import { useWizText } from '../wizard/wizText';
 
 type Note = { kind: 'busy' } | { kind: 'ok'; n: number } | { kind: 'none' } | { kind: 'fail'; reason: string };
 
@@ -22,6 +23,7 @@ let lastToken = 0;
 /** `embedded`: a run view without a Setup to go to (the embed page): the lanes are shown, the editing and record controls are not. */
 export default function ScenarioPanel({ sim, embedded = false }: { sim: SimApi; embedded?: boolean }) {
   const t = useScenarioT();
+  const wt = useWizText();
   const { actions } = useAppStore();
   const s = sim.state;
   const { meta, frames, trace, scenario, logAnswer } = s;
@@ -90,10 +92,10 @@ export default function ScenarioPanel({ sim, embedded = false }: { sim: SimApi; 
         return (
           <div key={key} className="scn-card" data-testid={`run-lane-${key}`}>
             <div className="row" style={{ justifyContent: 'space-between' }}>
-              <b>{info.label === key ? key : `${info.label} (${key})`}{info.unit && <span className="muted"> [{info.unit}]</span>}</b>
+              <b>{info.label === key ? key : `${wt(info.label)} (${key})`}{info.unit && <span className="muted"> [{info.unit}]</span>}</b>
               <span className="scn-legend"><span><i className="sw" />{t('scn.run.programmed')}</span><span><i className="sw actual" />{t('scn.run.actual')}</span></span>
             </div>
-            <WaveformLane ctlKey={key} label={info.label} unit={info.unit} wf={scenario?.waveforms?.[key] ?? null} base={baseOf(key)} tEnd={meta.tEnd}
+            <WaveformLane ctlKey={key} label={wt(info.label)} unit={info.unit} wf={scenario?.waveforms?.[key] ?? null} base={baseOf(key)} tEnd={meta.tEnd}
               timeUnit={meta.timeUnit} actual={actual} now={s.t} />
           </div>
         );

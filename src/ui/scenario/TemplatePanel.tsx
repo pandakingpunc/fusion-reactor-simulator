@@ -5,6 +5,7 @@ import type { TriggerOp } from '../../physics/scenario';
 import { NumberBox } from './NumberBox';
 import { TEMPLATE_KINDS, controlInfo, defaultTemplate, laneKeys, type EditorContext, type TemplateKind, type TemplateParams } from './model';
 import { useScenarioT } from './useScenarioT';
+import { useWizText } from '../wizard/wizText';
 
 const OPS: TriggerOp[] = ['>', '>=', '<', '<='];
 
@@ -16,6 +17,7 @@ interface Props {
 
 export function TemplatePanel({ ctx, onAdd }: Props) {
   const t = useScenarioT();
+  const wt = useWizText();
   const [kind, setKind] = useState<TemplateKind>('drop');
   const [p, setP] = useState<TemplateParams>(() => defaultTemplate('drop', ctx));
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +29,7 @@ export function TemplatePanel({ ctx, onAdd }: Props) {
   const ctl = (value: string, on: (v: string) => void, label: string) => (
     <label className="field"><span className="lbl">{label}</span>
       <select value={value} onChange={(e) => on(e.target.value)} aria-label={label}>
-        {keys.map((k) => <option key={k} value={k}>{controlInfo(k).label === k ? k : `${controlInfo(k).label} (${k})`}</option>)}
+        {keys.map((k) => <option key={k} value={k}>{controlInfo(k).label === k ? k : `${wt(controlInfo(k).label)} (${k})`}</option>)}
       </select>
     </label>
   );
@@ -68,7 +70,7 @@ export function TemplatePanel({ ctx, onAdd }: Props) {
         {kind === 'interlock' && <>
           <label className="field"><span className="lbl">{t('scn.tpl.when')}</span>
             <select value={p.diag} onChange={(e) => set({ diag: e.target.value })} aria-label={t('scn.trg.diag')}>
-              {ctx.diagSpecs.map((d) => <option key={d.key} value={d.key}>{d.label ? `${d.label} (${d.key})` : d.key}</option>)}
+              {ctx.diagSpecs.map((d) => <option key={d.key} value={d.key}>{d.label ? `${wt(d.label)} (${d.key})` : d.key}</option>)}
             </select>
           </label>
           <label className="field"><span className="lbl">{t('scn.trg.op')}</span>

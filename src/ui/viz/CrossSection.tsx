@@ -8,6 +8,7 @@
  */
 import React, { useEffect, useRef } from 'react';
 import { EqSnapshot } from '../../physics/types';
+import { useWizText } from '../wizard/wizText';
 
 interface Props {
   R: number; a: number; kappa: number; delta: number;
@@ -36,6 +37,7 @@ function tempColor(u: number): string {
 }
 
 export function CrossSection(p: Props) {
+  const wt = useWizText();
   const ref = useRef<HTMLCanvasElement>(null);
   const { R, a, kappa, delta, gap, coilThickness, T0_keV, alphaT, Hmode, divertor, stellarator, disrupted, elmFlash = 0, height = 300, eq, prof } = p;
 
@@ -131,8 +133,8 @@ export function CrossSection(p: Props) {
     ctx.fillText(`T₀ = ${T0.toFixed(T0 < 10 ? 2 : 1)} keV`, 6, height - 8);
     ctx.fillStyle = '#7f8ba3'; ctx.fillText(`R=${R.toFixed(2)} a=${a.toFixed(2)} κ=${kappa.toFixed(2)} δ=${delta.toFixed(2)}`, 6, 12);
     if (useEq) { ctx.fillText(`GS: q95=${eq!.q95.toFixed(2)} ℓi=${eq!.li.toFixed(2)} βp=${eq!.betaP.toFixed(2)} Δ=${((eq!.Raxis - R) * 100).toFixed(0)} cm`, 6, 24); }
-    if (disrupted) { ctx.fillStyle = '#ef476f'; ctx.font = 'bold 12px Inter, sans-serif'; ctx.fillText('DISRUPTION', 6, 28); }
-  }, [R, a, kappa, delta, gap, coilThickness, T0_keV, alphaT, Hmode, divertor, stellarator, disrupted, elmFlash, height, eq, prof]);
+    if (disrupted) { ctx.fillStyle = '#ef476f'; ctx.font = 'bold 12px Inter, sans-serif'; ctx.fillText(wt('DISRUPTION'), 6, 28); }
+  }, [R, a, kappa, delta, gap, coilThickness, T0_keV, alphaT, Hmode, divertor, stellarator, disrupted, elmFlash, height, eq, prof, wt]);
 
   return <canvas ref={ref} style={{ width: '100%', height, display: 'block' }} />;
 }

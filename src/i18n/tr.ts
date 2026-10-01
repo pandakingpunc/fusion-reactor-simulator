@@ -86,6 +86,8 @@ export const tr: Dict = {
   'geom.a': 'Küçük yarıçap a',
   'geom.kappa': 'Uzama κ',
   'geom.delta': 'Üçgensellik δ',
+  'geom.kappaB': 'Sınır uzaması κ_B',
+  'geom.deltaB': 'Sınır üçgenselliği δ_B',
   'geom.B0': 'Toroidal alan B₀',
   'geom.Ip_MA': 'Plazma akımı I_p',
   'geom.V': 'Plazma hacmi V',

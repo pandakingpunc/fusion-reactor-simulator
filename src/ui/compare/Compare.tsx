@@ -11,6 +11,8 @@ import { solverFailureTitle } from '../run/TerminationBox';
 import { Explain } from '../edu/Explain';
 import { PowerFlow } from '../edu/PowerFlow';
 import { useEduT } from '../edu/useEduT';
+import { useWizText } from '../wizard/wizText';
+import type { WizText } from '../wizard/schema';
 import { useOpenGlossary } from '../edu/useOpenGlossary';
 import '../edu/edu.css';
 import { ConfigDiff } from './ConfigDiff';
@@ -22,8 +24,8 @@ import { TimeAxis, commonChannels, overlayTraces, timeAxisAllowed } from './over
 interface Props { shots: SavedShot[]; onRemove: (id: number) => void; onLoad: (s: SavedShot) => void }
 
 /** A row label is either an i18n key or an untranslated physics symbol; `term` is the glossary entry it explains. */
-const ROWS: { label: MessageKey | { sym: string }; get: (r: ShotReport, t: ReturnType<typeof useT>) => number | string; unit?: string; best?: 'max' | 'min'; term?: string }[] = [
-  { label: 'cmp.method', get: (r) => METHOD_LABELS[r.method] },
+const ROWS: { label: MessageKey | { sym: string }; get: (r: ShotReport, t: ReturnType<typeof useT>, wt: WizText) => number | string; unit?: string; best?: 'max' | 'min'; term?: string }[] = [
+  { label: 'cmp.method', get: (r, _t, wt) => wt(METHOD_LABELS[r.method]) },
   { label: 'cmp.duration', get: (r) => `${fmtNum(r.duration)} ${r.timeUnit}` },
   { label: { sym: 'T_max' }, get: (r) => r.Tmax_keV, unit: 'keV', best: 'max' },
   { label: { sym: 'T_max' }, get: (r) => r.Tmax_MC, unit: 'M°C', best: 'max' },
@@ -50,6 +52,7 @@ const ROWS: { label: MessageKey | { sym: string }; get: (r: ShotReport, t: Retur
 export function Compare({ shots, onRemove, onLoad }: Props) {
   const t = useT();
   const te = useEduT();
+  const wt = useWizText();
   const openGlossary = useOpenGlossary();
   const locale = useApp((s) => s.locale);
   const [engOpen, setEngOpen] = useState(false);
@@ -108,7 +111,7 @@ export function Compare({ shots, onRemove, onLoad }: Props) {
           <tbody>
             {ROWS.map((row, r) => {
               const label = typeof row.label === 'string' ? t(row.label) : row.label.sym;
-              const vals = shots.map((s) => row.get(s.report, t));
+              const vals = shots.map((s) => row.get(s.report, t, wt));
               let bestIdx = -1;
               if (row.best) {
                 const nums = vals.map((v) => (typeof v === 'number' && isFinite(v) ? v : row.best === 'max' ? -Infinity : Infinity));
@@ -190,7 +193,7 @@ export function Compare({ shots, onRemove, onLoad }: Props) {
                 <div className="row" style={{ marginBottom: 6 }}>
                   <label className="row" style={{ gap: 6 }}>{te('cmp2.channel')}
                     <select value={chosen.key} onChange={(e) => setChannel(e.target.value)} style={{ width: 'auto', maxWidth: 260 }} aria-label={te('cmp2.channel')}>
-                      {channels.map((c) => <option key={c.key} value={c.key}>{c.label}{c.unit ? ` [${c.unit}]` : ''}</option>)}
+                      {channels.map((c) => <option key={c.key} value={c.key}>{wt(c.label)}{c.unit ? ` [${c.unit}]` : ''}</option>)}
                     </select>
                   </label>
                   <span className="seg" role="group" aria-label={te('cmp2.time')}>
@@ -201,8 +204,8 @@ export function Compare({ shots, onRemove, onLoad }: Props) {
                     ))}
                   </span>
                 </div>
-                <OverlayChart title={`${te('cmp2.overlay')}: ${chosen.label}`} log={!!chosen.log}
-                  xLabel={axis === 'norm' ? te('cmp2.timeNorm') : `t [${shown[0].meta.timeUnit}]`} yLabel={`${chosen.label}${chosen.unit ? ` [${chosen.unit}]` : ''}`}
+                <OverlayChart title={`${te('cmp2.overlay')}: ${wt(chosen.label)}`} log={!!chosen.log}
+                  xLabel={axis === 'norm' ? te('cmp2.timeNorm') : `t [${shown[0].meta.timeUnit}]`} yLabel={`${wt(chosen.label)}${chosen.unit ? ` [${chosen.unit}]` : ''}`}
                   series={shown.map((s, i) => ({ id: s.id, name: s.name, color: color(s), trace: traces[i] }))} />
               </>
             ) : <div className="muted">{te('cmp2.noChannel')}</div>}

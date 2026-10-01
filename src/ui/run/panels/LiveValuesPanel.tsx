@@ -3,6 +3,7 @@ import { ShotReport } from '../../../physics/types';
 import { SimMeta, UiFrame } from '../../../worker/protocol';
 import { fmtNum, keVtoMC } from '../../format';
 import { useT } from '../../state/store';
+import { useWizText } from '../../wizard/wizText';
 import { Kpi, KPI_FLAGS, selectKpis } from '../controls';
 import { TerminationBox } from '../TerminationBox';
 import { termOfDiag } from '../../../edu/glossary';
@@ -23,14 +24,15 @@ interface Props {
 export function LiveValuesPanel({ meta, last, report, frames }: Props) {
   const t = useT();
   const te = useEduT();
+  const wt = useWizText();
   const openGlossary = useOpenGlossary();
   const [flowOpen, setFlowOpen] = useState(false);
   const { headline, detail } = useMemo(() => (last ? selectKpis(meta.diagSpecs, last.d) : { headline: [], detail: [] }), [meta, last]);
   const term = report?.termination;
 
   const tile = ({ key, spec, v }: Kpi) => (
-    <div className="kpi" key={key} title={spec.label}>
-      <div className="k">{termOfDiag(key) ? <Explain term={termOfDiag(key)!.id} onOpenGlossary={openGlossary}><span>{spec.label}</span></Explain> : spec.label}</div>
+    <div className="kpi" key={key} title={wt(spec.label)}>
+      <div className="k">{termOfDiag(key) ? <Explain term={termOfDiag(key)!.id} onOpenGlossary={openGlossary}><span>{wt(spec.label)}</span></Explain> : wt(spec.label)}</div>
       <div className="v">
         {KPI_FLAGS.has(key) ? t(v ? 'common.yes' : 'common.no') : fmtNum(v)}<span className="u">{KPI_FLAGS.has(key) ? '' : spec.unit}</span>
       </div>

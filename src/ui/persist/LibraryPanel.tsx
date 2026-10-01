@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { METHOD_LABELS } from '../../physics/types';
 import { useAppStore } from '../state/store';
+import { useWizText } from '../wizard/wizText';
 import { fmtNum } from '../format';
 import { ArchiveError, RunArchive, RunSummary } from './archive';
 import { errorText, usePersistDeps } from './deps';
@@ -25,6 +26,7 @@ export function fmtBytes(b: number): string {
 /** The archive of completed runs in this browser, and the import of run files. */
 export default function LibraryPanel({ onClose }: { onClose(): void }) {
   const p = usePersistT();
+  const wt = useWizText();
   const deps = usePersistDeps();
   const { actions } = useAppStore();
   const [runs, setRuns] = useState<RunSummary[] | null>(null);
@@ -115,7 +117,7 @@ export default function LibraryPanel({ onClose }: { onClose(): void }) {
                       <strong className="persist-name">{r.name}</strong>
                     )}
                     <span className="muted small">
-                      {METHOD_LABELS[r.method]} · Q {fmtNum(r.Q_sci_max)} · E_fus {fmtNum(r.E_fusion_MJ)} MJ · {p('persist.lib.saved', { when: when(r.savedAt) })} · v{r.appVersion} · {fmtBytes(r.bytes)}
+                      {wt(METHOD_LABELS[r.method])} · Q {fmtNum(r.Q_sci_max)} · E_fus {fmtNum(r.E_fusion_MJ)} MJ · {p('persist.lib.saved', { when: when(r.savedAt) })} · v{r.appVersion} · {fmtBytes(r.bytes)}
                     </span>
                     <span className="row" style={{ gap: 6 }}>
                       {r.origin === 'import' && <span className="badge">{p('persist.lib.imported')}</span>}

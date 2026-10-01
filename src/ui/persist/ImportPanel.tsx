@@ -1,6 +1,7 @@
 import { DragEvent, useEffect, useRef, useState } from 'react';
 import { METHOD_LABELS } from '../../physics/types';
 import { useAppStore } from '../state/store';
+import { useWizText } from '../wizard/wizText';
 import { errorText, usePersistDeps } from './deps';
 import { ParsedRecord, parseRunRecord, RunRecordError } from './runRecord';
 import { importedShot, shotToNewRun } from './shots';
@@ -126,6 +127,7 @@ export function ImportPanel({ onDone }: { onDone(): void }) {
 
 function Result({ phase, saved, onOpen, onSave, onLoad }: { phase: Extract<Phase, { kind: 'done' }>; saved: boolean; onOpen(): void; onSave(): void; onLoad(): void }) {
   const p = usePersistT();
+  const wt = useWizText();
   const { rec, v } = phase;
   const { verify } = v;
   const s = verify.status;
@@ -136,7 +138,7 @@ function Result({ phase, saved, onOpen, onSave, onLoad }: { phase: Extract<Phase
     : p(`persist.verify.${s}.text` as 'persist.verify.verified.text');
   return (
     <div className="persist-result" role="status" data-verify={s}>
-      <div className="muted small">{p('persist.imp.file', { name: rec.name, method: METHOD_LABELS[rec.cfg.method], version: rec.appVersion ?? p('persist.imp.noVersion') })}</div>
+      <div className="muted small">{p('persist.imp.file', { name: rec.name, method: wt(METHOD_LABELS[rec.cfg.method]), version: rec.appVersion ?? p('persist.imp.noVersion') })}</div>
       <div className="row" style={{ margin: '6px 0' }}>
         <VerifyBadge status={s} fileVersion={verify.versions.file} currentVersion={verify.versions.current} />
       </div>

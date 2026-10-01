@@ -252,7 +252,7 @@ export function drawMap(ctx: CanvasRenderingContext2D, grid: PopconGrid, view: P
   for (const lv of P_LEVELS) { ctx.fillStyle = lv.c; ctx.fillText(lv.lbl, r.x + r.w - 44, ly); ly += 12; }
   ctx.fillStyle = '#06d6a0'; ctx.fillText('P_aux<0', r.x + r.w - 44, ly); ly += 12;
   ctx.fillStyle = '#ef476f'; ctx.fillText('β_N>lim', r.x + r.w - 44, ly); ly += 12;
-  ctx.fillStyle = '#7f8ba3'; ctx.fillText('dark: P<P_LH', r.x + r.w - 74, ly); ly += 12;
+  ctx.fillStyle = '#7f8ba3'; ctx.fillText('▒ P<P_LH', r.x + r.w - 74, ly); ly += 12;
   if (edge) for (const lv of edge) { ctx.fillStyle = lv.color; ctx.fillText(lv.label, r.x + r.w - 74, ly); ly += 12; }
 }
 

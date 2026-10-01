@@ -157,7 +157,7 @@ export const eduTr: EduDict = {
   'mis.fuel.lesson': 'D-T en düşük sıcaklıkta en büyük tesir kesitine sahiptir; bu yüzden her manyetik füzyon reaktör planı onu kullanır. Dengeli bir karışım D-T çifti sayısını en çoğa çıkarır.',
   'mis.fuel.answer': '50/50 D-T karışımı yaklaşık 64 MJ verir. %90 döteryumlu karışım yalnızca 14 MJ verir. Trityumca zengin bir plazma da işe yarar, çünkü döteryum demetleri trityum hedefiyle kaynaşır.',
 
-  'mis.nif.title': 'Kapsülü eşit biçimde sık',
+  'mis.nif.title': 'Kapsülü eşit biçimde sıkıştır',
   'mis.nif.brief': 'NIF %8 sürücü asimetrisiyle bir dolaylı-sürüş atışı yapıyor: sıcak nokta eşit olmayan biçimde sıkışıyor ve zar zor yanıyor. Hedef kazancını 0,7\'nin üstüne çıkarın; bu, Lawson ölçütünü aşan ilk atışa (N210808) yakın bir değerdir.',
   'mis.nif.hint1': 'İmplozyon bozuldukça kazanç hızla çöker (düşük modlu asimetrilerin Rayleigh-Taylor büyümesi).',
   'mis.nif.hint2': 'Yaklaşık %1 asimetriyi hedefleyin. Daha düşük bir adyabat da biraz yardımcı olur.',

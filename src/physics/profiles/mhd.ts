@@ -55,24 +55,46 @@ export function shearAt(g: TransportGeometry, qF: Float64Array, rho: number): nu
 }
 
 /**
- * Kadomtsev karışım yarıçapı: ψ*(ρ) = ∫₀^ρ (1/q − 1) Φ_b 2ρ dρ ; ψ*(ρ_mix) = 0 (ρ_mix > ρ₁).
- * q ≥ 1 her yerde ise −1.
+ * Kadomtsev mixing radius: ψ*(ρ) = ∫₀^ρ (1/q − 1) Φ_b 2ρ dρ (the factor Φ_b > 0 is left out) accumulated over the
+ * face grid with the trapezoid rule in 1/q; ρ_mix is the radius beyond the OUTERMOST q = 1 surface ρ₁ where ψ*
+ * returns to ψ*(0) = 0, interpolated linearly in ψ* inside its face interval.
+ *
+ * A face interval whose mean 1/q exceeds 1 is a q < 1 interval. Only the profile after the last such interval counts:
+ * its ψ* there must be positive (the q < 1 region outweighs everything inside it), and the first face behind it where
+ * ψ* is back at or below zero gives ρ_mix. So
+ *  - monotonic q with q₀ < 1 (one q = 1 surface): ψ* rises to ρ₁ and falls to zero at ρ_mix, the only crossing there is;
+ *  - q ≥ 1 everywhere: −1;
+ *  - hollow core (q₀ > 1, q < 1 in an annulus): ψ* starts negative (the core deficit) and the annulus has to lift it
+ *    above zero first. If it never does the answer is −1, "no mixing radius": a caller's `rmix > ρ₁` test then fails and
+ *    the sawtooth gate stays closed on purpose, never by a sentinel that depends on the grid;
+ *  - several q < 1 annuli: ρ_mix is the return to zero behind the outermost one (ρ₁ of rhoOfQ(g, qF, 1)), whatever
+ *    ψ* did in between; −1 if ψ* is not positive at the end of that annulus;
+ *  - ψ* positive and still above zero at the edge: 1.
+ * The grid decides at which face interval ρ_mix is found, and for a q that crosses 1 inside the interval behind the last
+ * q < 1 one it can lie below the interpolated ρ₁ (as it always has); the callers require rmix > ρ₁.
+ * Never below −1, never NaN for finite q.
  */
 export function kadomtsevMixingRadius(g: TransportGeometry, qF: Float64Array): number {
   const N = g.N;
-  let psiS = 0, prev = 0, peaked = false;
+  let psiS = 0, outer = false, crossed = false, rhoMix = 1;
   for (let f = 1; f <= N; f++) {
     const r0 = g.rhoF[f - 1], r1 = g.rhoF[f];
     const val = (0.5 * (1 / qF[f - 1] + 1 / qF[f]) - 1) * (r1 * r1 - r0 * r0);
-    prev = psiS;
+    const prev = psiS;
     psiS += val;
-    if (val > 0) peaked = true;
-    if (peaked && psiS <= 0) {
+    if (val > 0) {
+      // a q < 1 interval: the last one decides, and it counts only if ψ* is positive behind it (any crossing found before it is void)
+      outer = psiS > 0;
+      crossed = false;
+    } else if (outer && !crossed && psiS <= 0) {
+      // first return to zero behind the last q < 1 interval: prev > 0 >= psiS, so t is in (0, 1]
       const t = prev / Math.max(prev - psiS, 1e-30);
-      return r0 + t * (r1 - r0);
+      rhoMix = r0 + t * (r1 - r0);
+      crossed = true;
     }
   }
-  return peaked ? 1 : -1;
+  if (!outer) return -1;
+  return crossed ? rhoMix : 1;
 }
 
 /**

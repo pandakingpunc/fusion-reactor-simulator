@@ -6,14 +6,16 @@
  * runs in child processes at the end.
  */
 import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { serialRunner } from '../analysis/run';
 import { ensembleHash, resolveSpec } from '../analysis/ensemble';
 import { scanHash } from '../analysis/scan';
+import { UnknownMethodError } from '../physics/kernel/errors';
 import { sha256Hex } from '../physics/kernel/sha256';
 import { dropTemplate, scenarioToJSON } from '../physics/scenario';
 import { parseArgs } from './args';
@@ -22,6 +24,7 @@ import { loadScenarioFile } from './scenarioFlag';
 import { SCAN_CLI, scanPrepare, scanReport, scanSpecFromArgs } from './scanSpec';
 import { UQ_CLI, uqPrepare, uqReport, uqSpecFromArgs } from './uqSpec';
 import { presetConfig } from '../analysis/cliSupport';
+import type { ReactorConfig } from '../physics/types';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const DIR = mkdtempSync(join(tmpdir(), 'scenario-flag-'));
@@ -63,6 +66,30 @@ describe('loadScenarioFile', () => {
     // structurally fine, but the model has no such control / diagnostic
     expect(() => loadScenarioFile(file('ctl.json', { schema: 1, waveforms: { kappa_conf: { kind: 'step', points: [[0.2, 1]] } } }), JET)).toThrow(/unknown control 'kappa_conf'/);
     expect(() => loadScenarioFile(file('diag.json', { schema: 1, triggers: [{ diag: 'nope', op: '>', value: 1, set: { P_NBI_MW: 0 } }] }), JET)).toThrow(/unknown diagnostic 'nope'/);
+  });
+
+  it('a read failure is a usage error with the reason of the failure, whatever kind of value the read throws', () => {
+    // fs itself throws Error objects (the missing-file case above); the reason is formatted from anything else just the same
+    const spy = vi.spyOn(fs, 'readFileSync').mockImplementation(() => { throw 'disk on fire'; });
+    try {
+      expect(() => loadScenarioFile(TRIP_FILE, JET)).toThrow(RangeError);
+      expect(() => loadScenarioFile(TRIP_FILE, JET)).toThrow(`--scenario ${TRIP_FILE}: cannot read the file (disk on fire)`);
+    } finally {
+      spy.mockRestore();
+    }
+    // the spy is gone: the same file reads again
+    expect(loadScenarioFile(TRIP_FILE, JET).empty).toBe(false);
+  });
+
+  it('a failure that is not about the scenario passes through unchanged: a configuration the engine rejects is not blamed on the file', () => {
+    const broken = { ...JET, method: 'bogus' } as unknown as ReactorConfig;
+    let err: unknown;
+    try { loadScenarioFile(TRIP_FILE, broken); } catch (e) { err = e; }
+    expect(err).toBeInstanceOf(UnknownMethodError);
+    expect(err).not.toBeInstanceOf(RangeError);
+    expect((err as Error).message).toBe("unknown confinement method 'bogus'");
+    // whereas a file that is itself wrong, checked against the same good model, is still a usage error
+    expect(() => loadScenarioFile(file('junk2.json', '[]'), JET)).toThrow(RangeError);
   });
 
   it('checks the ramp step against the shot duration the study will use', () => {

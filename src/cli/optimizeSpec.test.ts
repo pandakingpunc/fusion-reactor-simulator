@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { CliHelpRequested, parseArgs } from './args';
-import { OPTIMIZE_CLI, optimizeRun, optimizeSpecFromArgs } from './optimizeSpec';
+import { type DesignReport, type DesignSpec, designReport } from '../analysis/design';
+import { UnknownMethodError } from '../physics/kernel/errors';
+import { scenarioFromJSON } from '../physics/scenario';
+import { OPTIMIZE_CLI, type ScenarioCheck, checkScenarioOnDesign, formatScenarioCheck, optimizeRun, optimizeSpecFromArgs } from './optimizeSpec';
 
 const parse = (...a: string[]) => parseArgs(OPTIMIZE_CLI, a);
 const SMALL = ['--preset', 'ITER', '--objective', 'gain', '--vars', 'fG,T', '--q-min', '0', '--q95-min', '2.5', '--start-temps', '8'];
@@ -102,5 +105,55 @@ describe('optimize reports', { timeout: 60_000 }, () => {
     expect(j).toMatchObject({ mode: 'pareto', problem: { preset: 'ITER', objectives: ['major-radius', 'aux-power'], popSize: 20, generations: 10, seed: 1 } });
     expect(j.result.points.length).toBeGreaterThan(3);
     expect(out.text).toMatch(/^Pareto front of ITER: major radius R against auxiliary power/);
+  });
+});
+
+describe('scenario check on the optimised machine', { timeout: 60_000 }, () => {
+  let spec: DesignSpec, report: DesignReport, unnamed: ScenarioCheck;
+  const scenario = (doc: object) => scenarioFromJSON(JSON.stringify(doc));
+  // one real shot of the optimised machine, shared by the tests that look at its report
+  beforeAll(() => {
+    spec = optimizeSpecFromArgs(parse(...SMALL));
+    report = designReport(spec, 'ITER');
+    unnamed = checkScenarioOnDesign(spec, report, scenario({ schema: 1 }));
+  });
+
+  it('a scenario that runs to the planned end: an unnamed one is headed by its hash alone, and the end is not flagged', () => {
+    const check = unnamed;
+    expect(check.ran).toBe(true);
+    expect(check.shot).toMatchObject({ endReason: 'Scheduled end', natural: true, timeUnit: 's' });
+    expect(check.shot!.duration).toBeCloseTo((spec.base as { t_end: number }).t_end, 3);
+    const text = formatScenarioCheck(check);
+    expect(text).toMatch(/^\nScenario \(sha256 [0-9a-f]{16}\.\.\.\) on the optimised machine:\n/);
+    expect(text).not.toMatch(/"/);
+    expect(text).toMatch(/\n {2}ended Scheduled end after 400 s; Q_max [\d.]+, T_max [\d.]+ keV, E_fusion [\d.]+ MJ\n$/);
+    expect(text).not.toMatch(/not a planned end/);
+  });
+
+  it('formatScenarioCheck: a name goes into the head, an unplanned end is flagged, a number that is not finite reads n/a, no shot means not run', () => {
+    const check: ScenarioCheck = { ...unnamed, spec: { ...unnamed.spec, name: 'hold' } };
+    const head = `Scenario "hold" (sha256 ${check.sha256.slice(0, 16)}...) on the optimised machine:`;
+    expect(formatScenarioCheck(check).startsWith(`\n${head}\n`)).toBe(true);
+    const shot = check.shot!;
+    const crashed = formatScenarioCheck({ ...check, shot: { ...shot, natural: false, endReason: 'Radiative collapse', duration: 12.34567, Q_sci_max: NaN, Tmax_keV: Infinity, E_fusion_MJ: -Infinity } });
+    expect(crashed).toContain('ended Radiative collapse (not a planned end) after 12.35 s; Q_max n/a, T_max n/a keV, E_fusion n/a MJ');
+    // both ways of "not run": the design was infeasible (ran false), or a shot record is missing
+    const notRun = `\n${head} not run (no feasible design).\n`;
+    expect(formatScenarioCheck({ ...check, ran: false, shot: undefined })).toBe(notRun);
+    expect(formatScenarioCheck({ ...check, shot: undefined })).toBe(notRun);
+  });
+
+  it('a scenario that the optimised machine rejects is a usage error that names the file; a failure of another kind is not blamed on the scenario', () => {
+    const unfit = scenario({ schema: 1, waveforms: { nope: { kind: 'step', points: [[0.1, 1]] } } });
+    expect(() => checkScenarioOnDesign(spec, report, unfit, 'my-scenario.json')).toThrow(RangeError);
+    expect(() => checkScenarioOnDesign(spec, report, unfit, 'my-scenario.json')).toThrow(/^--scenario my-scenario\.json: invalid scenario \(1 problem\):\n {2}waveforms\.nope: unknown control 'nope'/);
+    // without a file name (a scenario that did not come from a file) the text still says what it is about
+    expect(() => checkScenarioOnDesign(spec, report, unfit)).toThrow(/^--scenario scenario: invalid scenario/);
+    // the engine refusing the machine itself is not a scenario problem: it passes through as what it is
+    const broken = { ...spec, base: { ...spec.base, method: 'bogus' } } as unknown as DesignSpec;
+    let err: unknown;
+    try { checkScenarioOnDesign(broken, report, scenario({ schema: 1 })); } catch (e) { err = e; }
+    expect(err).toBeInstanceOf(UnknownMethodError);
+    expect(err).not.toBeInstanceOf(RangeError);
   });
 });

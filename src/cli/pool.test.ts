@@ -1,10 +1,11 @@
 /// <reference types="node" />
 import { spawnSync } from 'node:child_process';
+import { availableParallelism } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { PoolAbortError, PoolConfigError, PoolProgress, PoolTaskError, checkThreads, runPool } from './pool';
+import { PoolAbortError, PoolConfigError, PoolProgress, PoolTaskError, checkThreads, defaultThreads, runPool } from './pool';
 
-interface Task { id: string; action: 'double' | 'echo' | 'slow' | 'hang' | 'spin' | 'throw' | 'crash' | 'exit'; v?: number; code?: number; ms?: number }
+interface Task { id: string; action: 'double' | 'echo' | 'slow' | 'hang' | 'spin' | 'throw' | 'crash' | 'exit' | 'twice' | 'throwString'; v?: number; code?: number; ms?: number }
 interface Res { id: string; v: number | null; error?: string }
 const FIXTURE = new URL('./testdata/pool-fixture.worker.mjs', import.meta.url);
 const BROKEN = new URL('./testdata/pool-broken.worker.mjs', import.meta.url);
@@ -250,5 +251,104 @@ describe('worker pool options', { timeout: 30_000 }, () => {
     expect(opt.out.listeners.during).toBe(opt.out.listeners.before + 1);
     expect(opt.out.listeners.after).toBe(opt.out.listeners.before);
     expect(opt.stderr).not.toMatch(/PoolAbortError/);
+  });
+});
+
+describe('worker pool: failure values and edge paths', { timeout: 30_000 }, () => {
+  const slow = (n: number, ms: number): Task[] => Array.from({ length: n }, (_, i) => ({ id: `s${i}`, action: 'slow', v: i, ms }));
+  const signalListeners = () => [process.listenerCount('SIGINT'), process.listenerCount('SIGTERM')];
+
+  it('without a thread count the pool uses defaultThreads() workers (all cores but one, at least one) and still returns every result in order', async () => {
+    expect(defaultThreads()).toBe(Math.max(1, availableParallelism() - 1));
+    const res = await runPool<Task, Res>(doubles(5), FIXTURE, {});
+    expect(res.map((r) => r.v)).toEqual([0, 2, 4, 6, 8]);
+  });
+
+  it('tasks that have no string id are named by their index only: in a failure, and in the progress reports', async () => {
+    // a plain number, an object without an id and an object whose id is not a string are all "anonymous"
+    const anonymous = [5, { action: 'double', v: 2 }, { id: 7, action: 'double', v: 3 }];
+    const progress: PoolProgress[] = [];
+    const res = await runPool<unknown, Res>(anonymous, FIXTURE, { threads: 1, onProgress: (p) => progress.push(p) });
+    expect(res).toHaveLength(3);
+    expect(progress.map((p) => [p.index, p.id, p.ok])).toEqual([[0, undefined, true], [1, undefined, true], [2, undefined, true]]);
+
+    const crashed = await rejection(runPool<unknown, Res>([{ action: 'crash', code: 3 }], FIXTURE, { threads: 1 }));
+    expect(crashed).toBeInstanceOf(PoolTaskError);
+    expect((crashed as PoolTaskError).taskId).toBeUndefined();
+    expect((crashed as Error).message).toBe('worker pool: worker exited with code 3 while running task #0');
+    // an unsendable one is named the same way
+    const unsendable = await rejection(runPool<unknown, Res>([{ cb: () => 1 }], FIXTURE, { threads: 1 }));
+    expect(unsendable).toBeInstanceOf(PoolTaskError);
+    expect((unsendable as PoolTaskError).taskId).toBeUndefined();
+    expect((unsendable as Error).message).toMatch(/^worker pool: could not send task #0 to a worker \(/);
+  });
+
+  it('a callback that throws something that is not an Error rejects the pool with an Error that carries its text', async () => {
+    const fromResult = await rejection(runPool<Task, Res>(doubles(3), FIXTURE, { threads: 1, onResult: () => { throw 'plain string'; } }));
+    expect(fromResult).toBeInstanceOf(Error);
+    expect((fromResult as Error).message).toBe('plain string');
+    const fromMapper = await rejection(runPool<Task, Res>([{ id: 'x', action: 'crash' }, ...doubles(2)], FIXTURE, { threads: 1, onTaskError: () => { throw 42; } }));
+    expect(fromMapper).toBeInstanceOf(Error);
+    expect((fromMapper as Error).message).toBe('42');
+  });
+
+  it('the reason of an abort goes into the message and the cause as it is: a string, or null (reported as "aborted")', async () => {
+    const abortWith = async (reason: unknown): Promise<PoolAbortError> => {
+      const ac = new AbortController();
+      let first = true;
+      const e = await rejection(runPool<Task, Res>(slow(4, 100), FIXTURE, { threads: 2, signal: ac.signal, onResult: () => { if (first) { first = false; ac.abort(reason); } } }));
+      expect(e).toBeInstanceOf(PoolAbortError);
+      return e as PoolAbortError;
+    };
+    const withText = await abortWith('stop it');
+    expect(withText.reason).toBe('signal');
+    expect(withText.completed).toBe(1);
+    expect(withText.message).toMatch(/cancelled after 1 of 4 tasks \(stop it\)$/);
+    expect(withText.cause).toBe('stop it');
+    const withNull = await abortWith(null);
+    expect(withNull.message).toMatch(/cancelled after 1 of 4 tasks \(aborted\)$/);
+    expect(withNull.cause).toBeNull();
+  });
+
+  it('the first failure wins: a callback that cancels the pool and then throws is reported as the cancellation', async () => {
+    const before = signalListeners();
+    const ac = new AbortController();
+    const e = await rejection(runPool<Task, Res>(slow(4, 50), FIXTURE, {
+      threads: 2, signal: ac.signal, onResult: () => { ac.abort(new Error('user cancelled')); throw new Error('callback failed'); },
+    }));
+    expect(e).toBeInstanceOf(PoolAbortError);
+    expect((e as Error).message).toContain('user cancelled');
+    expect((e as Error).message).not.toContain('callback failed');
+    expect(signalListeners()).toEqual(before);
+  });
+
+  it('a worker that cannot even be created rejects with the error of the Worker constructor, not as a task failure, and onTaskError is not consulted', async () => {
+    const before = signalListeners();
+    const nowhere = new URL('https://example.invalid/pool.worker.mjs'); // a worker script must be a file: URL
+    const mapped: string[] = [];
+    for (const options of [{ threads: 2 }, { threads: 2, onTaskError: (e: PoolTaskError, t: Task) => { mapped.push(t.id); return asResult(e, t); } }]) {
+      const e = await rejection(runPool<Task, Res>(doubles(3), nowhere, options));
+      expect(e).toBeInstanceOf(Error);
+      expect(e).not.toBeInstanceOf(PoolTaskError);
+      expect((e as NodeJS.ErrnoException).code).toBe('ERR_INVALID_URL_SCHEME');
+    }
+    expect(mapped).toEqual([]);
+    expect(signalListeners()).toEqual(before); // the listeners installed for the run are gone again
+  });
+
+  it('a reply from a worker that has no task any more is ignored: one result per task, the first reply counts', async () => {
+    const seen: number[] = [];
+    // 'dup' answers its task twice; the pool has nothing left to hand out, so the second reply finds an idle worker
+    const tasks: Task[] = [{ id: 'wait', action: 'slow', v: 7, ms: 300 }, { id: 'dup', action: 'twice', v: 5 }];
+    const res = await runPool<Task, Res>(tasks, FIXTURE, { threads: 2, onResult: (_r, i) => seen.push(i) });
+    expect(res.map((r) => r.v)).toEqual([7, 10]);
+    expect(seen.sort()).toEqual([0, 1]);
+  });
+
+  it('an uncaught error in a worker whose value is not an Error object is reported by its text', async () => {
+    const e = await rejection(runPool<Task, Res>([{ id: 'str', action: 'throwString' }], FIXTURE, { threads: 1 }));
+    expect(e).toBeInstanceOf(PoolTaskError);
+    expect((e as Error).message).toBe('worker pool: uncaught worker error (plain string thrown in str) while running task #0 (str)');
+    expect((e as Error).cause).toBe('plain string thrown in str');
   });
 });

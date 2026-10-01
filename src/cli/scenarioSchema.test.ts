@@ -6,7 +6,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { SCENARIO_CONTROLS, dropTemplate, gasPuffTemplate, interlockTemplate, mergeScenarios, rampTemplate, validateScenario } from '../physics/scenario';
+import { SCENARIO_CONTROLS, dropTemplate, gasPuffTemplate, interlockTemplate, mergeScenarios, rampTemplate, validateScenario, type ControlInfo } from '../physics/scenario';
 import { SCENARIO_SCHEMA_ID, scenarioJsonSchema } from './scenarioSchema';
 
 type Any = Record<string, any>;
@@ -181,6 +181,60 @@ describe('JSON Schema of a scenario', () => {
     const twice = { schema: 1, waveforms: { P_NBI_MW: { kind: 'step', points: [[1, 1], [1, 2]] } } };
     expect(valid(twice)).toBe(false);
     expect(passes(twice)).toBe(true);
+  });
+
+  it('a control with a maximum only, with both limits or with none gets the matching range definition, in step with the validator', () => {
+    // SCENARIO_CONTROLS says "add the shape keys here when a model exposes them", and every entry has a minimum of 0 today, so the
+    // emitter's handling of a missing minimum, of a maximum and of no limit at all is exercised by registering such controls for
+    // the length of this test (the object is read by the emitter and by validateScenario alike, so the two stay comparable)
+    const controls = SCENARIO_CONTROLS as Record<string, ControlInfo>;
+    const added: Record<string, ControlInfo> = {
+      zz_cap: { label: 'capped', unit: 'K', max: 10 },
+      zz_band: { label: 'banded', unit: '', min: -5, max: 5 },
+      zz_free: { label: 'unlimited', unit: '' },
+    };
+    Object.assign(controls, added);
+    try {
+      const s = scenarioJsonSchema() as Any;
+      const defs = s.$defs as Any;
+      const waveforms = s.properties.waveforms.properties as Any;
+      const patch = defs.trigger.properties.set.properties as Any;
+      const pointValue = (def: string) => defs[def].properties.points.items.prefixItems[1];
+
+      // the maximum alone: no minimum keyword, and the missing side of the range is named 'any'
+      expect(pointValue('waveform_range_any_10')).toEqual({ type: ['number', 'null'], maximum: 10 });
+      expect(waveforms.zz_cap).toEqual({ $ref: '#/$defs/waveform_range_any_10', title: 'capped', 'x-unit': 'K' });
+      expect(patch.zz_cap).toEqual({ type: 'number', maximum: 10 });
+      // both limits
+      expect(pointValue('waveform_range_-5_5')).toEqual({ type: ['number', 'null'], minimum: -5, maximum: 5 });
+      expect(waveforms.zz_band).toEqual({ $ref: '#/$defs/waveform_range_-5_5', title: 'banded' });
+      expect(patch.zz_band).toEqual({ type: 'number', minimum: -5, maximum: 5 });
+      // no limit at all: the plain waveform definition, no range definition of its own, no keyword on the patch value, no unit
+      expect(Object.keys(defs).filter((k) => k.startsWith('waveform_range_')).sort()).toEqual(['waveform_range_-5_5', 'waveform_range_0_any', 'waveform_range_any_10']);
+      expect(waveforms.zz_free).toEqual({ $ref: '#/$defs/waveform', title: 'unlimited' });
+      expect(patch.zz_free).toEqual({ type: 'number' });
+
+      // the schema and the validator draw the same line for each of them (waveform points and the patch of a trigger)
+      const wf = (key: string, v: number) => ({ schema: 1, waveforms: { [key]: { kind: 'step', points: [[0, v]] } } });
+      const set = (key: string, v: number) => ({ schema: 1, triggers: [{ diag: 'Q', op: '>', value: 1, set: { [key]: v } }] });
+      const cases: [string, unknown, boolean][] = [
+        ['cap at its maximum', wf('zz_cap', 10), true], ['cap above its maximum', wf('zz_cap', 10.5), false], ['cap far below zero (no minimum)', wf('zz_cap', -1e6), true],
+        ['band at both ends', wf('zz_band', 5), true], ['band at the lower end', wf('zz_band', -5), true],
+        ['band above', wf('zz_band', 5.5), false], ['band below', wf('zz_band', -5.5), false],
+        ['free, very large', wf('zz_free', 1e9), true], ['free, very negative', wf('zz_free', -1e9), true],
+        ['patch of the cap above its maximum', set('zz_cap', 11), false], ['patch of the cap inside', set('zz_cap', 3), true],
+        ['patch of the band below', set('zz_band', -6), false], ['patch of the free control', set('zz_free', -7), true],
+      ];
+      for (const [name, doc, ok] of cases) {
+        expect(validateScenario(JSON.parse(JSON.stringify(doc))).ok, `validator: ${name}`).toBe(ok);
+        expect(evaluate(s, s, JSON.parse(JSON.stringify(doc))).length === 0, `schema: ${name}`).toBe(ok);
+      }
+    } finally {
+      for (const k of Object.keys(added)) delete controls[k];
+    }
+    // nothing leaked: the emitter is back at the checked-in set of controls
+    expect(Object.keys(SCENARIO_CONTROLS).some((k) => k.startsWith('zz_'))).toBe(false);
+    expect(scenarioJsonSchema()).toEqual(schema);
   });
 
   it('the checked-in file schema/scenario.schema.json is what the emitter writes (npm run schema:scenario)', () => {

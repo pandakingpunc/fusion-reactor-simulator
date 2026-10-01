@@ -1,12 +1,13 @@
 {
   "title": "Fusion Reactor Simulator",
-  "description": "A time-resolved fusion reactor simulation engine with a zero-dimensional power balance and a 1.5D radial transport model (T_e, T_i, n_e and poloidal flux on the normalised toroidal-flux coordinate) coupled to a fixed-boundary Grad-Shafranov equilibrium solver, with Sauter bootstrap current, NBI/RF sources, beam-target fusion, sawteeth, ELMs and NTMs. Covers magnetic confinement (tokamak, spherical tokamak, stellarator) and other schemes; verified against manufactured solutions and validated against ITER, JET DTE2, SPARC, EU DEMO and NIF. Includes a built-in publication-quality figure engine (SVG/PDF) and multi-core parameter scans.",
+  "description": "A deterministic research and education simulator with reduced 0D power balance and 1.5D radial transport coupled to fixed-boundary Grad-Shafranov equilibrium. Includes error-controlled TR-BDF2, localised events, conservative remapping, exact rewind and opt-in pedestal, transport, impurity and fast-ion modules; browser UI, headless library, CLI and Python wrapper. Verified against analytic and manufactured solutions and benchmarked against published values, with validation where the data allow. Documents known reference misses and unmet convergence and predictive-model targets.",
   "upload_type": "software",
   "license": "MIT",
   "access_right": "open",
   "creators": [
     {
-      "name": "Karatum, Mustafa"
+      "name": "Karatum, Mustafa",
+      "affiliation": "Independent researcher"
     }
   ],
   "keywords": [
@@ -20,5 +21,25 @@
     "Grad-Shafranov equilibrium",
     "bootstrap current"
   ],
-  "version": "3.0.0"
+  "version": "4.0.0",
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/pandakingpunc/fusion-reactor-simulator",
+      "relation": "isSupplementTo",
+      "scheme": "url"
+    },
+    {
+      "identifier": "10.5281/zenodo.22925078",
+      "relation": "isNewVersionOf",
+      "scheme": "doi"
+    }
+  ],
+  "references": [
+    "Bosch and Hale (1992), Improved formulas for fusion cross-sections and thermal reactivities. https://doi.org/10.1088/0029-5515/32/4/I07",
+    "ITER Physics Basis (1999), Chapter 2: Plasma confinement and transport. https://doi.org/10.1088/0029-5515/39/12/302",
+    "Sauter, Angioni and Lin-Liu (1999), Neoclassical conductivity and bootstrap current formulas. https://doi.org/10.1063/1.873240",
+    "Shimada et al. (2007), Chapter 1: Overview and summary. https://doi.org/10.1088/0029-5515/47/6/S01"
+  ],
+  "notes": "Developed by Mustafa Karatum with substantial assistance from AI coding assistants Claude Code (Anthropic), Codex (OpenAI) and MiMo under the author's direction and review. Automated and AI-assisted verification does not replace independent plasma-physics review.",
+  "language": "eng"
 }

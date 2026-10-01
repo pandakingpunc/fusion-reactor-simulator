@@ -2,7 +2,16 @@
 
 Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [SemVer](https://semver.org/) izler.
 
-## [Unreleased]
+## [4.0.0] — 2026-10-01
+
+Version 4 completes deterministic replay and reduced 1.5D transport, conservative equilibrium
+coupling and optional profile modules, with explicit reference misses and convergence limits.
+The browser, library, CLI, Python wrapper and English/Turkish documentation share the same models.
+
+### Release documentation
+- Complete English and Turkish READMEs and technical reports, with regression checks against reference and benchmark records.
+- Prepared JOSS paper (not submitted), a checked bibliography and source-anchored number markers; `paper:numbers` and `paper:check` verify the package.
+- Direction-neutral validation labels distinguish model undershoots from overshoots.
 
 ### Added
 - Generated configuration reference `docs/config-reference.md` (every field of the reactor configuration and of the scenario with type, unit, default, range and description; the opt-in modules of the 1.5D profile model marked with their default-off value): `npm run docs:config` writes it, `npm run docs:config:check` exits 1 when it is stale, and `src/cli/configReference.test.ts` runs the same check.
@@ -755,6 +764,36 @@ ignition, cell volumes): they move the nine 1.5D golden cases (ITER15 flat-top Q
 a documented poor case, changes by tens of per cent) and no 0D golden case. The 0D physics changes of the
 same release (ws2b, ws2c) move every 0D magnetic golden case; `test/golden/CHANGES.md` names the cause of every
 moved case.
+
+### Numbers that changed
+
+Flat-top values use each release's published definition; see [the complete reconciliation](docs/v4-numbers-diff.md) for source records and the separation of code, preset and averaging changes.
+
+| Quantity | v3.0.0 | v4.0.0 | Cause |
+|---|---|---|---|
+| ITER 0D Q | 13.98 | 10.08 | Corrected power accounting, exact geometry and density/preset inputs |
+| ITER 0D P_fus (MW) | 715.5 | 516.6 | Same power accounting, geometry and preset changes |
+| ITER15 Q | 9.755 | 10.45 | Loss-power parity, packed grid/TR-BDF2, conservative remap and island-width correction |
+| ITER15 P_fus (MW) | 490.6 | 525.6 | Same reduced transport and accounting changes |
+| JET 0D E_fus (MJ) | 58.31 | 66.64 | Power-balance fixes, Miller volume and exact D-T energies |
+| JET15 E_fus (MJ) | 84.57 | 81.84 | Current/equilibrium/edge corrections and new discretisation; known overshoot remains |
+| SPARC 0D Q | 6.921 | 7.843 | Miller geometry, exact energies and density control |
+| DEMO 0D P_fus (MW, 600 s golden) | 2193 | 1912 | Power accounting, density and shape inputs |
+| MAST-U 0D q95 | 34.33 | 6.393 | Low-aspect-ratio expression and published first-campaign preset |
+| NIF N221204 gain | 1.489 | 0.6684 | Calibration moved to N210808 alone; N221204 now a blind miss |
+| Direct-drive gain | 3.096 | 0.3906 | Shared ICF calibration change; not an independent direct-drive calibration |
+
+Every intentional golden move is recorded in [test/golden/CHANGES.md](test/golden/CHANGES.md). No literature acceptance ranges were tuned to make this release pass.
+
+### Known limitations
+
+- EPED onset pressure +21.1 % and temperature +15.4 % miss the 15 % target.
+- Emergent H98 of most Bohm/gyro-Bohm and IFS-PPPL cases lies outside 0.8–1.2; FACIT has no external coefficient benchmark.
+- JET #99971 thermal/beam-target split remains open; JET15 yield overshoots its published reference.
+- NIF N221204/N230729 remain blind misses after N210808-only calibration; the reduced model lacks shot-discriminating inputs.
+- Hollow-core Kadomtsev mixing is a model convention; the helical reset may fall back to the legacy rebuild.
+- ITER15 T_ped changes −1.10 % between 50 and 100 cells, missing the 1 % target; Q changes +0.57 %.
+- Near-Greenwald density control is seed-dependent; 46 reference checks include 8 documented known failures and 38 within range.
 
 ## [3.0.0] — 2026-09-23
 

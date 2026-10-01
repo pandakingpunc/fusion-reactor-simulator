@@ -1,7 +1,7 @@
 {
   "name": "fusion-reactor-simulator",
   "private": true,
-  "version": "3.0.0",
+  "version": "4.0.0",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -63,6 +63,8 @@
     "stress:exit": "node scripts/stress-exit.mjs",
     "ci:local": "node scripts/ci-local.mjs",
     "release:check": "node scripts/release-check.mjs",
+    "paper:numbers": "tsx scripts/paper-numbers.ts",
+    "paper:check": "node scripts/check-bib.mjs && tsx scripts/paper-numbers.ts --check",
     "figures": "tsx src/cli/figures.cli.ts",
     "figures:check": "tsx src/cli/figures.cli.ts --check",
     "bench:convergence": "tsx bench/convergence.ts",

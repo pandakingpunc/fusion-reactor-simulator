@@ -2,20 +2,20 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it using the information below."
 title: "Fusion Reactor Simulator"
 abstract: >-
-  A time-resolved fusion reactor simulation engine with a zero-dimensional power balance
-  and a 1.5D radial transport model (electron/ion temperature, density and poloidal flux
-  on the normalised toroidal-flux coordinate) coupled to a fixed-boundary Grad-Shafranov
-  equilibrium solver, with Sauter bootstrap current, NBI/RF sources, beam-target fusion,
-  sawteeth, ELMs and NTMs. Covers magnetic confinement (tokamak, spherical tokamak,
-  stellarator) and other schemes; verified against manufactured solutions and validated
-  against ITER, JET DTE2, SPARC, EU DEMO and NIF reference values. Includes a built-in
-  publication-quality figure engine (SVG/PDF) and multi-core parameter scans.
+  A deterministic research and education simulator with reduced 0D power balance and
+  1.5D radial transport coupled to fixed-boundary Grad-Shafranov equilibrium. Includes
+  error-controlled TR-BDF2, localised events, conservative remapping, exact rewind and
+  opt-in pedestal, transport, impurity and fast-ion modules; browser UI, headless library,
+  CLI and Python wrapper. Verified against analytic and manufactured solutions and
+  benchmarked against published values, with validation where the data allow. Documents
+  known reference misses and unmet convergence and predictive-model targets.
 type: software
 authors:
   - given-names: Mustafa
     family-names: Karatum
+    affiliation: Independent researcher
 license: MIT
-doi: 10.5281/zenodo.22925078
+doi: 10.5281/zenodo.22259861
 identifiers:
   - type: doi
     value: 10.5281/zenodo.22259861
@@ -23,8 +23,8 @@ identifiers:
   - type: doi
     value: 10.5281/zenodo.22925078
     description: DOI of version 3.0.0
-version: "3.0.0"
-date-released: "2026-09-23"
+version: "4.0.0"
+date-released: "2026-10-01"
 keywords:
   - nuclear fusion
   - tokamak

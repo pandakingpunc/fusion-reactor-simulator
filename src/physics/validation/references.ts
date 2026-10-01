@@ -237,7 +237,7 @@ const MASTU_Q95 = (preset: 'MASTU'): ReferenceCheck => ({
 });
 
 /** The facility's own record of N230729 (no DOI): the source of the shot label and date, which the abstract of the paper that states the yield does not give. */
-const LLNL_NUG2024 ='K. Fournier et al. (LLNL), "What\'s New for Users at the NIF...", NIF & JLF User Group Meeting (2024), LLNL-PRES-859704, slide 3: N230729, 3.88 MJ yield; ' +
+const LLNL_NUG2024 = 'K. Fournier et al. (LLNL), "What\'s New for Users at the NIF...", NIF & JLF User Group Meeting (2024), LLNL-PRES-859704, slide 3: N230729, 3.88 MJ yield; ' +
   'lasers.llnl.gov/science/achieving-fusion-ignition: "July 30, 2023: The NIF laser again delivered 2.05 MJ of energy to the target, resulting in 3.88 MJ of fusion energy output"';
 const KRITCHER_N230729_LIMIT = 'verified: the abstract of Kritcher et al. 2024 (the Crossref record of doi:10.1063/5.0210904, read 2026-10-01) gives the maximum fusion energy of the ' +
   'platform to date as 3.88 MJ from 2.05 MJ of incident laser energy, and 3.15 MJ for N221204. Not verified: the full text of the paper, so no uncertainty of the 3.88 MJ is known ' +
@@ -460,7 +460,7 @@ export const REFERENCE_CHECKS: readonly ReferenceCheck[] = [
     basis: 'N221204 (5 December 2022): 3.15 MJ from 2.05 MJ of laser energy, G = 1.5 ± 0.1. A BLIND prediction in a limited sense: the ICF model is calibrated on N210808 alone ' +
       '(NIF210808.G) and ICF_CAL is not re-fitted for this shot, but nothing else of the model is blind to it. The ignition-cliff constants (0.2 g/cm², 360 km/s, the asymmetry and ' +
       'roughness scales) and the platform inputs (v_imp 390 km/s, CR 30, α 2.8, asymmetry 1.5 %, roughness 20 nm) are those of v3.0.0, shared by the three shots, and date from when ' +
-      'ICF_CAL was tuned to N221204 itself (the preset was commented "G ~ 1.5"). The model yield does not depend on what differs between the shots (laser energy, ablator mass), so it is ' +
+      'ICF_CAL was tuned to N221204 itself (the v3.0.0 source says that the constant was set for NIF and that the N221204 preset gives G ≈ 1.5). The model yield does not depend on what differs between the shots (laser energy, ablator mass), so it is ' +
       '1.37 MJ for every shot of the platform and this row is the published yield ratio 3.15/1.37 = 2.3 of the shot to the calibration shot, seen through the gain, not an independent test. ' +
       'Lower bound G = 1, the result the shot is known for (target gain above unity); upper bound ×2 (gain tolerance)',
     knownFailure: 'the model has no input for what separates N221204 from the calibration shot N210808 (an ablator 6 µm thicker, 7 % more laser energy, better low-mode ' +

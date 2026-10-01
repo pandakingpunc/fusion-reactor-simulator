@@ -13,6 +13,7 @@
  */
 import { ActuatorEntry, EdgeOptions, Method, METHOD_LABELS, ProfileSettings, ReactorConfig, SystemsConfig } from '../../physics/types';
 import { DEFAULT_PROFILE_SETTINGS } from '../../physics/profiles/defaults';
+import { validateScenario } from '../../physics/scenario';
 import { fieldVisible, getPath, METHOD_DEFAULT, missingRequired, PRESETS, stepsFor } from '../wizard/schema';
 
 /** Limits that keep a hostile or corrupt input from becoming a large object graph. */
@@ -251,7 +252,12 @@ export function checkBreakpoints(b: unknown): string[] {
   return b.every((x) => typeof x === 'number' && Number.isFinite(x)) ? [] : ['a breakpoint is not a finite number'];
 }
 
-/** Errors of a scenario as far as this module can know: plain JSON of bounded size (its meaning is the scenario engine's to check). */
+/**
+ * Errors of a scenario as far as can be known without its model: plain JSON of bounded size, then the scenario engine's own check of its
+ * structure (validateScenario, the check of scenarioFromJSON without a model): unknown properties, a bad waveform or trigger, a rampStep
+ * below the floor of 10⁻⁶. That it names controls and diagnostics the model has, and a rampStep that fits its end time, is checked
+ * where the model is known (the editor, the share dialog with a probe, and the run itself: ScenarioError).
+ */
 export function checkScenarioShape(s: unknown): string[] {
   let nodes = 0;
   let error: string | null = null;
@@ -269,7 +275,11 @@ export function checkScenarioShape(s: unknown): string[] {
     }
   };
   visit(s, 0);
-  return error ? [error] : [];
+  if (error) return [error];
+  const r = validateScenario(s);
+  if (r.ok) return [];
+  const shown = r.issues.slice(0, 3).map((i) => `scenario${i.path ? `.${i.path}` : ''}: ${i.message}`);
+  return r.issues.length > 3 ? [...shown, `scenario: and ${r.issues.length - 3} more problems`] : shown;
 }
 
 export interface RunInputs {

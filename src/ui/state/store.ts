@@ -7,6 +7,7 @@ import { createContext, useContext, useMemo, useSyncExternalStore } from 'react'
 import { ReactorConfig } from '../../physics/types';
 import { ITER } from '../../physics/presets';
 import { Locale, Translate, isLocale, loadLocale, setActiveLocale, translator } from '../../i18n';
+import type { ScenarioSpec } from '../../physics/scenario';
 import { AppState, SavedShot, Tab } from './types';
 import { loadWizardText } from '../wizard/wizTextLoader';
 
@@ -49,13 +50,15 @@ export function useStore<T extends object, S>(store: Store<T>, selector: (s: T) 
 const LOCALE_KEY = 'fusion-sim.locale';
 
 export function initialAppState(): AppState {
-  return { tab: 'setup', cfg: ITER, cfgName: 'ITER', shots: [], archivedKey: null, viewId: null, locale: 'en' };
+  return { tab: 'setup', cfg: ITER, cfgName: 'ITER', scenario: null, shots: [], archivedKey: null, viewId: null, locale: 'en' };
 }
 
 export interface AppActions {
   setTab(tab: Tab): void;
   setCfg(cfg: ReactorConfig): void;
   setCfgName(name: string): void;
+  /** set (or, with null, clear) the scenario of the next run */
+  setScenario(scenario: ScenarioSpec | null): void;
   /** archive a completed run once per `key` (`${runId}:${branchId}`); later calls with the same key are ignored */
   archiveShot(key: string, shot: Omit<SavedShot, 'id' | 'name'>): void;
   removeShot(id: number): void;
@@ -83,6 +86,7 @@ export function createAppStore(init: Partial<AppState> = {}): AppStore {
     setTab: (tab) => set({ tab }),
     setCfg: (cfg) => set({ cfg }),
     setCfgName: (cfgName) => set({ cfgName }),
+    setScenario: (scenario) => set({ scenario }),
     archiveShot(key, shot) {
       store.setState((s) => {
         if (s.archivedKey === key) return s;
@@ -100,7 +104,7 @@ export function createAppStore(init: Partial<AppState> = {}): AppStore {
         return { ...s, shots: [...s.shots, { ...shot, id }], viewId: id, tab: 'report' };
       });
     },
-    editShot: (shot) => set({ cfg: shot.cfg, cfgName: shot.name.replace(/ #\d+$/, ''), tab: 'setup' }),
+    editShot: (shot) => set({ cfg: shot.cfg, cfgName: shot.name.replace(/ #\d+$/, ''), scenario: (shot.prov?.scenario as ScenarioSpec | undefined) ?? null, tab: 'setup' }),
     async setLocale(locale) {
       // the wizard's own texts come with the dictionary (a failed load leaves them in English; the wizard asks again)
       await Promise.all([loadLocale(locale), loadWizardText(locale).catch(() => undefined)]);

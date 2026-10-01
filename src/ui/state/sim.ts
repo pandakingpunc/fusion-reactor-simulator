@@ -7,6 +7,7 @@
  * dropped by the reducer, so a late frame can never reappear after a rewind or a restart.
  */
 import { ReactorConfig } from '../../physics/types';
+import type { ScenarioSpec } from '../../physics/scenario';
 import { FromWorker, PROTOCOL_VERSION, ToWorker } from '../../worker/protocol';
 import { createStore, Store } from './store';
 import { RunAllProgress, RunAllResult, SimState } from './types';
@@ -25,6 +26,7 @@ export type FrameScheduler = (flush: () => void) => void;
 export const initialSimState: SimState = {
   status: 'idle', cfg: null, meta: null, frames: [], events: [], t: 0, dt: 0, nSteps: 0, controls: {},
   report: null, error: null, speed: 1, wallMs: 0, runId: 0, branchId: 0, autoPlay: false, interventions: 0,
+  scenario: null, provenance: null, trace: null, logAnswer: null,
 };
 
 /** upper bound on how long incoming messages may wait when animation frames are throttled */
@@ -53,27 +55,35 @@ export function reduceSim(s: SimState, m: FromWorker): SimState {
       }
       return {
         ...s, status: s.autoPlay ? 'running' : 'ready', meta: m.meta, frames: [m.frame], events: [],
-        t: m.frame.t, dt: 0, nSteps: 0, controls: m.meta.controls, report: null, error: null,
+        t: m.frame.t, dt: 0, nSteps: 0, controls: m.meta.controls, report: null, error: null, provenance: null,
+        trace: s.scenario ? [Object.values(m.meta.controls)] : null,
       };
-    case 'frames':
+    case 'frames': {
       if (!current(s, m) || s.status === 'error') return s;
+      // control values per frame, once the run has any to report; frames before the first report had the controls of the load
+      const rows = (s.trace ?? []).slice();
+      if (m.ctl) while (rows.length < s.frames.length) rows.push(Object.values(s.meta!.controls));
       return {
         ...s,
         frames: m.frames.length ? s.frames.concat(m.frames) : s.frames,
         events: m.events.length ? s.events.concat(m.events) : s.events,
-        t: m.t, dt: m.dt, nSteps: m.nSteps, controls: m.controls, wallMs: m.wallMs,
+        t: m.t, dt: m.dt, nSteps: m.nSteps, controls: m.controls, wallMs: m.wallMs, trace: m.ctl ? rows.concat(m.ctl) : s.trace,
         status: m.done ? 'done' : s.status === 'ready' || s.status === 'paused' ? s.status : 'running',
       };
+    }
     case 'rewound':
       if (!current(s, m)) return s;
       return {
-        ...s, status: 'paused', t: m.t, controls: m.controls, report: null, error: null,
+        ...s, status: 'paused', t: m.t, controls: m.controls, report: null, error: null, provenance: null,
         frames: s.frames.slice(0, m.index + 1), // by count: the terminal frame of a failed 1.5D step has the time of the frame before it
         events: s.events.slice(0, m.nEvents),
+        trace: s.trace && s.trace.slice(0, m.index + 1),
       };
     case 'done':
       if (!current(s, m)) return s;
-      return { ...s, status: 'done', report: m.report };
+      return { ...s, status: 'done', report: m.report, provenance: m.provenance ?? null };
+    case 'log':
+      return current(s, m) ? { ...s, logAnswer: { token: m.token, provenance: m.provenance } } : s;
     case 'error':
       if ((m.id !== undefined && m.id !== s.runId) || (m.branchId !== undefined && m.branchId !== s.branchId)) return s;
       return { ...s, status: 'error', error: m.msg };
@@ -93,9 +103,8 @@ export class SimController {
   private queue: FromWorker[] = [];
   private scheduled = false;
   private lastRunId = 0;
-  private lastRunAllId = 0;
 
-  constructor(private readonly createWorker: WorkerFactory, private readonly schedule: FrameScheduler = scheduleFrame) {}
+  constructor(readonly createWorker: WorkerFactory, private readonly schedule: FrameScheduler = scheduleFrame) {}
 
   /** create the live worker (idempotent) */
   attach(): void {
@@ -133,12 +142,12 @@ export class SimController {
   private get state(): SimState { return this.store.getState(); }
   private patch(p: Partial<SimState>): void { this.store.setState({ ...this.state, ...p }); }
 
-  /** load a configuration; with autoPlay the run starts as soon as the worker is ready */
-  readonly load = (cfg: ReactorConfig, autoPlay = false): void => {
+  /** load a configuration, driven by a scenario when there is one; with autoPlay the run starts as soon as the worker is ready */
+  readonly load = (cfg: ReactorConfig, autoPlay = false, scenario: ScenarioSpec | null = null): void => {
     const id = ++this.lastRunId;
     const { speed } = this.state;
-    this.store.setState({ ...initialSimState, speed, cfg, status: 'loading', runId: id, autoPlay });
-    this.send({ type: 'init', protocolVersion: PROTOCOL_VERSION, id, cfg, autoPlay, speed });
+    this.store.setState({ ...initialSimState, speed, cfg, status: 'loading', runId: id, autoPlay, scenario });
+    this.send({ type: 'init', protocolVersion: PROTOCOL_VERSION, id, cfg, autoPlay, speed, ...(scenario ? { scenario } : {}) });
   };
 
   readonly play = (): void => {
@@ -182,26 +191,14 @@ export class SimController {
   };
 
   readonly restart = (): void => {
-    const { cfg } = this.state;
-    if (cfg) this.load(cfg);
+    const { cfg, scenario } = this.state;
+    if (cfg) this.load(cfg, false, scenario);
   };
 
-  /** Independent full run in a separate worker (does not touch the live run). */
-  readonly runAll = (cfg: ReactorConfig, keepFrames = false, onProgress?: (p: RunAllProgress) => void): Promise<RunAllResult> =>
-    new Promise((resolve, reject) => {
-      const w = this.createWorker();
-      const id = ++this.lastRunAllId;
-      const fail = (msg: string) => { w.terminate(); reject(new Error(msg)); };
-      w.onmessage = (e) => {
-        const m = e.data;
-        if (m.type === 'progress' && m.id === id) onProgress?.({ t: m.t, tEnd: m.tEnd, frames: m.frames });
-        else if (m.type === 'runAllDone' && m.id === id) {
-          if (m.protocolVersion !== PROTOCOL_VERSION) return fail(`Worker protocol mismatch: worker v${m.protocolVersion}, page v${PROTOCOL_VERSION}`);
-          w.terminate();
-          resolve({ report: m.report, meta: m.meta, frames: m.frames, events: m.events });
-        } else if (m.type === 'error') fail(m.msg);
-      };
-      w.onerror = (ev) => fail(ev.message || 'Simulation worker failed');
-      w.postMessage({ type: 'runAll', protocolVersion: PROTOCOL_VERSION, id, cfg, keepFrames, progress: !!onProgress });
-    });
+  /** send any message to the live worker (the scenario panel's `getLog`; the answer arrives in `state.logAnswer`) */
+  readonly post = (m: ToWorker): void => this.send(m);
+
+  /** Independent full run in a separate worker (does not touch the live run; the code is loaded when a page first asks for one). */
+  readonly runAll = (cfg: ReactorConfig, keepFrames = false, onProgress?: (p: RunAllProgress) => void, scenario: ScenarioSpec | null = null): Promise<RunAllResult> =>
+    import('./oneShot').then((m) => m.runAllInWorker(this.createWorker, cfg, keepFrames, onProgress, scenario));
 }

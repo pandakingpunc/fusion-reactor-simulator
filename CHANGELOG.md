@@ -5,6 +5,7 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 ## [Unreleased]
 
 ### Added
+- Scenario editor and exact-run sharing: programmed and actual actuator lanes, waveform and trigger templates, recording, worker completion fingerprints, scenario-aware scan/UQ/optimization and export metadata.
 - Wave-2B tooling: 58 mutation-smoke cases cover TR-BDF2, Anderson, edge losses, TF Tresca stress and equilibrium iterations; M21 is currently detected by timeout.
 - Coverage gates now include IO, analysis and education; "npm run coverage:levels" reports measured levels and suggested thresholds.
 - Local CI accepts CI_LOCAL_WORKERS, CI_LOCAL_THREADS and CI_LOCAL_BUNDLE, with a dry run and the production bundle budget.

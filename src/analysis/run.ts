@@ -5,15 +5,17 @@
  */
 import { Simulation } from '../physics/simulation';
 import type { ReactorConfig } from '../physics/types';
+import type { ScenarioSpec } from '../physics/scenario';
 import type { BatchRunner, SimOutcome, SimTask } from './ensemble';
 import { MetricsOptions, runMetrics } from './metrics';
 
 /** Runs one configuration to its end and returns its metrics; a run that throws is reported as a failed outcome, not raised. */
-export function simulateMetrics(cfg: ReactorConfig, opts: MetricsOptions = {}): SimOutcome {
+export function simulateMetrics(cfg: ReactorConfig, opts: MetricsOptions & { scenario?: ScenarioSpec } = {}): SimOutcome {
   try {
-    const sim = new Simulation(cfg);
+    const { scenario, ...metricsOpts } = opts;
+    const sim = new Simulation(cfg, scenario ? { scenario } : {});
     const report = sim.runAll();
-    return { ok: true, metrics: runMetrics(sim.history, sim.events, report, opts) };
+    return { ok: true, metrics: runMetrics(sim.history, sim.events, report, metricsOpts) };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? `${e.name}: ${e.message}` : String(e) };
   }
@@ -24,7 +26,7 @@ export const serialRunner: BatchRunner = async (tasks: SimTask[], onProgress) =>
   const out: SimOutcome[] = [];
   let failed = 0;
   for (const t of tasks) {
-    const o = simulateMetrics(t.cfg, { weighting: t.weighting });
+    const o = simulateMetrics(t.cfg, { weighting: t.weighting, scenario: t.scenario });
     if (!o.ok) failed++;
     out.push(o);
     onProgress?.({ done: out.length, total: tasks.length, failed });

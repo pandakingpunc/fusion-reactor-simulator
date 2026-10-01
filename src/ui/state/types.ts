@@ -3,7 +3,8 @@
  * (Moved out of App.tsx so that screens no longer import from the root component.)
  */
 import { ReactorConfig, ShotReport, SimEvent } from '../../physics/types';
-import { SimMeta, UiFrame } from '../../worker/protocol';
+import type { ScenarioSpec } from '../../physics/scenario';
+import { RunProvenanceMsg, SimMeta, UiFrame } from '../../worker/protocol';
 import { Locale } from '../../i18n';
 import type { RunProvenance, VerifyStatus } from '../persist/types';
 
@@ -53,6 +54,14 @@ export interface SimState {
   autoPlay: boolean;
   /** live interventions sent for this run (control()); a run with any cannot be exported with a fingerprint unless its actuator log is known */
   interventions: number;
+  /** the scenario the run was loaded with (null: none) */
+  scenario: ScenarioSpec | null;
+  /** what defines the run besides its configuration (actuator log, breakpoints, scenario, fingerprint), reported by the worker when the current branch completes */
+  provenance: RunProvenanceMsg | null;
+  /** the control values of each frame (`frames[i]` has `trace[i]`, over Object.keys(meta.controls)), once the run has a scenario or a live intervention; null before */
+  trace: number[][] | null;
+  /** the worker's last answer to a `getLog` request (the provenance of the run as it stood) */
+  logAnswer: { token: number; provenance: RunProvenanceMsg } | null;
 }
 
 export interface RunAllResult { report: ShotReport; meta: SimMeta; frames?: UiFrame[]; events?: SimEvent[] }
@@ -63,6 +72,8 @@ export interface AppState {
   /** configuration being edited in the wizard */
   cfg: ReactorConfig;
   cfgName: string;
+  /** scenario of the run to start (waveforms and triggers on the controls; the wizard's Scenario step); null: none */
+  scenario: ScenarioSpec | null;
   /** completed shots (report + comparison archive) */
   shots: SavedShot[];
   /** `${runId}:${branchId}` of the last archived completion, so each completed branch is archived once */

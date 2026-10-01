@@ -1,5 +1,6 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { METHOD_LABELS, ReactorConfig } from './physics/types';
+import type { ScenarioSpec } from './physics/scenario';
 import { LOCALES, LOCALE_NAMES, Locale, MessageKey } from './i18n';
 import { createSimWorker, useSim } from './ui/useSim';
 import { FrameScheduler, WorkerFactory, completedShotKey } from './ui/state/sim';
@@ -28,6 +29,9 @@ const PersistHost = lazy(() => import('./ui/persist/PersistHost'));
 const EmbedView = lazy(() => import('./ui/persist/EmbedView'));
 const ShotBanner = lazy(() => import('./ui/persist/ShotBanner'));
 const Learn = lazy(() => loadLearn().then((m) => ({ default: m.LearnView })));
+// The wizard's Scenario step (the editor) and its one-line summary: one chunk, loaded when the step is opened.
+const ScenarioStep = lazy(() => import('./ui/scenario/ScenarioStep'));
+const ScenarioSummary = lazy(() => import('./ui/scenario/ScenarioSummary'));
 
 const TABS: { id: Tab; label: MessageKey }[] = [
   { id: 'setup', label: 'app.tab.setup' },
@@ -58,6 +62,7 @@ export default function App({ createWorker, schedule }: Props) {
   const tab = useApp((s) => s.tab);
   const cfg = useApp((s) => s.cfg);
   const cfgName = useApp((s) => s.cfgName);
+  const scenario = useApp((s) => s.scenario);
   const shots = useApp((s) => s.shots);
   const locale = useApp((s) => s.locale);
   const viewId = useApp((s) => s.viewId);
@@ -80,7 +85,7 @@ export default function App({ createWorker, schedule }: Props) {
   const doneKey = completedShotKey(state);
   useEffect(() => {
     if (!doneKey || !state.cfg || !state.meta || !state.report) return;
-    actions.archiveShot(doneKey, { cfg: state.cfg, meta: state.meta, report: state.report, frames: state.frames, events: state.events, prov: { interventions: state.interventions } });
+    actions.archiveShot(doneKey, { cfg: state.cfg, meta: state.meta, report: state.report, frames: state.frames, events: state.events, prov: state.provenance ?? { interventions: state.interventions } });
   }, [doneKey]); // state is read at the moment the key appears; archiveShot ignores repeats
 
   useEffect(() => {
@@ -89,17 +94,20 @@ export default function App({ createWorker, schedule }: Props) {
     return () => { clearTimeout(run); clearTimeout(id); };
   }, []);
 
-  const run = useCallback((c: ReactorConfig) => {
+  // the scenario of the wizard drives the run, unless the caller names one (a re-run of the run on screen uses its own)
+  const run = useCallback((c: ReactorConfig, sc?: ScenarioSpec | null) => {
+    const scen = sc === undefined ? store.getState().scenario : sc;
     actions.setCfg(c);
-    sim.load(c, true);
+    actions.setScenario(scen);
+    sim.load(c, true, scen);
     actions.setTab('run');
-  }, [sim.load, actions]);
+  }, [sim.load, actions, store]);
 
   const latest = shots.length ? shots[shots.length - 1] : null;
   // the shot the user opened (archive, file), else the live run, else the latest
   const opened = viewId !== null ? shots.find((x) => x.id === viewId) ?? null : null;
   const liveShot: SavedShot | null = state.report && state.meta && state.cfg
-    ? { id: -1, name: cfgName, cfg: state.cfg, meta: state.meta, report: state.report, frames: state.frames, events: state.events, prov: { interventions: state.interventions } } : null;
+    ? { id: -1, name: cfgName, cfg: state.cfg, meta: state.meta, report: state.report, frames: state.frames, events: state.events, prov: state.provenance ?? { interventions: state.interventions } } : null;
   const reportShot = opened ?? liveShot ?? latest;
 
   const pill = useMemo(() => {
@@ -141,17 +149,21 @@ export default function App({ createWorker, schedule }: Props) {
         </select>
       </header>
       <main className="main">
-        <Suspense fallback={null}><PersistHost slot={slot} router={router} route={route} /></Suspense>
+        <Suspense fallback={null}><PersistHost slot={slot} router={router} route={route} createWorker={sim.createWorker} exactRun={state.status === 'done' && state.cfg && state.provenance ? { cfg: state.cfg, provenance: state.provenance } : null} /></Suspense>
         {/* a drawing error (or a failed chunk load) replaces the screen, not the app with its shot archive */}
         <ErrorBoundary resetKeys={[tab, state.runId, state.branchId]}>
         <Suspense fallback={<div className="panel muted">{t('app.st.loading')}</div>}>
-        {tab === 'setup' && <Wizard cfg={cfg} setCfg={actions.setCfg} name={cfgName} setName={actions.setCfgName} onRun={run} />}
+        {tab === 'setup' && (
+          <Wizard cfg={cfg} setCfg={actions.setCfg} name={cfgName} setName={actions.setCfgName} onRun={run}
+            scenarioStep={<Suspense fallback={null}><ScenarioStep createWorker={sim.createWorker} /></Suspense>}
+            scenarioSummary={scenario ? <Suspense fallback={null}><ScenarioSummary /></Suspense> : undefined} />
+        )}
         {tab === 'run' && <RunScreen sim={sim} onReport={() => actions.setTab('report')} onSetup={() => actions.setTab('setup')} />}
         {tab === 'report' && opened && <ShotBanner shot={opened} />}
         {tab === 'report' && (
           <Report
             shot={reportShot}
-            onRerun={() => run(state.cfg ?? cfg)}
+            onRerun={() => run(state.cfg ?? cfg, state.cfg ? state.scenario : undefined)}
             onEdit={() => { actions.setCfg(state.cfg ?? cfg); actions.setTab('setup'); }}
           />
         )}

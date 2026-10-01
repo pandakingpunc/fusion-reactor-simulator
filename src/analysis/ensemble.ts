@@ -26,6 +26,7 @@
  */
 import type { FlatTopWeighting } from '../physics/analysis/flatTop';
 import type { ReactorConfig } from '../physics/types';
+import { scenarioToJSON, type ScenarioSpec } from '../physics/scenario';
 import { canonicalString } from '../physics/kernel/canonical';
 import { sha256Hex } from '../physics/kernel/sha256';
 import { METRIC_INFO, METRIC_KEYS, MetricKey, OPERATING_METRICS, PERFORMANCE_METRICS, RunMetrics } from './metrics';
@@ -38,6 +39,17 @@ export const CAVEAT =
   'EDUCATIONAL: the results describe a reduced-order model (0D power balance or simplified 1.5D transport) under the stated priors. ' +
   'They illustrate how uncertainty propagates through it and which inputs matter most; they are not predictions of any real device, and the ' +
   'probabilities are conditional on the priors and on the model, whose structural errors are not part of them.';
+
+/** A scenario as a study records it: the SHA-256 of its canonical JSON (the hash the run exports carry as well) and its normalised form. */
+export interface ScenarioRecord {
+  sha256: string;
+  spec: ScenarioSpec;
+}
+
+export function scenarioRecord(spec: ScenarioSpec): ScenarioRecord {
+  const text = scenarioToJSON(spec);
+  return { sha256: sha256Hex(text), spec: JSON.parse(text) as ScenarioSpec };
+}
 
 export type Analysis = 'propagate' | 'sensitivity';
 export type RunSeedMode = 'fixed' | 'perRow';
@@ -65,6 +77,8 @@ export interface EnsembleSpec {
   runSeed: RunSeedMode;
   /** override of the shot duration [s] */
   tEnd?: number;
+  /** a scenario (waveforms and triggers on the controls) that every shot of the ensemble runs with; part of the input hash */
+  scenario?: ScenarioSpec;
   /** flat-top weighting of the metrics: 'time' (default, the project's published definition since v4.0) or 'frame' (the mean over the frames of v3.0.0) */
   flatTop: FlatTopWeighting;
   /** Q target of the headline probability (default 10) */
@@ -86,7 +100,7 @@ export const DEFAULT_QUANTILES: readonly number[] = [0.05, 0.16, 0.5, 0.84, 0.95
 export function resolveSpec(s: Partial<EnsembleSpec> & Pick<EnsembleSpec, 'base' | 'priors'>): EnsembleSpec {
   return {
     preset: s.preset, base: s.base, priors: s.priors, n: s.n ?? 64, sampler: s.sampler ?? 'sobol', seed: s.seed ?? 1,
-    analysis: s.analysis ?? 'propagate', runSeed: s.runSeed ?? 'fixed', tEnd: s.tEnd, flatTop: s.flatTop ?? 'time', qTarget: s.qTarget ?? 10,
+    analysis: s.analysis ?? 'propagate', runSeed: s.runSeed ?? 'fixed', tEnd: s.tEnd, ...(s.scenario ? { scenario: s.scenario } : {}), flatTop: s.flatTop ?? 'time', qTarget: s.qTarget ?? 10,
     probabilities: s.probabilities ?? [], quantileLevels: s.quantileLevels ?? [...DEFAULT_QUANTILES], bootstrap: s.bootstrap ?? 200,
     confidence: s.confidence ?? 0.95, maxRuns: s.maxRuns ?? 100_000,
   };
@@ -98,6 +112,8 @@ export interface SimTask {
   cfg: ReactorConfig;
   /** flat-top weighting of the metrics (default 'time') */
   weighting?: FlatTopWeighting;
+  /** the scenario the shot runs with (default: none) */
+  scenario?: ScenarioSpec;
 }
 
 export type SimOutcome = { ok: true; metrics: RunMetrics } | { ok: false; error: string };
@@ -168,7 +184,7 @@ export function planEnsemble(spec: EnsembleSpec): EnsemblePlan {
   };
   return {
     spec, d, names: priors.params.map((p) => p.path), runs, values, saltelli: analysis === 'sensitivity', notes, config,
-    tasks: () => Array.from({ length: runs }, (_, row) => ({ id: `r${row}`, cfg: config(row), weighting: spec.flatTop })),
+    tasks: () => Array.from({ length: runs }, (_, row) => ({ id: `r${row}`, cfg: config(row), weighting: spec.flatTop, ...(spec.scenario ? { scenario: spec.scenario } : {}) })),
     block: (row) => (analysis === 'sensitivity' ? (Math.floor(row / n) === 0 ? 'A' : Math.floor(row / n) === 1 ? 'B' : `AB${Math.floor(row / n) - 1}`) : 'MC'),
   };
 }
@@ -215,6 +231,8 @@ export interface EnsembleResult {
   caveat: string;
   inputHash: string;
   system: { preset?: string; method: string; fidelity: string; t_end_s: number; runSeed: RunSeedMode; flatTop: FlatTopWeighting };
+  /** the scenario every shot ran with (its hash and its normalised form); absent for a study without one */
+  scenario?: ScenarioRecord;
   design: { analysis: Analysis; sampler: SamplerKind; seed: number; n: number; runs: number; confidence: number; bootstrap: number; notes: string[] };
   parameters: ReturnType<typeof describeParam>[];
   /** over the propagation sample: all runs of a propagate design, the A and B blocks of a Saltelli design */
@@ -322,6 +340,7 @@ export function summarizeEnsemble(plan: EnsemblePlan, outcomes: readonly SimOutc
   const result: EnsembleResult = {
     schema: 1, tool: 'uq', caveat: CAVEAT,
     inputHash: ensembleHash(spec),
+    ...(spec.scenario ? { scenario: scenarioRecord(spec.scenario) } : {}),
     system: { ...(spec.preset ? { preset: spec.preset } : {}), method: base.method, fidelity: base.fidelity ?? '0D', t_end_s: spec.tEnd ?? base.t_end ?? NaN, runSeed: spec.runSeed, flatTop: spec.flatTop },
     design: { analysis: spec.analysis, sampler: spec.sampler, seed: spec.seed, n: spec.n, runs, confidence: conf, bootstrap: spec.bootstrap, notes: plan.notes },
     parameters: spec.priors.params.map((p) => describeParam(spec.base, p)),
@@ -360,7 +379,8 @@ function sortKeys(o: Record<string, number>): Record<string, number> {
 /** SHA-256 of the canonical form of everything that defines an ensemble: the same inputs give the same hash. */
 export function ensembleHash(spec: EnsembleSpec): string {
   const { base, priors, n, sampler, seed, analysis, runSeed, tEnd, flatTop, qTarget, probabilities, quantileLevels, bootstrap: b, confidence } = spec;
-  return sha256Hex(canonicalString({ base, priors, n, sampler, seed, analysis, runSeed, tEnd: tEnd ?? null, flatTop, qTarget, probabilities, quantileLevels, bootstrap: b, confidence }));
+  // a scenario is part of what defines the study; a study without one hashes as it always did
+  return sha256Hex(canonicalString({ base, priors, n, sampler, seed, analysis, runSeed, tEnd: tEnd ?? null, flatTop, qTarget, probabilities, quantileLevels, bootstrap: b, confidence, ...(spec.scenario ? { scenario: scenarioRecord(spec.scenario).sha256 } : {}) }));
 }
 
 // ---- reports -----------------------------------------------------------------------------------------------------
@@ -374,10 +394,11 @@ const csvCell = (s: string): string => (/[",\r\n]/.test(s) ? `"${s.replace(/"/g,
 const csvNum = (v: number): string => (Number.isFinite(v) ? String(v) : '');
 
 /** One row per run: run index, block, the parameter values, the metrics and the end reason (or the error of a failed run). */
-export function toCsv(plan: Pick<EnsemblePlan, 'd' | 'names' | 'values' | 'block'>, outcomes: readonly SimOutcome[]): string {
+export function toCsv(plan: Pick<EnsemblePlan, 'd' | 'names' | 'values' | 'block'>, outcomes: readonly SimOutcome[], opts: { scenarioSha256?: string } = {}): string {
   const { d } = plan;
   const head = ['run', 'block', ...plan.names, ...METRIC_KEYS, 'end_reason'];
-  const lines = [head.map(csvCell).join(',')];
+  // a study with a scenario names it in a comment line (the table of a study without one is unchanged)
+  const lines = [...(opts.scenarioSha256 ? [`# scenario_sha256 ${opts.scenarioSha256}`] : []), head.map(csvCell).join(',')];
   outcomes.forEach((o, row) => {
     const cells = [String(row), plan.block(row)];
     for (let k = 0; k < d; k++) cells.push(csvNum(plan.values[row * d + k]));

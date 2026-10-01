@@ -51,6 +51,8 @@
     "golden:update": "tsx src/cli/golden.cli.ts --update",
     "schema": "tsx scripts/gen-schema.ts",
     "schema:check": "tsx scripts/gen-schema.ts --check",
+    "schema:scenario": "tsx scripts/gen-scenario-schema.ts",
+    "schema:scenario:check": "tsx scripts/gen-scenario-schema.ts --check",
     "missions": "tsx src/cli/missions.cli.ts",
     "uq": "tsx src/cli/uq.cli.ts",
     "scan": "tsx src/cli/scan.cli.ts",

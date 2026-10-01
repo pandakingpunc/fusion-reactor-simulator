@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useMemo, useState } from 'react';
 import { MagneticConfig } from '../../physics/types';
 import { UiFrame } from '../../worker/protocol';
 import { SimApi } from '../useSim';
@@ -10,14 +10,19 @@ import { ControlsPanel } from './panels/ControlsPanel';
 import { EventLogPanel } from './panels/EventLogPanel';
 import { ChartsPanel } from './panels/ChartsPanel';
 import { CrossSectionPanel } from './panels/CrossSectionPanel';
-import { ProfilesPanel } from './panels/ProfilesPanel';
 import { PopconPanel } from './panels/PopconPanel';
-import { ImplosionPanel } from './panels/ImplosionPanel';
 import { GeometryPanel } from './panels/GeometryPanel';
 import { Viz3DPanel } from '../viz3d/Viz3DPanel';
 import { ErrorBoundary } from '../ErrorBoundary';
 
-interface Props { sim: SimApi; onReport: () => void; onSetup: () => void }
+// Panels that only some runs show are chunks of their own, loaded when such a run opens (the first-load bundle keeps the panels every run has):
+// the radial profiles (1.5D), the implosion view (pulsed devices), and the scenario lanes with the record button (a run with a scenario or a live intervention).
+const ProfilesPanel = lazy(() => import('./panels/ProfilesPanel').then((m) => ({ default: m.ProfilesPanel })));
+const ImplosionPanel = lazy(() => import('./panels/ImplosionPanel').then((m) => ({ default: m.ImplosionPanel })));
+const ScenarioPanel = lazy(() => import('../scenario/ScenarioPanel'));
+
+/** `embedded`: the chrome-less embed page, which has no Setup: the scenario panel then only shows the lanes */
+interface Props { sim: SimApi; onReport: () => void; onSetup: () => void; embedded?: boolean }
 
 /** 1.5D: son profil karesi ve son denge anlık görüntüsü */
 export function latestProfileFrames(frames: UiFrame[]): { profFrame: UiFrame | null; eqFrame: UiFrame | null } {
@@ -30,7 +35,7 @@ export function latestProfileFrames(frames: UiFrame[]): { profFrame: UiFrame | n
 }
 
 /** Live run screen: layout only; each panel lives in ./panels. */
-export function RunScreen({ sim, onReport, onSetup }: Props) {
+export function RunScreen({ sim, onReport, onSetup, embedded = false }: Props) {
   const t = useT();
   const { state } = sim;
   const { meta, frames, events, status } = state;
@@ -70,6 +75,7 @@ export function RunScreen({ sim, onReport, onSetup }: Props) {
   // each panel fails on its own: a drawing error shows in that panel, the rest of the run screen goes on
   const keys = [state.runId, state.branchId];
   const guard = (panel: React.ReactNode) => <ErrorBoundary variant="panel" resetKeys={keys}>{panel}</ErrorBoundary>;
+  const lazyGuard = (panel: React.ReactNode) => guard(<Suspense fallback={null}>{panel}</Suspense>);
 
   return (
     <div className="run">
@@ -84,6 +90,7 @@ export function RunScreen({ sim, onReport, onSetup }: Props) {
       <div className="center">
         {guard(<ChartsPanel meta={meta} frames={frames} events={events} groupsOn={groupsOn} onToggleGroup={toggleGroup}
           live={status === 'running'} resetKey={state.runId} onSeek={canSeek ? seekT : undefined} />)}
+        {(state.scenario || state.interventions > 0) && lazyGuard(<ScenarioPanel sim={sim} embedded={embedded} />)}
       </div>
 
       <div className="right">
@@ -95,9 +102,9 @@ export function RunScreen({ sim, onReport, onSetup }: Props) {
           <Viz3DPanel meta={meta} cfg={cfg as MagneticConfig} last={last} events={events}
             disrupted={status === 'done' && !!state.report?.termination?.disruption} eqFrame={eqFrame} profFrame={profFrame} />,
         )}
-        {is15 && guard(<ProfilesPanel profFrame={profFrame} timeUnit={meta.timeUnit} />)}
+        {is15 && lazyGuard(<ProfilesPanel profFrame={profFrame} timeUnit={meta.timeUnit} />)}
         {isMag && guard(<PopconPanel cfg={cfg as MagneticConfig} last={last} frames={frames} controls={state.controls} onSteer={sim.control} steerable={status !== 'done'} />)}
-        {isPulsed && guard(<ImplosionPanel meta={meta} cfg={cfg} frames={frames} t={state.t} />)}
+        {isPulsed && lazyGuard(<ImplosionPanel meta={meta} cfg={cfg} frames={frames} t={state.t} />)}
         {guard(<GeometryPanel geometry={meta.geometry} />)}
       </div>
     </div>

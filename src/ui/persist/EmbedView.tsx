@@ -6,6 +6,7 @@
 import { lazy, useCallback, useEffect, useRef, useState } from 'react';
 import './persist.css';
 import type { ReactorConfig } from '../../physics/types';
+import type { ScenarioSpec } from '../../physics/scenario';
 import type { SavedShot } from '../state/types';
 import { useApp, useAppStore } from '../state/store';
 import type { SimApi } from '../useSim';
@@ -18,7 +19,7 @@ const Report = lazy(() => import('../report/Report').then((m) => ({ default: m.R
 
 type EmbedRoute = Extract<Route, { name: 'embed' }>;
 
-type Loaded = { kind: 'loading' } | { kind: 'error'; reason: string } | { kind: 'ok'; cfg: ReactorConfig; name: string };
+type Loaded = { kind: 'loading' } | { kind: 'error'; reason: string } | { kind: 'ok'; cfg: ReactorConfig; name: string; scenario: ScenarioSpec | null };
 
 export default function EmbedView({ route, sim }: { route: EmbedRoute; sim: SimApi }) {
   const p = usePersistT();
@@ -38,15 +39,17 @@ export default function EmbedView({ route, sim }: { route: EmbedRoute; sim: SimA
       const { tryDecodeShare } = await import('./codec');
       const r = await tryDecodeShare(route.code);
       if (!alive) return;
-      setLoaded(r.ok ? { kind: 'ok', cfg: r.value.payload.cfg, name: r.value.payload.name ?? 'Shared' } : { kind: 'error', reason: r.error.message });
+      setLoaded(r.ok
+        ? { kind: 'ok', cfg: r.value.payload.cfg, name: r.value.payload.name ?? 'Shared', scenario: (r.value.payload.scenario as ScenarioSpec | undefined) ?? null }
+        : { kind: 'error', reason: r.error.message });
     })();
     return () => { alive = false; };
   }, [route.code]);
 
-  const compute = useCallback((cfg: ReactorConfig, name: string) => {
+  const compute = useCallback((cfg: ReactorConfig, name: string, scenario: ScenarioSpec | null) => {
     setShot(null);
     setPct(0);
-    void sim.runAll(cfg, true, ({ t, tEnd }) => setPct(Math.min(100, Math.round((100 * t) / tEnd)))).then((r) => {
+    void sim.runAll(cfg, true, ({ t, tEnd }) => setPct(Math.min(100, Math.round((100 * t) / tEnd))), scenario).then((r) => {
       setShot({ id: -1, name, cfg, meta: r.meta, report: r.report, frames: r.frames ?? [], events: r.events ?? [] });
     }).catch((e: unknown) => setLoaded({ kind: 'error', reason: e instanceof Error ? e.message : String(e) }));
   }, [sim.runAll]);
@@ -56,8 +59,8 @@ export default function EmbedView({ route, sim }: { route: EmbedRoute; sim: SimA
     started.current = route.code + route.view;
     actions.setCfg(loaded.cfg);
     actions.setCfgName(loaded.name);
-    if (route.view === 'run') sim.load(loaded.cfg, route.autoplay ?? true);
-    else compute(loaded.cfg, loaded.name);
+    if (route.view === 'run') sim.load(loaded.cfg, route.autoplay ?? true, loaded.scenario);
+    else compute(loaded.cfg, loaded.name, loaded.scenario);
   }, [loaded, route.code, route.view, route.autoplay]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openHref = `${deps.baseUrl()}#/share/${route.code}`;
@@ -69,9 +72,9 @@ export default function EmbedView({ route, sim }: { route: EmbedRoute; sim: SimA
     <div className="persist-embed">
       <div className="row persist-embed-bar"><span className="muted small">{loaded.name}</span><span className="spacer" />{link}</div>
       {route.view === 'run'
-        ? <RunScreen sim={sim} onReport={() => undefined} onSetup={() => undefined} />
+        ? <RunScreen sim={sim} onReport={() => undefined} onSetup={() => undefined} embedded />
         : shot
-          ? <Report embedded shot={shot} onRerun={() => compute(loaded.cfg, loaded.name)} onEdit={() => window.open(openHref, '_blank', 'noopener')} />
+          ? <Report embedded shot={shot} onRerun={() => compute(loaded.cfg, loaded.name, loaded.scenario)} onEdit={() => window.open(openHref, '_blank', 'noopener')} />
           : <div className="panel muted" role="status">{p('persist.imp.checking', { pct })}</div>}
     </div>
   );

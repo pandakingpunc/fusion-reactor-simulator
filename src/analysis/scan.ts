@@ -16,7 +16,8 @@ import { canonicalString } from '../physics/kernel/canonical';
 import { sha256Hex } from '../physics/kernel/sha256';
 import type { FlatTopWeighting } from '../physics/analysis/flatTop';
 import type { ReactorConfig } from '../physics/types';
-import { CAVEAT, SimOutcome, SimTask } from './ensemble';
+import type { ScenarioSpec } from '../physics/scenario';
+import { CAVEAT, ScenarioRecord, SimOutcome, SimTask, scenarioRecord } from './ensemble';
 import type { MetricKey } from './metrics';
 import { paramStatus, setPath } from './priors';
 import { SAMPLER_KINDS, SamplerKind, unitSample } from './samplers';
@@ -45,6 +46,8 @@ export interface ScanSpec {
   /** override of the configuration's own seed for every run */
   runSeed?: number;
   tEnd?: number;
+  /** a scenario (waveforms and triggers on the controls) that every shot of the scan runs with; part of the input hash */
+  scenario?: ScenarioSpec;
   /** flat-top weighting of the metrics (default 'time') */
   flatTop?: FlatTopWeighting;
   maxRuns: number;
@@ -127,7 +130,7 @@ export function planScan(spec: ScanSpec): ScanPlan {
   };
   return {
     spec, d, names: axes.map((a) => a.path), runs, values, axisValues, config,
-    tasks: () => Array.from({ length: runs }, (_, row) => ({ id: `s${row}`, cfg: config(row), weighting: spec.flatTop ?? 'time' })),
+    tasks: () => Array.from({ length: runs }, (_, row) => ({ id: `s${row}`, cfg: config(row), weighting: spec.flatTop ?? 'time', ...(spec.scenario ? { scenario: spec.scenario } : {}) })),
     block: () => (mode === 'grid' ? 'grid' : mode),
   };
 }
@@ -147,6 +150,8 @@ export interface ScanResult {
   caveat: string;
   inputHash: string;
   system: { preset?: string; method: string; fidelity: string; t_end_s: number; runSeed: number | 'preset'; flatTop: FlatTopWeighting };
+  /** the scenario every shot ran with (its hash and its normalised form); absent for a scan without one */
+  scenario?: ScenarioRecord;
   design: { mode: ScanMode; points: number; seed: number | null; notes: string[] };
   axes: { path: string; lo: number; hi: number; log: boolean; nominal: number | null; points?: number; values?: number[] }[];
   runs: { total: number; valid: number; failed: number; completed: number; disrupted: number };
@@ -155,7 +160,8 @@ export interface ScanResult {
 
 export function scanHash(spec: ScanSpec): string {
   const { base, axes, mode, points, seed, runSeed, tEnd, flatTop } = spec;
-  return sha256Hex(canonicalString({ base, axes, mode, points: points ?? null, seed: mode === 'grid' ? null : seed, runSeed: runSeed ?? null, tEnd: tEnd ?? null, flatTop: flatTop ?? 'time' }));
+  // a scenario is part of what defines the scan; a scan without one hashes as it always did
+  return sha256Hex(canonicalString({ base, axes, mode, points: points ?? null, seed: mode === 'grid' ? null : seed, runSeed: runSeed ?? null, tEnd: tEnd ?? null, flatTop: flatTop ?? 'time', ...(spec.scenario ? { scenario: scenarioRecord(spec.scenario).sha256 } : {}) }));
 }
 
 export function summarizeScan(plan: ScanPlan, outcomes: readonly SimOutcome[]): ScanResult {
@@ -172,6 +178,7 @@ export function summarizeScan(plan: ScanPlan, outcomes: readonly SimOutcome[]): 
   const okPts = points.filter((p) => p.metrics !== null);
   return {
     schema: 1, tool: 'scan', caveat: CAVEAT, inputHash: scanHash(spec),
+    ...(spec.scenario ? { scenario: scenarioRecord(spec.scenario) } : {}),
     system: { ...(spec.preset ? { preset: spec.preset } : {}), method: base.method, fidelity: base.fidelity ?? '0D', t_end_s: spec.tEnd ?? base.t_end ?? NaN, runSeed: spec.runSeed ?? 'preset', flatTop: spec.flatTop ?? 'time' },
     design: { mode: spec.mode, points: runs, seed: spec.mode === 'grid' ? null : spec.seed, notes: spec.mode === 'sobol' && spec.points !== undefined && (spec.points & (spec.points - 1)) !== 0 ? [`points = ${spec.points} is not a power of two: a Sobol' design keeps its balance properties only for 2^k points`] : [] },
     axes: spec.axes.map((a, k) => {

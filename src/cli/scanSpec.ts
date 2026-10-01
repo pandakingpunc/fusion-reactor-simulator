@@ -9,6 +9,7 @@ import { SimOutcome, toCsv, toJson } from '../analysis/ensemble';
 import { ScanPlan, ScanSpec, planScan, summarizeScan } from '../analysis/scan';
 import { formatScan, parseAxis, presetConfig } from '../analysis/cliSupport';
 import { ParsedArgs, defineCli } from './args';
+import { loadScenarioFile } from './scenarioFlag';
 
 export const SCAN_CLI = defineCli({
   name: 'npx tsx src/cli/scan.cli.ts',
@@ -23,6 +24,7 @@ export const SCAN_CLI = defineCli({
     'run-seed': { type: 'int', min: 0, max: 4294967295, help: 'use this random seed in every shot (default: the preset seed)' },
     't-end': { type: 'number', min: 1e-6, metavar: 'S', help: 'override the shot duration [s]' },
     'flat-top': { type: 'string', default: 'time', choices: ['frame', 'time'], help: 'weighting of the flat-top means: time (the published definition since v4.0, unbiased by the extra frames at ELMs) or frame (the mean over the frames of v3.0.0)' },
+    scenario: { type: 'string', metavar: 'FILE', help: 'scenario JSON file (schema 1: waveforms of the controls, triggers on the diagnostics) that every shot runs with; checked against the preset before any shot runs; its hash and form are in the JSON result and part of its input hash (an empty scenario is ignored)' },
     threads: { type: 'int', min: 1, help: 'worker threads (default: cores - 1)' },
     timeout: { type: 'number', min: 1, metavar: 'S', help: 'fail a shot that runs longer than S seconds' },
     'max-runs': { type: 'int', default: 10000, min: 1, help: 'refuse scans with more shots' },
@@ -43,9 +45,11 @@ export function scanSpecFromArgs(args: ScanArgs): ScanSpec {
   if (partial) throw new RangeError('give N on every axis (a grid) or on none (a sampled scan with --points)');
   if (!grid && args.points === undefined) throw new RangeError('axes without N need --points for a sampled scan');
   if (grid && args.points !== undefined) throw new RangeError('--points is for a sampled scan; the axes with N define a grid');
+  const base = presetConfig(args.preset);
+  const scenario = args.scenario !== undefined ? loadScenarioFile(args.scenario, base, { tEnd: args['t-end'] }) : undefined;
   return {
-    preset: args.preset, base: presetConfig(args.preset), axes, mode: grid ? 'grid' : (args.sampler as ScanSpec['mode']), points: args.points, seed: args.seed,
-    runSeed: args['run-seed'], tEnd: args['t-end'], flatTop: args['flat-top'] as ScanSpec['flatTop'], maxRuns: args['max-runs'],
+    preset: args.preset, base, axes, mode: grid ? 'grid' : (args.sampler as ScanSpec['mode']), points: args.points, seed: args.seed,
+    runSeed: args['run-seed'], tEnd: args['t-end'], ...(scenario && !scenario.empty ? { scenario: scenario.spec } : {}), flatTop: args['flat-top'] as ScanSpec['flatTop'], maxRuns: args['max-runs'],
   };
 }
 
@@ -71,5 +75,5 @@ export interface ScanOutput {
 /** The reports (JSON, CSV, text) of the outcomes of a prepared scan. */
 export function scanReport(prep: ScanPrepared, outcomes: readonly SimOutcome[]): ScanOutput {
   const result = summarizeScan(prep.plan, outcomes);
-  return { json: toJson(result), csv: toCsv(prep.plan, outcomes), text: formatScan(result), valid: result.runs.valid };
+  return { json: toJson(result), csv: toCsv(prep.plan, outcomes, result.scenario ? { scenarioSha256: result.scenario.sha256 } : {}), text: formatScan(result), valid: result.runs.valid };
 }

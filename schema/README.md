@@ -29,3 +29,25 @@ Editor use (VS Code, `.vscode/settings.json` or user settings):
 
 Check a file from the command line: `fusion-sim schema --check my.reactor.json` (exit 0 valid, 1 invalid with every
 problem and its path, 2 unreadable).
+
+## JSON Schema of a scenario
+
+`scenario.schema.json` is the JSON Schema (draft 2020-12) of a scenario: the waveforms of the actuator controls and the
+triggers on the frame diagnostics that drive a shot (`new Simulation(cfg, { scenario })`, `--scenario FILE` of `fusion-sim run`,
+`scan`, `uq` and `optimize`, the scenario editor of the app). It is generated from `src/cli/scenarioSchema.ts`, which takes the
+controls, their labels, units and sanity limits from the scenario engine:
+
+```
+npx tsx scripts/gen-scenario-schema.ts           # rewrite this file (npm run schema:scenario)
+npx tsx scripts/gen-scenario-schema.ts --check   # exit 1 if it is out of date (npm run schema:scenario:check)
+```
+
+`src/cli/scenarioSchema.test.ts` fails if the file differs from what the emitter writes, and checks that the schema and the runtime
+validator (`validateScenario`) accept and reject the same documents. Not expressible in JSON Schema, and therefore only in `x-rules`
+annotations: the points of a `step` waveform have distinct times, a waveform or trigger names only the controls and diagnostics that the
+model of the run exposes, and a `rampStep` is not finer than `t_end / 10^4`. The runtime check of every consumer is
+`validateScenario` with the model of the run as its context. The `$id` is a URN; the schema is not hosted anywhere.
+
+```json
+{ "json.schemas": [{ "fileMatch": ["*.scenario.json"], "url": "./schema/scenario.schema.json" }] }
+```

@@ -6,10 +6,14 @@
  */
 import { PRESETS } from '../physics/presets';
 import type { MagneticConfig } from '../physics/types';
-import { DESIGN_OBJECTIVES, DESIGN_VARS, DesignConstraints, DesignMethod, DesignObjective, DesignSpec, DesignVarName, designReport, paretoReport } from '../analysis/design';
+import { Simulation } from '../physics/simulation';
+import { ScenarioError } from '../physics/kernel/errors';
+import type { ScenarioSpec } from '../physics/scenario';
+import { DESIGN_OBJECTIVES, DESIGN_VARS, DesignConstraints, DesignMethod, DesignObjective, DesignReport, DesignSpec, DesignValues, DesignVarName, designPoint, designReport, paretoReport, presetDesign } from '../analysis/design';
 import { formatDesign, formatPareto, parseBound, presetConfig } from '../analysis/cliSupport';
-import { toJson } from '../analysis/ensemble';
+import { ScenarioRecord, scenarioRecord, toJson } from '../analysis/ensemble';
 import { ParsedArgs, defineCli } from './args';
+import { loadScenarioFile, scenarioFileProblems } from './scenarioFlag';
 
 const TOKAMAKS = PRESETS.filter((p) => (p.cfg.method === 'tokamak' || p.cfg.method === 'spherical_tokamak') && (p.cfg as MagneticConfig).fidelity !== '1.5D').map((p) => p.id);
 
@@ -40,6 +44,7 @@ export const OPTIMIZE_CLI = defineCli({
     'wall-load-max': { type: 'number', min: 0, metavar: 'MW/M2', help: 'neutron wall load at most this' },
     'start-temps': { type: 'list', default: ['6', '10', '16', '25'], metavar: 'KEV,…', help: 'starting temperatures of the multi-start [keV]' },
     'max-evals': { type: 'int', min: 100, default: 200000, help: 'evaluation budget of one start' },
+    scenario: { type: 'string', metavar: 'FILE', help: 'scenario JSON file (schema 1): after a single-objective optimum is found, the optimised machine is run as a time-dependent shot with this scenario (the preset\'s heating and density ramp) and the outcome is reported next to the design (scenarioCheck in the JSON). The steady-state solution itself does not depend on it. Checked against the preset before anything runs; not for --pareto' },
     json: { type: 'string', metavar: 'FILE', help: 'write the report as JSON to FILE (- for stdout)' },
     quiet: { type: 'bool', help: 'no text summary' },
   },
@@ -85,13 +90,59 @@ export interface OptimizeOutput {
   feasible: boolean;
 }
 
+/** What a scenario does to the optimised machine when it is run as a shot (the steady-state optimum is not an operating point). */
+export interface ScenarioCheck extends ScenarioRecord {
+  note: string;
+  /** false when no feasible design was found: there is no machine to run */
+  ran: boolean;
+  shot?: { endReason: string; natural: boolean; duration: number; timeUnit: string; Q_sci_max: number; Tmax_keV: number; E_fusion_MJ: number };
+}
+
+const CHECK_NOTE = 'The steady-state optimum is not an operating point: the shot runs the preset\'s heating and density ramp on the optimised machine (its R, a, B0, I_p, H98, kappa and the density of the design), with the scenario.';
+
+/** Runs the optimised machine of a report as a shot with the scenario (its time-dependent counterpart of the steady state). */
+export function checkScenarioOnDesign(spec: DesignSpec, report: DesignReport, scenario: ScenarioSpec, file = 'scenario'): ScenarioCheck {
+  const record = scenarioRecord(scenario);
+  if (!report.result.feasible) return { ...record, note: CHECK_NOTE, ran: false };
+  const values: DesignValues = { ...presetDesign(spec.base) };
+  for (const v of report.result.variables) values[v.name] = v.value;
+  const pt = designPoint(spec.base, values);
+  const cfg: MagneticConfig = { ...pt.cfg, n_target: pt.n };
+  let rep;
+  try {
+    rep = new Simulation(cfg, { scenario }).runAll();
+  } catch (e) {
+    if (e instanceof ScenarioError) throw new RangeError(scenarioFileProblems(file, e.issues));
+    throw e;
+  }
+  return {
+    ...record, note: CHECK_NOTE, ran: true,
+    shot: { endReason: rep.termination.reason, natural: rep.termination.natural, duration: rep.duration, timeUnit: rep.timeUnit, Q_sci_max: rep.Q_sci_max, Tmax_keV: rep.Tmax_keV, E_fusion_MJ: rep.E_fusion_MJ },
+  };
+}
+
+/** The text lines of a scenario check. */
+export function formatScenarioCheck(c: ScenarioCheck): string {
+  const head = `Scenario${c.spec.name ? ` "${c.spec.name}"` : ''} (sha256 ${c.sha256.slice(0, 16)}...) on the optimised machine:`;
+  if (!c.ran || !c.shot) return `\n${head} not run (no feasible design).\n`;
+  const s = c.shot;
+  const f = (x: number): string => (Number.isFinite(x) ? String(Number(x.toPrecision(4))) : 'n/a');
+  return `\n${head}\n  ${c.note}\n  ended ${s.endReason}${s.natural ? '' : ' (not a planned end)'} after ${f(s.duration)} ${s.timeUnit}; Q_max ${f(s.Q_sci_max)}, T_max ${f(s.Tmax_keV)} keV, E_fusion ${f(s.E_fusion_MJ)} MJ\n`;
+}
+
 /** Solves the problem of parsed flags and renders both reports. Throws RangeError for an invalid problem (a usage error). */
 export function optimizeRun(args: OptimizeArgs): OptimizeOutput {
   const spec = optimizeSpecFromArgs(args);
+  const loaded = args.scenario !== undefined ? loadScenarioFile(args.scenario, spec.base) : undefined;
+  if (loaded && args.pareto) throw new RangeError('--scenario applies to a single objective: a Pareto front has no single machine to run the scenario on');
   if (args.pareto) {
     const rep = paretoReport({ ...spec, objectives: [args.pareto[0] as DesignObjective, args.pareto[1] as DesignObjective], popSize: args['pop-size'], generations: args.generations, seed: args.seed }, args.preset);
     return { mode: 'pareto', json: toJson(rep), text: formatPareto(rep), feasible: rep.result.feasibleFound };
   }
   const report = designReport(spec, args.preset);
-  return { mode: 'single', json: toJson(report), text: formatDesign(report), feasible: report.result.feasible };
+  const check = loaded && !loaded.empty ? checkScenarioOnDesign(spec, report, loaded.spec, args.scenario) : undefined;
+  return {
+    mode: 'single', json: toJson(check ? { ...report, scenarioCheck: check } : report), text: formatDesign(report) + (check ? formatScenarioCheck(check) : ''),
+    feasible: report.result.feasible,
+  };
 }

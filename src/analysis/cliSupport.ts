@@ -128,6 +128,7 @@ export function formatEnsemble(r: EnsembleResult): string {
   const sys = r.system;
   L.push(`UQ of ${sys.preset ?? sys.method} (${sys.method}, ${sys.fidelity}, t_end ${fmt(sys.t_end_s)} s): ${r.design.runs} runs, ${r.design.analysis}, sampler ${r.design.sampler}, seed ${r.design.seed}`);
   L.push(wrap(r.caveat), '');
+  if (r.scenario) L.push(`Scenario${r.scenario.spec.name ? ` "${r.scenario.spec.name}"` : ''} (sha256 ${r.scenario.sha256.slice(0, 16)}...): every shot runs with it`);
   for (const n of r.design.notes) L.push(`note: ${n}`);
   L.push('Uncertain parameters (prior median, 90 % interval):');
   for (const p of r.parameters) L.push(`  ${p.path.padEnd(30)} ${fmt(p.prior.median).padStart(9)}  [${fmt(p.prior.p05)} ... ${fmt(p.prior.p95)}]  ${p.dist.type}`);
@@ -175,6 +176,7 @@ export function formatScan(r: ScanResult, maxRows = 25): string {
   const L: string[] = [];
   L.push(`Scan of ${r.system.preset ?? r.system.method} (${r.system.method}, ${r.system.fidelity}, t_end ${fmt(r.system.t_end_s)} s): ${r.design.points} points, ${r.design.mode}`);
   L.push(wrap(CAVEAT), '');
+  if (r.scenario) L.push(`Scenario${r.scenario.spec.name ? ` "${r.scenario.spec.name}"` : ''} (sha256 ${r.scenario.sha256.slice(0, 16)}...): every shot runs with it`);
   for (const n of r.design.notes) L.push(`note: ${n}`);
   for (const a of r.axes) L.push(`  axis ${a.path}: ${fmt(a.lo)} ... ${fmt(a.hi)}${a.log ? ' (log)' : ''}${a.points ? `, ${a.points} points` : ''}, preset value ${fmt(a.nominal)}`);
   L.push(`Runs: ${r.runs.valid} valid of ${r.runs.total} (${r.runs.failed} failed), ${r.runs.completed} ran to the end, ${r.runs.disrupted} disrupted`, '');

@@ -49,10 +49,10 @@ export const fieldHint = (f: FieldDef, t: Translate, wt: WizText = same): string
 
 export interface StepDef { id: string; title: string; fields: FieldDef[]; note?: string }
 
-export const STEP_IDS = ['method', 'geometry', 'fuel', 'driver', 'heating', 'run'] as const;
+export const STEP_IDS = ['method', 'geometry', 'fuel', 'driver', 'heating', 'scenario', 'run'] as const;
 export type StepId = (typeof STEP_IDS)[number];
 export const STEP_TITLES: Record<StepId, string> = {
-  method: 'Method', geometry: 'Geometry', fuel: 'Fuel', driver: 'Magnet / Driver', heating: 'Heating & Fueling', run: 'RUN',
+  method: 'Method', geometry: 'Geometry', fuel: 'Fuel', driver: 'Magnet / Driver', heating: 'Heating & Fueling', scenario: 'Scenario', run: 'RUN',
 };
 
 export const METHOD_INFO: Record<Method, { name: string; desc: string; group: string }> = {

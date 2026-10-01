@@ -1,0 +1,31 @@
+/* Scenario UI: the editor in the wizard step and the programmed-against-actual panel of the run view. Loaded with the scenario chunk. */
+.scn h3 { margin-top: 12px; }
+.scn-card { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; background: var(--bg2); }
+.scn-card.invalid, .scn-trigger.invalid { border-color: var(--warn); }
+.scn-lane { display: block; width: 100%; height: auto; touch-action: none; user-select: none; }
+.scn-lane .scn-plot { fill: var(--bg); stroke: var(--border); }
+.scn-lane .scn-grid { stroke: var(--border); stroke-dasharray: 2 4; }
+.scn-lane .scn-tick { fill: var(--muted); font-size: 9px; font-family: var(--mono); }
+.scn-lane .scn-base { stroke: var(--muted); stroke-dasharray: 5 4; stroke-width: 1; }
+.scn-lane .scn-prog { fill: none; stroke: var(--accent); stroke-width: 2; }
+.scn-lane.invalid .scn-prog { stroke: var(--warn); }
+.scn-lane .scn-actual { fill: none; stroke: var(--accent2); stroke-width: 1.5; }
+.scn-lane .scn-now { stroke: var(--ok); stroke-width: 1; }
+.scn-lane .scn-pt { fill: var(--accent); stroke: var(--bg); stroke-width: 1.5; cursor: grab; outline: none; }
+.scn-lane .scn-pt.null { fill: var(--bg); stroke: var(--accent); }
+.scn-lane .scn-pt.sel, .scn-lane .scn-pt:focus { stroke: var(--text); }
+.scn-lane.editable { cursor: crosshair; }
+.scn-points { border-collapse: collapse; margin: 4px 0; }
+.scn-points td { padding: 2px 4px; }
+.scn-points tr.sel { background: var(--panel2); }
+.scn-num { width: 110px; }
+.scn-trigger { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; background: var(--bg2); }
+.scn-patches { display: flex; gap: 18px; flex-wrap: wrap; margin: 6px 0; }
+.scn-patch { display: flex; flex-direction: column; gap: 4px; margin-top: 3px; }
+.scn-patch select { width: auto; }
+.scn-templates .fields { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.scn-text textarea { min-height: 110px; }
+.scn-legend { display: flex; gap: 14px; font-size: 11px; color: var(--muted); }
+.scn-legend .sw { display: inline-block; width: 16px; height: 0; border-top: 2px solid var(--accent); vertical-align: middle; margin-right: 4px; }
+.scn-legend .sw.actual { border-color: var(--accent2); }
+.scn-file { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

@@ -12,10 +12,8 @@ abstract: >-
   publication-quality figure engine (SVG/PDF) and multi-core parameter scans.
 type: software
 authors:
-  # TODO: İsim/soyisim ve (varsa) ORCID'ini doğrula
   - given-names: Mustafa
     family-names: Karatum
-    # orcid: "https://orcid.org/0000-0000-0000-0000"
 license: MIT
 doi: 10.5281/zenodo.22925078
 identifiers:

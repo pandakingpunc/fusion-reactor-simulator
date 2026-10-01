@@ -169,6 +169,8 @@ describe('merged profile-module seams', () => {
     expect(widened).toBeGreaterThan(0);
   });
 
+  // Ends at 0.04 s, before the L-H guard and with no q = 1 surface: no ELM and no sawtooth fires here. The real Loarte ELMs and the
+  // Porcelli trigger with the Kadomtsev reset under the same chunking, slicing and rewind are in integrationSeams.events.test.ts.
   it('the combined opt-ins preserve direct, chunked, sliced and rewound runs', () => {
     const cfg = config(), ref = referenceRun(cfg);
     const chunks = advanceRandomly(new Simulation(cfg), 721);

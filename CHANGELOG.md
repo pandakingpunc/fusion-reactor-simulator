@@ -617,6 +617,15 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 - The default vitest `testTimeout` is 30 s (was 5 s): CLI and lazy-chunk tests timed out under a shared CPU while passing alone.
 
 ### Fixed
+- Sawteeth on a hollow q core (q₀ > 1 with q < 1 in an annulus): the Kadomtsev mixing radius returned a grid-dependent
+  sentinel of about −1e24 whenever the core's helical-flux deficit outweighed the first q < 1 cell, so the default
+  shear trigger opened and closed on a grid artefact. It now follows its definition (the return of ψ* to zero behind
+  the outermost q = 1 surface, −1 when there is none); monotonic q₀ < 1 profiles are bit-for-bit unchanged. Five
+  golden cases move (ITER15, ITER15-bgb, ITER15-impurity, MASTU15, MASTU15-saw; see test/golden/CHANGES.md). The
+  crash model on a hollow core remains an unvalidated convention (src/physics/profiles/mhd.ts).
+- The golden case builder applied the profile overrides twice (a merge artefact) and refused a profile override on a
+  0D preset with the wrong message; the report shows English and Turkish labels for the emergent confinement keys of
+  the predictive closures, the helium-ash keys of the impurity transport and the flux-limited flat top.
 - `npm run bench:convergence`: the time-step series (dtMax) failed with "this model has no internal time step
   to limit" since the split of `profiles/model.ts` moved the step proposal to `ctx.dt`; the limiter is now
   `bench/limitStep.ts` (with a test), and the study runs again (ITER15 flat-top Q 10.34 / 10.40 / 10.47 at

@@ -73,6 +73,13 @@ export function shearAt(g: TransportGeometry, qF: Float64Array, rho: number): nu
  * The grid decides at which face interval ρ_mix is found, and for a q that crosses 1 inside the interval behind the last
  * q < 1 one it can lie below the interpolated ρ₁ (as it always has); the callers require rmix > ρ₁.
  * Never below −1, never NaN for finite q.
+ *
+ * Validity: Kadomtsev's reconnection with ψ*(0) as the reference presumes q₀ < 1, one q = 1 surface seen from the axis.
+ * For a hollow core (q₀ > 1) this radius is a convention of the model, not a reconnection calculation, and the crash it
+ * admits (events/sawtooth.ts: flattening out to ρ_mix, q → 1.01) does not scale with the size of the ψ* lobe, so a
+ * barely positive lobe gives a full crash. kadomtsevReset declines such profiles (null), and a crash of the Porcelli +
+ * helical-flux-reset setting then takes the q ≥ 1.01 rebuild instead. In the ITER15 preset every sawtooth crash happens
+ * on a hollow core (51 in 400 s), so its sawtooth timing rests on this convention; it is not validated.
  */
 export function kadomtsevMixingRadius(g: TransportGeometry, qF: Float64Array): number {
   const N = g.N;

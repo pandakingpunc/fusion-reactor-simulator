@@ -238,10 +238,10 @@ describe('Learn screen', () => {
     expect(screen.queryByText('Mission accomplished')).toBeNull();
     const goals = screen.getAllByRole('listitem');
     expect(goals[0].textContent).toContain('✓'); // survived
-    expect(goals[1].textContent).toContain('✗'); // gain below 1.2
+    expect(goals[1].textContent).toContain('✗'); // gain below 0.7
     expect(loadSolved()).toEqual([]);
 
-    fireEvent.change(slider('Drive asymmetry'), { target: { value: '3' } });
+    fireEvent.change(slider('Drive asymmetry'), { target: { value: '1' } });
     expect(screen.getByText('start 8.00 %')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Run the shot' }));
     drive(f.workers);
@@ -292,15 +292,15 @@ describe('Learn screen', () => {
     const hint = screen.getByRole('button', { name: 'Hint' });
     fireEvent.click(hint);
     expect(screen.getByText(/The gain collapses quickly/)).toBeTruthy();
-    expect(screen.queryByText(/Aim for a few per cent/)).toBeNull();
+    expect(screen.queryByText(/Aim for about 1 %/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Hint 2 of 2' }));
-    expect(screen.getByText(/Aim for a few per cent/)).toBeTruthy();
+    expect(screen.getByText(/Aim for about 1 %/)).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Hint 2 of 2' }) as HTMLButtonElement).disabled).toBe(true);
 
     fireEvent.click(screen.getByRole('button', { name: 'Show a solution' }));
-    expect(slider('Drive asymmetry').value).toBe('3');
+    expect(slider('Drive asymmetry').value).toBe('1');
     expect(screen.getByText('A solution is set on the controls. Run it to check.')).toBeTruthy();
-    expect(screen.getByText(/About 3 % asymmetry gives a gain near 1.5/)).toBeTruthy();
+    expect(screen.getByText(/About 1 % asymmetry gives a gain near 0.75/)).toBeTruthy();
     // touching a control takes the note away; reset restores the starting values
     fireEvent.change(slider('Drive asymmetry'), { target: { value: '5' } });
     expect(screen.queryByText('A solution is set on the controls. Run it to check.')).toBeNull();

@@ -158,11 +158,11 @@ export const eduEn = {
   'mis.fuel.answer': 'A 50/50 D-T mix gives about 64 MJ. A mix that is 90 % deuterium gives only 14 MJ. A tritium-rich plasma works as well, because the deuterium beams fuse with the tritium target.',
 
   'mis.nif.title': 'Ignite the capsule',
-  'mis.nif.brief': 'NIF fires an indirect-drive shot with an 8 % drive asymmetry: the hot spot is squeezed unevenly and barely burns. Bring the target gain above 1.2.',
+  'mis.nif.brief': 'NIF fires an indirect-drive shot with an 8 % drive asymmetry: the hot spot is squeezed unevenly and barely burns. Bring the target gain above 0.7, about that of the first shot to exceed the Lawson criterion (N210808).',
   'mis.nif.hint1': 'The gain collapses quickly as the implosion is distorted (Rayleigh-Taylor growth of low-mode asymmetries).',
-  'mis.nif.hint2': 'Aim for a few per cent of asymmetry. A lower adiabat helps a little as well.',
+  'mis.nif.hint2': 'Aim for about 1 % of asymmetry. A lower adiabat helps a little as well.',
   'mis.nif.lesson': 'Inertial fusion is a race against instabilities: a symmetric implosion turns the same laser energy into far more fusion yield.',
-  'mis.nif.answer': 'About 3 % asymmetry gives a gain near 1.5, as in the December 2022 shot. 6 % is still too much.',
+  'mis.nif.answer': 'About 1 % asymmetry gives a gain near 0.75, close to the 0.72 of N210808, the shot this model is calibrated on. 3 % is still too much. The model does not reproduce the December 2022 gain of 1.5: it has no input for the thicker capsule and the extra laser energy of that shot.',
 
   'mis.tungsten.title': 'Keep the core clean',
   'mis.tungsten.brief': 'SPARC with 3e-4 tungsten in the core: the impurity radiates the plasma away and the shot ends in a radiative collapse within 0.1 s. Bring the tungsten down so that the plasma survives and the average Q_sci exceeds 3.',

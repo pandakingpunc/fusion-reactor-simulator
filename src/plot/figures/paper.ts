@@ -282,12 +282,16 @@ export const PAPER_FIGURES: readonly Spec[] = [
         { label: 'SPARC  $P_{\\mathrm{fus}}$', ref: 140, refText: '140 MW', v0D: A('SPARC', 'P_fus'), v15D: A('SPARC15', 'P_fus') },
         { label: 'DEMO  $P_{\\mathrm{fus}}$', ref: 2000, refText: '2 GW', v0D: A('DEMO', 'P_fus'), v15D: A('DEMO15', 'P_fus') },
         { label: 'DEMO  $f_{\\mathrm{bs}}$', ref: 0.35, refText: '0.35', v15D: A('DEMO15', 'f_bs') },
-        { label: 'NIF  gain $G$', ref: 1.54, refText: '1.54', v0D: okRun(ctx, 'NIF')?.report?.Q_sci_max },
+        { label: 'NIF  gain $G$', ref: 1.5, refText: '1.5', v0D: okRun(ctx, 'NIF')?.report?.Q_sci_max },
       ];
+      const nifG = okRun(ctx, 'NIF')?.report?.Q_sci_max;
+      const nifNote = nifG !== undefined && Number.isFinite(nifG)
+        ? ` The NIF gain is a blind prediction: the ICF model is calibrated on N210808 alone (1.37 MJ; Abu-Shawareb et al. 2022) and reaches ${(nifG / 1.5).toFixed(2)} of the published G = 1.5 of N221204, a documented miss (npm run validate, NIF.G): it has no input that separates the two shots.`
+        : '';
       const tbl = rows.map((r) => `| ${plainLabel(r.label)} | ${r.refText} | ${r.v0D !== undefined ? (r.v0D / r.ref).toFixed(2) : '—'} | ${r.v15D !== undefined ? (r.v15D / r.ref).toFixed(2) : '—'} |`).join('\n');
       return {
         fig: figValidation(rows),
-        caption: 'Ratio of simulated to published values for the 0D (open circles) and 1.5D (filled squares) models; shaded bands ±30% and ×2. Flat-top quantities are averages over the last 30% of the discharge. References: ITER Q = 10 baseline (Shimada et al. 2007), JET DTE2 59 MJ (Maslov et al. 2023), SPARC V2 (Creely et al. 2020), EU DEMO (Siccinio et al. 2020), NIF N221204 (Abu-Shawareb et al. 2024). The 1.5D JET yield exceeds the record by ~40%: beam–target reactions from the three-component NBI (~60% of the yield, as in TRANSP analyses) are sensitive to the fast-ion slowing-down model.\n\n| quantity | reference | 0D ratio | 1.5D ratio |\n|---|---|---|---|\n' + tbl,
+        caption: 'Ratio of simulated to published values for the 0D (open circles) and 1.5D (filled squares) models; shaded bands ±30% and ×2. Flat-top quantities are averages over the last 30% of the discharge. References: ITER Q = 10 baseline (Shimada et al. 2007), JET DTE2 59 MJ (Maslov et al. 2023), SPARC V2 (Creely et al. 2020), EU DEMO (Siccinio et al. 2020), NIF N221204 (Abu-Shawareb et al. 2024). The 1.5D JET yield exceeds the record by ~40%: beam–target reactions from the three-component NBI (~60% of the yield, as in TRANSP analyses) are sensitive to the fast-ion slowing-down model.' + nifNote + '\n\n| quantity | reference | 0D ratio | 1.5D ratio |\n|---|---|---|---|\n' + tbl,
       };
     },
   },

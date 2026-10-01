@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="7in" height="5.2in" viewBox="0 0 504 374.4">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="7in" height="5.2in" viewBox="0 0 504 374.4" style="font-kerning:none;font-variant-ligatures:none">
 <title>Numerical verification</title>
+<metadata><frs:provenance xmlns:frs="https://doi.org/10.5281/zenodo.22259861" generator="fusion-reactor-simulator" version="3.0.0" config-sha256="210379557319921bcba4ed92b7c75ebbd4b645c577eea5157111def615f8d18a"/></metadata>
 <rect width="504" height="374.4" fill="#ffffff"/>
 <clipPath id="Numericalverific_c0"><rect x="43.2" y="15.84" width="198" height="140.76"/></clipPath><g clip-path="url(#Numericalverific_c0)">
 <path d="M237.39 22.24L200.27 44.33L173.93 59.01L136.81 80.1L110.47 94.74L73.35 115.43L47.01 130.04" fill="none" stroke="#0072b2" stroke-width="1.2" stroke-linejoin="round"/>
@@ -12,15 +13,17 @@
 <path d="M75.1 115.43C75.1 116.4 74.31 117.18 73.35 117.18C72.38 117.18 71.6 116.4 71.6 115.43C71.6 114.47 72.38 113.68 73.35 113.68C74.31 113.68 75.1 114.47 75.1 115.43Z" fill="#0072b2" stroke="#0072b2" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M48.76 130.04C48.76 131 47.97 131.79 47.01 131.79C46.04 131.79 45.26 131 45.26 130.04C45.26 129.07 46.04 128.29 47.01 128.29C47.97 128.29 48.76 129.07 48.76 130.04Z" fill="#0072b2" stroke="#0072b2" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M47.01 150.2L237.39 45.18" fill="none" stroke="#555555" stroke-width="0.6" stroke-dasharray="2.22 0.96" stroke-linejoin="round"/>
-<text x="142.2" y="112.61" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="6.5" fill="#555555" text-anchor="start"><tspan>∝</tspan><tspan font-style="italic">h</tspan><tspan dy="-2.73" font-size="4.68">2</tspan></text>
+<text x="142.2" y="112.59" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="6.5" fill="#555555" text-anchor="start"><tspan>∝</tspan><tspan font-style="italic">h</tspan><tspan dy="-2.73" font-size="4.68">2</tspan></text>
 </g>
 <path d="M43.2 15.84L241.2 15.84L241.2 156.6L43.2 156.6Z" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
+<path d="M84.7 156.6L84.7 153.1" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
+<path d="M84.7 15.84L84.7 19.34" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M148.17 156.6L148.17 153.1" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M148.17 15.84L148.17 19.34" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
+<path d="M211.63 156.6L211.63 153.1" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
+<path d="M211.63 15.84L211.63 19.34" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M64.27 156.6L64.27 154.6" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M64.27 15.84L64.27 17.84" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
-<path d="M84.7 156.6L84.7 154.6" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
-<path d="M84.7 15.84L84.7 17.84" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M101.4 156.6L101.4 154.6" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M101.4 15.84L101.4 17.84" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M115.51 156.6L115.51 154.6" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
@@ -29,8 +32,6 @@
 <path d="M127.74 15.84L127.74 17.84" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M138.52 156.6L138.52 154.6" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M138.52 15.84L138.52 17.84" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
-<path d="M211.63 156.6L211.63 154.6" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
-<path d="M211.63 15.84L211.63 17.84" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M43.2 120.01L46.7 120.01" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M241.2 120.01L237.7 120.01" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M43.2 61.86L46.7 61.86" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
@@ -75,17 +76,19 @@
 <path d="M241.2 21.22L239.2 21.22" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M43.2 16.62L45.2 16.62" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M241.2 16.62L239.2 16.62" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
-<text x="40.2" y="122.65" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−5</tspan></text>
-<text x="40.2" y="64.5" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−4</tspan></text>
-<text x="148.17" y="165.36" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−1</tspan></text>
-<text x="142.2" y="176.56" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>grid spacing </tspan><tspan font-style="italic">h</tspan><tspan> (m)</tspan></text>
-<text x="23.44" y="84.46" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="middle" transform="rotate(-90 23.44 86.22)"><tspan>max|ψ − ψ</tspan><tspan dy="1.76" font-size="5.76">exact</tspan><tspan dy="-1.76">| / max|ψ|</tspan></text>
-<text x="142.2" y="10.08" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>Grad–Shafranov vs Solov'ev</tspan></text>
-<path d="M45.7 18.34L58.61 18.34L58.61 28.84L45.7 28.84Z" fill="#ffffff" opacity="0.8"/>
-<text x="47.2" y="25.96" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8.5" fill="#000000" text-anchor="start"><tspan font-weight="bold">(a)</tspan></text>
-<path d="M65.11 26.72L81.11 26.72" fill="none" stroke="#0072b2" stroke-width="1.2" stroke-miterlimit="4"/>
-<path d="M74.86 26.72C74.86 27.68 74.08 28.47 73.11 28.47C72.14 28.47 71.36 27.68 71.36 26.72C71.36 25.75 72.14 24.97 73.11 24.97C74.08 24.97 74.86 25.75 74.86 26.72Z" fill="#0072b2" stroke="#0072b2" stroke-width="0.6" stroke-miterlimit="4"/>
-<text x="85.11" y="29.19" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="7.5" fill="#000000" text-anchor="start"><tspan>GS solver (fit slope 2.05)</tspan></text>
+<text x="40.2" y="122.64" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−5</tspan></text>
+<text x="40.2" y="64.49" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−4</tspan></text>
+<text x="84.7" y="165.34" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>0.05</tspan></text>
+<text x="148.17" y="165.34" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>0.1</tspan></text>
+<text x="211.63" y="165.34" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>0.2</tspan></text>
+<text x="142.2" y="176.54" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="middle" xml:space="preserve"><tspan>grid spacing </tspan><tspan font-style="italic">h</tspan><tspan> (m)</tspan></text>
+<text x="22.28" y="84.46" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="middle" transform="rotate(-90 22.28 86.22)"><tspan>max|</tspan><tspan font-style="italic">ψ</tspan><tspan dx="1.78">−</tspan><tspan dx="1.78" font-style="italic">ψ</tspan><tspan dy="1.76" font-size="5.76">exact</tspan><tspan dy="-1.76">|</tspan><tspan dx="1.33">/</tspan><tspan dx="1.33">max|</tspan><tspan font-style="italic">ψ</tspan><tspan>|</tspan></text>
+<text x="142.2" y="10.08" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>Grad–Shafranov vs Solov'ev</tspan></text>
+<path d="M45.7 18.34L60.04 18.34L60.04 28.84L45.7 28.84Z" fill="#ffffff" opacity="0.8"/>
+<text x="47.2" y="25.93" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8.5" fill="#000000" text-anchor="start"><tspan font-weight="bold">(a)</tspan></text>
+<path d="M66.54 26.72L82.54 26.72" fill="none" stroke="#0072b2" stroke-width="1.2" stroke-miterlimit="4"/>
+<path d="M76.29 26.72C76.29 27.68 75.51 28.47 74.54 28.47C73.57 28.47 72.79 27.68 72.79 26.72C72.79 25.75 73.57 24.97 74.54 24.97C75.51 24.97 76.29 25.75 76.29 26.72Z" fill="#0072b2" stroke="#0072b2" stroke-width="0.6" stroke-miterlimit="4"/>
+<text x="86.54" y="29.18" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="7.5" fill="#000000" text-anchor="start"><tspan>GS solver (fit slope 2.05)</tspan></text>
 <clipPath id="Numericalverific_c1"><rect x="295.2" y="15.84" width="198" height="140.76"/></clipPath><g clip-path="url(#Numericalverific_c1)">
 <path d="M489.39 22.24L451.32 44.1L413.24 66.73L375.16 89.82L337.08 113.15L299.01 136.61" fill="none" stroke="#d55e00" stroke-width="1.2" stroke-linejoin="round"/>
 <path d="M487.79 20.64L490.99 20.64L490.99 23.84L487.79 23.84Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
@@ -95,7 +98,7 @@
 <path d="M335.48 111.55L338.68 111.55L338.68 114.75L335.48 114.75Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M297.41 135.01L300.61 135.01L300.61 138.21L297.41 138.21Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M299.01 150.2L489.39 32.25" fill="none" stroke="#555555" stroke-width="0.6" stroke-dasharray="2.22 0.96" stroke-linejoin="round"/>
-<text x="394.2" y="102.81" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="6.5" fill="#555555" text-anchor="start"><tspan>∝Δρ</tspan><tspan dy="-2.73" font-size="4.68">2</tspan></text>
+<text x="394.2" y="102.79" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="6.5" fill="#555555" text-anchor="start"><tspan>∝Δ</tspan><tspan font-style="italic">ρ</tspan><tspan dy="-2.73" font-size="4.68">2</tspan></text>
 </g>
 <path d="M295.2 15.84L493.2 15.84L493.2 156.6L295.2 156.6Z" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M362.9 156.6L362.9 153.1" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
@@ -198,19 +201,19 @@
 <path d="M493.2 19.22L491.2 19.22" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M295.2 16.6L297.2 16.6" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M493.2 16.6L491.2 16.6" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
-<text x="292.2" y="130.71" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−5</tspan></text>
-<text x="292.2" y="91.53" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−4</tspan></text>
-<text x="292.2" y="52.35" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−3</tspan></text>
-<text x="362.9" y="165.36" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−2</tspan></text>
-<text x="489.39" y="165.36" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−1</tspan></text>
-<text x="394.2" y="176.56" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>Δρ</tspan></text>
-<text x="275.44" y="84.46" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="middle" transform="rotate(-90 275.44 86.22)"><tspan>max. relative error</tspan></text>
-<text x="394.2" y="10.08" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>Steady diffusion, uniform source</tspan></text>
-<path d="M297.7 18.34L311.09 18.34L311.09 28.84L297.7 28.84Z" fill="#ffffff" opacity="0.8"/>
-<text x="299.2" y="25.96" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8.5" fill="#000000" text-anchor="start"><tspan font-weight="bold">(b)</tspan></text>
-<path d="M317.59 26.72L333.59 26.72" fill="none" stroke="#d55e00" stroke-width="1.2" stroke-miterlimit="4"/>
-<path d="M323.99 25.12L327.19 25.12L327.19 28.32L323.99 28.32Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
-<text x="337.59" y="29.19" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="7.5" fill="#000000" text-anchor="start"><tspan>FV heat solver (fit slope 1.94)</tspan></text>
+<text x="292.2" y="130.7" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−5</tspan></text>
+<text x="292.2" y="91.52" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−4</tspan></text>
+<text x="292.2" y="52.34" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−3</tspan></text>
+<text x="362.9" y="165.34" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−2</tspan></text>
+<text x="489.39" y="165.34" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−1</tspan></text>
+<text x="394.2" y="176.54" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>Δ</tspan><tspan font-style="italic">ρ</tspan></text>
+<text x="274.28" y="84.46" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="middle" transform="rotate(-90 274.28 86.22)"><tspan>max. relative error</tspan></text>
+<text x="394.2" y="10.08" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>Steady diffusion, uniform source</tspan></text>
+<path d="M297.7 18.34L312.4 18.34L312.4 28.84L297.7 28.84Z" fill="#ffffff" opacity="0.8"/>
+<text x="299.2" y="25.93" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8.5" fill="#000000" text-anchor="start"><tspan font-weight="bold">(b)</tspan></text>
+<path d="M318.9 26.72L334.9 26.72" fill="none" stroke="#d55e00" stroke-width="1.2" stroke-miterlimit="4"/>
+<path d="M325.3 25.12L328.5 25.12L328.5 28.32L325.3 28.32Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
+<text x="338.9" y="29.18" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="7.5" fill="#000000" text-anchor="start"><tspan>FV heat solver (fit slope 1.94)</tspan></text>
 <clipPath id="Numericalverific_c2"><rect x="43.2" y="201.24" width="198" height="140.76"/></clipPath><g clip-path="url(#Numericalverific_c2)">
 <path d="M237.39 207.64L210.19 222.37L183 237.61L155.8 253.16L128.6 268.89L101.4 284.78L74.21 300.9L47.01 317.41" fill="none" stroke="#009e73" stroke-width="1.2" stroke-linejoin="round"/>
 <path d="M237.39 205.63L239.14 208.86L235.64 208.86Z" fill="#009e73" stroke="#009e73" stroke-width="0.6" stroke-miterlimit="4"/>
@@ -222,7 +225,7 @@
 <path d="M74.21 298.89L75.96 302.12L72.46 302.12Z" fill="#009e73" stroke="#009e73" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M47.01 315.4L48.76 318.64L45.26 318.64Z" fill="#009e73" stroke="#009e73" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M47.01 335.6L237.39 225.09" fill="none" stroke="#555555" stroke-width="0.6" stroke-dasharray="2.22 0.96" stroke-linejoin="round"/>
-<text x="142.2" y="294.26" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="6.5" fill="#555555" text-anchor="start"><tspan>∝Δ</tspan><tspan font-style="italic">t</tspan></text>
+<text x="142.2" y="294.24" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="6.5" fill="#555555" text-anchor="start"><tspan>∝Δ</tspan><tspan font-style="italic">t</tspan></text>
 </g>
 <path d="M43.2 201.24L241.2 201.24L241.2 342L43.2 342Z" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M111.09 342L111.09 338.5" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
@@ -313,19 +316,19 @@
 <path d="M241.2 215.57L239.2 215.57" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M43.2 212.89L45.2 212.89" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M241.2 212.89L239.2 212.89" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
-<text x="40.2" y="318.02" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−3</tspan></text>
-<text x="40.2" y="265.58" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−2</tspan></text>
-<text x="40.2" y="213.13" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−1</tspan></text>
-<text x="111.09" y="350.76" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−2</tspan></text>
-<text x="201.44" y="350.76" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−1</tspan></text>
-<text x="142.2" y="361.96" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>Δ</tspan><tspan font-style="italic">t</tspan><tspan>/τ</tspan><tspan dy="1.76" font-size="5.76">01</tspan></text>
-<text x="23.44" y="269.86" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="middle" transform="rotate(-90 23.44 271.62)"><tspan>max. relative error at </tspan><tspan font-style="italic">t</tspan><tspan> = τ</tspan><tspan dy="1.76" font-size="5.76">01</tspan></text>
-<text x="142.2" y="195.48" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="middle"><tspan font-style="italic">J</tspan><tspan dy="1.76" font-size="5.76">0</tspan><tspan dy="-1.76"> mode decay (self-convergence)</tspan></text>
-<path d="M45.7 203.74L58.14 203.74L58.14 214.24L45.7 214.24Z" fill="#ffffff" opacity="0.8"/>
-<text x="47.2" y="211.36" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8.5" fill="#000000" text-anchor="start"><tspan font-weight="bold">(c)</tspan></text>
-<path d="M64.63 212.12L80.63 212.12" fill="none" stroke="#009e73" stroke-width="1.2" stroke-miterlimit="4"/>
-<path d="M72.63 210.1L74.38 213.34L70.88 213.34Z" fill="#009e73" stroke="#009e73" stroke-width="0.6" stroke-miterlimit="4"/>
-<text x="84.64" y="214.59" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="7.5" fill="#000000" text-anchor="start"><tspan>backward Euler (fit slope 0.99)</tspan></text>
+<text x="40.2" y="318.01" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−3</tspan></text>
+<text x="40.2" y="265.56" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−2</tspan></text>
+<text x="40.2" y="213.12" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−1</tspan></text>
+<text x="111.09" y="350.74" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−2</tspan></text>
+<text x="201.44" y="350.74" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−1</tspan></text>
+<text x="142.2" y="361.94" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>Δ</tspan><tspan font-style="italic">t</tspan><tspan>/</tspan><tspan font-style="italic">τ</tspan><tspan dy="1.76" font-size="5.76">01</tspan></text>
+<text x="22.28" y="269.86" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="middle" transform="rotate(-90 22.28 271.62)" xml:space="preserve"><tspan>max. relative error at </tspan><tspan font-style="italic">t</tspan><tspan dx="2.22">=</tspan><tspan dx="2.22" font-style="italic">τ</tspan><tspan dy="1.76" font-size="5.76">01</tspan></text>
+<text x="142.2" y="195.48" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="middle" xml:space="preserve"><tspan font-style="italic">J</tspan><tspan dy="1.76" font-size="5.76">0</tspan><tspan dy="-1.76"> mode decay (self-convergence)</tspan></text>
+<path d="M45.7 203.74L59.76 203.74L59.76 214.24L45.7 214.24Z" fill="#ffffff" opacity="0.8"/>
+<text x="47.2" y="211.33" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8.5" fill="#000000" text-anchor="start"><tspan font-weight="bold">(c)</tspan></text>
+<path d="M66.26 212.12L82.26 212.12" fill="none" stroke="#009e73" stroke-width="1.2" stroke-miterlimit="4"/>
+<path d="M74.26 210.1L76.01 213.34L72.51 213.34Z" fill="#009e73" stroke="#009e73" stroke-width="0.6" stroke-miterlimit="4"/>
+<text x="86.26" y="214.58" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="7.5" fill="#000000" text-anchor="start"><tspan>backward Euler (fit slope 0.99)</tspan></text>
 <clipPath id="Numericalverific_c3"><rect x="295.2" y="201.24" width="198" height="140.76"/></clipPath><g clip-path="url(#Numericalverific_c3)">
 <path d="M299.01 225.47L313.65 228.79L328.3 232.09L342.94 235.36L357.59 238.63L372.23 241.9L386.88 245.16L401.52 248.42L416.17 251.68L430.81 254.94L445.46 258.2L460.1 261.46L474.75 264.72L489.39 267.98" fill="none" stroke="#7a7a7a" stroke-width="1.2" stroke-dasharray="1.2 1.98" stroke-linejoin="round"/>
 <path d="M299.01 227.31L300.61 224.35L297.41 224.35Z" fill="#7a7a7a" stroke="#7a7a7a" stroke-width="0.6" stroke-miterlimit="4"/>
@@ -354,16 +357,16 @@
 <path d="M417.77 350.66C417.77 351.54 417.05 352.26 416.17 352.26C415.28 352.26 414.57 351.54 414.57 350.66C414.57 349.77 415.28 349.06 416.17 349.06C417.05 349.06 417.77 349.77 417.77 350.66Z" fill="#0072b2" stroke="#0072b2" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M432.41 349.09C432.41 349.98 431.7 350.69 430.81 350.69C429.93 350.69 429.21 349.98 429.21 349.09C429.21 348.21 429.93 347.49 430.81 347.49C431.7 347.49 432.41 348.21 432.41 349.09Z" fill="#0072b2" stroke="#0072b2" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M447.06 349.05C447.06 349.93 446.34 350.65 445.46 350.65C444.57 350.65 443.86 349.93 443.86 349.05C443.86 348.16 444.57 347.45 445.46 347.45C446.34 347.45 447.06 348.16 447.06 349.05Z" fill="#0072b2" stroke="#0072b2" stroke-width="0.6" stroke-miterlimit="4"/>
-<path d="M303.21 243.38L305.81 248.55L313.44 265.4L320.23 280.87L326.42 288.68L334.4 298.3L342.43 306.51L351.42 317.16L360.7 327.66" fill="none" stroke="#d55e00" stroke-width="1.2" stroke-linejoin="round"/>
-<path d="M301.61 241.78L304.81 241.78L304.81 244.98L301.61 244.98Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
-<path d="M304.21 246.95L307.41 246.95L307.41 250.15L304.21 250.15Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
-<path d="M311.84 263.8L315.04 263.8L315.04 267L311.84 267Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
-<path d="M318.63 279.27L321.83 279.27L321.83 282.47L318.63 282.47Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
-<path d="M324.82 287.08L328.02 287.08L328.02 290.28L324.82 290.28Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
-<path d="M332.8 296.7L336 296.7L336 299.9L332.8 299.9Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
-<path d="M340.83 304.91L344.03 304.91L344.03 308.11L340.83 308.11Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
-<path d="M349.82 315.56L353.02 315.56L353.02 318.76L349.82 318.76Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
-<path d="M359.1 326.06L362.3 326.06L362.3 329.26L359.1 329.26Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
+<path d="M300.83 243.38L303.04 248.55L310.83 265.4L317.59 280.87L323.52 288.68L331.39 298.3L339.29 306.51L348.22 317.16L357.47 327.66" fill="none" stroke="#d55e00" stroke-width="1.2" stroke-linejoin="round"/>
+<path d="M299.23 241.78L302.43 241.78L302.43 244.98L299.23 244.98Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
+<path d="M301.44 246.95L304.64 246.95L304.64 250.15L301.44 250.15Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
+<path d="M309.23 263.8L312.43 263.8L312.43 267L309.23 267Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
+<path d="M315.99 279.27L319.19 279.27L319.19 282.47L315.99 282.47Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
+<path d="M321.92 287.08L325.12 287.08L325.12 290.28L321.92 290.28Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
+<path d="M329.79 296.7L332.99 296.7L332.99 299.9L329.79 299.9Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
+<path d="M337.69 304.91L340.89 304.91L340.89 308.11L337.69 308.11Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
+<path d="M346.62 315.56L349.82 315.56L349.82 318.76L346.62 318.76Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
+<path d="M355.87 326.06L359.07 326.06L359.07 329.26L355.87 329.26Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
 </g>
 <path d="M295.2 201.24L493.2 201.24L493.2 342L295.2 342Z" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M299.01 342L299.01 338.5" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
@@ -468,27 +471,27 @@
 <path d="M493.2 222.9L491.2 222.9" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M295.2 201.24L297.2 201.24" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
 <path d="M493.2 201.24L491.2 201.24" fill="none" stroke="#000000" stroke-width="0.6" stroke-miterlimit="4"/>
-<text x="292.2" y="344.64" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−13</tspan></text>
-<text x="292.2" y="312.16" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−10</tspan></text>
-<text x="292.2" y="279.67" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−7</tspan></text>
-<text x="292.2" y="247.19" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−4</tspan></text>
-<text x="292.2" y="214.71" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−1</tspan></text>
-<text x="299.01" y="350.76" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">2</tspan></text>
-<text x="347.66" y="350.76" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">3</tspan></text>
-<text x="396.31" y="350.76" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">4</tspan></text>
-<text x="444.96" y="350.76" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">5</tspan></text>
-<text x="394.2" y="361.96" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>RHS evaluations</tspan></text>
-<text x="272.56" y="269.86" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="middle" transform="rotate(-90 272.56 271.62)"><tspan>relative error at </tspan><tspan font-style="italic">t</tspan><tspan> = 40 s</tspan></text>
-<text x="394.2" y="195.48" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>0D burn dynamics: work–precision</tspan></text>
-<path d="M297.7 203.74L311.09 203.74L311.09 214.24L297.7 214.24Z" fill="#ffffff" opacity="0.8"/>
-<text x="299.2" y="211.36" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="8.5" fill="#000000" text-anchor="start"><tspan font-weight="bold">(d)</tspan></text>
-<path d="M376.04 211.47L392.04 211.47" fill="none" stroke="#7a7a7a" stroke-width="1.2" stroke-dasharray="1.2 1.98" stroke-miterlimit="4"/>
-<path d="M384.04 213.31L385.64 210.35L382.44 210.35Z" fill="#7a7a7a" stroke="#7a7a7a" stroke-width="0.6" stroke-miterlimit="4"/>
-<text x="396.04" y="213.61" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="6.5" fill="#000000" text-anchor="start"><tspan>explicit Euler (fixed </tspan><tspan font-style="italic">h</tspan><tspan>)</tspan></text>
-<path d="M376.04 219.92L392.04 219.92" fill="none" stroke="#0072b2" stroke-width="1.2" stroke-dasharray="4.44 1.92" stroke-miterlimit="4"/>
-<path d="M385.64 219.92C385.64 220.8 384.92 221.52 384.04 221.52C383.15 221.52 382.44 220.8 382.44 219.92C382.44 219.03 383.15 218.32 384.04 218.32C384.92 218.32 385.64 219.03 385.64 219.92Z" fill="#0072b2" stroke="#0072b2" stroke-width="0.6" stroke-miterlimit="4"/>
-<text x="396.04" y="222.06" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="6.5" fill="#000000" text-anchor="start"><tspan>classical RK4 (fixed </tspan><tspan font-style="italic">h</tspan><tspan>)</tspan></text>
-<path d="M376.04 228.37L392.04 228.37" fill="none" stroke="#d55e00" stroke-width="1.2" stroke-miterlimit="4"/>
-<path d="M382.44 226.77L385.64 226.77L385.64 229.97L382.44 229.97Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
-<text x="396.04" y="230.51" font-family="'STIX Two Text','Times New Roman',Times,serif" font-size="6.5" fill="#000000" text-anchor="start"><tspan>Dormand–Prince RK5(4), adaptive</tspan></text>
+<text x="292.2" y="344.63" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−13</tspan></text>
+<text x="292.2" y="312.14" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−10</tspan></text>
+<text x="292.2" y="279.66" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−7</tspan></text>
+<text x="292.2" y="247.18" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−4</tspan></text>
+<text x="292.2" y="214.7" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="end"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">−1</tspan></text>
+<text x="299.01" y="350.74" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">2</tspan></text>
+<text x="347.66" y="350.74" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">3</tspan></text>
+<text x="396.31" y="350.74" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">4</tspan></text>
+<text x="444.96" y="350.74" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>10</tspan><tspan dy="-3.36" font-size="5.76">5</tspan></text>
+<text x="394.2" y="361.94" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>RHS evaluations</tspan></text>
+<text x="271.43" y="269.86" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="middle" transform="rotate(-90 271.43 271.62)" xml:space="preserve"><tspan>relative error at </tspan><tspan font-style="italic">t</tspan><tspan> = 40 s</tspan></text>
+<text x="394.2" y="195.48" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8" fill="#000000" text-anchor="middle"><tspan>0D burn dynamics: work–precision</tspan></text>
+<path d="M297.7 203.74L312.58 203.74L312.58 214.24L297.7 214.24Z" fill="#ffffff" opacity="0.8"/>
+<text x="299.2" y="211.33" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="8.5" fill="#000000" text-anchor="start"><tspan font-weight="bold">(d)</tspan></text>
+<path d="M372.14 211.47L388.14 211.47" fill="none" stroke="#7a7a7a" stroke-width="1.2" stroke-dasharray="1.2 1.98" stroke-miterlimit="4"/>
+<path d="M380.14 213.31L381.74 210.35L378.54 210.35Z" fill="#7a7a7a" stroke="#7a7a7a" stroke-width="0.6" stroke-miterlimit="4"/>
+<text x="392.14" y="213.6" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="6.5" fill="#000000" text-anchor="start" xml:space="preserve"><tspan>explicit Euler (fixed </tspan><tspan font-style="italic">h</tspan><tspan>)</tspan></text>
+<path d="M372.14 219.92L388.14 219.92" fill="none" stroke="#0072b2" stroke-width="1.2" stroke-dasharray="4.44 1.92" stroke-miterlimit="4"/>
+<path d="M381.74 219.92C381.74 220.8 381.03 221.52 380.14 221.52C379.26 221.52 378.54 220.8 378.54 219.92C378.54 219.03 379.26 218.32 380.14 218.32C381.03 218.32 381.74 219.03 381.74 219.92Z" fill="#0072b2" stroke="#0072b2" stroke-width="0.6" stroke-miterlimit="4"/>
+<text x="392.14" y="222.05" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="6.5" fill="#000000" text-anchor="start" xml:space="preserve"><tspan>classical RK4 (fixed </tspan><tspan font-style="italic">h</tspan><tspan>)</tspan></text>
+<path d="M372.14 228.37L388.14 228.37" fill="none" stroke="#d55e00" stroke-width="1.2" stroke-miterlimit="4"/>
+<path d="M378.54 226.77L381.74 226.77L381.74 229.97L378.54 229.97Z" fill="#d55e00" stroke="#d55e00" stroke-width="0.6" stroke-miterlimit="4"/>
+<text x="392.14" y="230.5" font-family="'STIX Two Text', 'STIX Two Math', 'Times New Roman', serif" font-size="6.5" fill="#000000" text-anchor="start"><tspan>Dormand–Prince RK5(4), adaptive</tspan></text>
 </svg>

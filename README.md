@@ -57,10 +57,18 @@ npm run schema     # regenerate schema/fusion-sim.schema.json (npm run schema:ch
 Every command-line tool accepts `--help`, rejects unknown or malformed flags with exit code 2 and
 takes `--threads N` (default: cores − 1).
 
-- `validate`: `--only ITER15,JET15`, `--json` (machine-readable results: preset, metric, value,
-  expected range, pass). Exit code 0 if every executed check passes, 1 if a check or run fails or
-  no check was executed, 2 on a usage error. Plain `npm run` writes its `> script` banner to
-  stdout before the JSON, so capture it silently:
+- `validate`: `--only ITER15,JET15`, `--kind validation,benchmark,sanity`, `--json` (machine-readable,
+  schema 3: per check the preset, metric, kind, role, published value with uncertainty, source and DOI,
+  model value, `ratio` = model / published, `deviationPct`, accepted range, `status`, `pass` and a
+  `wording`; the top level adds `wordings`, the count of each wording). The wording compares the model
+  value with the published one: `validated` within 20 %, `benchmarked (deviation X %)` beyond 20 %
+  (a model far from the published value is compared with it, not validated against it), `calibrated`
+  for the one NIF shot (N210808) the ICF model's only tuned constant is fitted to, so its pass is by
+  construction, and `sanity bound` for a check of kind sanity (a bound is not a measurement). A check
+  with the role `blind` is a prediction made after that calibration, with the constant not re-fitted
+  for it. Exit code 0 if every executed check passes or is a documented known failure, 1 if a check
+  or run fails or no check was executed, 2 on a usage error. Plain `npm run` writes its `> script`
+  banner to stdout before the JSON, so capture it silently:
   `npm run -s validate -- --json > results.json` (or `npx tsx src/cli/validate.cli.ts --json`).
 - `figures`: `--only popcon,mhd`, `--scan 7` (scan grid), `--formats pdf`, `--out DIR`.
 - `missions`: plays the ten missions of the Learn screen headless (untouched, with a negative control, with the
@@ -101,10 +109,17 @@ takes `--threads N` (default: cores − 1).
 | JET DTE2 E_fus | 59 MJ | 58 MJ | 85 MJ¹ |
 | SPARC P_fus | 140 MW | 182 MW | 157 MW |
 | EU DEMO P_fus | 2 GW | 2.2 GW | 1.95 GW |
-| NIF N221204 gain | 1.54 | 1.49 | — |
+| NIF N221204 gain | 1.5 | 0.67² | — |
 
 ¹ In 1.5D about 60 % of the fusion yield comes from NBI beam–target reactions (qualitatively
 consistent with TRANSP analyses); the share is sensitive to the fast-ion slowing-down model.
+
+² A blind miss, not a validation: the ICF model's one tuned constant is calibrated on NIF N210808
+(1.37 MJ, G = 0.72, reproduced by construction) and N221204 is predicted with it unchanged. The model
+has no input that separates the two shots, so it predicts the calibration yield for both and reaches
+0.45 of the published gain (before v4.0 the constant was tuned to N221204 itself and read 1.49, a fit
+that looked like a prediction). `npm run validate` lists it, and N230729 (model/published 0.35), as
+documented known failures. The other rows of this table are v3.0.0 values.
 Details: [technical report](docs/technical-report.md) §7.
 
 <p align="center">

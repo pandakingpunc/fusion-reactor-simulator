@@ -615,6 +615,29 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   rewind to before the first step; the "opened from a shared link" banner clears when a different preset is picked; the embedded
   report has no toolbar.
 - The default vitest `testTimeout` is 30 s (was 5 s): CLI and lazy-chunk tests timed out under a shared CPU while passing alone.
+- The ICF model is calibrated on one NIF shot. `ICF_CAL`, its one constant tuned to an experiment, is the root of E_fus = 1.37 MJ for the capsule
+  of the new preset `NIF210808` (the first shot above the Lawson criterion, Abu-Shawareb et al., Phys. Rev. Lett. 129 (2022) 075001): 0.07 -> 0.03931,
+  reproduced from the preset on every test run (`src/physics/confinement/icfCalibration.ts`). Until v4.0 it was tuned to the N221204 preset itself,
+  so that check read G = 1.49 and was a fit. N221204 and N230729 are now blind predictions and miss, G = 0.67 against 1.5 and 1.89 (model/published
+  0.45 and 0.35; documented known failures): the model has no input that separates the three shots, so it predicts the calibration yield for all of
+  them. "Blind" means that `ICF_CAL` was not re-fitted for them, nothing more: the cliff constants and platform inputs date from v3.0.0, and the
+  DT fuel mass of the NIF presets is 210 ug (was 220, from the post-shot analysis of N221204: Pak et al., Phys. Rev. E 109 (2024) 025203), an input
+  set with N221204 in view that moves the calibrated constant by 5.7 %. The model also puts the calibration shot itself just below its ignition
+  threshold (chi_ig = 0.951) with a hot spot of 1.32 keV against about 9-10 keV (`NIF210808.Ti`, a known failure). The direct-drive preset, never
+  calibrated, falls from G = 3.10 to 0.39 as a side effect of the shared constant. Golden: NIF and DIRECT re-recorded, NIF210808 added.
+- `validate` words each comparison from the published value: `validated` within 20 %, `benchmarked (deviation X %)` beyond, `calibrated` for the
+  calibration shot (a pass by construction, counted apart in the summary) and `sanity bound` for every check of kind sanity. `--json` is schema 3:
+  per check `published`, `ratio`, `deviationPct`, `wording`, `role` (`calibration` or `blind`) and `reference.sourceLimitation`, and `wordings` at
+  the top level. New checks `W7X.HISS04` (tau_E / tau_ISS04 of the OP1.2 gas-fuelled plasmas, Beurskens et al. 2021), `NIF210808.G`, `NIF210808.Ti`
+  and `NIF.G_N230729` (Kritcher et al. 2024); a published value whose source text could not be read carries a `sourceLimitation`. `MASTU.q95`
+  is a sanity bound, since its 5 < q95 < 10 band was not verified in its source (no interval changed).
+- The Learn mission "Squeeze the capsule evenly" asks for the gain of the calibration shot (above 0.7, reached at about 1 % of drive asymmetry)
+  instead of an ignition; the Validation panel lists the calibration shot and shows N221204 as a documented miss, and the NIF card of the
+  setup wizard states the miss (model G = 0.67 against the published 1.5).
+- Correction to the golden ledger entry of the calibration (`test/golden/CHANGES.md`, 2026-10-01 07:49 UTC, append-only): N230729 (3.88 MJ from 2.05 MJ)
+  is cited to Kritcher et al., Phys. Plasmas 31 (2024) 070502, doi:10.1063/5.0210904, not to the "LLNL facility record, no DOI" (only the shot label and
+  date come from that record); the N210808 ablator mass is 3745 ug (shell-volume scaling from 4000 ug), not 3700; "Knob: ICF_CAL, nothing else"
+  leaves out the NIF fuel mass (220 -> 210 ug), which the same entry names further down. The next ledger entry written for a golden move repeats it.
 
 ### Fixed
 - Sawteeth on a hollow q core (q₀ > 1 with q < 1 in an annulus): the Kadomtsev mixing radius returned a grid-dependent

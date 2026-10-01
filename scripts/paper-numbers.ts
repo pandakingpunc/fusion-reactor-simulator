@@ -329,7 +329,7 @@ export function unmarkedNumbers(md: string): { token: string; line: number; cont
   // blank out everything that is not prose, keeping the offsets (and so the line numbers)
   const blank = (s: string) => s.replace(/[^\n]/g, ' ');
   let t = body;
-  for (const re of [/<!--[\s\S]*?-->/g, /```[\s\S]*?```/g, /`[^`\n]*`/g, /\[@[^\]]*\]/g, /\]\([^)]*\)/g, /<https?:[^>]*>/g, /https?:\/\/\S+/g,
+  for (const re of [MARKER, /<!--[\s\S]*?-->/g, /```[\s\S]*?```/g, /`[^`\n]*`/g, /\[@[^\]]*\]/g, /\]\([^)]*\)/g, /<https?:[^>]*>/g, /https?:\/\/\S+/g,
     // structural: the name of a formula, the version names of the AI tools (named by the commit trailers)
     /\(y,2\)/g, /\b(?:Opus|Sonnet) 5\.5\b/g, /\bGPT-6(?:\.1)?\b/g]) {
     t = t.replace(re, blank);

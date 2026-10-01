@@ -300,7 +300,10 @@ export function checkConfig(cfg: unknown): Check {
     const v = getPath(c, path);
     if (typeof v !== 'number' || !Number.isFinite(v) || (!tpl.explicitRanges.has(path) && !fieldVisible(c.method, path, c))) continue;
     const slack = 1e-9 * Math.max(Math.abs(lo), Math.abs(hi));
-    if (v < lo - slack || v > hi + slack || (tpl.exclusiveMins.has(path) && v <= lo) || (tpl.exclusiveMaxs.has(path) && v >= hi)) {
+    const outside = tpl.hardRanges.has(path)
+      ? v < lo || v > hi || (tpl.exclusiveMins.has(path) && v <= lo) || (tpl.exclusiveMaxs.has(path) && v >= hi)
+      : v < lo - slack || v > hi + slack || (tpl.exclusiveMins.has(path) && v <= lo) || (tpl.exclusiveMaxs.has(path) && v >= hi);
+    if (outside) {
       if (tpl.hardRanges.has(path)) {
         const loText = tpl.exclusiveMins.has(path) ? `(${lo}` : `[${lo}`;
         const hiText = tpl.exclusiveMaxs.has(path) ? `${hi})` : `${hi}]`;

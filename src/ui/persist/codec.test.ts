@@ -345,6 +345,28 @@ describe('share codec: decoding refuses what is not a configuration', () => {
       expect(rangeErrors, path).toContain(`profiles.${path} =`);
     }
     await expect(encodeShare({ cfg: cfg as unknown as ReactorConfig })).rejects.toThrow(/outside the supported range/);
+
+    Object.assign(profiles, {
+      pedPbGradient: 100, pedKbmCoefficient: 10, pedDensityExponent: 0, fastOrbitScale: 0,
+      eccd: { harmonic: 1, freq_GHz: 1000, nPar: -0.99, thetaP_deg: -180, rho: 0, width: 1 },
+    });
+    expect(checkConfig(cfg).errors).toEqual([]);
+    Object.assign(profiles, {
+      pedDensityExponent: 5, fastOrbitScale: 10,
+      eccd: { harmonic: 3, freq_GHz: 1, nPar: 0.99, thetaP_deg: 180, rho: 0.999, width: 0.001 },
+    });
+    expect(checkConfig(cfg).errors).toEqual([]);
+
+    const justOutside: [string, unknown, RegExp][] = [
+      ['fastOrbitScale', -Number.EPSILON, /profiles\.fastOrbitScale/],
+      ['fastOrbitScale', 10 + 1e-8, /profiles\.fastOrbitScale/],
+      ['pedDensityExponent', -Number.EPSILON, /profiles\.pedDensityExponent/],
+      ['eccd', { nPar: 0.99 + 1e-10 }, /profiles\.eccd\.nPar/],
+    ];
+    for (const [key, value, path] of justOutside) {
+      profiles[key] = value;
+      expect(checkConfig(cfg).errors.join('; '), `${key}=${String(value)}`).toMatch(path);
+    }
   });
 
   it('the systems-lite options (systems.*) are known settings of every magnetic method (no warning) and typed', () => {

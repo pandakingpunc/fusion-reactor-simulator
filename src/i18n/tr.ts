@@ -120,11 +120,14 @@ export const tr: Dict = {
   'geom.muonCost_GeV': 'Müon başına enerji maliyeti',
 
   'chart.logTitle': 'logaritmik y ekseni',
+  'chart.scaleLin': 'lin',
+  'chart.scaleLog': 'log',
   'chart.resetZoom': 'yakınlaştırmayı sıfırla (çift tık)',
   'chart.aria': '{title}: koşunun zaman grafiği',
   'chart.ariaPlain': 'Koşunun zaman grafiği',
   'chart.profile.aria': 'Plazmanın radyal profilleri ({view})',
   'run.cross.aria': 'Plazmanın poloidal kesiti, akı yüzeyleri ve bobinlerle',
+  'run.implosion.pfusNorm': 'P_fus (norm.)',
   'run.implosion.aria': 'İmplozyonun şeması: kapsül veya astarın yarıçapının zamana göre değişimi',
 
   'field.on': 'açık',

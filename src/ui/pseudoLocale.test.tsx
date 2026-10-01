@@ -77,10 +77,22 @@ function collectModelTexts(store: AppStore): void { for (const text of modelText
 const ignoreOnPurpose = (el: Element, kind: string, text: string): boolean =>
   kind === 'title' && (el.tagName === 'TR' || (el.tagName === 'TD' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(text)));
 
+/**
+ * Words a screen may show unchanged although they are ordinary words elsewhere (testing/pseudo.ts keeps the global list to units, symbols and
+ * names): the impurity species of the wizard are written as their chemical symbols (Be, Ne, Ar), and the report key table gives dpa/year its
+ * Turkish unit in the table itself (report/keys.ts unitTr, pinned in keys.test.ts).
+ */
+const SCREEN_ALLOWED: readonly [RegExp, ReadonlySet<string>][] = [
+  [/wizard/, new Set(['Be', 'Ne', 'Ar'])],
+  [/^report/, new Set(['yıl'])],
+];
+const allowedOn = (where: string): ReadonlySet<string> => new Set(SCREEN_ALLOWED.filter(([re]) => re.test(where)).flatMap(([, w]) => [...w]));
+
 /** report of every scan so far, so that one failing assertion lists all hard-coded texts of the screen */
 function untranslated(where: string): Untranslated[] {
-  const found = findUntranslated(document.body, { ignore: ignoreOnPurpose }).map((u) => ({ ...u, where: `${where}: ${u.where}` }));
-  for (const text of CANVAS_TEXT) if (plainWords(text).length) found.push({ where: `${where}: canvas`, kind: 'canvas', text });
+  const allowed = allowedOn(where);
+  const found = findUntranslated(document.body, { ignore: ignoreOnPurpose, allowed }).map((u) => ({ ...u, where: `${where}: ${u.where}` }));
+  for (const text of CANVAS_TEXT) if (plainWords(text, allowed).length) found.push({ where: `${where}: canvas`, kind: 'canvas', text });
   CANVAS_TEXT.clear();
   return found;
 }
@@ -106,6 +118,19 @@ describe('pseudo-locale', () => {
     try {
       expect(findUntranslated(document.body).map((u) => `${u.kind} ${u.text}`)).toEqual(['text Start run', 'aria-label Close dialog']);
     } finally { document.body.innerHTML = ''; }
+  });
+});
+
+describe('the scanner does not let words hide behind a slash or a short allow-list', () => {
+  it('reports the words of a slash-joined text one by one, and keeps units and ratios of symbols allowed', () => {
+    expect(plainWords('Import/Export')).toEqual(['Import', 'Export']);
+    expect(plainWords('on/off')).toEqual(['on', 'off']);
+    expect(plainWords('m/s keV/u MW/m² n_e/n_GW dW/dt 10.5MW/m²')).toEqual([]);
+  });
+
+  it('holds no ordinary word in the global allow-list: OK, UI, min, log, lin and norm need a dictionary entry (or a screen that allows them)', () => {
+    for (const w of ['OK', 'UI', 'ID', 'min', 'log', 'lin', 'norm', 'Be', 'Ne', 'Ar']) expect(plainWords(w), w).toEqual([w]);
+    expect(plainWords('Be Ne Ar', new Set(['Be', 'Ne', 'Ar']))).toEqual([]);
   });
 });
 

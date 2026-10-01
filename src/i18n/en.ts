@@ -123,11 +123,14 @@ export const en = {
   'geom.muonCost_GeV': 'Energy cost per muon',
 
   'chart.logTitle': 'logarithmic y-axis',
+  'chart.scaleLin': 'lin',
+  'chart.scaleLog': 'log',
   'chart.resetZoom': 'reset zoom (double-click)',
   'chart.aria': '{title}: time chart of the run',
   'chart.ariaPlain': 'Time chart of the run',
   'chart.profile.aria': 'Radial profiles of the plasma ({view})',
   'run.cross.aria': 'Poloidal cross-section of the plasma with its flux surfaces and coils',
+  'run.implosion.pfusNorm': 'P_fus (norm.)',
   'run.implosion.aria': 'Schematic of the implosion: the radius of the capsule or liner against time',
 
   'field.on': 'on',

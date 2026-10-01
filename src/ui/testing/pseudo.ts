@@ -75,17 +75,17 @@ export const ALLOWED_WORDS: ReadonlySet<string> = new Set([
   // units
   'MW', 'GW', 'kW', 'W', 'MJ', 'GJ', 'kJ', 'J', 'keV', 'MeV', 'eV', 'MA', 'kA', 'A', 'T', 'mT', 'V', 'kV', 'Hz', 'kHz', 'MHz', 'GHz',
   'Pa', 'kPa', 'MPa', 'GPa', 'bar', 'atm', 'Wb', 'mWb', 'ms', 'ns', 'us', 'µs', 'ps', 'fs', 'm', 'cm', 'mm', 'km', 'kg', 'g', 'mg',
-  's', 'min', 'h', 'K', 'kK', 'Ohm', 'Ω', 'dpa', 'MK', 'ppm', 'pu', 'sr',
+  's', 'h', 'K', 'kK', 'Ohm', 'Ω', 'dpa', 'MK', 'ppm', 'pu', 'sr',
   // symbols and quantities written as letters in the equations of the text
-  'Q', 'Ip', 'Bt', 'Te', 'Ti', 'ne', 'ni', 'Zeff', 'tau', 'ELM', 'ELMs', 'LH', 'HL', 'DT', 'DD', 'DHe', 'pB', 'B', 'He', 'D', 'H',
+  'Q', 'Ip', 'Bt', 'Te', 'Ti', 'ne', 'ni', 'Zeff', 'tau', 'dW', 'ELM', 'ELMs', 'LH', 'HL', 'DT', 'DD', 'DHe', 'pB', 'B', 'He', 'D', 'H',
   // acronyms and terms that are the same in the Turkish literature
   'POPCON', 'NBI', 'ECRH', 'ICRH', 'LHCD', 'ECCD', 'MHD', 'CSV', 'JSON', 'NDJSON', 'NetCDF', 'IMAS', 'EQDSK', 'URL', 'HTML', 'PNG', 'SVG',
-  'PDF', 'UI', 'ID', 'OK', 'WebGL', 'WebGL2', 'IPB98', 'ITPA20', 'ISS04', 'DIII', 'FRC', 'TAE', 'MTF', 'ICF', 'MIF', 'MCF', 'MagLIF',
+  'PDF', 'WebGL', 'WebGL2', 'IPB98', 'ITPA20', 'ISS04', 'DIII', 'FRC', 'TAE', 'MTF', 'ICF', 'MIF', 'MCF', 'MagLIF',
   'ITER', 'JET', 'SPARC', 'DEMO', 'NIF', 'ARC', 'EAST', 'KSTAR', 'WEST', 'MAST', 'MASTU', 'LHD', 'W7', 'MAGLIF', 'Wendelstein',
   // the names of the two languages in the language picker are written in each language, on purpose
   'English', 'Türkçe',
   // more units, chemical symbols, materials and coil/blanket technologies that read the same in Turkish
-  'dt', 'cZ', 'GS', 'ρR', 'norm', 'JT', 'Norman', 'GDT', 'GAMMA', 'WHAM', 'lin', 'log', 'MN', 'GeV', 'µm', 'µg', 'nm', 'Be', 'Ne', 'Ar', 'Cu', 'Li', 'Nb', 'Sn', 'NbTi', 'REBCO', 'HTS', 'HCPB', 'HCLL', 'WCLL', 'DCLL', 'FLiBe', 'HDC', 'CH', 'NTM',
+  'dt', 'cZ', 'GS', 'ρR', 'JT', 'Norman', 'GDT', 'GAMMA', 'WHAM', 'MN', 'GeV', 'µm', 'µg', 'nm', 'Cu', 'Li', 'Nb', 'Sn', 'NbTi', 'REBCO', 'HTS', 'HCPB', 'HCLL', 'WCLL', 'DCLL', 'FLiBe', 'HDC', 'CH', 'NTM',
 ]);
 
 /** whole words (hyphens included) that are symbols or names, written the same in every language (the symbol of the H-mode glossary entry) */
@@ -126,9 +126,10 @@ export function plainWords(text: string, extraAllowed: ReadonlySet<string> = new
   const rest = withoutFenced(text);
   const out: string[] = [];
   for (const chunk of rest.split(/\s+/)) {
-    // a chunk with a digit, an underscore, a slash, a caret or a bracket is a number with its unit or a symbol (n_e/n_GW, 10.5MW, H98(y,2))
-    if (!chunk || ALLOWED_CHUNKS.has(chunk.replace(/[.,;:()]+$/, '')) || /[\d_/^=<>~±×·√∑∂Δ]/.test(chunk)) continue;
-    // split compound chunks at punctuation and hyphens and test the parts
+    // a chunk with a digit, an underscore, a caret or an operator is a number with its unit or a symbol (n_e/n_GW, 10.5MW, H98(y,2), a=b).
+    // A slash is not on this list: "Import/Export" and "on/off" are two words, tested one by one below ("m/s" and "keV/u" stay allowed word by word)
+    if (!chunk || ALLOWED_CHUNKS.has(chunk.replace(/[.,;:()]+$/, '')) || /[\d_^=<>~±×·√∑∂Δ]/.test(chunk)) continue;
+    // split compound chunks at punctuation, slashes and hyphens and test the parts
     for (const w of chunk.split(/[^\p{L}\p{M}’']+/u)) {
       if (w.length < 2) continue; // one letter: a symbol or an index
       if (ALLOWED_WORDS.has(w) || extraAllowed.has(w)) continue;

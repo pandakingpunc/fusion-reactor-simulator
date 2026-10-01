@@ -118,12 +118,12 @@ export function Implosion({ kind, frames, t, tEnd, timeUnit, geometry, bang_ns, 
       ctx.strokeStyle = 'rgba(247,37,133,0.9)'; ctx.lineWidth = 1.2; ctx.beginPath(); let pen = false;
       for (let i = 0; i < frames.length; i += stride) { const f = frames[i]; const x = xs(f.t), y = Tp + ph - ((f.d.P_fus ?? 0) / pMax) * ph; pen ? ctx.lineTo(x, y) : ctx.moveTo(x, y); pen = true; }
       ctx.stroke();
-      ctx.fillStyle = 'rgba(247,37,133,0.9)'; ctx.textAlign = 'left'; ctx.fillText('P_fus (norm.)', L + 6, Tp + 12);
+      ctx.fillStyle = 'rgba(247,37,133,0.9)'; ctx.textAlign = 'left'; ctx.fillText(tr('run.implosion.pfusNorm'), L + 6, Tp + 12);
     }
     ctx.fillStyle = '#4cc9f0'; ctx.textAlign = 'left'; ctx.fillText('r(t)', L + 6, Tp + 24);
     // şimdiki t
     ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(xs(t), Tp); ctx.lineTo(xs(t), Tp + ph); ctx.stroke();
-  }, [frames, t, tEnd, timeUnit, r0, CR, rScale, unitR, radiusAt, pMax, kind, bang_ns, height]);
+  }, [frames, t, tEnd, timeUnit, r0, CR, rScale, unitR, radiusAt, pMax, kind, bang_ns, height, tr]);
 
   return <canvas ref={ref} role="img" aria-label={tr('run.implosion.aria')} style={{ width: '100%', height, display: 'block' }} />;
 }

@@ -49,6 +49,7 @@ const SCALINGS = keysOf<MagneticConfig['scaling']>({ IPB98y2: 0, ITPA20: 0, 'ITP
 const TRANSPORT_MODELS = keysOf<ProfileSettings['transportModel']>({ scaling: 0, cgm: 0, bgb: 0, ifspppl: 0 });
 const EDGE_MODELS = keysOf<NonNullable<ProfileSettings['edgeModel']>>({ legacy: 0, twoPoint: 0 });
 const NONLINEAR_SOLVERS = keysOf<NonNullable<ProfileSettings['nonlinearSolver']>>({ auto: 0, picard: 0, newton: 0, pc: 0 });
+const NEOCLASSICAL_MODELS = keysOf<NonNullable<ProfileSettings['neoclassicalModel']>>({ sauter: 0, redl: 0 });
 const EDGE_LOSS_FITS = keysOf<NonNullable<EdgeOptions['lossFit']>>({ stangeby1: 0, stangeby2: 0, body2025: 0 });
 const EDGE_RADIATIONS = keysOf<NonNullable<EdgeOptions['radiation']>>({ prescribed: 0, lengyel: 0 });
 const MAGNETIC_METHODS = keysOf<MagneticConfig['method']>({ tokamak: 0, spherical_tokamak: 0, stellarator: 0 });
@@ -143,6 +144,7 @@ const profileSettings = partial<ProfileSettings>({
   Tsep_keV: opt(num({ exMin: 0, max: 10, unit: 'keV', doc: 'Fixed separatrix temperature; the two-point model if absent.' })),
   nsepFrac: num({ exMin: 0, max: 1, def: PS.nsepFrac, doc: 'Separatrix density over the volume-averaged electron density.' }),
   edgeModel: opt(oneOf(EDGE_MODELS, "Separatrix temperature of the 1.5D boundary. 'legacy': conduction-limited two-point T_sep (outboard share 0.6, clamped to 0.03-0.5 keV); 'twoPoint': T_sep of the edge model (Eich lambda_q, divertor spreading, outer-leg power share), guard band 5 eV - 2 keV. The edge diagnostics use the edge model either way.", 'legacy')),
+  neoclassicalModel: opt(oneOf(NEOCLASSICAL_MODELS, "Coefficients of the bootstrap current and of the neoclassical conductivity. 'sauter': Sauter, Angioni and Lin-Liu (1999, with the 2002 correction); 'redl': Redl et al. (2021), the same structure refitted to the numerical code NEO (less bootstrap current in the collisional edge and with impurities).", 'sauter')),
 }, { doc: '1.5D profile-model settings (only used with fidelity "1.5D"); every property overrides the model default.' });
 
 type Heating = MagneticConfig['heating'];
@@ -184,6 +186,7 @@ const systemsSettings = opt(object<Systems>({
     outerRadius_m: opt(num({ exMin: 0, max: 20, unit: 'm', doc: 'Outer radius of the solenoid (default: the TF inner radius minus the gap between the solenoid and the TF nose).' })),
     thickness_m: opt(num({ exMin: 0, max: 20, unit: 'm', doc: 'Radial thickness of the solenoid winding; sets the current density B_max / (mu0 t) and takes precedence over currentDensity_MAm2.' })),
     height_m: opt(num({ exMin: 0, max: 100, unit: 'm', doc: 'Height of the solenoid stack (default: the height of the straight TF leg; only the stored energy and the mass depend on it).' })),
+    ejima: opt(num({ min: 0, max: 2, doc: 'Ejima coefficient C_E of the resistive flux of the current ramp-up, C_E mu0 R I_p (default 0.4: the middle of the experiments and the PROCESS value; 0.45 is the ITER design value).' })),
   }, { doc: 'Central-solenoid flux budget. Giving this block turns the flux check on: a warning if the solenoid cannot supply the pulse.' })),
   blanket: opt(object<SystemsBlanket>({
     inboardDepth_m: opt(num({ min: 0, max: 20, unit: 'm', doc: 'Inboard breeding-blanket depth (default: 56 % of the space behind the first wall).' })),

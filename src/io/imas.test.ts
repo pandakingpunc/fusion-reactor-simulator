@@ -52,8 +52,13 @@ describe('IMAS-like JSON of a 0D run', () => {
   it('leaves out what the 0D model does not compute rather than inventing it', () => {
     expect(doc.summary.global_quantities.beta_pol).toBeUndefined();
     expect(doc.summary.global_quantities.li_3).toBeUndefined();
-    expect(doc.summary.global_quantities.v_loop).toBeUndefined();
     expect(doc.summary.local?.magnetic_axis?.q).toBeUndefined();
+  });
+  it('writes the loop voltage of the 0D circuit (v4.0: the loop voltage of a steady current, confinement/circuit.ts)', () => {
+    const v = doc.summary.global_quantities.v_loop.value as (number | null)[];
+    expect(v.length).toBe(src.history.length);
+    expect(v.filter((x) => x !== null).every((x) => Number.isFinite(x) && (x as number) >= 0)).toBe(true);
+    expect(v.some((x) => x !== null && x > 0)).toBe(true);
   });
   it('write, parse, equal: the summary reads back into the model diagnostics (to rounding of the unit conversion)', () => {
     const back = readImasSummary(doc);

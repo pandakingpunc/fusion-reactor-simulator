@@ -83,7 +83,7 @@ const EDGE_OPTION_TYPES: Record<keyof EdgeOptions, LeafType> = {
 const SYSTEMS_OPTION_TYPES: { [K in keyof SystemsConfig]-?: NonNullable<SystemsConfig[K]> extends number ? LeafType : { [J in keyof NonNullable<SystemsConfig[K]>]-?: LeafType } } = {
   pulseLength_s: 'number',
   tf: { nCoils: 'number', noseFraction: 'number', structureFraction: 'number', turnCurrent_A: 'number', verticalInboardFraction: 'number' },
-  cs: { currentDensity_MAm2: 'number', B_max_T: 'number', swingFraction: 'number', pfFlux_Vs: 'number', li: 'number', outerRadius_m: 'number', thickness_m: 'number', height_m: 'number' },
+  cs: { currentDensity_MAm2: 'number', B_max_T: 'number', swingFraction: 'number', pfFlux_Vs: 'number', li: 'number', outerRadius_m: 'number', thickness_m: 'number', height_m: 'number', ejima: 'number' },
   blanket: { inboardDepth_m: 'number', breederFraction: 'number' },
 };
 
@@ -93,6 +93,7 @@ const SYSTEMS_OPTION_TYPES: { [K in keyof SystemsConfig]-?: NonNullable<SystemsC
  * of the solver is a compile error here.
  */
 const NONLINEAR_SOLVER_CHOICES: Record<NonNullable<ProfileSettings['nonlinearSolver']>, true> = { auto: true, picard: true, newton: true, pc: true };
+const NEOCLASSICAL_MODEL_CHOICES: Record<NonNullable<ProfileSettings['neoclassicalModel']>, true> = { sauter: true, redl: true };
 const PROFILE_SERIES = ['profiles.IpWaveform'];
 
 function walk(v: unknown, path: string, leaves: Map<string, LeafType>, sections?: string[]): void {
@@ -127,6 +128,8 @@ function templateFor(method: Method): Template {
   if (method === 'tokamak' || method === 'spherical_tokamak') {
     leaves.set('profiles.nonlinearSolver', 'string');
     enums.set('profiles.nonlinearSolver', new Set(Object.keys(NONLINEAR_SOLVER_CHOICES)));
+    leaves.set('profiles.neoclassicalModel', 'string');
+    enums.set('profiles.neoclassicalModel', new Set(Object.keys(NEOCLASSICAL_MODEL_CHOICES)));
     for (const s of PROFILE_SERIES) series.add(s);
   }
   const ranges = new Map<string, [number, number]>();

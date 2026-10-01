@@ -100,7 +100,7 @@ export interface StepStats {
 
 /**
  * The scalars and references of the shared context that a step changes besides y (the boundary
- * values and P_SOL, the loop voltage, the smoothed dW/dt and the ELM energy booked in it, the fast-ion
+ * values and P_SOL, the loop voltage and the flux ledger, the smoothed dW/dt and the ELM energy booked in it, the fast-ion
  * pools, the diagnostics, the equilibrium of an update, the pending events and issued warnings). The
  * work arrays are not part of it: every step evaluates them afresh.
  */
@@ -110,6 +110,8 @@ interface StepSnapshot {
   /** replaced, never mutated, by a step */
   bc: ProfileContext['bc']; lastK: ProfileContext['lastK']; lastDiag: ProfileContext['lastDiag']; lastProf: ProfileContext['lastProf'];
   geo: ProfileContext['geo']; pending: number; warned: ReadonlySet<string>; forcedSteps: number;
+  /** the flux ledger integrates over the accepted steps: a step that is undone must not stay in it */
+  flux: ReturnType<ProfileContext['flux']['snapshot']>;
 }
 
 function snapshotStep(ctx: ProfileContext, forcedSteps: number): StepSnapshot {
@@ -117,14 +119,15 @@ function snapshotStep(ctx: ProfileContext, forcedSteps: number): StepSnapshot {
     PSOL: ctx.PSOL, GammaB: ctx.GammaB, lastVloop: ctx.lastVloop, dWdtS: ctx.dWdtS, crashE: ctx.crashE, nsepGain: ctx.nsepGain,
     alphaRatio: ctx.alphaRatio, WfAlpha: ctx.WfAlpha, WfBeam: ctx.WfBeam, Pbound: ctx.Pbound,
     bc: ctx.bc, lastK: ctx.lastK, lastDiag: ctx.lastDiag, lastProf: ctx.lastProf,
-    geo: ctx.geo, pending: ctx.pending.length, warned: new Set(ctx.warned), forcedSteps,
+    geo: ctx.geo, pending: ctx.pending.length, warned: new Set(ctx.warned), forcedSteps, flux: ctx.flux.snapshot(),
   };
 }
 
 /** Puts the context back; returns the number of forced steps of the snapshot */
 function restoreStep(ctx: ProfileContext, s: StepSnapshot): number {
-  const { geo, pending, warned, forcedSteps, ...scalars } = s;
+  const { geo, pending, warned, forcedSteps, flux, ...scalars } = s;
   Object.assign(ctx, scalars);
+  ctx.flux.rollback(flux);
   if (ctx.geo !== geo) ctx.adoptGeometry(geo);
   ctx.pending.length = pending;
   ctx.warned = new Set(warned);

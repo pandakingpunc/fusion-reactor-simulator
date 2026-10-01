@@ -105,7 +105,7 @@ export function assessSystems(inp: SystemsInput): SystemsAssessment {
     cs = fluxBudget({
       R: inp.g.R, a: inp.g.a, kappa: inp.g.kappa, Ip_MA: c.Ip_MA, li: sys?.cs?.li ?? inp.li, tech, r_outer_m: r_cs, height_m: sys?.cs?.height_m ?? tf.legHeight_m,
       currentDensity_Am2: J_cs, B_max_T: B_cs, swingFraction: sys?.cs?.swingFraction,
-      pfFlux_Vs: sys?.cs?.pfFlux_Vs, burn: inp.flux ? { Vloop_V: inp.flux.Vloop_V, duration_s: inp.flux.duration_s } : undefined,
+      pfFlux_Vs: sys?.cs?.pfFlux_Vs, burn: inp.flux ? { Vloop_V: inp.flux.Vloop_V, duration_s: inp.flux.duration_s } : undefined, ejima: sys?.cs?.ejima,
     }, inp.flux?.measurement);
   }
 
@@ -134,9 +134,9 @@ export function assessSystems(inp: SystemsInput): SystemsAssessment {
  * ones. Keys of a subsystem that does not apply (no CS in a stellarator, no cryoplant for copper coils, no blanket) are left out; so
  * are the swing and the margin of a solenoid that the configuration does not give (`systems.cs`).
  */
-export function systemsReportKeys(s: SystemsAssessment): Record<string, number> {
+export function systemsReportKeys(s: SystemsAssessment): Record<string, number | string> {
   const r = (x: number, d: number) => +x.toFixed(d);
-  const k: Record<string, number> = {
+  const k: Record<string, number | string> = {
     'TF coils': s.tf.nCoils,
     'TF winding pack J (MA/m²)': r(s.tf.J_wp_Am2 / 1e6, 1),
     'TF case Tresca (MPa)': r(s.tf.case.tresca_MPa, 0),
@@ -151,6 +151,9 @@ export function systemsReportKeys(s: SystemsAssessment): Record<string, number> 
     if (s.csGiven) {
       k['CS flux swing (V s)'] = r(s.cs.psiCS_Vs, 1);
       if (isFinite(s.cs.margin)) k['Flux margin'] = r(s.cs.margin, 3);
+      if (isFinite(s.cs.flatTopLimit_s)) k['Flux-limited flat top (s)'] = r(s.cs.flatTopLimit_s, 0);
+    } else {
+      k['CS flux budget'] = 'not evaluated: no systems.cs block (the solenoid of this design is not given)';
     }
   }
   if (s.cryo.Q_total_W > 0) {

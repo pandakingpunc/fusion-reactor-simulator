@@ -463,6 +463,15 @@
           ],
           "description": "Separatrix temperature of the 1.5D boundary. 'legacy': conduction-limited two-point T_sep (outboard share 0.6, clamped to 0.03-0.5 keV); 'twoPoint': T_sep of the edge model (Eich lambda_q, divertor spreading, outer-leg power share), guard band 5 eV - 2 keV. The edge diagnostics use the edge model either way.",
           "default": "legacy"
+        },
+        "neoclassicalModel": {
+          "type": "string",
+          "enum": [
+            "sauter",
+            "redl"
+          ],
+          "description": "Coefficients of the bootstrap current and of the neoclassical conductivity. 'sauter': Sauter, Angioni and Lin-Liu (1999, with the 2002 correction); 'redl': Redl et al. (2021), the same structure refitted to the numerical code NEO (less bootstrap current in the collisional edge and with impurities).",
+          "default": "sauter"
         }
       },
       "additionalProperties": false,
@@ -1201,6 +1210,12 @@
                   "maximum": 100,
                   "description": "Height of the solenoid stack (default: the height of the straight TF leg; only the stored energy and the mass depend on it). Unit: m.",
                   "x-unit": "m"
+                },
+                "ejima": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 2,
+                  "description": "Ejima coefficient C_E of the resistive flux of the current ramp-up, C_E mu0 R I_p (default 0.4: the middle of the experiments and the PROCESS value; 0.45 is the ITER design value)."
                 }
               },
               "additionalProperties": false,

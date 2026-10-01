@@ -132,6 +132,31 @@ describe('assessSystems', () => {
     expect(s.build.blanketInboard_m).toBe(0.4);
   });
 
+  it('solenoid swing and margin require a supplied design; the plasma flux requirement remains available', () => {
+    const plain = assessSystems(inputOf({ ...ITER, systems: undefined }));
+    expect(plain.cs).not.toBeNull(); // the budget is computed, and available in the assessment
+    expect(plain.csGiven).toBe(false);
+    const k = systemsReportKeys(plain);
+    expect(k['CS flux swing (V s)']).toBeUndefined();
+    expect(k['Flux required (V s)']).toBeGreaterThan(0); // a plasma flux requirement needs no assumed solenoid
+    expect(k['Flux margin']).toBeUndefined();
+    expect(String(k['CS flux budget'])).toContain('systems.cs');
+    const given = assessSystems(inputOf({ ...ITER, systems: { cs: {} } }));
+    expect(given.csGiven).toBe(true);
+    const g = systemsReportKeys(given);
+    expect(g['CS flux swing (V s)']).toBeGreaterThan(0);
+    expect(g['Flux required (V s)']).toBeGreaterThan(0);
+    expect(g['CS flux budget']).toBeUndefined();
+    // a stellarator has no solenoid and no note
+    expect(systemsReportKeys(assessSystems(inputOf(W7X, { P_fus_MW: 0, P_neutron_MW: 0 })))['CS flux budget']).toBeUndefined();
+  });
+
+  it('the Ejima coefficient of the design reaches the budget (systems.cs.ejima)', () => {
+    const d = assessSystems(inputOf({ ...ITER, systems: { cs: {} } }));
+    const i = assessSystems(inputOf({ ...ITER, systems: { cs: { ejima: 0.45 } } }));
+    expect(i.cs!.psiResistive_Vs / d.cs!.psiResistive_Vs).toBeCloseTo(0.45 / 0.4, 12);
+  });
+
   it('the CS flux is checked (warning) only when the design gives the solenoid', () => {
     const tiny: MagneticConfig = { ...ITER, systems: { cs: { currentDensity_MAm2: 5 } } };
     const s = assessSystems(inputOf(tiny));
@@ -148,8 +173,8 @@ describe('assessSystems', () => {
     for (const cfg of [DEMO, SPARC, ITER]) {
       const s = assessSystems(inputOf(cfg, { P_fus_MW: 2000 }));
       const keys = systemsReportKeys(s);
-      for (const [k, v] of Object.entries(keys)) expect(isFinite(v), `${k} of ${cfg.geometry.R} m`).toBe(true);
-      expect(Math.sign(keys['TF stress margin'])).toBe(Math.sign(MAGNET_TECH[cfg.magnet.tech].stress_MPa - s.tf.tresca_MPa));
+      for (const [k, v] of Object.entries(keys)) if (typeof v === 'number') expect(isFinite(v), `${k} of ${cfg.geometry.R} m`).toBe(true);
+      expect(Math.sign(keys['TF stress margin'] as number)).toBe(Math.sign(MAGNET_TECH[cfg.magnet.tech].stress_MPa - s.tf.tresca_MPa));
       expect(s.warnings.some((w) => w.startsWith('TF coil stress'))).toBe(s.tf.overstress);
     }
   });
@@ -206,7 +231,8 @@ describe('pulsed-field load of the cryoplant follows the design pulse of the pla
 });
 
 describe('shot report of a short ITER run', () => {
-  const cfg: MagneticConfig = { ...ITER, t_end: 60 };
+  // the design gives its solenoid: only then does the report carry the CS flux budget (without systems.cs it says it was not evaluated)
+  const cfg: MagneticConfig = { ...ITER, t_end: 60, systems: { cs: {} } };
   const sim = new Simulation(cfg);
   const r = sim.runAll();
   const e = r.engineering;

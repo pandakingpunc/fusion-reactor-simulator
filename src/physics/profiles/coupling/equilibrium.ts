@@ -5,8 +5,10 @@
  *  - Initial equilibrium: shape profile j ∝ (1 − ψ_N²)^1.3 with β_p = 0.1 (cold start).
  *  - Updates: from the transport profiles (table mode: p and ⟨j_φ/R⟩ tabulated on the equilibrium's own flux
  *    surfaces) at least every eqUpdateInterval, earlier (but not before a quarter interval) when β_p or ℓ_i
- *    changed by 10 % / 5 %. An accepted update replaces the transport geometry; the work arrays
- *    are then re-evaluated on it before the MHD events read them.
+ *    changed by 10 % / 5 %, and at once (without the quarter interval) when the plasma current has changed by more than
+ *    EQ_IP_TRIGGER since the equilibrium: a ramp of I_p moves q and the geometry with it, and the geometry of a fast ramp
+ *    must not be up to an update interval old. An accepted update replaces the transport geometry (the state is remapped
+ *    to it conservatively, remap.ts); the work arrays are then re-evaluated on it before the MHD events read them.
  *  - The update is a self-consistent solve (outer.ts): the tables are remapped through the new equilibrium and
  *    re-solved, under-relaxed and with stagnation detection, until the equilibrium's ρ_tor(ψ_N) agrees with the
  *    map the tables were built with, instead of taking the solve of a table mapped through the previous
@@ -27,6 +29,7 @@ import { centerInterval, geometryFromEquilibrium } from '../geometry1d';
 import type { ProfileState } from '../state';
 import { solveConsistentSlices } from './outer';
 import type { ConsistentResult } from './outer';
+import { remapContents } from './remap';
 import { coreFlat } from './tables';
 
 /**
@@ -73,6 +76,16 @@ export const OUTER_ACCEPT = 5e-3;
 export const OUTER_LIMIT = 2 * OUTER_ACCEPT;
 
 /**
+ * The relative change of the plasma current since the last equilibrium, |I_p − I_p,eq|/I_p,eq, above which an update is due at once. A change of
+ * 10 % moves q95 by 10 % and β_p (∝ I_p⁻²) by 20 %, the elongation-independent shape of the current profile with it: about the size at which
+ * the β_p rule of the policy (10 % of β_p, i.e. 5 % of I_p at fixed pressure) would fire anyway, but that rule waits a quarter of an update
+ * interval (5 s for a 400 s shot) and this one does not. A programme that ramps I_p from 3 to 15 MA is followed by a geometry that is at most
+ * 10 % of the current behind (about 15 updates); the Grad–Shafranov solve continues from the previous equilibrium, and a change of 10 % of
+ * I_p is inside what the continuation follows (MASTU15's ramp-up moves β_p by more).
+ */
+export const EQ_IP_TRIGGER = 0.1;
+
+/**
  * Whether the result of an outer iteration is adopted (before the geometry built from it is checked): it converged to
  * OUTER_TOL, or its mapping mismatch is within OUTER_LIMIT. Limited (partial) updates have the same limit.
  */
@@ -85,10 +98,11 @@ const UPDATE_SOLVE: Partial<EquilibriumOptions> = { tol: 1e-5, maxIter: 60, rela
 
 export class EquilibriumCoupling implements Checkpointable {
   readonly gsSolver: GSSolver;
-  /** time of the last accepted equilibrium, and its β_p and ℓ_i (the update triggers) */
+  /** time of the last accepted equilibrium, and its β_p, ℓ_i and plasma current [A] (the update triggers) */
   eqTime = 0;
   eqBetaP = 0;
   eqLi = 0;
+  eqIp = 0;
   /** accepted Grad–Shafranov updates after the initial solve */
   eqUpdates = 0;
   /** accepted updates in which a solve needed Newton–Krylov, a shorter continuation step or failed; updates that were rejected */
@@ -128,6 +142,7 @@ export class EquilibriumCoupling implements Checkpointable {
     const eq0 = this.initialEquilibrium(ctx);
     ctx.adoptGeometry({ eq: eq0, tg: geometryFromEquilibrium(eq0, ctx.N, ctx.geomB, ctx.grid) });
     this.eqBetaP = ctx.eq.betaP; this.eqLi = ctx.eq.li3;
+    this.eqIp = Math.max(ctx.cfg.Ip_MA, 0.05) * 1e6; // what initialEquilibrium solved for
   }
 
   private initialEquilibrium(ctx: ProfileContext): Equilibrium {
@@ -165,7 +180,8 @@ export class EquilibriumCoupling implements Checkpointable {
     const dBp = Math.abs((d.betaP ?? 0) - this.eqBetaP) / Math.max(this.eqBetaP, 0.05);
     const dLi = Math.abs((d.li ?? 0) - this.eqLi) / Math.max(this.eqLi, 0.1);
     const since = t - this.eqTime;
-    const due = since >= ctx.ps.eqUpdateInterval || ((dBp > 0.1 || dLi > 0.05) && since > 0.25 * ctx.ps.eqUpdateInterval);
+    const dIp = Math.abs(ctx.view(y).s.Ip - this.eqIp) / Math.max(this.eqIp, 5e4);
+    const due = since >= ctx.ps.eqUpdateInterval || ((dBp > 0.1 || dLi > 0.05) && since > 0.25 * ctx.ps.eqUpdateInterval) || dIp > EQ_IP_TRIGGER;
     if (!due || ctx.phase !== 'normal' || t < this.eqRetryAt) return;
     if (yield* update(t, y)) {
       this.eqTime = t;
@@ -248,7 +264,10 @@ export class EquilibriumCoupling implements Checkpointable {
     if (res.fraction < 1) {
       ctx.warnOnce('gs-limited', t, `Grad–Shafranov update followed only ${(100 * res.fraction).toFixed(0)} % of the change of the transport profiles: the equilibrium of the whole change did not converge (pressure and current tables at the limit of what the boundary can hold); the geometry lags the profiles by the rest — reported once, at t = ${t.toFixed(2)} s`);
     }
+    // the state of the old geometry becomes the state of the new one with its contents and its enclosed current kept (remap.ts), then the geometry is adopted
+    remapContents(g, tg, v.ne, v.psi, v.s.Ip);
     ctx.adoptGeometry({ eq: res.eq, tg });
+    this.eqIp = v.s.Ip;
     // postStep (ELM, sawtooth) runs next and reads n_i, q, p: evaluate them on the new geometry
     evaluate(t, v);
     return true;
@@ -274,14 +293,14 @@ export class EquilibriumCoupling implements Checkpointable {
 
   save(rec: CheckpointRecord): void {
     Object.assign(rec, {
-      eqTime: this.eqTime, eqBetaP: this.eqBetaP, eqLi: this.eqLi, eqRetryAt: this.eqRetryAt, eqFailStreak: this.eqFailStreak,
+      eqTime: this.eqTime, eqBetaP: this.eqBetaP, eqLi: this.eqLi, eqIp: this.eqIp, eqRetryAt: this.eqRetryAt, eqFailStreak: this.eqFailStreak,
       eqUpdates: this.eqUpdates, eqRetried: this.eqRetried, eqRejected: this.eqRejected,
     });
   }
   restore(rec: Readonly<CheckpointRecord>): void {
     const num = (k: string, dflt: number) => recNum(rec, k, dflt);
     this.eqTime = num('eqTime', 0);
-    this.eqBetaP = num('eqBetaP', this.eqBetaP); this.eqLi = num('eqLi', this.eqLi);
+    this.eqBetaP = num('eqBetaP', this.eqBetaP); this.eqLi = num('eqLi', this.eqLi); this.eqIp = num('eqIp', this.eqIp);
     this.eqRetryAt = num('eqRetryAt', 0); this.eqFailStreak = num('eqFailStreak', 0);
     this.eqUpdates = num('eqUpdates', this.eqUpdates); this.eqRetried = num('eqRetried', this.eqRetried);
     this.eqRejected = num('eqRejected', this.eqRejected);

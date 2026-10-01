@@ -281,6 +281,13 @@ describe('golden cases', () => {
     expect(() => caseConfig({ id: 'x', preset: 'JET', overrides: { profiles: { transportModel: 'bgb' } } })).toThrow(/does not run the 1\.5D profile model/);
   });
 
+  it('the Redl override is opt-in and requires the profile model', () => {
+    const redl = caseConfig(goldenCase('SPARC15-redl')) as MagneticConfig;
+    expect(redl.profiles?.neoclassicalModel).toBe('redl');
+    expect((PRESETS.find((p) => p.id === 'SPARC15')!.cfg as MagneticConfig).profiles?.neoclassicalModel).toBeUndefined();
+    expect(() => caseConfig({ id: 'x', preset: 'JET', overrides: { profiles: { neoclassicalModel: 'redl' } } })).toThrow(/does not run the 1\.5D profile model/);
+  });
+
   it('the predictive-closure cases are stored with the emergent H factors, which the default transport does not write', () => {
     for (const id of ['ITER15-bgb', 'JET15-ifspppl']) {
       const s = parseSnapshot(readFileSync(goldenFile(id), 'utf8'));

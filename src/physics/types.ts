@@ -125,6 +125,13 @@ export interface ProfileSettings {
    * only the guard band of 5 eV – 2 keV), the same functions as the edge diagnostics. n_sep stays fuelling-controlled in both.
    */
   edgeModel?: 'legacy' | 'twoPoint';
+  /**
+   * Coefficients of the bootstrap current and of the neoclassical conductivity (profiles/neoclassical.ts, profiles/current/redl.ts).
+   * 'sauter' (default): Sauter, Angioni and Lin-Liu, Phys. Plasmas 6 (1999) 2834 with the correction of 9 (2002) 5140. 'redl': Redl et al.,
+   * Phys. Plasmas 28 (2021) 022502, the same structure refitted to the numerical code NEO: less bootstrap current in the collisional edge and
+   * with impurities. Both use the trapped fraction, collisionalities and Z_eff of Sauter's definitions.
+   */
+  neoclassicalModel?: 'sauter' | 'redl';
 }
 
 /**
@@ -265,6 +272,12 @@ export interface SystemsConfig {
     thickness_m?: number;
     /** height of the solenoid stack [m] (default: the height of the straight TF leg; stored energy and mass only) */
     height_m?: number;
+    /**
+     * Ejima coefficient C_E of the resistive flux of the current ramp-up, Psi_res = C_E mu0 R I_p (default 0.4, the middle of the experiments
+     * and the PROCESS value; 0.45 is the ITER design value): the ramp-up before t = 0 of a shot that starts at the full current, in
+     * both plasma models and in the budget of the shot report
+     */
+    ejima?: number;
   };
   blanket?: {
     /** inboard breeding-blanket depth [m] (default: 56 % of the space behind the first wall) */

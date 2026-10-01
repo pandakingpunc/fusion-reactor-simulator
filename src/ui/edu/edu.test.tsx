@@ -126,7 +126,7 @@ describe('Glossary view', () => {
     expect(screen.getByText('No term matches.')).toBeTruthy();
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '' } });
     fireEvent.click(screen.getByRole('button', { name: 'Inertial fusion' }));
-    expect(screen.getAllByRole('article').map((a) => a.querySelector('h4')!.textContent)).toEqual([
+    expect(screen.getAllByRole('article').map((a) => a.querySelector('h3')!.textContent)).toEqual([
       expect.stringContaining('Hohlraum'), expect.stringContaining('Fuel adiabat'), expect.stringContaining('Drive asymmetry'),
     ]);
     fireEvent.click(screen.getByRole('button', { name: 'All' }));
@@ -147,7 +147,7 @@ describe('Glossary view', () => {
     withStore(<GlossaryView selected="elm" />);
     const sel = screen.getAllByRole('article').filter((a) => a.getAttribute('aria-current') === 'true');
     expect(sel).toHaveLength(1);
-    expect(sel[0].querySelector('h4')!.textContent).toContain('Edge-localised mode');
+    expect(sel[0].querySelector('h3')!.textContent).toContain('Edge-localised mode');
   });
 });
 
@@ -384,7 +384,7 @@ describe('Learn screen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open in the glossary' }));
     expect(screen.getByRole('tab', { name: 'Glossary' }).getAttribute('aria-selected')).toBe('true');
     const sel = screen.getAllByRole('article').filter((a) => a.getAttribute('aria-current') === 'true');
-    expect(sel.map((a) => a.querySelector('h4')!.textContent)).toEqual([expect.stringContaining('Target gain')]);
+    expect(sel.map((a) => a.querySelector('h3')!.textContent)).toEqual([expect.stringContaining('Target gain')]);
     fireEvent.click(screen.getByRole('tab', { name: 'Missions' }));
     expect(screen.getAllByRole('button').some((b) => b.classList.contains('mission-card'))).toBe(true);
   });

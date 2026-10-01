@@ -5,6 +5,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { fmtAxis } from '../format';
 import { localizeDecimals } from '../../i18n';
+import { useT } from '../state/store';
 import { useWizText } from '../wizard/wizText';
 
 type Line = { key: string; label: string; color: string; right?: boolean; dash?: number[] };
@@ -28,6 +29,7 @@ const PAD = { l: 46, r: 46, t: 18, b: 22 };
 
 export function ProfileChart({ prof, t, height = 220 }: { prof: Record<string, number[]> | null | undefined; t?: string; height?: number }) {
   const wt = useWizText();
+  const tr = useT();
   const ref = useRef<HTMLCanvasElement>(null);
   const [view, setView] = useState('Tn');
   const v = VIEWS.find((x) => x.id === view)!;
@@ -89,9 +91,9 @@ export function ProfileChart({ prof, t, height = 220 }: { prof: Record<string, n
   return (
     <div>
       <div className="row" style={{ gap: 4, marginBottom: 4 }}>
-        {VIEWS.map((x) => <button key={x.id} className={`btn sm ${view === x.id ? 'active' : ''}`} onClick={() => setView(x.id)}>{wt(x.name)}</button>)}
+        {VIEWS.map((x) => <button key={x.id} type="button" className={`btn sm ${view === x.id ? 'active' : ''}`} aria-pressed={view === x.id} onClick={() => setView(x.id)}>{wt(x.name)}</button>)}
       </div>
-      <canvas ref={ref} style={{ width: '100%', height, display: 'block' }} />
+      <canvas ref={ref} role="img" aria-label={tr('chart.profile.aria', { view: wt(v.name) })} style={{ width: '100%', height, display: 'block' }} />
     </div>
   );
 }

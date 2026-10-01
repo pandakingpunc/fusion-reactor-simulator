@@ -14,6 +14,7 @@ export const tr: Dict = {
   'app.tab.compare': 'Karşılaştır',
   'app.tab.validate': 'Doğrulama',
   'app.tab.learn': 'Öğren',
+  'app.nav': 'Bölümler',
   'app.st.idle': 'Hazır değil',
   'app.st.loading': 'Yükleniyor…',
   'app.st.ready': 'Hazır',
@@ -120,9 +121,15 @@ export const tr: Dict = {
 
   'chart.logTitle': 'logaritmik y ekseni',
   'chart.resetZoom': 'yakınlaştırmayı sıfırla (çift tık)',
+  'chart.aria': '{title}: koşunun zaman grafiği',
+  'chart.ariaPlain': 'Koşunun zaman grafiği',
+  'chart.profile.aria': 'Plazmanın radyal profilleri ({view})',
+  'run.cross.aria': 'Plazmanın poloidal kesiti, akı yüzeyleri ve bobinlerle',
+  'run.implosion.aria': 'İmplozyonun şeması: kapsül veya astarın yarıçapının zamana göre değişimi',
 
   'field.on': 'açık',
   'field.off': 'kapalı',
+  'field.slider': '{label}: kaydırıcı',
   'field.outOfRange': 'Önerilen aralık dışında ({min}–{max})',
   'field.empty': 'Boş — modele değer aktarılmaz',
   'field.required': 'Zorunlu — bir değer girin (boş kaldıkça çalıştırılamaz)',

@@ -5,17 +5,15 @@
  * fenced is reported: it does not come from a dictionary, so it is hard-coded in one language and stays English for a
  * Turkish visitor. Numbers, units, symbols and the short list of proper names in testing/pseudo.ts are allowed.
  */
-import React from 'react';
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import App, { preloadRunScreen } from '../App';
+import { preloadRunScreen } from '../App';
 import { en } from '../i18n/en';
 import { eduEn } from '../edu/i18n/en';
 import { persistEn } from '../i18n/persist.en';
 import { Wizard } from './wizard/Wizard';
 import { METHOD_INFO, STEP_IDS, PRESETS as WIZ_PRESETS } from './wizard/schema';
 import { NIF, PRESETS, SPARC, SPARC_15D } from '../physics/presets';
-import { FakeWorker, fakeWorkerFactory } from '../worker/fakeWorker';
 import { AppStore, AppStoreContext, createAppStore } from './state/store';
 import { installDomStubs, listenCanvasText } from './testing/dom';
 import { mountApp as mountAppIn, modelTexts, startRun } from './testing/appHarness';

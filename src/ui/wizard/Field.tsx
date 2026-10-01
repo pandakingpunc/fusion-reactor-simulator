@@ -87,7 +87,7 @@ function NumberField({ def, value, onChange }: { def: FieldDef; value: number | 
         onChange={(e) => setText(e.target.value)} onBlur={(e) => commit(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') commit((e.target as HTMLInputElement).value); }} />
       {def.min !== undefined && def.max !== undefined && !def.noSlider && (
-        <input type="range" min={def.min} max={def.max} step={def.step ?? (def.max - def.min) / 200}
+        <input type="range" aria-label={t('field.slider', { label: fieldLabel(def, t, wt) })} min={def.min} max={def.max} step={def.step ?? (def.max - def.min) / 200}
           value={shown !== undefined ? Math.min(def.max, Math.max(def.min, shown)) : def.min}
           onChange={(e) => { const v = parseFloat(e.target.value); setText(fmtEdit(v)); onChange(v * scale); }} />
       )}

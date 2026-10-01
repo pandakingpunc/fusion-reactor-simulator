@@ -132,10 +132,10 @@ export default function App({ createWorker, schedule }: Props) {
     <RouterContext.Provider value={router}>
     <div className="app">
       <header className="topbar">
-        <div className="brand"><span className="dot" />{t('app.brand')}</div>
-        <nav className="tabs">
+        <div className="brand"><span className="dot" aria-hidden="true" />{t('app.brand')}</div>
+        <nav className="tabs" aria-label={t('app.nav')}>
           {TABS.map((tb) => (
-            <button key={tb.id} className={`tab ${tab === tb.id ? 'active' : ''}`} onClick={() => actions.setTab(tb.id)}
+            <button key={tb.id} type="button" className={`tab ${tab === tb.id ? 'active' : ''}`} aria-current={tab === tb.id ? 'page' : undefined} onClick={() => actions.setTab(tb.id)}
               disabled={(tb.id === 'run' && state.status === 'idle') || (tb.id === 'report' && !latest && !state.report)}>
               {t(tb.label)}{tb.id === 'compare' && shots.length ? ` (${shots.length})` : ''}
             </button>

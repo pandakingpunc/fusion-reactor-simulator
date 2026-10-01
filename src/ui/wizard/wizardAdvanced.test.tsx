@@ -77,7 +77,7 @@ describe('wizard: the Advanced section', () => {
     expect(getPath(seen.cfg, 'divertor.edge.sheathGamma')).toBe(50);
     // the run is not blocked by any of it
     step('RUN');
-    expect(screen.getByRole('button', { name: /Start the run|Run/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /START SHOT/ })).toBeTruthy();
   });
 
   it('shows the solver settings on the heating step for a 1.5D run only', async () => {

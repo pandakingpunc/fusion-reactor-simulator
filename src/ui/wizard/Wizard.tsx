@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Method, ReactorConfig } from '../../physics/types';
 import { Field } from './Field';
 import type { AdvancedStep, CrossIssue } from './schema';
@@ -45,6 +45,16 @@ export function Wizard({ cfg, setCfg, name, setName, onRun, scenarioStep, scenar
   const blocked = missing.length > 0 ? t('wiz.missingBlocked', { fields: missing.map((m) => fieldLabel(m.field, t, wt)).join(', ') })
     : issues.length > 0 ? t('wiz.crossBlocked', { issues: issues.map((i) => t(i.key, i.params)).join(' ') })
     : undefined;
+  // a step change moves the focus to the title of the new step (the keyboard and the screen reader land where the page changed); not on the first draw
+  const body = useRef<HTMLElement>(null);
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    const h = body.current?.querySelector<HTMLElement>('h2');
+    if (!h) return;
+    h.tabIndex = -1;
+    h.focus();
+  }, [stepIdx]);
   const goToStep = (id: string) => { const i = STEP_IDS.indexOf(id as StepId); if (i >= 0) setStepIdx(i); };
 
   const pickMethod = (m: Method) => {
@@ -82,10 +92,10 @@ export function Wizard({ cfg, setCfg, name, setName, onRun, scenarioStep, scenar
               <h3>{wt(grp)}</h3>
               <div className="method-grid">
                 {ms.map((m) => (
-                  <div key={m} className={`method-card ${cfg.method === m ? 'active' : ''}`} onClick={() => pickMethod(m)}>
-                    <div className="name">{wt(METHOD_INFO[m].name)}</div>
-                    <div className="desc">{wt(METHOD_INFO[m].desc)}</div>
-                  </div>
+                  <button type="button" key={m} className={`method-card ${cfg.method === m ? 'active' : ''}`} aria-pressed={cfg.method === m} onClick={() => pickMethod(m)}>
+                    <span className="name">{wt(METHOD_INFO[m].name)}</span>
+                    <span className="desc">{wt(METHOD_INFO[m].desc)}</span>
+                  </button>
                 ))}
               </div>
             </div>
@@ -132,12 +142,13 @@ export function Wizard({ cfg, setCfg, name, setName, onRun, scenarioStep, scenar
           {STEP_IDS.map((id, i) => {
             const empty = missing.filter((m) => m.step.id === id);
             const inconsistent = issues.filter((i) => i.step === id);
+            const why = empty.length > 0 ? t('wiz.missingBlocked', { fields: empty.map((m) => fieldLabel(m.field, t, wt)).join(', ') })
+              : inconsistent.length > 0 ? t('wiz.crossBlocked', { issues: inconsistent.map((i) => t(i.key, i.params)).join(' ') }) : undefined;
             return (
-              <div key={id} className={`step ${i === stepIdx ? 'active' : ''} ${i < stepIdx ? 'done' : ''}`} onClick={() => setStepIdx(i)}>
+              <button type="button" key={id} className={`step ${i === stepIdx ? 'active' : ''} ${i < stepIdx ? 'done' : ''}`} aria-current={i === stepIdx ? 'step' : undefined} onClick={() => setStepIdx(i)}>
                 <span className="idx">{i + 1}</span><span>{wt(STEP_TITLES[id])}</span>
-                {empty.length > 0 && <span className="badge warn" title={t('wiz.missingBlocked', { fields: empty.map((m) => fieldLabel(m.field, t, wt)).join(', ') })}>!</span>}
-                {empty.length === 0 && inconsistent.length > 0 && <span className="badge warn" title={t('wiz.crossBlocked', { issues: inconsistent.map((i) => t(i.key, i.params)).join(' ') })}>!</span>}
-              </div>
+                {why && <span className="badge warn" role="img" aria-label={why} title={why}>!</span>}
+              </button>
             );
           })}
         </div>
@@ -154,22 +165,20 @@ export function Wizard({ cfg, setCfg, name, setName, onRun, scenarioStep, scenar
             : <button className="btn sm primary" disabled={!!blocked} title={blocked} onClick={() => onRun(cfg)}>{t('wiz.run')}</button>}
         </div>
       </aside>
-      <section className="panel" style={{ overflow: 'auto' }}>{renderStep(stepId)}</section>
+      <section className="panel" style={{ overflow: 'auto' }} ref={body}>{renderStep(stepId)}</section>
       <aside className="panel" style={{ overflow: 'auto' }}>
         <div className="panel-title"><h3>{t('wiz.presets')}</h3><span className="muted small">{t('wiz.devices', { n: PRESETS.length })}</span></div>
         <div className="preset-list">
           {PRESETS.map((p) => (
-            <div key={p.id} className={`preset ${activePreset === p.id ? 'active' : ''}`} onClick={() => pickPreset(p.id)}>
-              <div className="row" style={{ justifyContent: 'space-between' }}>
+            <div key={p.id} className={`preset ${activePreset === p.id ? 'active' : ''}`}>
+              <button type="button" className="preset-pick" aria-pressed={activePreset === p.id} onClick={() => pickPreset(p.id)}>
                 <span className="name">{wt(p.name)}</span>
-                <span className="row" style={{ gap: 6 }}>
-                  <span className="muted small">{wt(METHOD_INFO[p.cfg.method].name)}</span>
-                  <button className="btn sm primary" title={t('wiz.runPreset')}
-                    onClick={(e) => { e.stopPropagation(); pickPreset(p.id); onRun(p.cfg); }}>▶</button>
-                </span>
-              </div>
-              <div className="desc">{wt(p.desc)}</div>
-              {p.validation && <div className="val">✓ {wt(p.validation)}</div>}
+                <span className="muted small">{wt(METHOD_INFO[p.cfg.method].name)}</span>
+                <span className="desc">{wt(p.desc)}</span>
+                {p.validation && <span className="val">✓ {wt(p.validation)}</span>}
+              </button>
+              <button type="button" className="btn sm primary preset-run" title={t('wiz.runPreset')} aria-label={`${t('wiz.runPreset')}: ${wt(p.name)}`}
+                onClick={() => { pickPreset(p.id); onRun(p.cfg); }}>▶</button>
             </div>
           ))}
         </div>

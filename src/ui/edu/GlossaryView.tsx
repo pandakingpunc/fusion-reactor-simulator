@@ -42,7 +42,7 @@ export function GlossaryView({ selected = null, onSelect }: Props) {
           const sel = selected === g.id;
           return (
             <article key={g.id} id={`gl-${g.id}`} className={`gl-entry ${sel ? 'selected' : ''}`} ref={sel ? (el) => { selRef.current = el; } : undefined} aria-current={sel ? 'true' : undefined}>
-              <h4>{t(k.name)}{g.symbol && <span className="sym" title={t('edu.glossary.symbol')}>{g.symbol}</span>}<span className="grp">{t(`grp.${g.group}` as EduKey)}</span></h4>
+              <h3>{t(k.name)}{g.symbol && <span className="sym" title={t('edu.glossary.symbol')}>{g.symbol}</span>}<span className="grp">{t(`grp.${g.group}` as EduKey)}</span></h3>
               <p>{t(k.def)}</p>
               {g.related.length > 0 && (
                 <div className="rel">{t('edu.glossary.related')}:

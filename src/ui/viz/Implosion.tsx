@@ -8,6 +8,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { UiFrame } from '../../worker/protocol';
 import { fmtAxis } from '../format';
+import { useT } from '../state/store';
 import { localizeDecimals } from '../../i18n';
 
 interface Props {
@@ -24,6 +25,7 @@ interface Props {
 function smooth(x: number): number { const u = Math.min(1, Math.max(0, x)); return u * u * (3 - 2 * u); }
 
 export function Implosion({ kind, frames, t, tEnd, timeUnit, geometry, bang_ns, height = 240 }: Props) {
+  const tr = useT();
   const ref = useRef<HTMLCanvasElement>(null);
 
   const r0 = kind === 'icf' ? (geometry.capsuleRadius_um ?? 1000) : (geometry.r0 ?? 0.1);
@@ -123,5 +125,5 @@ export function Implosion({ kind, frames, t, tEnd, timeUnit, geometry, bang_ns, 
     ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(xs(t), Tp); ctx.lineTo(xs(t), Tp + ph); ctx.stroke();
   }, [frames, t, tEnd, timeUnit, r0, CR, rScale, unitR, radiusAt, pMax, kind, bang_ns, height]);
 
-  return <canvas ref={ref} style={{ width: '100%', height, display: 'block' }} />;
+  return <canvas ref={ref} role="img" aria-label={tr('run.implosion.aria')} style={{ width: '100%', height, display: 'block' }} />;
 }

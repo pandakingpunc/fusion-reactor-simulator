@@ -25,10 +25,10 @@ export function ControlsPanel({ controls, defaults, disabled, onChange }: Props)
         <div key={k} className="slider-row" title={s.hint}>
           <div>
             <div className="lbl">{s.label} {s.unit && <span className="mono">[{s.unit}]</span>}</div>
-            <input type="range" aria-label={s.label} min={sliderPos(s, s.min)} max={sliderPos(s, s.max)} step={sliderStep(s)} value={sliderPos(s, v)}
+            <input type="range" aria-label={s.label} aria-valuetext={`${fmtNum(v, 4)}${s.unit ? ` ${s.unit}` : ''}`} min={sliderPos(s, s.min)} max={sliderPos(s, s.max)} step={sliderStep(s)} value={sliderPos(s, v)}
               onChange={(e) => onChange({ [k]: sliderValue(s, parseFloat(e.target.value)) })} disabled={disabled} />
           </div>
-          <input type="text" className="num" value={fmtNum(v, 4)} readOnly tabIndex={-1} />
+          <input type="text" className="num" value={fmtNum(v, 4)} readOnly tabIndex={-1} aria-hidden="true" />
         </div>
       ))}
       {sliders.some((x) => !x.s.known) && <div className="hint">{t('run.ctrlUnknown')}</div>}

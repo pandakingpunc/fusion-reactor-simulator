@@ -8,6 +8,7 @@
  */
 import React, { useEffect, useRef } from 'react';
 import { EqSnapshot } from '../../physics/types';
+import { useT } from '../state/store';
 import { useWizText } from '../wizard/wizText';
 import { localizeDecimals } from '../../i18n';
 
@@ -39,6 +40,7 @@ function tempColor(u: number): string {
 
 export function CrossSection(p: Props) {
   const wt = useWizText();
+  const tr = useT();
   const ref = useRef<HTMLCanvasElement>(null);
   const { R, a, kappa, delta, gap, coilThickness, T0_keV, alphaT, Hmode, divertor, stellarator, disrupted, elmFlash = 0, height = 300, eq, prof } = p;
 
@@ -137,5 +139,5 @@ export function CrossSection(p: Props) {
     if (disrupted) { ctx.fillStyle = '#ef476f'; ctx.font = 'bold 12px Inter, sans-serif'; ctx.fillText(wt('DISRUPTION'), 6, 28); }
   }, [R, a, kappa, delta, gap, coilThickness, T0_keV, alphaT, Hmode, divertor, stellarator, disrupted, elmFlash, height, eq, prof, wt]);
 
-  return <canvas ref={ref} style={{ width: '100%', height, display: 'block' }} />;
+  return <canvas ref={ref} role="img" aria-label={tr('run.cross.aria')} style={{ width: '100%', height, display: 'block' }} />;
 }

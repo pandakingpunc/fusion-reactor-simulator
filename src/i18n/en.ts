@@ -17,6 +17,7 @@ export const en = {
   'app.tab.compare': 'Compare',
   'app.tab.validate': 'Validation',
   'app.tab.learn': 'Learn',
+  'app.nav': 'Sections',
   'app.st.idle': 'Not ready',
   'app.st.loading': 'Loading…',
   'app.st.ready': 'Ready',
@@ -123,9 +124,15 @@ export const en = {
 
   'chart.logTitle': 'logarithmic y-axis',
   'chart.resetZoom': 'reset zoom (double-click)',
+  'chart.aria': '{title}: time chart of the run',
+  'chart.ariaPlain': 'Time chart of the run',
+  'chart.profile.aria': 'Radial profiles of the plasma ({view})',
+  'run.cross.aria': 'Poloidal cross-section of the plasma with its flux surfaces and coils',
+  'run.implosion.aria': 'Schematic of the implosion: the radius of the capsule or liner against time',
 
   'field.on': 'on',
   'field.off': 'off',
+  'field.slider': '{label}: slider',
   'field.outOfRange': 'Outside the recommended range ({min}–{max})',
   'field.empty': 'Empty — no value is passed to the model',
   'field.required': 'Required — enter a value (the run is blocked while it is empty)',

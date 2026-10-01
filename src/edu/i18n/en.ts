@@ -10,6 +10,7 @@ export const eduEn = {
   'edu.sub': 'Ten missions that teach how a fusion plasma is kept alive, and a glossary of the terms.',
   'edu.sub.missions': 'Missions',
   'edu.sub.glossary': 'Glossary',
+  'edu.sections': 'Learn sections',
   'edu.progress': '{n} of {total} missions solved',
   'edu.solved': 'Solved',
   'edu.open': 'Open',

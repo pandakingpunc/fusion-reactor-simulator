@@ -41,8 +41,8 @@ describe('step-control notes', () => {
 
   it('translates a warning of the model and leaves any other as it is', () => {
     expect(localizeWarning(MODEL_WARNINGS[0], bad, en)).toBe(MODEL_WARNINGS[0]);
-    expect(localizeWarning(MODEL_WARNINGS[0], bad, tr)).toBe('ProfileSettings.rtol = -1 pozitif bir sayı değil: bunun yerine 0.01 kullanılıyor.');
-    expect(localizeWarning(MODEL_WARNINGS[2], bad, tr)).toBe('ProfileSettings.dtMax = 1e-9 en kısa adım olan 0.000001 s değerinin altında: bunun yerine 0.000001 s kullanılıyor.');
+    expect(localizeWarning(MODEL_WARNINGS[0], bad, tr)).toBe('ProfileSettings.rtol = -1 pozitif bir sayı değil: bunun yerine 0,01 kullanılıyor.');
+    expect(localizeWarning(MODEL_WARNINGS[2], bad, tr)).toBe('ProfileSettings.dtMax = 1e-9 en kısa adım olan 0,000001 s değerinin altında: bunun yerine 0,000001 s kullanılıyor.');
     expect(localizeWarning('TF coil stress 900 MPa > 800 MPa limit.', bad, tr)).toBe('TF coil stress 900 MPa > 800 MPa limit.');
   });
 

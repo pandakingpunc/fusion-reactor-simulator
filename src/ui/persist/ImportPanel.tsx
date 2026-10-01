@@ -40,6 +40,7 @@ export function ImportPanel({ onDone }: { onDone(): void }) {
   const [saved, setSaved] = useState(false);
   const [over, setOver] = useState(false);
   const abort = useRef<AbortController | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   useEffect(() => () => abort.current?.abort(), []);
 
   const start = async (file: File) => {
@@ -100,11 +101,10 @@ export function ImportPanel({ onDone }: { onDone(): void }) {
       <h3>{p('persist.imp.heading')}</h3>
       <p className="muted small">{p('persist.imp.help')}</p>
       <div className={`persist-drop${over ? ' over' : ''}`} onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={onDrop}>
-        <label className="btn sm" style={{ cursor: 'pointer' }}>
-          {p('persist.imp.pick')}
-          <input type="file" accept=".json,application/json" hidden data-testid="import-file"
-            onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void start(f); }} />
-        </label>
+        {/* a real button (a tab stop) opens the file chooser; the input itself is out of the tab order and hidden from assistive technology, but not display:none */}
+        <button type="button" className="btn sm" onClick={() => fileRef.current?.click()}>{p('persist.imp.pick')}</button>
+        <input ref={fileRef} type="file" accept=".json,application/json" className="sr-only" tabIndex={-1} aria-hidden="true" data-testid="import-file"
+          onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void start(f); }} />
         <span className="muted small">{p('persist.imp.drop')}</span>
       </div>
 

@@ -47,7 +47,8 @@ export function useStore<T extends object, S>(store: Store<T>, selector: (s: T) 
 
 // ── app store ────────────────────────────────────────────────────────────────
 
-const LOCALE_KEY = 'fusion-sim.locale';
+/** the key the language is saved under; the inline script of index.html reads the same key to set <html lang> early (firstPaint.test.tsx ties the two) */
+export const LOCALE_KEY = 'fusion-sim.locale';
 
 /**
  * The dictionaries of the screens that are chunks of their own (sharing, the scenario editor, education, the validation and compare views)

@@ -132,7 +132,7 @@ export default function App({ createWorker, schedule }: Props) {
     <RouterContext.Provider value={router}>
     <div className="app">
       <header className="topbar">
-        <div className="brand"><span className="dot" aria-hidden="true" />{t('app.brand')}</div>
+        <h1 className="brand"><span className="dot" aria-hidden="true" />{t('app.brand')}</h1>
         <nav className="tabs" aria-label={t('app.nav')}>
           {TABS.map((tb) => (
             <button key={tb.id} type="button" className={`tab ${tab === tb.id ? 'active' : ''}`} aria-current={tab === tb.id ? 'page' : undefined} onClick={() => actions.setTab(tb.id)}

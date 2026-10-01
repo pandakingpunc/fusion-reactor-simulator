@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LOCALE_KEY } from './state/store';
 
 // vitest runs from the project root
 const INDEX_HTML = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8');
@@ -25,8 +26,12 @@ function runIndexScript(): void {
 }
 
 describe('index.html: the language is on <html lang> before the application starts', () => {
+  it('reads the key the application saves the language under', () => {
+    expect(INDEX_HTML).toContain(`localStorage.getItem('${LOCALE_KEY}')`);
+  });
+
   it('takes the saved Turkish locale', () => {
-    localStorage.setItem('fusion-sim.locale', 'tr');
+    localStorage.setItem(LOCALE_KEY, 'tr');
     runIndexScript();
     expect(document.documentElement.lang).toBe('tr');
   });
@@ -35,7 +40,7 @@ describe('index.html: the language is on <html lang> before the application star
     runIndexScript();
     expect(document.documentElement.lang).toBe('en');
     for (const saved of ['en', 'de', '', '<script>']) {
-      localStorage.setItem('fusion-sim.locale', saved);
+      localStorage.setItem(LOCALE_KEY, saved);
       runIndexScript();
       expect(document.documentElement.lang).toBe('en');
     }
@@ -50,7 +55,7 @@ describe('index.html: the language is on <html lang> before the application star
   it('reads the key under which the application saves the language', async () => {
     const { createAppStore } = await import('./state/store');
     await createAppStore().actions.setLocale('tr');
-    expect(localStorage.getItem('fusion-sim.locale')).toBe('tr');
+    expect(localStorage.getItem(LOCALE_KEY)).toBe('tr');
     document.documentElement.lang = 'en';
     runIndexScript();
     expect(document.documentElement.lang).toBe('tr');
@@ -60,7 +65,7 @@ describe('index.html: the language is on <html lang> before the application star
 
 describe('a saved Turkish locale on a fresh page', () => {
   it('draws no English text at any moment: the first screen, then the sharing buttons that arrive in a chunk of their own', async () => {
-    localStorage.setItem('fusion-sim.locale', 'tr');
+    localStorage.setItem(LOCALE_KEY, 'tr');
     runIndexScript(); // the page's own inline script runs first, before any module
     // a new page: no dictionary of any screen is loaded yet (a fresh module graph, with its own React)
     vi.resetModules();

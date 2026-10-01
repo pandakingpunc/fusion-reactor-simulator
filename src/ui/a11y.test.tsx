@@ -23,6 +23,9 @@ afterEach(async () => { cleanup(); document.body.innerHTML = ''; await createApp
 
 const html = (s: string) => { document.body.innerHTML = s; return document.body; };
 const rules = (list: A11yIssue[]) => list.map((i) => i.rule).sort();
+/** a fragment is not a page: the document-level rules (one main, lang, an h1) are tested on their own below */
+const FRAGMENT = { page: false };
+const checkFragment = (s: string) => checkA11y(html(s), FRAGMENT);
 
 describe('the checker', () => {
   it('passes a clean fragment', () => {
@@ -37,7 +40,7 @@ describe('the checker', () => {
 
   it('finds an unnamed button, link, input, select and role=button', () => {
     const body = html('<main><button></button><a href="#a"><span></span></a><input type="text"><select></select><div role="button" tabindex="0"></div></main>');
-    expect(rules(checkA11y(body))).toEqual(['label', 'label', 'name', 'name', 'name']);
+    expect(rules(checkA11y(body, FRAGMENT))).toEqual(['label', 'label', 'name', 'name', 'name']);
   });
 
   it('computes names from aria-labelledby, label, aria-label, content, alt and svg title', () => {
@@ -50,47 +53,52 @@ describe('the checker', () => {
 
   it('finds figures without a name: img without alt, svg and canvas without role and name', () => {
     const body = html('<main><img src="x.png"><svg></svg><canvas></canvas><svg role="img"></svg><svg role="group"></svg><svg aria-hidden="true"></svg></main>');
-    expect(rules(checkA11y(body))).toEqual(['img', 'img', 'img', 'img', 'role-name']);
+    expect(rules(checkA11y(body, FRAGMENT))).toEqual(['img', 'img', 'img', 'img', 'role-name']);
   });
 
   it('finds duplicate ids and dangling aria references', () => {
     const body = html('<main><div id="a"></div><div id="a"></div><button aria-describedby="nope">x</button></main>');
-    expect(rules(checkA11y(body))).toEqual(['aria-ref', 'dup-id']);
+    expect(rules(checkA11y(body, FRAGMENT))).toEqual(['aria-ref', 'dup-id']);
   });
 
   it('finds a heading level that skips, and an empty heading', () => {
     const body = html('<main><h2>A</h2><h4>B</h4><h3></h3></main>');
-    expect(issueLines(checkA11y(body)).map((l) => l.replace(/ <.*?> ("B" )?/, ' '))).toEqual(['[heading] jumps from h2 to h4', '[heading] an empty heading']);
+    expect(issueLines(checkA11y(body, FRAGMENT)).map((l) => l.replace(/ <.*?> ("B" )?/, ' '))).toEqual(['[heading] jumps from h2 to h4', '[heading] an empty heading']);
   });
 
   it('finds a dialog without aria-modal, without a name, without anything to focus', () => {
     const body = html('<main><div role="dialog"></div></main>');
-    expect(rules(checkA11y(body))).toEqual(['dialog', 'dialog', 'dialog', 'role-name']);
+    expect(rules(checkA11y(body, FRAGMENT))).toEqual(['dialog', 'dialog', 'dialog', 'role-name']);
   });
 
   it('finds a tab outside a tablist, a tab without aria-selected, and a positive tabindex', () => {
     const body = html('<main><button role="tab">A</button><div role="tablist" aria-label="x"><button role="tab" aria-selected="false">B</button></div><button tabindex="3">c</button></main>');
-    expect(rules(checkA11y(body))).toEqual(['keyboard', 'tabs', 'tabs']);
+    expect(rules(checkA11y(body, FRAGMENT))).toEqual(['keyboard', 'tabs', 'tabs']);
   });
 
   it('finds a file input that is hidden for good, and accepts a visually hidden one that a button opens', () => {
-    expect(rules(checkA11y(html('<main><label>Pick<input type="file" hidden></label></main>')))).toEqual(['file-input']);
-    expect(rules(checkA11y(html('<main><button>Pick</button><input type="file" class="sr-only" tabindex="-1" aria-hidden="true"></main>')))).toEqual([]);
+    expect(rules(checkFragment('<main><label>Pick<input type="file" hidden></label></main>'))).toEqual(['file-input']);
+    expect(rules(checkFragment('<main><button>Pick</button><input type="file" class="sr-only" tabindex="-1" aria-hidden="true"></main>'))).toEqual([]);
   });
 
   it('finds a focusable element inside aria-hidden', () => {
     const body = html('<main><div aria-hidden="true"><button>x</button></div></main>');
-    expect(rules(checkA11y(body))).toEqual(['hidden-focus']);
+    expect(rules(checkA11y(body, FRAGMENT))).toEqual(['hidden-focus']);
   });
 
   it('finds the document-level failures: two mains, no lang; and ignores what is hidden', () => {
     document.documentElement.removeAttribute('lang');
     const body = html('<main></main><main></main><button hidden></button><div style="display:none"><button></button></div><details><summary>S</summary><button></button></details>');
-    expect(rules(checkA11y(body))).toEqual(['landmark', 'lang']);
+    expect(rules(checkA11y(body))).toEqual(['h1', 'landmark', 'lang']);
+    // the h1 may not be empty, hidden or aria-hidden
+    document.documentElement.setAttribute('lang', 'en');
+    for (const h of ['<h1></h1>', '<h1 hidden>T</h1>', '<h1 aria-hidden="true">T</h1>', '<h2>T</h2>']) expect(rules(checkA11y(html(`<main>${h}</main>`))), h).toContain('h1');
+    expect(rules(checkA11y(html('<main><h1>T</h1></main>')))).toEqual([]);
   });
 
   it('finds a mouse-only element through its React handler, and accepts a custom control that has a role, a tab stop and a key handler', () => {
     const { unmount } = render(<main>
+      <h1>Page</h1>
       <div onClick={() => {}}>mouse only</div>
       <div role="button" tabIndex={0} onClick={() => {}} onKeyDown={() => {}}>ok</div>
       <div role="button" tabIndex={0} onClick={() => {}}>no keys</div>

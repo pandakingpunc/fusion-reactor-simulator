@@ -242,6 +242,8 @@ export const wizardTr: Readonly<Record<string, string>> = {
   'Q ≈ 10, T_i ≈ 8–20 keV, P_fus ≈ 500 MW': 'Q ≈ 10, T_i ≈ 8–20 keV, P_fus ≈ 500 MW',
   'E_fus ≈ 59 MJ (5 s)': 'E_fus ≈ 59 MJ (5 s)',
   'R=1.67 m, B=2.2 T, D-D experiment': 'R=1,67 m, B=2,2 T, D-D deneyi',
+  'R=2.96 m, B=3.7 T, I_p=3.5 MA, 33 MW, 5 s → 59 MJ': 'R=2,96 m, B=3,7 T, I_p=3,5 MA, 33 MW, 5 s → 59 MJ',
+  'REBCO 12.2 T, R=1.85 m, 25 MW ICRH → Q≈11': 'REBCO 12,2 T, R=1,85 m, 25 MW ICRH → Q≈11',
   'R=2.96 m, B=2.25 T, superconducting, 41 MW, D-D': 'R=2,96 m, B=2,25 T, süperiletken, 41 MW, D-D',
   'Spherical tokamak A=1.6, B=0.55 T, I_p=0.75 MA': 'Küresel tokamak A=1,6, B=0,55 T, I_p=0,75 MA',
   'Stellarator R=5.5 m, B=2.5 T, 7.5 MW ECRH': 'Stellaratör R=5,5 m, B=2,5 T, 7,5 MW ECRH',

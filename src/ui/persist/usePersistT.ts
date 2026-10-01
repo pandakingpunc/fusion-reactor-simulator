@@ -20,7 +20,7 @@ export function loadPersistTr(): Promise<void> {
 /** Translator for a locale, from the dictionaries loaded so far. */
 export function persistTranslator(locale: string): PersistT {
   const d = locale === 'tr' && tr ? tr : persistEn;
-  return (key, params) => format(d[key] ?? persistEn[key], params);
+  return (key, params) => format(d[key] ?? persistEn[key], params, locale === 'tr' ? 'tr' : 'en');
 }
 
 export function usePersistT(): PersistT {

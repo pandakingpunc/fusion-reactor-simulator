@@ -29,8 +29,11 @@ function wizardTexts(): Set<string> {
   return out;
 }
 
-/** a text that has words to translate: three lowercase letters in a row (P_NBI, keV, 'D-T' and the like are symbols); the step titles always */
-const hasWords = (s: string) => /[a-z]{3,}/.test(s) || (Object.values(STEP_TITLES) as string[]).includes(s);
+/**
+ * a text that has words to translate: three lowercase letters in a row (P_NBI, keV, 'D-T' and the like are symbols); the step titles always;
+ * and a text with a decimal (R=2.96 m): Turkish writes the comma, so it has its own entry even when it has no word ("1.5D" is a name)
+ */
+const hasWords = (s: string) => /[a-z]{3,}/.test(s) || /\d\.\d(?!D)/.test(s) || (Object.values(STEP_TITLES) as string[]).includes(s);
 
 describe('Turkish texts of the wizard', () => {
   it('has an entry for every text of the wizard that has words', () => {

@@ -8,6 +8,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { UiFrame } from '../../worker/protocol';
 import { fmtAxis } from '../format';
+import { localizeDecimals } from '../../i18n';
 
 interface Props {
   kind: 'icf' | 'mtf';
@@ -90,7 +91,7 @@ export function Implosion({ kind, frames, t, tEnd, timeUnit, geometry, bang_ns, 
     ctx.fillStyle = hs; ctx.beginPath(); ctx.arc(acx, acy, Math.max(px(rNow), 2), 0, 2 * Math.PI); ctx.fill();
     if (glow > 0.05) { const gg = ctx.createRadialGradient(acx, acy, 0, acx, acy, amax); gg.addColorStop(0, `rgba(255,255,220,${0.5 * glow})`); gg.addColorStop(1, 'rgba(255,255,220,0)'); ctx.fillStyle = gg; ctx.fillRect(0, 0, aw + 12, height); }
     ctx.fillStyle = '#d6dce8'; ctx.font = '10px JetBrains Mono, monospace'; ctx.textAlign = 'left';
-    ctx.fillText(`r = ${fmtAxis(rNow)} ${unitR}  C = ${(R0s / Math.max(rNow, 1e-12)).toFixed(1)}`, 6, height - 8);
+    ctx.fillText(localizeDecimals(`r = ${fmtAxis(rNow)} ${unitR}  C = ${(R0s / Math.max(rNow, 1e-12)).toFixed(1)}`), 6, height - 8);
     ctx.fillText(`T = ${fmtAxis(T)} keV`, 6, 12);
 
     // --- sağ: r(t) grafiği ---

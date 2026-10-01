@@ -39,5 +39,5 @@ export function isEduLoaded(locale: Locale): boolean { return locale in dicts; }
 /** Translator for a locale; English until that locale's dictionary is loaded. */
 export function eduTranslator(locale: Locale): EduTranslate {
   const d = dicts[locale] ?? eduEn;
-  return (key, params) => format(d[key] ?? eduEn[key] ?? key, params);
+  return (key, params) => format(d[key] ?? eduEn[key] ?? key, params, locale);
 }

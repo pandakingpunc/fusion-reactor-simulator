@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { FieldDef, fieldHint, fieldLabel, isRequired } from './schema';
-import { useT } from '../state/store';
+import { useApp, useT } from '../state/store';
+import { localizeDecimals } from '../../i18n';
 import { useWizText } from './wizText';
 
 interface Props { def: FieldDef; value: unknown; onChange: (v: unknown) => void }
@@ -51,13 +52,14 @@ export function parseNumberInput(text: string): number | undefined | null {
 function NumberField({ def, value, onChange }: { def: FieldDef; value: number | undefined; onChange: (v: number | undefined) => void }) {
   const t = useT();
   const wt = useWizText();
+  const locale = useApp((s) => s.locale);
   const scale = def.scale ?? 1;
   const shown = value === undefined ? undefined : value / scale;
   const [text, setText] = useState(fmtEdit(shown));
   // bumped on every commit so the text re-syncs with the committed value (even when it is unchanged)
   const [rev, setRev] = useState(0);
   // dışarıdan (preset yükleme) değişince metni tazele
-  useEffect(() => { setText(fmtEdit(shown)); }, [shown, rev]);
+  useEffect(() => { setText(fmtEdit(shown)); }, [shown, rev, locale]);
   const commit = (s: string) => {
     // untouched text: keep the exact value (the text is rounded to 6 digits) and the preset unmodified
     if (s.trim() === fmtEdit(shown)) return;
@@ -97,6 +99,6 @@ function NumberField({ def, value, onChange }: { def: FieldDef; value: number | 
 function fmtEdit(x: number | undefined): string {
   if (x === undefined || !isFinite(x)) return '';
   const ax = Math.abs(x);
-  if (ax !== 0 && (ax >= 1e7 || ax < 1e-4)) return x.toExponential(3).replace(/\.?0+e/, 'e');
-  return parseFloat(x.toPrecision(6)).toString();
+  if (ax !== 0 && (ax >= 1e7 || ax < 1e-4)) return localizeDecimals(x.toExponential(3).replace(/\.?0+e/, 'e'));
+  return localizeDecimals(parseFloat(x.toPrecision(6)).toString());
 }

@@ -18,6 +18,7 @@ import { NIF, PRESETS, SPARC, SPARC_15D } from '../physics/presets';
 import { FakeWorker, fakeWorkerFactory } from '../worker/fakeWorker';
 import { AppStore, AppStoreContext, createAppStore } from './state/store';
 import { installDomStubs, listenCanvasText } from './testing/dom';
+import { mountApp as mountAppIn, modelTexts, startRun } from './testing/appHarness';
 import { PSEUDO_OPEN, Untranslated, findUntranslated, plainWords, pseudo } from './testing/pseudo';
 
 vi.mock('../i18n/tr', async () => {
@@ -71,24 +72,9 @@ beforeAll(async () => { installDomStubs(); listenCanvasText((text) => CANVAS_TEX
 beforeEach(() => { window.location.hash = ''; });
 afterEach(cleanup);
 
-/**
- * What the physics model writes in English (src/physics is outside the interface's dictionaries): the report's notes and warnings,
- * the reason a run ended and the events of the log. They are data of the run, shown as they come, and the one thing the sweep does not
- * hold against the interface; `modelTexts` lists them from the shots and events of the store so that nothing else can hide behind it.
- */
+/** What the physics model writes as sentences (see modelTexts in testing/appHarness.ts): the one thing the sweep does not hold against the interface. */
 let MODEL_TEXTS = new Set<string>();
-function collectModelTexts(store: AppStore, events: readonly { msg: string }[] = []): void {
-  const add = (x: unknown) => { if (typeof x === 'string' && x) MODEL_TEXTS.add(x.trim()); };
-  for (const shot of store.getState().shots) {
-    const r = shot.report;
-    add(r.Q_eng_note); add(r.lawsonNote); add(r.stableDefinition);
-    r.warnings.forEach(add);
-    for (const v of Object.values(r.termination)) add(v);
-    for (const v of Object.values(r.termination.disruption ?? {})) add(v);
-    shot.events.forEach((e) => add(e.msg));
-  }
-  events.forEach((e) => add(e.msg));
-}
+function collectModelTexts(store: AppStore): void { for (const text of modelTexts(store)) MODEL_TEXTS.add(text); }
 // the raw physics key of a report row is its tooltip, so that a number can be traced to the key of the JSON export
 const ignoreOnPurpose = (el: Element, kind: string, text: string): boolean =>
   kind === 'title' && (el.tagName === 'TR' || (el.tagName === 'TD' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(text)));
@@ -102,24 +88,9 @@ function untranslated(where: string): Untranslated[] {
 }
 const lines = (list: Untranslated[]) => list.filter((u) => !MODEL_TEXTS.has(u.text)).map((u) => `${u.where} [${u.kind}] ${JSON.stringify(u.text)}`);
 
-async function mountApp(init: Partial<Parameters<typeof createAppStore>[0]> = {}) {
-  const store: AppStore = createAppStore(init);
-  await store.actions.setLocale('tr'); // the mocked "Turkish" is the pseudo-locale
-  const factory = fakeWorkerFactory();
-  render(React.createElement(AppStoreContext.Provider, { value: store },
-    React.createElement(App, { createWorker: factory.create, schedule: (flush: () => void) => flush() })));
-  const w = (): FakeWorker => factory.workers[0];
-  const roundTrip = () => act(() => { w().process(); w().deliver(); });
-  const advance = (simDt: number) => act(() => { w().advance(simDt); w().deliver(); });
-  return { store, factory, w, roundTrip, advance };
-}
+/** the application in the pseudo-locale (the mocked "Turkish") */
+const mountApp = (init: Parameters<typeof mountAppIn>[0] = {}) => mountAppIn(init, 'tr');
 
-/** go to the last wizard step and press the start button */
-function startRun(): void {
-  const steps = document.querySelectorAll('.steps .step');
-  fireEvent.click(steps[steps.length - 1]);
-  fireEvent.click(screen.getByText(pseudo(en['wiz.start'])));
-}
 const tabButton = (key: 'app.tab.run' | 'app.tab.report' | 'app.tab.compare' | 'app.tab.validate' | 'app.tab.learn') =>
   screen.getAllByText(new RegExp(`^${escapeRe(pseudo(en[key]))}`))[0];
 

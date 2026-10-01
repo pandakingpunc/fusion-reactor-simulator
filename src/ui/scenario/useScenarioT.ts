@@ -20,7 +20,7 @@ export function loadScenarioTr(): Promise<void> {
 /** Translator for a locale, from the dictionaries loaded so far. */
 export function scenarioTranslator(locale: string): ScenarioT {
   const d: Record<ScenarioKey, string> = locale === 'tr' && tr ? tr : scenarioEn;
-  return (key, params) => format(d[key] ?? scenarioEn[key], params);
+  return (key, params) => format(d[key] ?? scenarioEn[key], params, locale === 'tr' ? 'tr' : 'en');
 }
 
 export function useScenarioT(): ScenarioT {

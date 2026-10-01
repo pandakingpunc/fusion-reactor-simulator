@@ -4,6 +4,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { fmtAxis } from '../format';
+import { localizeDecimals } from '../../i18n';
 import { useWizText } from '../wizard/wizText';
 
 type Line = { key: string; label: string; color: string; right?: boolean; dash?: number[] };
@@ -59,7 +60,7 @@ export function ProfileChart({ prof, t, height = 220 }: { prof: Record<string, n
     // çerçeve + ızgara
     ctx.strokeStyle = '#263044'; ctx.lineWidth = 1; ctx.strokeRect(PAD.l, PAD.t, pw, ph);
     ctx.fillStyle = '#7f8ba3'; ctx.textAlign = 'center';
-    for (let r = 0; r <= 1.0001; r += 0.2) { ctx.fillText(r.toFixed(1), X(r), height - 8); ctx.strokeStyle = '#1b2333'; ctx.beginPath(); ctx.moveTo(X(r), PAD.t); ctx.lineTo(X(r), PAD.t + ph); ctx.stroke(); }
+    for (let r = 0; r <= 1.0001; r += 0.2) { ctx.fillText(localizeDecimals(r.toFixed(1)), X(r), height - 8); ctx.strokeStyle = '#1b2333'; ctx.beginPath(); ctx.moveTo(X(r), PAD.t); ctx.lineTo(X(r), PAD.t + ph); ctx.stroke(); }
     ctx.fillText('ρ_tor', PAD.l + pw / 2, height - 0.5);
     const ticks = (lim: [number, number]) => { const s = niceStep((lim[1] - lim[0]) / 4); const out: number[] = []; for (let y = Math.ceil(lim[0] / s) * s; y <= lim[1] + 1e-12; y += s) out.push(y); return out; };
     ctx.textAlign = 'right';

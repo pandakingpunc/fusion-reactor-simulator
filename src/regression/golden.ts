@@ -153,10 +153,6 @@ export function caseConfig(c: GoldenCase): ReactorConfig {
     cfg = { ...cfg, fidelity: o.fidelity } as ReactorConfig;
     if (o.fidelity === '1.5D' && !runsProfiles(cfg)) throw new Error(`golden case ${c.id}: ${cfg.method} has no 1.5D model`);
   }
-  if (o.profiles !== undefined) {
-    if (!runsProfiles(cfg)) throw new Error(`golden case ${c.id}: profile settings need the 1.5D model`);
-    cfg = { ...cfg, profiles: { ...(cfg as MagneticConfig).profiles, ...o.profiles } } as ReactorConfig;
-  }
   if (o.n_target !== undefined) {
     if (!('n_target' in cfg)) throw new Error(`golden case ${c.id}: preset ${c.preset} (${cfg.method}) has no n_target setting`);
     cfg = { ...cfg, n_target: o.n_target } as ReactorConfig;

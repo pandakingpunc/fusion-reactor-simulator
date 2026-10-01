@@ -26,6 +26,15 @@ export interface ValidationRow {
   v15DHi?: number;
 }
 
+/**
+ * The shaded bands, as ratios of simulation to reference. '±30%' is the ratio within 30 % of the reference, 0.7 to 1.3. Before this fix the band
+ * ran from 1/1.3 = 0.77 to 1.3 (symmetric on the log axis), so that a value 24 % below the reference, which is inside ±30 %, was drawn
+ * outside the band that carries that label.
+ */
+export const BAND_30PCT: readonly [number, number] = [0.7, 1.3];
+/** '×2': within a factor of two of the reference (0.5 to 2, symmetric on the log axis) */
+export const BAND_FACTOR2: readonly [number, number] = [0.5, 2];
+
 const fin = (v: number | undefined): v is number => v !== undefined && Number.isFinite(v) && v > 0;
 
 export function figValidation(rows: ValidationRow[]): Figure {
@@ -34,8 +43,8 @@ export function figValidation(rows: ValidationRow[]): Figure {
   const fig = new Figure(COL1 * 1.5, H, { fontSize: 8, title: 'Validation against published values' });
   const [ax] = fig.subplots(1, 1, { left: 1.35, right: 0.95, top: 0.22, bottom: 0.5 });
   const ys = rows.map((_, k) => n - k);
-  ax.axvspan(0.5, 2, { color: C.grey, alpha: 0.1, label: '×2' });
-  ax.axvspan(1 / 1.3, 1.3, { color: C.grey, alpha: 0.22, label: '±30%' });
+  ax.axvspan(BAND_FACTOR2[0], BAND_FACTOR2[1], { color: C.grey, alpha: 0.1, label: '×2' });
+  ax.axvspan(BAND_30PCT[0], BAND_30PCT[1], { color: C.grey, alpha: 0.22, label: '±30%' });
   ax.axvline(1, { color: C.black, lw: 0.6, dash: 'solid' });
   // published uncertainty of the reference: a band around ratio 1 in each row that has one
   let bandLabel: string | undefined = 'reference range';

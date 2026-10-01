@@ -43,8 +43,9 @@ import { BandedLU } from '../numerics/linalg';
 import { Bicubic, CubicSpline, Pchip } from '../numerics/interp';
 import { gaussLegendre } from '../numerics/quadrature';
 import { AndersonMixer } from '../numerics/anderson';
+import { runSlices, type Slices } from '../kernel/slices';
 import { ShapeBoundary, millerBoundary, shapeIntegrals } from './miller';
-import { PsiField, TracedSurfaces, magneticAverages, surfaceMetrics, traceSurfaces } from './fluxsurface';
+import { PsiField, TracedSurfaces, magneticAverages, surfaceMetrics, traceSurfaces, traceSurfacesSlices } from './fluxsurface';
 
 const MU0 = 1.25663706212e-6;
 
@@ -957,6 +958,22 @@ export class GSSolver {
    * ('current-unreachable'). Not converging within maxIter is not an error: converged = false.
    */
   solve(o: EquilibriumOptions): Equilibrium {
+    return runSlices(this.solveBody(o));
+  }
+
+  /**
+   * solve() as a resumable computation (kernel/slices.ts), for a caller that must stay responsive while it runs (the
+   * equilibrium update of the 1.5D model, which the simulation worker interrupts between slices): the same statements
+   * as solve(), with a yield after every Picard iteration and every RAYS_PER_SLICE rays of the final surface trace
+   * (about 5 ms each at the default grid). A solver whose solve() is overridden (a subclass, an instrumented or
+   * stubbed solver) is honoured: its solve() is called as it is, as one unit.
+   */
+  *solveSlices(o: EquilibriumOptions): Slices<Equilibrium> {
+    if (this.solve !== PLAIN_SOLVE) return this.solve(o);
+    return yield* this.solveBody(o);
+  }
+
+  private *solveBody(o: EquilibriumOptions): Slices<Equilibrium> {
     const grid = this.grid;
     const { NR, NZ } = grid;
     const N = NR * NZ;
@@ -1085,9 +1102,10 @@ export class GSSolver {
       for (let u = 0; u < nIn; u++) { const k = inIdx[u]; xv[u] = psi[k]; gv[u] = gx[k]; }
       acc.step(xv, gv, omega);
       for (let u = 0; u < nIn; u++) psi[inIdx[u]] = xv[u];
+      yield;
     }
     const ffpTable = prof.kind === 'table' ? new CubicSpline(tabXs, tabA.map((a, i) => cScale * a + tabB[i])) : null;
-    const eq = this.postProcess(gx, o, (dpsi) => this.solvedProfiles(gx, o, beta0, tail, ffpTable, ppN, dpsi), true, Math.min(it, maxIter), converged, resid);
+    const eq = yield* this.postProcess(gx, o, (dpsi) => this.solvedProfiles(gx, o, beta0, tail, ffpTable, ppN, dpsi), true, Math.min(it, maxIter), converged, resid);
     const warn = (code: GSWarningCode, message: string) => eq.warnings.push({ code, message });
     if (!converged) warn('not-converged', `residual ${resid.toExponential(2)} > tol ${tol} after ${eq.iterations} iterations`);
     if (prof.kind === 'shape') {
@@ -1124,7 +1142,7 @@ export class GSSolver {
     if (psi.length !== N) badInput(`ψ has ${psi.length} values, the grid ${N}`);
     const p = Float64Array.from(psi);
     for (let k = 0; k < N; k++) if (grid.kind[k] !== 0 && !Number.isFinite(p[k])) badInput('ψ contains non-finite values');
-    const eq = this.postProcess(p, o, profiles, !o.keepExterior, 0, true, NaN);
+    const eq = runSlices(this.postProcess(p, o, profiles, !o.keepExterior, 0, true, NaN));
     const fns = profiles(eq.psiAxis), dpsi = eq.psiAxis;
     const jphi = new Float64Array(N), inIdx = grid.interior, Rn = grid.interiorR;
     for (let u = 0; u < grid.nInside; u++) {
@@ -1201,8 +1219,8 @@ export class GSSolver {
    * derived from ψ by tracing the flux surfaces; the profiles enter only as p, p', FF', F. `extend` refills the exterior
    * nodes from the interior (the solver's own state); an imported ψ keeps its own exterior values.
    */
-  private postProcess(psi: Float64Array, o: TableOptions, profiles: (psiAxis: number) => StateProfiles, extend: boolean,
-    iterations: number, converged: boolean, residual: number): Equilibrium {
+  private *postProcess(psi: Float64Array, o: TableOptions, profiles: (psiAxis: number) => StateProfiles, extend: boolean,
+    iterations: number, converged: boolean, residual: number): Slices<Equilibrium> {
     const grid = this.grid;
     const R0 = this.geom.R;
     if (extend) grid.extend(psi);
@@ -1213,7 +1231,7 @@ export class GSSolver {
     const field: PsiField = { bi, psiAxis: dpsi, psiB: 0, Rax: ax.R, Zax: ax.Z };
     const lev = o.psiLevels ? Float64Array.from(o.psiLevels) : surfaceLevels(o.nSurf ?? DEFAULT_N_SURF);
     const nS = lev.length + 1;
-    const tr = traceSurfaces(field, grid.boundary, lev, o.nTheta ?? 128, 64);
+    const tr = yield* traceSurfacesSlices(field, grid.boundary, lev, o.nTheta ?? 128, 64);
     const n = nS; // axis + levels
     const P: EqProfiles = {
       psiN: new Float64Array(n), rhoTor: new Float64Array(n), q: new Float64Array(n), F: new Float64Array(n), p: new Float64Array(n),
@@ -1325,3 +1343,6 @@ export class GSSolver {
     return { residual: hasP ? num / denP : denJ > 0 ? num / denJ : 0, ratio: hasP && denRatio !== 0 ? numRatio / denRatio : NaN };
   }
 }
+
+/** the class's own solve(), against which solveSlices() recognises an override (see there) */
+const PLAIN_SOLVE = GSSolver.prototype.solve;

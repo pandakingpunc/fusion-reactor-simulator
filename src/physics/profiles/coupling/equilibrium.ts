@@ -16,6 +16,7 @@
  */
 import { GSSolver, Equilibrium, EquilibriumOptions } from '../../equilibrium/gs';
 import { SingularMatrixError } from '../../numerics/linalg';
+import type { Slices } from '../../kernel/slices';
 import type { EqSnapshot } from '../../types';
 import { KEV, ProfileContext } from '../context';
 import type { Checkpointable, CheckpointRecord } from '../checkpoint';
@@ -24,7 +25,7 @@ import { GsAttempt, GsStage, isUsableEquilibrium, isUsableGeometry, solveGuarded
 import { EquilibriumInitFailure } from '../failures';
 import { centerInterval, geometryFromEquilibrium } from '../geometry1d';
 import type { ProfileState } from '../state';
-import { solveConsistent } from './outer';
+import { solveConsistentSlices } from './outer';
 import type { ConsistentResult } from './outer';
 import { coreFlat } from './tables';
 
@@ -156,17 +157,17 @@ export class EquilibriumCoupling implements Checkpointable {
   /**
    * Update policy, after each accepted step (t: time of y): at the latest every eqUpdateInterval;
    * earlier if β_p or ℓ_i changed markedly (10 % / 5 %), but at least a quarter interval after the
-   * last update. `update` performs the update (ProfileModel.updateEquilibrium) and returns whether
-   * it was accepted.
+   * last update. `update` performs the update (ProfileModel.updateEquilibriumSlices) and returns whether
+   * it was accepted. A resumable computation (kernel/slices.ts): it yields where the update does.
    */
-  check(ctx: ProfileContext, t: number, y: Float64Array, update: (t: number, y: Float64Array) => boolean): void {
+  *check(ctx: ProfileContext, t: number, y: Float64Array, update: (t: number, y: Float64Array) => Slices<boolean>): Slices<void> {
     const d = ctx.lastDiag;
     const dBp = Math.abs((d.betaP ?? 0) - this.eqBetaP) / Math.max(this.eqBetaP, 0.05);
     const dLi = Math.abs((d.li ?? 0) - this.eqLi) / Math.max(this.eqLi, 0.1);
     const since = t - this.eqTime;
     const due = since >= ctx.ps.eqUpdateInterval || ((dBp > 0.1 || dLi > 0.05) && since > 0.25 * ctx.ps.eqUpdateInterval);
     if (!due || ctx.phase !== 'normal' || t < this.eqRetryAt) return;
-    if (update(t, y)) {
+    if (yield* update(t, y)) {
       this.eqTime = t;
       this.eqBetaP = d.betaP ?? this.eqBetaP; this.eqLi = d.li ?? this.eqLi;
       this.eqUpdates++;
@@ -198,8 +199,14 @@ export class EquilibriumCoupling implements Checkpointable {
    * usable (finite metrics, positive cell volumes). The geometry is built on the radial grid of the one it replaces
    * (`ctx.tg`): the transport equations were set up on that grid. The attempt log of the update is `eqAttempts`, one
    * entry per solve.
+   *
+   * A resumable computation (kernel/slices.ts): it yields inside the solves of the outer iteration (about every 5 ms of
+   * work, see GSSolver.solveSlices) and nowhere else. Between two yields the update has read the transport profiles into
+   * its own tables and changed nothing of the model: the geometry is adopted (and `evaluate` called) only in the last
+   * stretch after the final solve. What it reads before its first yield (the work arrays, the state y) must therefore
+   * not change while it is suspended, which is the kernel's rule for a step in progress (Simulation.advance).
    */
-  update(ctx: ProfileContext, t: number, y: Float64Array, evaluate: (t: number, st: ProfileState) => void): boolean {
+  *update(ctx: ProfileContext, t: number, y: Float64Array, evaluate: (t: number, st: ProfileState) => void): Slices<boolean> {
     const g = ctx.tg, w = ctx.w, N = ctx.N, v = ctx.view(y);
     const niB = ctx.bc.n * (w.ni[N - 1] / Math.max(v.ne[N - 1], 1));
     const pB = (ctx.bc.n * ctx.bc.Te + niB * ctx.bc.Ti) * KEV;
@@ -224,7 +231,7 @@ export class EquilibriumCoupling implements Checkpointable {
     // the grid resolves ρ_tor down to a couple of its spacings (in units of a) from the axis: the current table is flat inside
     const rhoCore = 2 * this.gsSolver.grid.dR / ctx.geomB.a;
     const pT = Float64Array.from(rho, pAt), jT = coreFlat(Float64Array.from(rho, jRAt), rho, rhoCore);
-    const res = solveConsistent(this.gsSolver, ctx.eq, {
+    const res = yield* solveConsistentSlices(this.gsSolver, ctx.eq, {
       Ip: v.s.Ip, B0: ctx.cfg.B0, rho, p: pT, jR: jT, rhoMin: rhoCore, currentScaleLimit: CURRENT_SCALE_LIMIT,
     }, { tol: OUTER_TOL, accept: OUTER_ACCEPT, maxOuter: OUTER_MAX, solve: UPDATE_SOLVE });
     this.eqAttempts = res.attempts;

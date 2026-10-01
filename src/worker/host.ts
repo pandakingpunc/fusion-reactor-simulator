@@ -9,7 +9,11 @@
  * for its pause. The loop now works off the owed simulated time one kernel step at a time and yields to the event
  * loop as soon as SLICE_MS of wall time has gone by (the step in progress always completes), so a request waits for
  * one slice plus one step. The kernel is chunk invariant (see simulation.ts), so slicing changes no result.
- * A single 1.5D step that includes a Grad-Shafranov update still takes tens of milliseconds and cannot be split here.
+ * A single 1.5D step that includes a Grad-Shafranov update takes tens of milliseconds, so the loop also lets the
+ * kernel stop inside a step (Simulation.advance `yieldWhen`, "Step atomicity and slicing" in simulation.ts): the step
+ * stays suspended, invisible to the page, until the next slice continues it, and a request waits for one slice plus
+ * one yield-to-yield stretch of it (about 5 ms) instead of the whole step. A control message settles the step in
+ * progress first and posts what it completes, so that the page's history and the run's stay the same.
  */
 import { Simulation } from '../physics/simulation';
 import { NonFiniteStateError, ScenarioError, SimulationError } from '../physics/kernel/errors';
@@ -188,10 +192,12 @@ export function createSimHost(post: (m: FromWorker) => void, opts: SimHostOption
       } else {
         const tTarget = Math.min(tStart + simDt, sim.model.tEnd);
         const oneStep = Math.max(ONE_STEP * sim.model.tEnd, 4 * T_EPS);
+        const yieldWhen = () => now() - t0 >= budgetMs;
         while (!sim.done && sim.t < tTarget - T_EPS) {
           const before = sim.t;
-          sim.advance(oneStep);
-          if (!(sim.t > before) || now() - t0 >= budgetMs) break; // a step that goes nowhere ends the shot (sim.done)
+          sim.advance(oneStep, { yieldWhen });
+          // no progress: a step that goes nowhere ends the shot (sim.done), or the kernel stopped inside a step (sim.stepInProgress)
+          if (!(sim.t > before) || yieldWhen()) break;
         }
         frames = sim.history.slice(startFrames);
         events = sim.events.slice(startEvents);
@@ -338,7 +344,11 @@ export function createSimHost(post: (m: FromWorker) => void, opts: SimHostOption
           break;
         }
         case 'control':
-          if (sim) { sim.applyControl(msg.patch); ctlOn = true; }
+          if (sim) {
+            if (sim.stepInProgress) advance(0); // settles it and posts its frames before the patch
+            sim.applyControl(msg.patch);
+            ctlOn = true;
+          }
           break;
         case 'getLog':
           if (sim) post({ type: 'log', id: runId, branchId, token: msg.token, provenance: provenanceOf(sim) });

@@ -13,6 +13,7 @@
  * Kaynak: Hirshman & Jardin, Phys. Fluids 22 (1979) 731; Wesson "Tokamaks" §3.
  */
 import { Bicubic } from '../numerics/interp';
+import { runSlices, type Slices } from '../kernel/slices';
 import { ShapeBoundary } from './miller';
 
 export interface TracedSurfaces {
@@ -45,7 +46,18 @@ function rayToBoundary(b: ShapeBoundary, Rax: number, Zax: number, c: number, s:
   return 0.5 * (lo + hi);
 }
 
+/** rays between two yield points of traceSurfacesSlices(): about 2 ms of the default 101 surfaces on 128 rays */
+export const RAYS_PER_SLICE = 16;
+
 export function traceSurfaces(field: PsiField, boundary: ShapeBoundary, levels: ArrayLike<number>, nTheta = 128, nSample = 48): TracedSurfaces {
+  return runSlices(traceSurfacesSlices(field, boundary, levels, nTheta, nSample));
+}
+
+/**
+ * traceSurfaces() as a resumable computation (kernel/slices.ts): the same statements, with a yield after every
+ * RAYS_PER_SLICE rays. The rays are independent of one another, and everything the tracer holds between them is local.
+ */
+export function* traceSurfacesSlices(field: PsiField, boundary: ShapeBoundary, levels: ArrayLike<number>, nTheta = 128, nSample = 48): Slices<TracedSurfaces> {
   const { bi, psiAxis, psiB, Rax, Zax } = field;
   const dpsi = psiAxis - psiB;
   const Ns = levels.length;
@@ -103,6 +115,7 @@ export function traceSurfaces(field: PsiField, boundary: ShapeBoundary, levels: 
       bi.evalGrad(Rk, Zk, g3);
       R[k][j] = Rk; Z[k][j] = Zk; G[k][j] = Math.hypot(g3[1], g3[2]);
     }
+    if ((j + 1) % RAYS_PER_SLICE === 0 && j + 1 < nTheta) yield;
   }
   // dl/dθ: periyodik 4. mertebe merkezi fark
   const dth = (2 * Math.PI) / nTheta;

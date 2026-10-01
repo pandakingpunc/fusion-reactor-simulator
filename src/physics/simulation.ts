@@ -44,6 +44,35 @@
  *    the scenario, the configuration and the recorded frames); a live applyControl() takes over the
  *    keys of its patch from the waveforms for the rest of the run branch. Replaying an actuator log
  *    needs the same scenario. A run without a scenario is bitwise what it was before scenarios.
+ *  - Step atomicity and slicing. A kernel step is atomic: the observable state of the run (t, history, events, the step
+ *    counter, the actuator log) changes only when a step completes, a frame and its checkpoint (above) are recorded only
+ *    then, so no checkpoint ever holds half a step, and the completed run is a function of the configuration, the seed,
+ *    the actuator log, the breakpoints and the scenario, never of when or how often the caller stopped (chunk invariance
+ *    above). advance() can nevertheless return in the middle of a step, for a caller that must stay responsive (the
+ *    simulation worker: a message from the page, a pause, waits for the task that is running, and a 1.5D step that
+ *    carries a Grad-Shafranov update takes 30 to 130 ms): given AdvanceOptions.yieldWhen, a model that provides
+ *    stepSlices() (SimModel: the resumable form of step(), a generator that offers a yield at the points where all its state
+ *    is in its locals and in the model's own fields; the 1.5D model) is stepped by running that generator, and yieldWhen()
+ *    is asked at each yield. The model only offers the points, the caller decides: when yieldWhen() says stop, advance()
+ *    returns with the step suspended (stepInProgress). The step is the same statements in the same order as without
+ *    slicing (the model derives step() from stepSlices(), the same body run to its end), so no bit of the run changes:
+ *    kernel/slicing.test.ts suspends an ITER15 shot with equilibrium updates at every yield and compares the digest with
+ *    runAll(), worker/hostMidStep.test.ts does the same through the worker host. A caller that passes no yieldWhen
+ *    (runAll(), the CLIs, the golden harness, validation) never sees a suspended step, and a Dormand–Prince model or a model
+ *    without stepSlices() is stepped whole: yieldWhen() is asked between its steps only. A suspended step is not a boundary
+ *    and not visible: t, history, events, nSteps and done are those of the boundary before it, no frame of it exists yet, and
+ *    y and the model belong to the step (nothing may read or change them until it ends). What ends it:
+ *      - advance() continues it first, to its end or, with yieldWhen, to the next stop; the frames and events it
+ *        completes are in that call's result. The target of the call is measured from t, the start of the step, so a
+ *        call whose target lies inside the step ends with it;
+ *      - applyControl() settles it (runs it to its end), then applies the patch at the boundary that follows, exactly as
+ *        if the patch had arrived when the step ended (and is logged there: the log replays the run). The frames of the
+ *        settled step are in `history` but in no advance() result: a caller that mirrors the history reads them
+ *        (worker/host.ts calls advance(0) first);
+ *      - rewindTo() drops it (the generator is closed, and the model is restored from the frame's checkpoint, which does
+ *        not depend on the partial effects of the step); an exception thrown inside it clears it and propagates, the model
+ *        having put its state back as step() promises, and runAll() runs it to its end.
+ *    report() and fingerprint() do not settle it: report() reads the model's state, so call it at a boundary.
  *  - Frame times. Each recorded frame is later than the one before, except that a shot ended by a
  *    step that made no progress in time (a model's own stepper giving up: 'Numerical failure') gets
  *    its terminal frame at the time of the last frame, with the same state; it carries the
@@ -112,6 +141,17 @@ export interface SimulationOptions {
   modelFactory?: (cfg: ReactorConfig) => SimModel;
 }
 
+export interface AdvanceOptions {
+  /**
+   * Called at every yield of a resumable step (SimModel.stepSlices) and after every completed step that has not reached
+   * the target of the call: when it returns true, advance() returns (at a boundary, or with the step suspended, see the
+   * header, "Step atomicity and slicing"). It is asked only after some work has been done, so every call makes progress.
+   * It must not read the model or the simulation. A model without stepSlices() and a Dormand-Prince model are stepped
+   * whole: for them it is asked between steps only.
+   */
+  yieldWhen?: () => boolean;
+}
+
 /** What a reusable stage depends on besides (t, y): the controls and the model's saveInternal() record. */
 interface ModelSignature {
   controls: Record<string, number>;
@@ -143,6 +183,8 @@ export class Simulation {
   private log: ActuatorEntry[] = [];
   private readonly pending: readonly ActuatorEntry[];
   private pendIdx = 0;
+  /** the step in progress, suspended inside model.stepSlices() (t0: where it started); null at a step boundary */
+  private run: { gen: Generator<void, number, void>; t0: number } | null = null;
 
   constructor(cfg: ReactorConfig, opts: SimulationOptions = {}) {
     this.cfg = cfg;
@@ -172,9 +214,12 @@ export class Simulation {
     return sim;
   }
 
+  /** the shot has ended; false while a step is in progress (it has not ended yet, whatever the model already says) */
   get done(): boolean {
-    return this.model.terminated !== null || this.t >= this.model.tEnd - T_EPS;
+    return this.run === null && (this.model.terminated !== null || this.t >= this.model.tEnd - T_EPS);
   }
+  /** a step is suspended in the middle (advance() with yieldWhen returned inside it); t and the history are those of the boundary before it */
+  get stepInProgress(): boolean { return this.run !== null; }
   get dt(): number { return this.model.currentDt ?? this.integ?.dt ?? this.model.dt0; }
   get nSteps(): number { return this.integ ? this.integ.nSteps : this.steps; }
   /** Every applyControl() of the current branch of the run, in order (copies). */
@@ -255,14 +300,46 @@ export class Simulation {
     }
   }
 
-  /** One kernel step: integrate to the next breakpoint at most, then events and output. */
-  private stepOnce(): void {
+  /** The start of a kernel step: what is due at the boundary (replayed actuator entries, the scenario), and the time the step must not pass. */
+  private beginStep(): { t0: number; tMax: number } {
     this.applyPending();
     this.applyScenario();
     const t0 = this.t;
     const tBreak = this.breakIdx < this.breaks.length ? this.breaks[this.breakIdx] : Infinity;
     const tMax = Math.min(this.nextSync, this.nextOut, tBreak, this.scen ? this.scen.nextBreakpoint(t0) : Infinity);
-    this.t = this.integ ? this.integrate(this.integ, t0, tMax) : this.model.step!(t0, this.y, tMax);
+    return { t0, tMax };
+  }
+
+  /**
+   * One kernel step, or the continuation of the one in progress: integrate to the next breakpoint at most, then events and
+   * output. Returns true when the step ended, false when `yieldWhen` stopped it in the middle of a resumable step (this.run).
+   */
+  private stepOnce(yieldWhen?: () => boolean): boolean {
+    let run = this.run;
+    if (!run) {
+      const { t0, tMax } = this.beginStep();
+      const m = this.model;
+      if (this.integ || !yieldWhen || !m.stepSlices) {
+        this.endStep(t0, this.integ ? this.integrate(this.integ, t0, tMax) : m.step!(t0, this.y, tMax));
+        return true;
+      }
+      run = this.run = { gen: m.stepSlices(t0, this.y, tMax), t0 };
+    }
+    for (;;) {
+      let r: IteratorResult<void, number>;
+      try { r = run.gen.next(); } catch (e) { this.run = null; throw e; } // the model has put its state back; the step did not happen
+      if (r.done) {
+        this.run = null;
+        this.endStep(run.t0, r.value);
+        return true;
+      }
+      if (yieldWhen?.()) return false;
+    }
+  }
+
+  /** The end of a kernel step that took the model from t0 to t: events, output frame, breakpoints. */
+  private endStep(t0: number, t: number): void {
+    this.t = t;
     this.steps++;
     const ev = this.model.postStep(this.t, this.t - t0, this.y);
     if (ev.length) this.events.push(...ev);
@@ -306,14 +383,21 @@ export class Simulation {
    * fixed times (e.g. every 2 ms) pass those times as SimulationOptions.breakpoints: steps then end
    * on them, and each advance(2 ms) from one grid point stops at the next.
    */
-  advance(simDt: number): { frames: HistoryFrame[]; events: SimEvent[] } {
+  advance(simDt: number, opts: AdvanceOptions = {}): { frames: HistoryFrame[]; events: SimEvent[] } {
     const startFrames = this.history.length, startEv = this.events.length;
+    const yieldWhen = opts.yieldWhen;
     const tTarget = Math.min(this.t + simDt, this.model.tEnd);
-    let guard = 0;
-    while (this.t < tTarget - T_EPS && !this.model.terminated && guard++ < MAX_STEPS_PER_ADVANCE) this.stepOnce();
+    const result = () => ({ frames: this.history.slice(startFrames), events: this.events.slice(startEv) });
+    // the step in progress is part of this call's work, whatever the target
+    let guard = 0, resumed = this.run !== null;
+    while (resumed || (this.t < tTarget - T_EPS && !this.model.terminated && guard++ < MAX_STEPS_PER_ADVANCE)) {
+      resumed = false;
+      if (!this.stepOnce(yieldWhen)) return result();
+      if (yieldWhen && this.t < tTarget - T_EPS && yieldWhen()) break;
+    }
     this.flushEnd();
     this.applyPending();
-    return { frames: this.history.slice(startFrames), events: this.events.slice(startEv) };
+    return result();
   }
 
   /** Runs to the end (CLI / validation / golden). */
@@ -338,6 +422,8 @@ export class Simulation {
    */
   rewindTo(frameIndex: number): void {
     if (Number.isNaN(frameIndex)) throw new RangeError('rewindTo: frame index is NaN');
+    // a step in progress is dropped: the restore below overwrites everything it has done to y and to the model
+    if (this.run) { const gen = this.run.gen; this.run = null; gen.return(0); }
     const i = Math.max(0, Math.min(Math.floor(frameIndex), this.history.length - 1));
     const f = this.history[i];
     this.t = f.t;
@@ -380,6 +466,7 @@ export class Simulation {
    * (the operator wins) for the rest of the run branch.
    */
   applyControl(patch: Record<string, number>): void {
+    if (this.run) this.stepOnce(); // settle the step in progress: the patch takes effect at the boundary that follows it
     this.log.push({ t: this.t, step: this.steps, patch: { ...patch } });
     this.model.applyControl(patch);
     this.scen?.override(Object.keys(patch));

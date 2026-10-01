@@ -36,6 +36,7 @@
  * as an error above the tolerance, in proportion to the change.
  */
 import { AndersonMixer } from '../../numerics/anderson';
+import { runSlices, type Slices } from '../../kernel/slices';
 import { KEV, ProfileContext, StepConstants } from '../context';
 import { composition } from '../composition';
 import { updateBoundary } from '../boundary/sol';
@@ -191,8 +192,8 @@ export class CoupledStepper implements Checkpointable {
     private readonly physics: PhysicsPipeline,
     private readonly fueling: FuelingControl,
     private readonly disruption: DisruptionEvents,
-    /** update after an accepted step from t to t + dt (scalars, controllers, diagnostics, equilibrium) */
-    private readonly accept: (t: number, dt: number, yOld: Float64Array, y: Float64Array) => void,
+    /** update after an accepted step from t to t + dt (scalars, controllers, diagnostics, equilibrium); resumable, it yields where the equilibrium update does */
+    private readonly accept: (t: number, dt: number, yOld: Float64Array, y: Float64Array) => Slices<void>,
     /** event models: those with a trigger are localised inside a step */
     events: readonly EventModel[] = [],
   ) {
@@ -217,6 +218,17 @@ export class CoupledStepper implements Checkpointable {
 
   /** SimModel.step: advances y in place from t towards tMax, returns the new time */
   step(t: number, y: Float64Array, tMax: number): number {
+    return runSlices(this.stepSlices(t, y, tMax));
+  }
+
+  /**
+   * SimModel.stepSlices: step() as a resumable computation (kernel/slices.ts). It yields after every implicit attempt
+   * (a step that is rejected or retried is several of them) and inside the update after the accepted step (the
+   * equilibrium update yields about every 5 ms). While it is suspended y holds a state that belongs to the step in
+   * progress and nothing else may touch the model (Simulation.advance, `yieldWhen`); dropping the generator (`return()`)
+   * leaves y and the context as they are, for the caller's rewind to overwrite.
+   */
+  *stepSlices(t: number, y: Float64Array, tMax: number): Slices<number> {
     const ctx = this.ctx;
     if (ctx.phase === 'ended') return tMax;
     if (ctx.phase !== 'normal') return this.disruption.quenchStep(ctx, t, y, tMax);
@@ -226,7 +238,7 @@ export class CoupledStepper implements Checkpointable {
     const yOld = Float64Array.from(y);
     const snap = snapshotStep(ctx, this.forcedSteps);
     try {
-      return this.advance(t, dt, dtWant, yOld, y);
+      return yield* this.advance(t, dt, dtWant, yOld, y);
     } catch (e) {
       // a programming error (an exception that is no numerical failure): the step did not happen
       y.set(yOld);
@@ -236,7 +248,7 @@ export class CoupledStepper implements Checkpointable {
   }
 
   /** The step from t: implicit attempts with retries, then the update after the accepted one */
-  private advance(t: number, dt0: number, dtWant: number, yOld: Float64Array, y: Float64Array): number {
+  private *advance(t: number, dt0: number, dtWant: number, yOld: Float64Array, y: Float64Array): Slices<number> {
     const ctx = this.ctx;
     let dt = dt0;
     // the Δt of the attempt before it was cut short (by the output time or an event), for the controller
@@ -245,6 +257,7 @@ export class CoupledStepper implements Checkpointable {
     let attempts = 1, retried = false, forced = false, rejects = 0, located = 0;
     let prev: { dt: number; err: number } | null = null; // the previous rejected attempt of this step
     for (;;) {
+      yield; // after an attempt: the state of the step is in locals, y and the context
       if (!r.ok) {
         this.stats.failed++;
         if (forced) break;
@@ -295,7 +308,7 @@ export class CoupledStepper implements Checkpointable {
       this.forcedSteps++;
       ctx.warnOnce('forced', t + dt, `Transport step at t = ${t.toFixed(4)} s did not converge in ${attempts - 1} attempts; forced at Δt = ${dt.toExponential(1)} s (Picard not converged) — accuracy is reduced here`);
     }
-    this.accept(t, dt, yOld, y);
+    yield* this.accept(t, dt, yOld, y);
     this.stats.accepted++;
     // Δt control: the integral controller on the error of the step, or, for a step that was cut short (by the output time
     // or an event: it says nothing about the length that was proposed), on the error that the full Δt would have had (∝ Δt³, the

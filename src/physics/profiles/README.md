@@ -85,6 +85,33 @@ channel must keep the closure: put its power density into a work array, add it i
 `powerTotals` (`diagnostics.ts`). The stored energy has one definition, `ctx.storedEnergy`
 (W = Σ 3/2 (n_e T_e + n_i T_i) ΔV).
 
+## Slicing: the step as a resumable computation
+
+The simulation worker is one thread, and a step that carries a Grad–Shafranov update takes 30 to 130 ms (the outer iteration of
+`coupling/outer.ts`: two to four solves, then the TR-BDF2 step). A message from the page (a pause, a control, a rewind) waits for the
+task that is running, so the step is written as a **generator** (`kernel/slices.ts`, `Slices<T>`): `CoupledStepper.stepSlices`
+(`SimModel.stepSlices`) yields after every implicit attempt and inside the update after the accepted step; `EquilibriumCoupling.update`
+and `solveConsistentSlices` (`coupling/outer.ts`) yield where `GSSolver.solveSlices` does (after every Picard iteration, about 5 ms, and
+after every 16 rays of the surface trace). `step()`, `updateEquilibrium()`, `solve()` and `solveConsistent()` are the same generators run
+to their end (`runSlices`), so the two forms cannot differ in what they compute, bit for bit. `Simulation.advance(dt, { yieldWhen })`
+runs the generator and stops at a yield when the caller says so; the header of `simulation.ts` ("Step atomicity and slicing") is the
+contract, `kernel/slicing.test.ts` and `worker/hostMidStep.test.ts` are its tests. What that asks of the model:
+
+- **State.** Between two yields the step keeps its state in the generator's locals and in the model's own fields; while it is
+  suspended the kernel calls nothing on the model but `next()`, `return()`, `getControls()`, `terminated` and `currentDt`. A step that
+  is dropped (`return()`, by a rewind) is followed by a restore from a checkpoint, so nothing has to be undone: what a step writes
+  before its end either is restored by the checkpoint or is recomputed by the next step. The equilibrium update follows this: it reads
+  the transport profiles into its own tables, solves, and adopts the geometry (and re-evaluates the work arrays) only after its last
+  yield, so a suspended update has changed nothing of the model.
+- **No clock, no host.** A generator never reads the wall clock or anything else that makes the result depend on when it is resumed;
+  whether to stop at a yield is the caller's decision, the generator only offers the points.
+- **Where to yield.** After a unit of work of a few milliseconds, where the state is complete (`yield;` in a loop body, `yield*` to a
+  callee that is a generator). A plug-in (`SourceModel`, `TransportModel`, `EventModel`) runs inside an attempt and does not yield; a
+  new computation of more than about 10 ms in the accepted hooks or the update should be a generator in the same way (measure it:
+  `bench/pause-latency.ts --mode stretch`).
+- **Overrides.** A test that stubs `GSSolver.solve` or `ProfileModel.updateEquilibrium` (`vi.spyOn`) is honoured by the `...Slices`
+  forms: the stub is called as it is, as one unit.
+
 ## Radial grid
 
 The N cells lie between the faces ρ_f (ρ_0 = 0 the axis, ρ_N = 1 the separatrix); a cell centre is the

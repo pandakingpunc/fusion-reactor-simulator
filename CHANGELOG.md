@@ -21,7 +21,7 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 - Coverage gates now include IO, analysis and education; "npm run coverage:levels" reports measured levels and suggested thresholds.
 - Local CI accepts CI_LOCAL_WORKERS, CI_LOCAL_THREADS and CI_LOCAL_BUNDLE, with a dry run and the production bundle budget.
 - Shared-machine test defaults: 30-second tests, 120-second hooks and 15-second Testing Library waits; lazy translation loading no longer sets state after unmount.
-- **Golden regression harness**: `npm run golden` compares 30 deterministic run snapshots (all
+- **Golden regression harness**: `npm run golden` compares 40 deterministic run snapshots (all
   presets, every method, 0D and 1.5D, plus variants for every fuel in 0D and 1.5D, 1.5D D-D and
   1.5D spherical tokamak) with `test/golden/*.json` at a relative tolerance of 1e-9 (1e-6 across
   Node.js major versions) and prints a preset/key/old/new/rel-diff table on mismatch. A snapshot
@@ -650,7 +650,7 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
   (transport/islandCoverage.ts), so the flattened width is the island width on any grid. ITER15 flat-top Q at 25 / 50 /
   100 cells goes from 10.44 / 10.69 / 10.51 (oscillatory, GCI 7.1 %) to 10.16 / 10.45 / 10.51 (monotone, order 2.28,
   GCI 0.18 %); the default ITER15 Q moves from 10.69 to 10.45 (−2.25 %). Two golden cases move (ITER15,
-  ITER15-impurity; see test/golden/CHANGES.md), `npm run validate` stays at 36 passed and 6 known failures. The pedestal
+  ITER15-impurity; see test/golden/CHANGES.md), `npm run validate` stays at 36 passed and 6 known failures (before the calibration lane merged; the merged tree: 46 checks, 38 pass, 8 known, 0 unexpected). The pedestal
   temperature still differs by −1.1 % between 50 and 100 cells; the NTM model itself and its constants are unchanged.
 - Sawteeth on a hollow q core (q₀ > 1 with q < 1 in an annulus): the Kadomtsev mixing radius returned a grid-dependent
   sentinel of about −1e24 whenever the core's helical-flux deficit outweighed the first q < 1 cell, so the default

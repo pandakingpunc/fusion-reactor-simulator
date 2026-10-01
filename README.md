@@ -44,7 +44,7 @@ Requirements: Node.js 20+.
 npm install
 npm run dev        # user interface (Vite) → http://localhost:5173
 npm test           # unit, CLI and fast golden-regression tests (vitest)
-npm run validate   # 22 presets, 46 literature checks (8 documented known failures), on a worker pool (~45 s)
+npm run validate   # 22 presets, 46 literature checks (8 documented known failures), on a worker pool (measured 215–222 s on 3 threads)
 npm run golden     # golden regression: 40 cases compared with test/golden (~12 s on 4 threads)
 npm run ci:local   # type check + schema check + tests + validate + golden + build + bundle budget, in sequence, stops at the first failure
 npm run check:bundle  # after a build: fails when the main JS chunk is above 250 kB (85 kB gzip)

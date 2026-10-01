@@ -1,0 +1,74 @@
+name: Bug report
+description: Something does not work, or a result is wrong (a crash, a wrong number, a UI problem).
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the report. The simulator is a reduced-order educational and research tool; a result that
+        disagrees with a published value is a welcome report, please cite the source (with a DOI if you can).
+        For a security problem do **not** use this form; see SECURITY.md.
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where does it happen?
+      options:
+        - Browser application
+        - Command line (fusion-sim and the npm scripts)
+        - Library (import from the package)
+        - Documentation
+        - Tests or CI
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: The version in package.json, the release tag, or `git rev-parse --short HEAD`.
+      placeholder: "4.0.0"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected and what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: |
+        The shortest way to see it. For a physics or numerical issue give the preset or the configuration
+        (`fusion-sim run` JSON, or the share link of the app), the fidelity (0D or 1.5D) and the seed.
+      placeholder: |
+        1. npm run dev
+        2. Choose the ITER15 preset ...
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration or scenario (optional)
+      description: A minimal reactor configuration or scenario JSON that shows the problem.
+      render: json
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error output (optional)
+      description: The terminal output or the browser console error.
+      render: text
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: Node.js version and operating system, or browser and version for the application.
+      placeholder: "Node 24.x, Windows 11 / Firefox 140"
+  - type: textarea
+    id: source
+    attributes:
+      label: Published reference (physics issues)
+      description: If a number disagrees with the literature, the reference (DOI) and the value it gives.

@@ -1,0 +1,51 @@
+name: Feature request
+description: Suggest a new model, option, validation reference, output format or improvement.
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the idea. New physics models are added as opt-in modules whose default reproduces the
+        previous behaviour; a request that names the published model it would implement is easiest to act on.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Physics model (0D)
+        - Physics model (1.5D transport, equilibrium, edge)
+        - Validation or benchmark reference
+        - Browser application (user interface)
+        - Command line, library or file formats
+        - Documentation or translation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What do you want to do?
+      description: The use case or the limitation you ran into, before any proposed solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What you would like to see. For a physics model, the equations or the paper it comes from.
+  - type: textarea
+    id: refs
+    attributes:
+      label: References
+      description: Papers (with DOI), codes or data sets that describe it or can be used to check it.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Contribution
+      options:
+        - label: I would be willing to work on this (see CONTRIBUTING.md).

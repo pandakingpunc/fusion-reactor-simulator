@@ -8,3 +8,5 @@ test/golden/** text eol=lf
 docs/figures/*.svg text eol=lf
 docs/figures/*.md text eol=lf
 docs/figures/*.json text eol=lf
+# The generated configuration reference (npm run docs:config) is written with LF
+docs/config-reference.md text eol=lf

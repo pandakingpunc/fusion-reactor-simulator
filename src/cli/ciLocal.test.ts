@@ -47,7 +47,15 @@ describe('ci:local knobs', () => {
     expect(r.out).toContain('validation: npm run validate -- --threads 4');
     expect(r.out).toContain('golden regression: npm run golden -- --threads 4');
     expect(r.out).not.toMatch(/bundle|budget|build/);
-    expect(r.out.trim().split(/\r?\n/)).toHaveLength(5);
+    expect(r.out.trim().split(/\r?\n/)).toHaveLength(7);
+  });
+
+  it('the generated schemas and the configuration reference are checked right after the type check, before the slow steps', () => {
+    const lines = dryRun(plain).out.trim().split(/\r?\n/);
+    expect(lines[1]).toContain('config schema up to date: npm run schema:check');
+    expect(lines[2]).toContain('scenario schema up to date: npm run schema:scenario:check');
+    expect(lines[3]).toContain('config reference up to date: npm run docs:config:check');
+    expect(lines[4]).toContain('unit tests:');
   });
 
   it('CI_LOCAL_WORKERS limits the vitest workers and CI_LOCAL_THREADS the threads of validate and golden', () => {
@@ -72,12 +80,12 @@ describe('ci:local knobs', () => {
     const on = dryRun(withBundle);
     expect(on.status).toBe(0);
     const lines = on.out.trim().split(/\r?\n/);
-    expect(lines).toHaveLength(7);
-    expect(lines[5]).toContain('production build: npm run build');
-    expect(lines[6]).toContain('main chunk within budget: node scripts/check-bundle.mjs');
+    expect(lines).toHaveLength(9);
+    expect(lines[7]).toContain('production build: npm run build');
+    expect(lines[8]).toContain('main chunk within budget: node scripts/check-bundle.mjs');
     const off = dryRun(withBundle, { CI_LOCAL_BUNDLE: '0' });
-    expect(off.out.trim().split(/\r?\n/)).toHaveLength(5);
+    expect(off.out.trim().split(/\r?\n/)).toHaveLength(7);
     // any other value keeps them
-    expect(dryRun(withBundle, { CI_LOCAL_BUNDLE: '1' }).out.trim().split(/\r?\n/)).toHaveLength(7);
+    expect(dryRun(withBundle, { CI_LOCAL_BUNDLE: '1' }).out.trim().split(/\r?\n/)).toHaveLength(9);
   });
 });

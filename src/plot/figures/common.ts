@@ -31,6 +31,12 @@ export function eventTicks(ax: Axes, events: SimEvent[], kind: string, color: st
   if (xs.length) ax.xmarks(xs, { color, label });
 }
 
+/**
+ * Typical size of an inline contour label as a fraction of the axis spans (x, y): a 5.5 pt label such as "100 MW" with its box is about a
+ * tenth of the width and 4.5 % of the height of the plot area of the single-column POPCON panel (an estimate from the rendered labels, not a font metric).
+ */
+export const LABEL_SPAN: readonly [number, number] = [0.1, 0.045];
+
 /** Kontur çizgisine satır içi etiket (en uzun parçanın `pos` kesrindeki noktada, beyaz kutulu) */
 export function contourLabel(ax: Axes, x: ArrayLike<number>, y: ArrayLike<number>, Z: ArrayLike<number>, level: number, text: string,
   o: { color?: string; size?: number; pos?: number; avoid?: [number, number][] } = {}): [number, number] | null {
@@ -39,7 +45,8 @@ export function contourLabel(ax: Axes, x: ArrayLike<number>, y: ArrayLike<number
   const pl = lines.reduce((p, q) => (q.x.length > p.x.length ? q : p));
   let k = Math.min(pl.x.length - 1, Math.floor(pl.x.length * (o.pos ?? 0.5)));
   if (o.avoid?.length) {
-    // kaçınılacak noktalara (yörünge, diğer etiketler) en uzak iç nokta; kenarlardan %8 içeride
+    // the inner point farthest from the points to avoid (trajectory, other labels, legend), 8 % in from the edges;
+    // the distance is measured in label sizes (LABEL_SPAN), so that two labels never end up overlapping each other
     const x0 = x[0], x1 = x[x.length - 1], y0 = y[0], y1 = y[y.length - 1];
     const sx = Math.abs(x1 - x0), sy = Math.abs(y1 - y0);
     let best = -1;
@@ -47,7 +54,7 @@ export function contourLabel(ax: Axes, x: ArrayLike<number>, y: ArrayLike<number
       const u = (pl.x[i] - x0) / sx, v = (pl.y[i] - y0) / sy;
       if (u < 0.08 || u > 0.92 || v < 0.08 || v > 0.92) continue;
       let dmin = Infinity;
-      for (const [ax_, ay] of o.avoid) dmin = Math.min(dmin, Math.hypot((pl.x[i] - ax_) / sx, (pl.y[i] - ay) / sy));
+      for (const [ax_, ay] of o.avoid) dmin = Math.min(dmin, Math.hypot((pl.x[i] - ax_) / (sx * LABEL_SPAN[0]), (pl.y[i] - ay) / (sy * LABEL_SPAN[1])));
       if (dmin > best) { best = dmin; k = i; }
     }
   }

@@ -42,15 +42,16 @@ export function figPopcon(inp: PopconFigInput): Figure {
   // P_aux eş-eğrileri (beyaz, etiketli)
   const levels = [10, 25, 50, 100, 200];
   ax.contour(x, y, Pa, levels, { colors: '#ffffff', lw: 0.5 });
-  // etiketler yörüngeden ve birbirinden uzak konumlara
+  // labels away from the trajectory and from each other. The Q = 5 and 10 contours have few free places (they run along the trajectory and
+  // the legend), the P_aux contours many, so the Q labels are placed first and the P_aux labels take the remaining room.
+  const Qraw = T(g.Q, (v) => (Number.isFinite(v) ? v : 1e3));
   const avoid: [number, number][] = [[0.1, 28], [0.3, 28], [0.1, 24], [0.3, 24]]; // sol üstteki lejant
   if (inp.traj) for (let i = 0; i < inp.traj.n.length; i += 4) avoid.push([inp.traj.n[i], inp.traj.T[i]]);
   if (inp.traj?.n.length) avoid.push([inp.traj.n[inp.traj.n.length - 1], inp.traj.T[inp.traj.T.length - 1]]);
+  for (const lv of [5, 10]) { const at = contourLabel(ax, x, y, Qraw, lv, `$Q$ = ${lv}`, { size: 5.5, avoid }); if (at) avoid.push(at); }
   for (const lv of levels) { const at = contourLabel(ax, x, y, Pa, lv, `${lv} MW`, { size: 5.5, avoid }); if (at) avoid.push(at); }
   // sabit Q eğrileri ve ateşleme sınırı (varsa)
-  const Qraw = T(g.Q, (v) => (Number.isFinite(v) ? v : 1e3));
   ax.contour(x, y, Qraw, [5, 10], { colors: C.black, lw: 0.7, dash: 'dashed', label: '$Q$ = 5, 10' });
-  for (const lv of [5, 10]) { const at = contourLabel(ax, x, y, Qraw, lv, `$Q$ = ${lv}`, { size: 5.5, avoid }); if (at) avoid.push(at); }
   ax.contour(x, y, Pa, [0], { colors: C.black, lw: 1.1, label: 'ignition ($P_{\\mathrm{aux}} = 0$)' });
   // β_N sınırı ve L–H eşiği
   ax.contour(x, y, bN, [cfg.limits.betaN_limit], { colors: C.vermilion, lw: 0.9, dash: 'dashed', label: `$\\beta_N$ = ${cfg.limits.betaN_limit}` });

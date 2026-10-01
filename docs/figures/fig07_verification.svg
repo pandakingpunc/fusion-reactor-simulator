@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="7in" height="5.2in" viewBox="0 0 504 374.4" style="font-kerning:none;font-variant-ligatures:none">
 <title>Numerical verification</title>
-<metadata><frs:provenance xmlns:frs="https://doi.org/10.5281/zenodo.22259861" generator="fusion-reactor-simulator" version="3.0.0" config-sha256="210379557319921bcba4ed92b7c75ebbd4b645c577eea5157111def615f8d18a"/></metadata>
+<metadata><frs:provenance xmlns:frs="https://doi.org/10.5281/zenodo.22259861" generator="fusion-reactor-simulator" version="4.0.0" config-sha256="210379557319921bcba4ed92b7c75ebbd4b645c577eea5157111def615f8d18a"/></metadata>
 <rect width="504" height="374.4" fill="#ffffff"/>
 <clipPath id="Numericalverific_c0"><rect x="43.2" y="15.84" width="198" height="140.76"/></clipPath><g clip-path="url(#Numericalverific_c0)">
 <path d="M237.39 22.24L200.27 44.33L173.93 59.01L136.81 80.1L110.47 94.74L73.35 115.43L47.01 130.04" fill="none" stroke="#0072b2" stroke-width="1.2" stroke-linejoin="round"/>

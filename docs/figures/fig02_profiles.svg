@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="7in" height="4.3in" viewBox="0 0 504 309.6" style="font-kerning:none;font-variant-ligatures:none">
 <title>Flat-top profiles</title>
-<metadata><frs:provenance xmlns:frs="https://doi.org/10.5281/zenodo.22259861" generator="fusion-reactor-simulator" version="3.0.0" config-sha256="9f449bcb4fb8be76c24940b643becc62b258b036a72f58f575d8cc74503167ef"/></metadata>
+<metadata><frs:provenance xmlns:frs="https://doi.org/10.5281/zenodo.22259861" generator="fusion-reactor-simulator" version="4.0.0" config-sha256="9f449bcb4fb8be76c24940b643becc62b258b036a72f58f575d8cc74503167ef"/></metadata>
 <rect width="504" height="309.6" fill="#ffffff"/>
 <clipPath id="Flattopprofiles_c0"><rect x="36" y="15.84" width="107.76" height="113.76"/></clipPath><g clip-path="url(#Flattopprofiles_c0)">
 <path d="M137.29 15.84L143.76 15.84L143.76 129.6L137.29 129.6Z" fill="#7a7a7a" opacity="0.12"/>

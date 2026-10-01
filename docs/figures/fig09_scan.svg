@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="4.55in" height="3.1in" viewBox="0 0 327.56 223.2" style="font-kerning:none;font-variant-ligatures:none">
 <title>Operating-space scan</title>
-<metadata><frs:provenance xmlns:frs="https://doi.org/10.5281/zenodo.22259861" generator="fusion-reactor-simulator" version="3.0.0" config-sha256="53906dd0bfe6065741c217479f38ef1f15136d2de1783aeb38a4fad7e205147b"/></metadata>
+<metadata><frs:provenance xmlns:frs="https://doi.org/10.5281/zenodo.22259861" generator="fusion-reactor-simulator" version="4.0.0" config-sha256="53906dd0bfe6065741c217479f38ef1f15136d2de1783aeb38a4fad7e205147b"/></metadata>
 <rect width="327.56" height="223.2" fill="#ffffff"/>
 <clipPath id="Operatingspacesc_c0"><rect x="37.44" y="15.84" width="228.92" height="174.96"/></clipPath><g clip-path="url(#Operatingspacesc_c0)">
 <image x="37.44" y="15.84" width="228.92" height="174.96" preserveAspectRatio="none" xlink:href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAsAAAALCAIAAAAmzuBxAAABPklEQVR42mPYbFZ1wTH/VVjiz4rYf/Nz/53u+7ev+U9fyr+Fef/BgGGlce1Rm5L7XhmfUmL+dCb+W1f+79qMP3/3/zvTD1UxT79+u3nlBcf8F8FJ3/Ji/vSn/NtUBVL0czdUxUTtxmWGtfutyq+65L4MSfqWG/OnO+nfsqJ/RzoYGFhAKlrUGqfrNqw2rtlnVX7JKf+xX+qH+LjvRTG/2xKhKsoUG9vUG6fqNCw1rNtsVnXQquyMfeFl57yrLrlQFenSDcUKjXUqTZ0ajRO0QObN1G3o1mwEyUFUhIvWxUvUp0s35Mo25so2Zsk0+ghWMTCwQBBIhZtAuY9glb9QtZ9gtbtAhZ5gEhMTD4oKE4FMM4FsU4EsfcFkRUFfbk5VRkY2qByEVBYKUhIMkBf0Eue34eXSZGYWYmRgRTYDAF42pyiVEmd0AAAAAElFTkSuQmCC"/>

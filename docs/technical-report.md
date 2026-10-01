@@ -1,438 +1,269 @@
-# Füzyon Reaktörü Simülatörü — Teknik Rapor (v3.0)
+# Fusion Reactor Simulator — Technical report (v4.0.0)
 
-**Yazar:** Mustafa Karatum  <!-- TODO: ismini/ORCID'ini doğrula -->
-**Sürüm:** 3.0.0
-**Tarih:** 23 Eylül 2026
-**Lisans:** MIT (kod), CC-BY-4.0 (bu rapor önerilir)
-**Kavram DOI:** [10.5281/zenodo.22259861](https://doi.org/10.5281/zenodo.22259861)
-**Sürüm DOI (v3.0.0):** [10.5281/zenodo.22925078](https://doi.org/10.5281/zenodo.22925078)
+**Author:** Mustafa Karatum, Independent researcher
+**Release date:** 2026-10-01
+**License:** MIT
+**Concept DOI:** [10.5281/zenodo.22259861](https://doi.org/10.5281/zenodo.22259861)
+**Türkçe:** [technical-report.md](tr/technical-report.md)
 
----
+## 1. Scope and model hierarchy
 
-## Özet
+The simulator is a reduced research and education tool for time-dependent scenario exploration. It runs in a browser, a headless TypeScript library, the `fusion-sim` CLI and a Python subprocess wrapper. The magnetic 0D model evolves volume-averaged energy, composition and current with adaptive Dormand–Prince integration. Separate reduced 0D families describe stellarators, inertial fusion, magnetised targets, FRCs, mirrors and muon-catalysed fusion. Only tokamaks and spherical tokamaks support the radial 1.5D model.
 
-Bu rapor, tarayıcıda ve Node.js'te çalışan, bağımlılıksız (yalnız TypeScript) bir füzyon
-reaktörü simülasyon motorunun 3.0 sürümünü tanımlar. Motor iki doğruluk düzeyi sunar:
-(i) mevcut **0D** hacim-ortalamalı güç/parçacık dengesi (uyarlanır Dormand–Prince RK5(4));
-(ii) bu sürümde eklenen **1.5D** model: normalize toroidal akı koordinatı ρ̂ = √(Φ/Φ_b)
-üzerinde elektron/iyon sıcaklığı, elektron yoğunluğu ve poloidal akı için örtük sonlu-hacim
-taşınım çözücüsü, periyodik olarak güncellenen **sabit-sınırlı Grad–Shafranov (GS)** dengesi,
-Sauter neoklasik bootstrap/iletkenlik, NBI/ECRH/ICRH kaynak profilleri, demet-hedef füzyonu
-ve olay-tabanlı MHD (Kadomtsev testere dişi, tip-I ELM, modifiye Rutherford NTM). Kod
-doğrulaması (verification) üretilmiş çözümlerle yapılmıştır: GS çözücüsü ikinci derece
-(gözlenen 2.05), sonlu-hacim ısı çözücüsü ikinci derece (1.94), geri-Euler birinci derece
-(0.99). Geçerlilik (validation) ITER, JET DTE2, SPARC, EU DEMO ve NIF için yayımlanmış
-değerlere karşı yapılmış; 1.5D ITER taban senaryosu düz tepede Q = 9.8, P_fus = 491 MW,
-f_bs = 0.22, ℓ_i(3) = 0.73, q95 = 3.5 vermektedir. Yayın kalitesinde vektör figürler (SVG/PDF)
-bağımlılıksız bir çizim motoruyla üretilir; parametre taramaları çok çekirdekli işçi
-havuzunda koşar. Tüm çıktılar küçük boyutludur (9 figür ≈ 1 MB; ham veri diske yazılmaz).
+In 1.5D, `ProfileModel` evolves electron and ion temperatures, electron density and poloidal flux, plus scalar inventories and optional impurity/fast-ion fields. `Simulation` owns stepping, event history, controls, checkpoints and replay. Source, transport and event modules share a single context and participate in checkpoints. This is not a reactor design code, a free-boundary equilibrium solver or an integrated turbulence/MHD calculation. Design references are benchmarks, not experimental measurements. The code has no external plasma-physics certification.
 
-*Abstract (EN).* We describe version 3.0 of a dependency-free TypeScript fusion reactor
-simulator. Besides the 0D volume-averaged power balance, it now provides a 1.5D transport
-model on the normalised toroidal-flux coordinate with implicit finite-volume solvers for
-T_e, T_i, n_e and the poloidal flux, a fixed-boundary Grad–Shafranov equilibrium solver
-(Shortley–Weller finite differences, banded LU, Picard iteration, exact flux-surface
-averages and trapped fraction) coupled quasi-statically to transport, Sauter bootstrap
-current and conductivity, NBI/RF source profiles with beam–target fusion, and event-based
-MHD (sawteeth, type-I ELMs, NTMs). Verification against manufactured solutions shows the
-expected orders of accuracy; validation against ITER, JET DTE2, SPARC, EU DEMO and NIF
-reference values is summarised in Fig. 5. Publication-quality SVG/PDF figures are produced
-by a built-in plotting engine; scans run on a worker-thread pool.
+## 2. Zero-dimensional power balance
 
-**Anahtar kelimeler:** nükleer füzyon, tokamak, taşınım modellemesi, Grad–Shafranov dengesi,
-bootstrap akımı, MHD olayları, POPCON, sayısal doğrulama.
-
----
-
-## 1. Giriş ve kapsam
-
-Tam taşınım kodları (TRANSP, JINTRAC, ASTRA, CRONOS/METIS, TORAX) tokamak senaryolarını
-yüksek doğrulukla modeller; ancak kurulum ve hesap maliyetleri yüksektir. 0D sistem kodları
-ise tasarım uzayını hızlı tarar ama profil fiziğini (bootstrap akımı, pedestal, akım
-difüzyonu, q profili, MHD tetikleyicileri) içeremez. v3.0, bu iki uç arasında **tarayıcıda
-saniyeler içinde** koşan, izlenebilir ve doğrulanmış bir 1.5D katman ekler.
-
-Tasarım ilkeleri (v2'den devralınan): her bağıntının kaynağı kodda; iç hesaplar SI; tüm
-basitleştirmeler `APPROXIMATION` etiketli; stokastik olaylar tohumlu PRNG ile belirlenimci.
-v3'te eklenen ilkeler: **(i)** her sayısal yöntem üretilmiş/analitik çözümle birim testte
-doğrulanır; **(ii)** küresel dinamik doğrulanmış 0D ölçeklemesiyle tutarlı kalır, profil
-*şekli* fizikten çıkar; **(iii)** disk ve bellek dostu çıktı (bkz. §9).
-
-## 2. Model mimarisi
+The stored thermal energy is `W = (3/2) ∫ (n_e T_e + n_i T_i) dV`; temperatures are converted from keV to joules before energy accounting. Electron/ion exchange cancels in the total balance. Fusion channels use Bosch–Hale reactivities and channel-specific fuel pair densities and reaction energies. Alpha and injected-beam fast-ion energies are distinct reservoirs: injected beam power is never labelled alpha power. D-D, D-T and D-3He products are booked separately, including fuel depletion and helium ash.
 
 ```
-                ┌───────────── Simulation (ortak sürücü: zaman, kayıt, olaylar, geri sarma) ─────────────┐
- fidelity='0D'  │ MagneticModel: y = [W_e, W_i, n_a, n_b, n_He, n_Z, W_f, I_p, …]  → DormandPrince RK5(4) │
- fidelity='1.5D'│ ProfileModel: y = [T_e(ρ), T_i(ρ), n_e(ρ), ψ(ρ), skalerler] → örtük FV adımı (model.step) │
-                │      ↕ yarı-statik bağlaşım (p(ψ_N), ⟨j_φ/R⟩(ψ_N) → GS → V′, g1, g2, F, ⟨R⁻²⟩, f_t, q)   │
-                │   GSSolver (sabit sınır, Miller LCFS)                                                   │
-                └──────────────────────────────────────────────────────────────────────────────────────────┘
+dW/dt = P_heat − P_rad − P_transport − P_event
+P_L = P_heat − P_rad,core − dW/dt
+tau_E = W / P_L
+Q = P_fusion / P_external
 ```
 
-1.5D model yalnız tokamak ve sferik tokamak için etkindir (`supportsProfiles`); stellarator
-0D kalır. Her iki model aynı `SimModel` arayüzünü uygular; arayüz, rapor, karşılaştırma ve
-doğrulama araçları iki modeli de şeffaf biçimde kullanır. Durum 1.5D'de 4N + 15 bileşenlidir
-(N = 50 radyal hücre varsayılanı): dört profil ve He külü envanteri, safsızlık oranı, yakıt
-karışımı, enerji/nötron sayaçları, taşınım çarpanı C_χ ve integral durumu, I_p, NTM ada
-genişlikleri (3/2, 2/1) ve ELM enerji darbesi.
+Confinement and L–H threshold correlations use line-averaged density, while particle inventory uses volume-averaged density. IPB98(y,2), ITER89-P and stellarator ISS04 are empirical scalings with their own domains. Radiation combines bremsstrahlung, line cooling and synchrotron approximations. NBI slowing down and beam-target fusion are reduced models, and RF deposition does not ray-trace. Heating programmes and an ignition test distinguish externally sustained burning from self-sustained alpha heating.
 
-## 3. 1.5D taşınım modeli
+The density controller has feed-forward and feedback terms, finite actuator response and anti-windup. A seeded stochastic limiter acts near the Greenwald boundary. A density target is an input, not a prediction of particle transport; near-limit outcomes depend on the seed. Fuel fractions and charge neutrality are enforced before source evaluation. The code and derivations of each scaling are linked from the [configuration reference](config-reference.md) and module headers.
 
-### 3.1 Koordinat ve metrik
+## 3. Radial transport, time integration and current diffusion
 
-Taşınım koordinatı ρ̂ = √(Φ/Φ_b)'dir. GS dengesinden ψ_N → ρ̂ dönüşümü dΦ = 2π q dψ ile
-kurulur; metrik katsayılar
+The radial coordinate is `rho = sqrt(Phi/Phi_b)`, with `dPhi = 2 pi q dpsi`. Flux-surface geometry supplies `V' = dV/drho`, gradient metrics and trapped-particle fraction. The conservative particle equation is
 
 ```
-V′ = dV/dρ̂,   g1 = ⟨|∇ρ̂|²⟩,   g2 = ⟨|∇ρ̂|²/R²⟩,   ⟨|∇ρ̂|⟩,   F = R B_φ,   ⟨R⁻²⟩,   f_t
-q = Φ_b ρ̂ / (π ∂ψ/∂ρ̂)
+∂n_e/∂t = −(1/V') ∂Γ/∂rho + S_n
+Γ = V' (−g1 D ∂n_e/∂rho + <|∇rho|> v n_e)
 ```
 
-akı-yüzeyi ortalamalarından (§4.3) hesaplanır ve hücre-merkezli ızgaraya
-(ρ̂_i = (i+½)Δρ, yüzeyler ρ̂_{i+½}) eşlenir. Eksende düzenli büyüklükler (V′/ρ̂, g1, g2)
-kübik spline ile interpolasyon yapılır. Birim testlerde analitik çözümler için silindirik
-yedek geometri (`circularGeometry`) kullanılır.
+Heat conduction uses `V' g1 n_s chi_s ∂T_s/∂rho` at faces; convected enthalpy uses the particle flux. Local sources include electron/ion exchange, ohmic heating, fusion products, attenuated multi-energy NBI, Gaussian RF deposition and local radiation. Symmetry gives zero axis flux. A reduced two-point SOL model supplies separatrix temperature; density has a specified separatrix relation. The edge flux gradient carries the programmed plasma current.
 
-### 3.2 Yönetici denklemler
+Finite-volume cells are packed toward the pedestal. Face gradients use actual distances, integrals use cell volumes and interpolation uses neighbouring-cell weights. A uniform-grid spacing must not be substituted on the packed path. The default scaling transport adjusts its diffusivity through a PI controller toward `W = tau_scal P_L`; therefore agreement with a confinement scaling is partly imposed. Optional predictive closures remove that normalisation and expose an emergent H98.
 
-```
-(3/2) ∂(n_e T_e)/∂t = (1/V′) ∂ρ[ V′ g1 n_e χ_e ∂ρT_e − (5/2) T_e Γ ] + Q_e − (3/2) n_e ν_eq (T_e − T_i)
-(3/2) ∂(n_i T_i)/∂t = (1/V′) ∂ρ[ V′ g1 n_i χ_i ∂ρT_i − (5/2) T_i Γ ] + Q_i + (3/2) n_e ν_eq (T_e − T_i)
-∂n_e/∂t            = −(1/V′) ∂ρ Γ + S,          Γ = V′( −g1 D ∂ρn_e + ⟨|∇ρ̂|⟩ v n_e )
-σ∥ F ⟨R⁻²⟩ ∂ψ/∂t   = (1/(μ0 V′)) ∂ρ( V′ F g2 ∂ρψ ) − ⟨j_ni·B⟩
-```
+Heat and current stages use second-order, L-stable TR-BDF2; the density stage uses backward Euler with Scharfetter–Gummel fluxes. Coupled stages use Anderson-accelerated Picard iteration, or damped Newton with a coloured Jacobian for predictive closures. A scaled embedded error estimate controls accepted steps; numerical failures retry at smaller steps. Forced finite acceptance after the retry ladder is diagnosed, and unresolved failure terminates the shot. Programming exceptions propagate after atomic rollback. ELM and sawtooth crossings are localised within a step, so events are not simply postponed to an output frame.
 
-Q_e, Q_i: α ısıtması (Stix kritik enerjisiyle iyon/elektron paylaşımı), NBI, ICRH, ECRH,
-ohmik (η_neo j²), radyasyon (yerel bremsstrahlung, Mavrin çizgi soğuması, senkrotron);
-j_ni = j_bs + j_CD.
+Current diffusion follows the Hinton–Hazeltine form, including the moving-coordinate term; it is not the obsolete constant-metric approximation. Sauter conductivity and bootstrap coefficients are the default; Redl is optional. Plasma current at the end of each stage supplies the edge condition. Boundary loop voltage, resistive and inductive flux components are recorded separately. See [profiles/README.md](../src/physics/profiles/README.md) for exact discrete equations, solver constants and failure semantics.
 
-**Sınır koşulları.** Eksende simetri (V′ = 0 ⇒ akı sıfır). Dış sınırda T_e = T_i = T_sep
-iki-nokta modelinden (Stangeby): `T_u = (7 q∥ L∥ / 2κ0e)^{2/7}`, `q∥ = P_SOL B/(2π R λ_q B_p)`,
-λ_q Eich (2013) ölçeklemesi; n_sep = f_sep ⟨n_e⟩ (gaz beslemesinde yoğunluk hedefi için
-kazançlı denetleyici); ψ için akım koşulu (Neumann): ∂ψ/∂ρ̂|_LCFS enclosed I_p'yi verir.
-
-### 3.3 Taşınım katsayıları
-
-İki mod vardır. **'scaling' (varsayılan, doğrulanmış):**
+## 4. Fixed-boundary equilibrium and conservative coupling
 
 ```
-χ_e(ρ) = C_χ(t) · (1 + c ρ²) · S(R/L_Te),    χ_i = (χ_i/χ_e) · C_χ(t) · (1 + c ρ²) · S(R/L_Ti)
-S(x)   = 1 + stiffness · min(max(x/x_crit − 1, 0), 5)        (yalnız ρ < 0.85; ITG/TEM sertliği)
+Δ*psi = R ∂R(R⁻¹ ∂Rpsi) + ∂²Zpsi = −mu0 R² p'(psi) − F F'(psi)
+R_LCFS(theta) = R0 + a cos(theta + asin(delta) sin(theta))
+Z_LCFS(theta) = kappa a sin(theta)
 ```
 
-C_χ bir **PI denetleyicisiyle** depolanan enerjiyi ölçekleme hedefine çeker:
-W → τ_T · P_L, τ_T = H98·τ_IPB98(P_L)·f_NTM (H-kipi; L-kipinde ITER89-P). Kayıp gücü
-P_L = P_ısıtma − P_rad,çekirdek − dW/dt'dir (çekirdek: ρ < 0.6; dW/dt τ_E ile süzülür ve ELM
-kayıplarını içerir; 0D modelle aynı tanım). İntegral
-terimi, difüzyon tahmini C_est = a²κ_a/(6 τ (1 + c/2)) çevresinde [0.1, 10]·C_est ile
-sınırlanır (anti-windup). Böylece küresel dinamik doğrulanmış 0D ölçeklemeyle tutarlı kalır;
-profil **şekli** ise kaynak birikimi, sertlik, pedestal, testere dişi, bootstrap ve akım
-difüzyonundan fiziksel olarak çıkar (METIS/CRONOS "τ_E-ölçekli" yaklaşımı). **'cgm':**
-kritik-gradyan modeli χ_i = q^{3/2} χ_gB (R/L_Ti − 4.5)² + … (Garbet et al. 2004;
-öngörücü, kalibrasyonsuz — deneysel).
+The Grad–Shafranov solver uses a Miller boundary, finite differences with Shortley–Weller boundary distances, banded LU and relaxed Picard iteration. Shape mode uses parameterised sources; table mode uses pressure and current from transport. The pressure contribution is retained when matching total plasma current through the `FF'` source. Surface tracing provides volume, flux, q, magnetic averages and trapped-particle fraction. The equilibrium is fixed-boundary and quasi-static: external coils and vertical-control dynamics are not solved.
 
-Ek katkılar: (i) **ETB** (H-kipinde pedestal içinde χ → etbFactor·χ, tanh geçişi);
-pedestal gradyanı kinetik balonlama (KBM) sınırını aşarsa bastırma gevşer (EPED resmi);
-(ii) **neoklasik iyon tabanı** (Chang–Hinton biçimi); (iii) **NTM adası**: ada genişliği
-içinde χ artışı (profil düzleşmesi); (iv) D = (D/χ_e)·χ_e, iç pinç v = −2 P_n D ρ g1/⟨|∇ρ|⟩
-(kaynaksız kararlı durumda n ∝ exp(−P_n ρ²), P_n α_n'den çözülür).
+Updates respond to elapsed simulation time and changes in pressure, internal inductance or plasma current. An outer consistency loop reconciles geometry and source profiles. On adoption, species and thermal/fast-ion energy inventories are mapped with cell-volume accounting; the new geometry is adopted only after the complete update succeeds. The flux ledger preserves its meaning across remapping. Failed or cancelled suspended work restores state, coupling caches, module state and RNG. [Figure 1](figures/fig01_equilibrium.svg) shows equilibrium from its own figure run; its global values need not equal the golden flat-top averages. [Figure 2](figures/fig02_profiles.svg) shows radial profiles. G-EQDSK exports carry the fixed-boundary solution.
 
-### 3.4 Kaynaklar ve akım sürme
+## 5. MHD events and their validity
 
-* **NBI:** orta-düzlemde teğet kiriş (R_tan) boyunca demet zayıflaması
-  dI/dℓ = −n_e σ_s I (Janev–Boley–Post eğilimi), üç enerji bileşeni (E, E/2, E/3),
-  shine-through; **demet-hedef füzyonu** yavaşlama dağılımı üzerinden önbellekli tablo
-  ⟨σv⟩_bt(E_c, T_i) ile.
-* **ECRH/ICRH:** Gauss birikimi (hacim-normalize; ışın izleme yok — APPROXIMATION).
-* **Akım sürme:** γ = n_e[10²⁰] R I_CD/P verimleri (NBCD, ECCD), T_e ölçekli.
-* **α ısıtması:** yerel füzyon gücü (Bosch–Hale), Stix paylaşımı; He külü envanteri
-  τ_He = (τ_He/τ_E)·τ_E ile.
+Sawtooth mixing uses the helical-flux integral `psi*(rho) ∝ ∫ (1/q − 1) 2 rho drho`. The mixing radius is its first return to the axis reference beyond the outermost q<1 interval, provided the integral there is positive. The no-radius sentinel is bounded and independent of grid size. Temperature and density flattening conserve the relevant energy and particles.
 
-### 3.5 Neoklasik fizik
+Kadomtsev reconnection presumes a core with q0<1 and one q=1 surface. For a hollow core, the integral-based radius is a model convention, not a physical reconnection solution. The helical-flux reset declines such profiles; a Porcelli-triggered crash may fall back to the legacy q rebuild. Every baseline ITER15 crash occurs on a hollow core, and part of MASTU15-saw also uses fallback. These timings are not validated. A barely positive helical-flux lobe can still produce a full model crash.
 
-Sauter–Angioni–Lin-Liu (1999; 2002 düzeltmesi) bağıntıları: neoklasik iletkenlik σ_neo
-(f_t, ν*_e), bootstrap akımı ⟨j_bs·B⟩ = σ katsayıları × (∂p/∂ψ, ∂T_e/∂ψ, ∂T_i/∂ψ). Tuzaklı
-parçacık oranı dengeden **tam** hesaplanır (§4.3).
+ELMs use a reduced pedestal-gradient trigger. The optional Loarte closure estimates loss from pre-crash composition; trial evaluation is pure and accepted losses are measured from actual inventories. NTMs follow a modified Rutherford equation and flatten transport across islands. Face-control-interval overlap weights make the flattened physical width independent of radial resolution. ECCD suppression is reduced, not nonlinear resistive MHD. [Figure 8](figures/fig08_mhd.svg) illustrates events; the plotted mixing region must be read with the convention above and the [figure captions](figures/captions.md).
 
-### 3.6 MHD olayları
+## 6. Optional physics modules
 
-* **Testere dişi:** q = 1 yüzeyindeki kayma s₁ > s_crit (Porcelli tetikleyicisinin kayma
-  biçimi). Çöküş: Kadomtsev tam yeniden bağlanması — helisel akı ψ*(ρ) = ∫₀^ρ (1/q − 1) dΦ/2π
-  korunur, karışım yarıçapı ψ*(ρ_mix) = ψ*(0); ρ_mix içinde T_e, T_i, n_e enerji/parçacık
-  korunarak düzleşir, q → max(q, 1.01). Çöküş, NTM tohumu verir (Şekil 8a).
-* **Tip-I ELM:** pedestal normalize basınç gradyanı α = 2μ0 R q² |∂p/∂r|/B² kritik değeri
-  α_crit·(1 + κ²(1+5δ²))/2 aşınca pedestal ΔW/W_ped oranında çöker; bekleme süresi τ_E/8
-  (deneysel f_ELM τ_E ≈ 5–30). ITER tabanında f_ELM ≈ 2.6 Hz (Şekil 8c).
-* **NTM:** modifiye Rutherford denklemi (La Haye 2006):
-  `dw/dt = 1.22 (η/μ0) [ Δ′₀ + a_bs √ε β_θ (L_q/L_p) w/(w² + w_d²) − a_pol w_d²/w³ ]`;
-  hapsetmeye etkisi kuşak modeliyle f_NTM = 1 − 4 Σ ρ_s² w/a.
-* **L–H geçişi:** P_L ≥ P_LH; Martin (2008) eşiği + Ryter (2014) düşük yoğunluk kolu (çizgi-ortalama
-  yoğunlukla), 0.7 histerezisli.
-* **Kararlılık teşhisi:** Mercier D_M ve s–α balonlama sınırı (Connor–Hastie–Taylor) profilleri.
+<!-- table: modules -->
+| Switch | Default / opt-in | Example golden |
+| --- | --- | --- |
+| `transportModel` | `scaling` / `cgm`, `bgb`, `ifspppl` | ITER15-bgb, JET15-ifspppl |
+| `neoclassicalModel` | `sauter` / `redl` | SPARC15-redl |
+| `pedestalModel`, `elmLoss` | `fixed` / `eped1`, `loarte` | ITER15-EPED |
+| `impurityTransport` | `legacy` / `anomalous`, `facit` | ITER15-impurity, ITER15-impurity-neo |
+| `fastIonModel`, `cdModel` | `scalar`, `legacy` / `profile`, `physics` | JET15-fast, DIIID15-eccd |
+| `sawtoothTrigger`, `sawtoothReconnection` | `shear`, `legacy` / `porcelli`, `kadomtsev` | MASTU15-saw |
 
-## 4. Grad–Shafranov dengesi
+These switches are opt-in. Golden cases and integration tests demonstrate activation and bookkeeping for representative combinations, not predictive validity for every combination. EPED1-type onset and temperature miss the stated target. Bohm/gyro-Bohm and IFS-PPPL closures produce emergent H98 outside the intended band in most tested cases. FACIT is a reduced implementation with analytic/internal checks; no external coefficient benchmark establishes its accuracy. Profile fast-ion moments, orbit smoothing, NBCD/ECCD and Porcelli triggers have targeted consistency tests, while the JET thermal/beam-target split stays unresolved. Reference derivations and validity gaps appear in the corresponding [module README](../src/physics/profiles/README.md).
 
-### 4.1 Denklem ve ayrıklaştırma
+## 7. Edge, systems, uncertainty and optimisation
 
-```
-Δ*ψ ≡ R ∂R(R⁻¹ ∂Rψ) + ∂²Zψ = −μ0 R² p′(ψ) − F F′(ψ)
-```
+The edge module estimates SOL power, Eich heat-flux width, two-point temperatures and divertor loading. ELM energy is included in the power accounting. Detachment, radiation partition and geometry are reduced closures. Systems-lite reports coil stress, neutron loading, energy conversion and pulse/central-solenoid quantities from supplied engineering inputs. Plasma flux requirements can be reported without a solenoid design; available swing and margin require one. These reports do not establish component feasibility, fatigue life, shielding adequacy or a detailed tritium cycle.
 
-Sabit sınır: Miller LCFS `R = R0 + a cos(θ + arcsin δ sin θ)`, `Z = κ a sin θ`. Dikdörtgen
-(R, Z) ızgarası; iç düğümlerde standart 5-noktalı şablon, sınıra komşu düzensiz düğümlerde
-**Shortley–Weller** şablonu (ızgara çizgisi boyunca sınıra gerçek uzaklıklarla), Dirichlet
-ψ = 0. Bant genişliği N_R olan seyrek sistem **bir kez LU çarpanlarına ayrılır**
-(pivotsuz bantlı LU); her Picard iterasyonunda yalnız geri yerine koyma yapılır. Sınır
-dışındaki 64 katman ψ değeri ekstrapole edilir (bikübik spline'ın LCFS yakınında
-salınımsız kalması için).
+Scans and POPCON explore operating space; the displayed POPCON approximation is qualitative and differs from full time-dependent runs. UQ samples configured uncertainties using seeded streams, and worker assignment does not change the sample results. Optimisation supports scenario-aware objectives and Pareto fronts. It cannot supply missing model fidelity or prove global optimality. [Figure 4](figures/fig04_popcon.svg) shows POPCON and [Figure 9](figures/fig09_scan.svg) shows a full-model scan. Library/CLI export supports CSV, JSON, NetCDF, IMAS-shaped data and G-EQDSK; IMAS export is not an assertion of complete IDS compliance.
 
-### 4.2 Profil modları ve Picard iterasyonu
+## 8. Determinism and software verification
 
-* **'shape'** (Jeon 2015 / FreeGS): j_φ = λ[β0 R/R0 + (1−β0) R0/R](1 − ψ_N^αm)^αn; λ I_p'den,
-  β0 hedef β_p'den.
-* **'table'** (taşınım bağlaşımı): p(ψ_N) ve ⟨j_φ/R⟩(ψ_N) tabloları;
-  FF′ = μ0 (⟨j_φ/R⟩ − p′)/⟨R⁻²⟩. ⟨j_φ/R⟩ biçimi, I(ψ_N) biçimine göre kararlıdır
-  (eksen kayması geri beslemesi olmadan 6–10 iterasyonda yakınsar).
+Within a fixed runtime and configuration, direct stepping, chunked playback and resumable slices produce bit-identical accepted states. Wall-clock scheduling only selects yield points; it never enters a model equation. Checkpoints include RNG and module state, so rewind restores actual computation, not interpolation of stored frames. Scenario events, controls, configuration hashes and completion fingerprints make replay auditable. Floating-point transcendental functions can vary across Node majors or platforms; golden tolerance across Node majors is relaxed accordingly. Determinism is not a promise of identical bytes on every JavaScript implementation.
 
-Picard iterasyonu gevşetmeli (ω = 0.9), bağıl artık < 10⁻⁵; önceki denge sıcak başlangıç
-olarak kullanılır. Manyetik eksen bikübik spline gradyanında Newton ile bulunur.
+Unit/component/CLI tests cover analytic solutions, conservation, failures, worker shutdown, import/export, UI locales and accessibility. Real-event seam tests exercise Loarte ELMs, Porcelli/Kadomtsev crashes, equilibrium adoption, chunking and rewind together. Golden regression records complete scalars, histories, events and profile/equilibrium digests; every deliberate change has an append-only reason. Mutation smoke tests intentionally sabotage numerical and engineering paths; one case is detected by timeout. Coverage thresholds and the strict-type baseline are measured gates, not correctness proofs. No final independent audit was performed for this release: the owner waived that extra audit; the release checks still run.
 
-### 4.3 Akı yüzeyleri ve ortalamalar
+Reproduce with `npm run ci:local`, `npm run coverage`, `npm run coverage:levels`, `npm run typecheck:strict`, `npm run build:lib`, `npm run paper:check` and `npm run release:check -- --no-allow-unreleased`. Use Node 24 for recorded golden and figure comparisons. Tests in `src/docs` check report/README/paper numbers, including deliberately falsified claims.
 
-Yüzeyler eksenden çıkan 128 ışın boyunca ψ_N seviyesinin Hermite ters çevirmesi + bikübik
-spline üzerinde Newton ile izlenir. Hesaplanan büyüklükler: V, dV/dψ, alan, I(ψ),
-⟨R⁻²⟩, ⟨R⁻¹⟩, ⟨|∇ψ|²/R²⟩, ⟨|∇ψ|²⟩, ⟨|∇ψ|⟩, ⟨B²⟩, B_min/max, q = (F/2π)∮ dl/(R|∇ψ|),
-elongasyon/üçgensellik, toroidal akı Φ ve ρ_tor. Tuzaklı oran tam formülle:
-`f_t = 1 − (3/4)⟨B²⟩ ∫₀^{1/B_max} λ dλ / ⟨√(1 − λB)⟩`. Küresel büyüklükler: β_t, β_p, β_N,
-ℓ_i(3) = 2∫B_p² dV/(μ0² I_p² R0), q95, Shafranov kayması (R_ax − R_geo, R_geo = LCFS'nin
-(R_max + R_min)/2'si).
+## 9. Numerical verification and convergence
 
-### 4.4 Taşınım ile bağlaşım
+[Figure 7](figures/fig07_verification.svg) measures Grad–Shafranov, cylindrical finite-volume diffusion and backward-Euler verification. Backward-Euler's first-order result does not measure TR-BDF2's order; separate TR-BDF2 tests cover its stage formula, stiff limit and error control.
 
-Denge, en geç `eqUpdateInterval`'da bir (varsayılan t_son/20, [0.5, 20] s) veya β_p %10 ya
-da ℓ_i %5 değişince (en az ¼ aralıkla) güncellenir. Yeni metrik katsayılar ρ̂ ızgarasına
-yeniden eşlenir. ITER 400 s atışında 23 güncelleme yapılır (≈ 50 ms/güncelleme).
+<!-- table: verification -->
+| Operator | Observed order | Expected order |
+| --- | --- | --- |
+| Grad–Shafranov / Solov’ev | <!--num:VER.GS-->2.05<!--/num--> | 2 |
+| Finite-volume / cylindrical diffusion | <!--num:VER.FV-->1.94<!--/num--> | 2 |
+| Backward Euler | <!--num:VER.BE-->0.99<!--/num--> | 1 |
 
-## 5. Sayısal yöntemler
+The post-island-width-fix ITER15 radial series below is a full baseline discharge. Its default-grid values match `test/golden/ITER15.json`. All quantities are flat-top means; T_ped is in keV. Source: [convergence record](../bench/records/convergence-iter15-v4.json), with the complete time-tolerance and maximum-step studies.
 
-| Bileşen | Yöntem | Not |
-|---|---|---|
-| 1.5D ısı | TR-BDF2 (2. mertebe, L-kararlı; v3'te geri Euler) + Anderson hızlandırmalı Picard veya Newton–Raphson | T_e/T_i 2×2 blok üçlü-köşegen, eşitlenme örtük; kenara sıkıştırılmış ρ̂ ızgarası |
-| 1.5D yoğunluk | geri Euler, Scharfetter–Gummel akısı B(x) = x/(eˣ − 1) | konveksiyon–difüzyon için pozitiflik |
-| 1.5D akım | TR-BDF2, Hinton–Hazeltine biçimi, sınır koşulu I_p | döngü gerilimi V_loop = 2π ∂ψ_b/∂t |
-| Zaman adımı | uyarlanır: gömülü hata tahmini (rtol 10⁻², atol 10⁻⁴) ve integral adım denetleyicisi, Δt ≤ 0.5 s (v3'te profil değişimi ≤ %8 kuralı) | ELM ve testere dişi çöküşü eşik geçişine Brent ile yerelleştirilir; çöküşten sonra Δt = 0.5 ms |
-| GS | Shortley–Weller FD + bantlı LU + Picard | Bölüm 4 |
-| 0D ODE | Dormand–Prince RK5(4), gömülü hata tahmini | Hairer–Nørsett–Wanner |
-| İnterpolasyon | kübik spline, PCHIP, bikübik (Hermite) | `numerics/interp.ts` |
-| Kök bulma | Brent, monoton ters çevirme | `numerics/roots.ts` |
-| Karşılaştırma | sabit adımlı RK4 ve açık Euler | yalnız doğrulama (`numerics/rk4.ts`) |
+<!-- table: convergence -->
+| Parameter | Value | Q | f_bs | li(3) | T_ped (keV) | Steps | ELMs |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| nRho | 25 | 10.1629 | 0.230293 | 0.713831 | 3.50614 | 20568 | 1309 |
+| nRho | 50 | 10.4503 | 0.230607 | 0.719487 | 3.54873 | 20903 | 1317 |
+| nRho | 100 | 10.5094 | 0.231067 | 0.721273 | 3.50977 | 22710 | 1322 |
+| rtol | 0.01 | 10.4503 | 0.230607 | 0.719487 | 3.54873 | 20903 | 1317 |
+| rtol | 0.001 | 10.4758 | 0.231218 | 0.719483 | 3.53475 | 28491 | 1320 |
+| rtol | 0.0001 | 10.4859 | 0.23127 | 0.719675 | 3.53776 | 37604 | 1321 |
+| dtMax | 0.5 | 10.4503 | 0.230607 | 0.719487 | 3.54873 | 20903 | 1317 |
+| dtMax | 0.05 | 10.4524 | 0.230818 | 0.71965 | 3.53805 | 21885 | 1319 |
+| dtMax | 0.01 | 10.488 | 0.231239 | 0.719809 | 3.53802 | 45791 | 1325 |
 
-## 6. Kod doğrulaması (verification)
+Radial cells <!--num:CONV.cells.base-->50<!--/num--> → <!--num:CONV.cells.fine-->100<!--/num-->: Q changes +<!--num:CONV.Q-->0.57<!--/num--> %, T_ped changes −<!--num:CONV.Tped-->1.10<!--/num--> %; target <!--num:CONV.target-->1<!--/num--> %.
 
-![Şekil 7](figures/fig07_verification.svg)
+Q meets the refinement target; T_ped does not. Its grid dependence oscillates as pedestal sampling changes. Below the default resolution there is a lower-Q regime, so the coarse grid is not an interchangeable default. This is empirical convergence of one event-rich trajectory, not proof of uniform convergence for all presets or switches. Manufactured solutions check individual operators; they do not validate reduced physical closures.
 
-**Şekil 7.** (a) GS çözücüsü, Cerfon–Freidberg Solov'ev tam çözümüne karşı: gözlenen derece
-**2.05**. (b) Sonlu-hacim ısı çözücüsü (silindirde düzgün kaynak, T ∝ 1 − ρ²): **1.94**.
-(c) Geri-Euler, J₀(j₀₁ρ) kipinin sönümü (öz-yakınsama): **0.99**. (d) 0D D–T yanma dinamiği
-test problemi (α ısıtması, güç bozunumlu τ_E ∝ P^−0.69, bremsstrahlung, modüle besleme) için
-iş–hassasiyet: uyarlanır DP5(4) 10⁻¹² bağıl hataya ≈ 2×10³ sağ-taraf çağrısıyla ulaşır; sabit
-adımlı RK4 ≈ 10⁴ çağrı gerektirir; açık Euler 8×10⁵ çağrıda ancak ≈ 10⁻⁶'ya iner. Bu, 0D
-modellerde RK4/Euler yerine uyarlanır gömülü RK çiftinin tercihini nicel olarak gerekçelendirir.
+## 10. Reference comparison (validation v2)
 
-Birim testleri (`npm test`, 44 test): Thomas/blok üçlü-köşegen/bantlı LU, Gauss–Legendre,
-spline/PCHIP/bikübik türevleri, Brent; RK4 (4. derece) ve Euler (1. derece); Solov'ev
-çözümünün GS denklemini ve sınır koşullarını sağlaması, tek-null X-noktası (eyer), GS ikinci
-derece yakınsama, ITER dengesinin integralleri (I_p, V, A, q–⟨R⁻²⟩ özdeşliği), tablo
-modunun kendi çıktısını yeniden üretmesi; ısı çözücüsünün O(Δρ²) doğruluğu, eşitlenmenin
-enerji korunumu, pinçli yoğunluk kararlı durumu, akım difüzyonunun j ∝ σ'ya gevşemesi;
-Spitzer iletkenliği, bootstrap işareti; Kadomtsev karışım yarıçapı ve korunum; ITER/JET 1.5D
-entegrasyon ve geri sarma belirlenimciliği; çizim motoru (kontur, işaretler, mathtext,
-SVG/PDF yapısı ve xref ofsetleri) ve POPCON tutarlılığı.
+<!--num:VAL.checks-->46<!--/num--> checks: <!--num:VAL.inrange-->38<!--/num--> within range, <!--num:VAL.known-->8<!--/num--> known failures, no unexpected failure. Wording: <!--num:VAL.validated-->16<!--/num--> validated, <!--num:VAL.benchmarked-->16<!--/num--> benchmarked, <!--num:VAL.calibrated-->1<!--/num--> calibrated, <!--num:VAL.sanity-->13<!--/num--> sanity bounds. Deviation threshold <!--num:VAL.threshold-->20<!--/num--> %.
 
-## 7. Geçerlilik (validation)
+Acceptance ranges come from published uncertainty, a documented reduced-model tolerance or an explicit bound in `references.ts`; they are never widened to fit the simulation. "Validated" is the harness wording for a comparison within its deviation threshold; "benchmarked" reports larger deviations even when a broad acceptance band passes. Design targets and sanity bounds retain those roles. NIF N210808 alone calibrates ICF_CAL; N221204 and N230729 are blind only with respect to that constant. Other model choices and inputs were not chosen without knowledge of those shots. The model lacks an input separating the shots and therefore predicts nearly the calibration yield for all of them.
 
-`npm run validate`, 22 preset'i işçi havuzunda paralel koşar ve 46 ölçütü yayımlanmış
-aralıklara karşı denetler: 38'i geçer, 8'i belgelenmiş bilinen başarısızlıktır (beklenmeyen
-başarısızlık yok). Her ölçütün ifadesi, model değerinin yayımlanmış değerden sapmasına bağlıdır:
-%20 içinde "doğrulandı" (validated), ötesinde "karşılaştırıldı, sapma X %" (benchmarked), modelin
-tek ayarlı sabitinin uydurulduğu NIF atışında "kalibre" (calibrated; geçmesi yapı gereğidir),
-bir sınır olan (kind sanity) ölçütte "sağlık sınırı" (sanity bound). Şekil 5 ve tablo, 0D ve 1.5D
-sonuçlarının referansa oranını verir (düz tepe = atışın son %30'u).
+The table includes every reference check: reference and model in the metric's units, their ratio, status, wording and calibration role. DEMO comparisons use the full preset, while DEMO golden cases are shortened. Source limitations for individual references are preserved below the table. [Figure 5](figures/fig05_validation.svg) plots these comparisons and [Figure 6](figures/fig06_reactivity_lawson.svg) gives reactivities and Lawson context.
 
-![Şekil 5](figures/fig05_validation.svg)
+<!-- table: validation -->
+| ID / unit | Reference | Model | Ratio | Accepted | Status | Wording | Role | Source |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| ITER.Q | 10 | 10.084 | 1.0084 | 5..20 | pass | validated | comparison | [Shimada 2007](https://doi.org/10.1088/0029-5515/47/6/S01) |
+| ITER.Pfus (MW) | 500 | 516.638 | 1.03328 | 300..800 | pass | validated | comparison | [Shimada 2007](https://doi.org/10.1088/0029-5515/47/6/S01) |
+| ITER.H98 | 1 | 1.09088 | 1.09088 | 0.748..1.34 | pass | sanity bound | comparison | [ITER Physics Basis 1999](https://doi.org/10.1088/0029-5515/39/12/302) |
+| ITER.nG | 0.85 | 0.848315 | 0.998018 | 0.6..1 | pass | validated | comparison | [Shimada 2007](https://doi.org/10.1088/0029-5515/47/6/S01) |
+| ITER.alphaShare | 0.2 | 0.207343 | 1.03671 | 0..0.213 | pass | sanity bound | comparison | [ITER Physics Basis ch. 1, 1999](https://doi.org/10.1088/0029-5515/39/12/301) |
+| JET.Efus (MJ) | 59 | 66.6361 | 1.12943 | 40..80 | pass | validated | comparison | [Maslov 2023](https://doi.org/10.1088/1741-4326/ace2d8) |
+| JET.alphaShare | 0.2 | 0.202824 | 1.01412 | 0..0.213 | pass | sanity bound | comparison | [ITER Physics Basis ch. 1, 1999](https://doi.org/10.1088/0029-5515/39/12/301) |
+| SPARC.Q | 11 | 7.84251 | 0.712955 | 2..20 | pass | benchmarked (deviation -29 %) | comparison | [Creely 2020](https://doi.org/10.1017/S0022377820001257) |
+| SPARC.alphaShare | 0.2 | 0.203735 | 1.01868 | 0..0.213 | pass | sanity bound | comparison | [ITER Physics Basis ch. 1, 1999](https://doi.org/10.1088/0029-5515/39/12/301) |
+| DIIID.H98 | 1 | 0.882597 | 0.882597 | 0.748..1.34 | pass | sanity bound | comparison | [ITER Physics Basis 1999](https://doi.org/10.1088/0029-5515/39/12/302) |
+| DIIID.Palpha (MW) | 0.0225 | 0.00255145 | 0.113398 | 0..0.0225 | pass | sanity bound | comparison | [Lazarus 1997](https://doi.org/10.1088/0029-5515/37/1/I11) |
+| JT60SA.W (MJ) | 22 | 20.3793 | 0.926331 | 15.8..31.2 | pass | validated | comparison | [Garzotti 2018](https://doi.org/10.1088/1741-4326/aa9e15) |
+| JT60SA.tauE (s) | 0.64 | 0.478671 | 0.747924 | 0.389..0.856 | pass | benchmarked (deviation -25 %) | comparison | [Garzotti 2018](https://doi.org/10.1088/1741-4326/aa9e15) |
+| MASTU.H98 | 1.15 | 0.915382 | 0.795984 | 0.748..1.74 | pass | benchmarked (deviation -20.4 %) | comparison | [Harrison 2024](https://doi.org/10.1088/1741-4326/ad6011) |
+| MASTU.q95 | 7.5 | 6.39329 | 0.852438 | 5..10 | pass | sanity bound | comparison | [Berkery 2023](https://doi.org/10.1088/1361-6587/acb464) |
+| W7X.Ti0 (keV) | 1.5 | 2.00395 | 1.33597 | 0.91..2.21 | pass | benchmarked (deviation +34 %) | comparison | [Beurskens 2021](https://doi.org/10.1088/1741-4326/ac1653) |
+| W7X.HISS04 | 0.65 | 0.8068 | 1.24123 | 0.448..0.869 | pass | benchmarked (deviation +24 %) | comparison | [Beurskens 2021](https://doi.org/10.1088/1741-4326/ac1653) |
+| DEMO.Pfus (MW) | 2000 | 1903.35 | 0.951673 | 1000..3000 | pass | validated | comparison | [Federici 2019](https://doi.org/10.1088/1741-4326/ab1178) |
+| DEMO.alphaShare | 0.2 | 0.209192 | 1.04596 | 0..0.213 | pass | sanity bound | comparison | [ITER Physics Basis ch. 1, 1999](https://doi.org/10.1088/0029-5515/39/12/301) |
+| ITER15.Q | 10 | 10.4503 | 1.04503 | 5..20 | pass | validated | comparison | [Shimada 2007](https://doi.org/10.1088/0029-5515/47/6/S01) |
+| ITER15.Pfus (MW) | 500 | 525.615 | 1.05123 | 300..800 | pass | validated | comparison | [Shimada 2007](https://doi.org/10.1088/0029-5515/47/6/S01) |
+| ITER15.fbs | 0.2 | 0.230607 | 1.15303 | 0.1..0.4 | pass | validated | comparison | [Sips 2005](https://doi.org/10.1088/0741-3335/47/5A/003) |
+| ITER15.li | 0.85 | 0.719487 | 0.846455 | 0.6..1.1 | pass | validated | comparison | [Shimada 2007](https://doi.org/10.1088/0029-5515/47/6/S01) |
+| ITER15.q95 | 3 | 3.50345 | 1.16782 | 2.7..4 | pass | validated | comparison | [Shimada 2007](https://doi.org/10.1088/0029-5515/47/6/S01) |
+| ITER15.Tped (keV) | 4.5 | 3.54873 | 0.788606 | 2..7 | pass | benchmarked (deviation -21 %) | comparison | [Snyder 2011](https://doi.org/10.1088/0029-5515/51/10/103016) |
+| ITER15.nG | 0.85 | 0.799974 | 0.941146 | 0.6..1 | pass | validated | comparison | [Shimada 2007](https://doi.org/10.1088/0029-5515/47/6/S01) |
+| JET15.Efus (MJ) | 59 | 81.8445 | 1.3872 | 40..80 | known-fail | benchmarked (deviation +39 %) | comparison | [Maslov 2023](https://doi.org/10.1088/1741-4326/ace2d8) |
+| JET15.Ti0 (keV) | 10 | 10.1998 | 1.01998 | 6..15 | pass | validated | comparison | [Maslov 2023](https://doi.org/10.1088/1741-4326/ace2d8) |
+| SPARC15.Q | 11 | 6.28916 | 0.571742 | 2..20 | pass | benchmarked (deviation -43 %) | comparison | [Creely 2020](https://doi.org/10.1017/S0022377820001257) |
+| DEMO15.Pfus (MW) | 2000 | 2007.49 | 1.00375 | 1000..3000 | pass | validated | comparison | [Federici 2019](https://doi.org/10.1088/1741-4326/ab1178) |
+| DEMO15.fbs | 0.35 | 0.374528 | 1.07008 | 0.2..0.6 | pass | validated | comparison | [Siccinio 2020](https://doi.org/10.1016/j.fusengdes.2020.111603) |
+| NIF210808.G | 0.72 | 0.714783 | 0.992754 | 0.36..1.44 | pass | calibrated (deviation -0.7 %) | calibration | [Abu-Shawareb 2022](https://doi.org/10.1103/PhysRevLett.129.075001) |
+| NIF210808.Ti (keV) | 9.55 | 1.32155 | 0.138383 | 6.3..13.2 | known-fail | benchmarked (deviation -86 %) | comparison | [Pak 2024](https://doi.org/10.1103/PhysRevE.109.025203) |
+| NIF.G | 1.5 | 0.668409 | 0.445606 | 1..3 | known-fail | benchmarked (deviation -55 %) | blind | [Abu-Shawareb 2024](https://doi.org/10.1103/PhysRevLett.132.065102) |
+| NIF.G_N230729 | 1.89 | 0.668409 | 0.353656 | 1..3.78 | known-fail | benchmarked (deviation -65 %) | blind | [Kritcher 2024](https://doi.org/10.1063/5.0210904) |
+| DIRECT.G | 0.74 | 0.390571 | 0.527799 | 0.3..1.76 | pass | benchmarked (deviation -47 %) | comparison | [Gopalaswamy 2024](https://doi.org/10.1038/s41567-023-02361-4) |
+| Z.yield | 11000000000000 | 199972000000000 | 18.1793 | 3660000000000..33000000000000 | known-fail | benchmarked (deviation +1718 %) | comparison | [Gomez 2020](https://doi.org/10.1103/PhysRevLett.125.155002) |
+| Z.Ti (keV) | 3.1 | 3.1687 | 1.02216 | 2.17..4.03 | pass | validated | comparison | [Gomez 2020](https://doi.org/10.1103/PhysRevLett.125.155002) |
+| GF.Tmax (keV) | 6.463 | 1.41172 | 0.218431 | 0.3..6.463 | pass | sanity bound | comparison | [Lindemuth 1983](https://doi.org/10.1088/0029-5515/23/3/001) |
+| FRXL.Tmax (keV) | 6.463 | 1.43028 | 0.221303 | 0.3..6.463 | pass | sanity bound | comparison | [Lindemuth 1983](https://doi.org/10.1088/0029-5515/23/3/001) |
+| ZAP.Te (keV) | 2 | 1 | 0.5 | 0.7..3.9 | pass | sanity bound | comparison | [Levitt 2024](https://doi.org/10.1103/PhysRevLett.132.155101) |
+| TAE.Te (keV) | 0.5 | 0.606066 | 1.21213 | 0.25..1 | pass | benchmarked (deviation +21 %) | comparison | [Gota 2021](https://doi.org/10.1088/1741-4326/ac2521) |
+| TAE.Ttot (keV) | 3 | 1.21213 | 0.404044 | 1.5..6 | known-fail | benchmarked (deviation -60 %) | comparison | [Gota 2021](https://doi.org/10.1088/1741-4326/ac2521) |
+| MIRROR.Te (keV) | 0.66 | 9.53177 | 14.4421 | 0.33..1.8 | known-fail | sanity bound | comparison | [Bagryansky 2015](https://doi.org/10.1103/PhysRevLett.114.205001) |
+| MUON.Yf | 150 | 106.462 | 0.709745 | 109..191 | known-fail | benchmarked (deviation -29 %) | comparison | [Jones 1986](https://doi.org/10.1103/PhysRevLett.56.588) |
+| MUON.Q | 0.528 | 0.374511 | 0.709301 | 0..0.99 | pass | sanity bound | comparison | [Jones 1986](https://doi.org/10.1103/PhysRevLett.56.588) |
 
-| Büyüklük | Referans | 0D / ref | 1.5D / ref |
-|---|---|---|---|
-| ITER Q | 10 (Shimada 2007) | 1.40 | 0.98 |
-| ITER P_fus | 500 MW | 1.43 | 0.98 |
-| ITER n̄_e/n_G | 0.85 | 0.96 | 0.95 |
-| ITER q95 | 3.0 | 1.00 | 1.16 |
-| ITER β_N | 1.8 | 1.04 | 0.82 |
-| ITER f_bs | ≈ 0.2 (Sips 2005) | — | 1.12 |
-| ITER ℓ_i(3) | 0.85 | — | 0.85 |
-| ITER T_e,ped | ≈ 4.5 keV (EPED) | — | 0.82 |
-| JET E_fus | 59 MJ (DTE2 #99971) | 0.99 | 1.43 |
-| JET T_i(0) | ≈ 10 keV | 0.71 | 1.01 |
-| SPARC Q | 11 (Creely 2020) | 0.63 | 0.55 |
-| SPARC P_fus | 140 MW | 1.30 | 1.12 |
-| DEMO P_fus | 2 GW (Siccinio 2020) | 1.10 | 0.98 |
-| DEMO f_bs | 0.35 | — | 1.04 |
-| NIF kazanç G | 1.5 (N221204) | 0.45 | — |
+Reasons for the known failures (quoted from the source table):
 
-**Yorum.** 1.5D model ITER'de 0D'nin Q ≈ 14 aşırı tahminini Q ≈ 9.8'e indirir: 3/2 NTM
-(testere dişi tohumlu, doyum w/a ≈ 0.084) ve profil etkileri (pedestal, akım difüzyonu)
-hapsetmeyi düşürür. **JET +%43:** 1.5D'de füzyonun ≈ %60'ı üç-bileşenli NBI'nin demet-hedef
-reaksiyonlarından gelir (TRANSP analizleriyle nitel uyumlu); bu pay hızlı iyon yavaşlama
-modeline duyarlıdır ve modelin bilinen bir sınırlamasıdır. SPARC'ta her iki model de
-Q ≈ 11 tasarım tahmininin altındadır (yalnız ICRH, W safsızlığı ve H98 = 1 varsayımları).
+- **JET15.Efus:** the 1.5D model over-predicts the record pulse by about 40 % (preset note "1.5D: +40 %"): beam-target fusion from the 3-component NBI deposition and a T_i(0) near 10 keV together over-predict the neutron rate of the record pulse
+- **NIF210808.Ti:** the model puts N210808 below its own ignition threshold (χ_ig = 0.951 with ICF_CAL = 0.03931, fitted to the yield only), so no α heating raises the hot spot: its temperature is the kinematic one of the compression, 1.32 keV, a factor 7 below the experiment, while the calibrated yield (1.37 MJ) is reproduced. The temperature is the clearest sign that the calibration matches the yield with a wrong hot spot: the ignition-cliff constants, set when ICF_CAL was 0.07, are not part of it
+- **NIF.G:** the model has no input for what separates N221204 from the calibration shot N210808 (an ablator 6 µm thicker, 7 % more laser energy, better low-mode symmetry and capsule quality), so it runs the same capsule and predicts the calibration yield, 1.37 MJ: G = 0.67 against 1.5 (model/published 0.45, yield ratio 0.43). The 2.3-fold increase of the yield between the two shots lies above the ignition cliff, which a model calibrated at one point on the cliff does not resolve; the cliff constants were not re-tuned. Before v4.0 ICF_CAL = 0.07 was tuned to N221204 itself and the check read G = 1.49, a fit that looked like a prediction
+- **NIF.G_N230729:** as for N221204 the model predicts the calibration yield, 1.37 MJ, for every shot of the platform: G = 0.67 against 1.89 (model/published 0.35). The capsule quality that raised the yield of N230729 above that of N221204 (fewer high-Z inclusions and defects) enters the model only through the surface roughness, which acts on the ignition parameter and not on the burn-up of an ignited or marginal shot
+- **Z.yield:** the 0D MagLIF model over-predicts the yield by more than an order of magnitude (2.0 × 10¹⁴ against 1.1 × 10¹³, since v4.0 with a burn of ≈ 2 ns instead of ≈ 30 ns): its ideal compression to CR = 30 has no liner–fuel mix, end losses, preheat losses or Be radiation, which limit the experiments
+- **TAE.Ttot:** the single-temperature FRC model has T_i = T_e ≈ 0.6 keV, so T_e + T_i ≈ 1.2 keV; the hot beam-driven ion population of C-2W (T_i several times T_e) is not modelled
+- **MIRROR.Te:** the single-temperature mirror model sets T_e = T_i ≈ 9.5 keV (with the Pastukhov plug factor of v4.0); mirror electrons are cooled by axial heat loss to the end walls, which limits every open trap built so far to T_e ≲ 1 keV and is not modelled
+- **MUON.Yf:** Y_f = 1/(ω_s + 1/(λ_c τ_µ)) with the preset's ω_s = 0.56 % and λ_c = 1.2 × 10⁸ s⁻¹ gives 106 fusions per muon; the measured ≈150 implies a lower effective sticking (reactivation) or a faster cycling rate
 
-**NIF: kör bir ıskalama.** ICF modelinin tek ayarlı sabiti (ICF_CAL) NIF N210808 atışına (1.37 MJ,
-G = 0.72) kalibre edilir; bu atışın tutması yapı gereğidir, bir doğrulama değildir. N221204 aynı
-sabitle yeniden uydurulmadan öngörülür ve model yayımlanmış G = 1.5'in 0.45'ini verir (N230729
-için 0.35): modelin üç atışı birbirinden ayıran girdisi yoktur, hepsi için kalibrasyon verimini (1.37
-MJ) öngörür; bu bilinen bir başarısızlık olarak belgelenmiştir. v4.0 öncesinde sabit N221204'ün
-kendisine ayarlıydı (G = 1.49), yani uydurma bir tahmin gibi görünüyordu. Tablonun NIF dışındaki
-satırları v3.0.0 değerleridir.
+Source-access limitations (from the source table):
 
-## 8. POPCON ve parametre taraması
+- **MASTU.q95:** the 5 < q95 < 10 band is quoted from Berkery et al. 2023 (PPCF 65 045001), whose text could not be read when the check was reviewed (IOPscience stands behind a bot check and the OSTI record has no full text): what was verified is its abstract (operation stayed out of the low-q, low-density region of the Hugill diagram), the open slides of the same authors (ISTW 2022: plasma currents 400–750 kA, MAST-U yet to reach the low-q95 region) and, in the open text of Harrison et al. 2024 (PPCF 66 065019), the ranges 450–1000 kA, 0.42–0.64 T and κ 2.0–2.2; the EFIT q95 of 6.3–6.7 and the discharge shapes of Imada et al. 2024 (table 1) could not be re-read. The primary text of Sauter 2016 could not be read either (the EPFL copy resets the connection, Infoscience holds the record without the full text)
+- **W7X.HISS04:** the ISS04 prefactor and exponents are those of a secondary quotation (Warmer et al., EUROfusion WPS2-PR(15)02, eq. 1, with f_ren in front); Yamada et al. 2005 (doi:10.1088/0029-5515/45/12/024) was not read, nor was the W7-X value of ι_2/3 behind the preset's 0.9
+- **ITER15.Tped:** the 4.5 ± 0.5 keV (T_ped ≈ 4–5 keV) was not found as a printed number in the readable sources: the text of Snyder et al. 2011 (Nucl. Fusion 51 103016) could not be read (IOPscience stands behind a bot check, the OSTI record has no full text); the temperature above is derived from β_N,ped and n_ped of the authors' slides, and the abstract (only a summary of it was seen) quotes no temperature
+- **NIF210808.Ti:** read in the accepted manuscript of the paper (OSTI 2377242, LLNL-JRNL-856035, 2026-10-01), not in the typeset article: the 10.1 keV is printed in its conclusion without an uncertainty, the 9 keV in section V as an approximate value for two shots, and the manuscript quotes N210808 as 1.33 ± 0.13 MJ where Abu-Shawareb et al. 2022 (table I) give 1.37 MJ
+- **NIF.G_N230729:** verified: the abstract of Kritcher et al. 2024 (the Crossref record of doi:10.1063/5.0210904, read 2026-10-01) gives the maximum fusion energy of the platform to date as 3.88 MJ from 2.05 MJ of incident laser energy, and 3.15 MJ for N221204. Not verified: the full text of the paper, so no uncertainty of the 3.88 MJ is known (none is used), and the shot label and date, which the abstract does not state and which come from the facility record of LLNL (N230729, 30 July 2023)
 
-POPCON (Houlberg–Attenberger–Hively 1982), 0D modelle **aynı fiziği** kullanır: yarı-nötrallikten
-yakıt seyrelmesi (ana safsızlık, tohum, öz-tutarlı He külü n_He = R_füz τ_He/V), bremsstrahlung
-+ Mavrin çizgi + Albajar senkrotron ışınımı, P_L = P_heat − P_rad,çekirdek'te (dW/dt = 0) değerlendirilen
-H98·IPB98(y,2). Kararlı durum P_L = W/τ_E(P_L) + P_rad,manto sabit-nokta iterasyonuyla (τ ∝ P^−0.69 ⇒
-yakınsak) çözülür; `P_aux = W/τ_E + P_rad − P_α`. Bu tutarlılık sayesinde 1.5D atışın son
-durumu (⟨n_e⟩ ≈ 0.8×10²⁰ m⁻³, ⟨T⟩ ≈ 9.5 keV) POPCON'da Q ≈ 9 bölgesine düşer (Şekil 4) —
-basit (seyreltmesiz) POPCON'un aksine ITER'de ateşlenmiş bölge yoktur.
+## 11. Performance and pause latency
 
-![Şekil 4](figures/fig04_popcon.svg)  ![Şekil 9](figures/fig09_scan.svg)
+These are recorded measurements, not a timing guarantee for the final documentation commit. `bench/perf-baseline.json` gives three-run medians on Windows x64, Node v24.19.0, AMD Ryzen 5 5600, recorded during v4 development. ITER15 spans its baseline discharge and DEMO15 its full preset; performance is sensitive to CPU, runtime and competing tasks.
 
-**Şekil 9:** ITER 0D modelinin H98 × n/n_G uzayında 121 bağımsız 150 s atışla taranması
-(işçi iş parçacığı havuzunda paralel; her atış bağımsız).
+<!-- table: performance -->
+| Preset | Median (s) |
+| --- | --- |
+| ITER | 1.999 |
+| JET | 0.217 |
+| ITER15 | 23.762 |
+| JET15 | 4.114 |
+| DEMO15 | 139.505 |
+| NIF | 0.003 |
 
-## 9. Başarım ve kaynak yönetimi
+Pause request-to-reply measurements below come from [pause-latency-v4.json](../bench/records/pause-latency-v4.json), one short run per row with only about thirty requests. The machine was shared with other work; this is not a controlled idle measurement. Its p99 is effectively the maximum of that small sample. The worker settles or rolls back suspended steps before controls or rewind; it does not cancel arbitrary instructions instantly.
 
-| İş | Süre (duvar) | Not |
-|---|---|---|
-| ITER 1.5D, 400 s, N = 50, 23 GS güncellemesi | ≈ 4.5 s (tek çekirdek) | ~10⁴ örtük adım |
-| EU DEMO 1.5D, 2000 s | ≈ 40 s | en uzun görev |
-| `npm run validate` (25 preset) | ≈ 45 s | 11 işçi; uzun görevler önce |
-| `npm run figures` (9 figür + 121 atış) | ≈ 55 s | ITER ana iş parçacığında, diğerleri havuzda |
-| GS güncellemesi (49×91) | ≈ 50 ms | LU bir kez; Picard 6–10 iterasyon |
+<!-- table: pause -->
+| Preset | Speed | Requests | p50 (ms) | p95 (ms) | p99 (ms) | max (ms) |
+| --- | --- | --- | --- | --- | --- | --- |
+| DEMO15 | 1x | 32 | 0.8 | 6.2 | 6.3 | 6.3 |
+| DEMO15 | 30x | 31 | 3 | 9.6 | 10.6 | 10.6 |
+| DEMO15 | 100x | 31 | 4.7 | 10 | 14.7 | 14.7 |
+| ITER15 | 1x | 34 | 0.4 | 6 | 6.4 | 6.4 |
+| ITER15 | 30x | 32 | 4.5 | 8.1 | 11.7 | 11.7 |
+| ITER15 | 100x | 30 | 3.5 | 7 | 7.4 | 7.4 |
 
-**Disk ve bellek.** Ham veri veya log dosyası yazılmaz. Geçmiş kareleri düzenli çıktı
-aralığında (t_son/800) tutulur; profiller yalnız düzenli karelere eklenir; işçiler ana
-iş parçacığına yalnız rapor ve son-%30 ortalamalarını gönderir (IPC dostu). Tüm figür seti
-(18 dosya, SVG + PDF) ≈ 1.0 MB'tır. Worker havuzu `availableParallelism() − 1` iş parçacığı
-kullanır (`--threads` ile sınırlandırılabilir).
+## 12. Limitations, open issues and provenance
 
-**Performans iyileştirmeleri.** Adım başına sabitlerin önbelleklenmesi (0.39 → 0.048 ms/çağrı),
-GS dış-katman ekstrapolasyon planının önbelleklenmesi (135 → 50 ms/güncelleme), demet-hedef
-reaktivite tablosu (~100×), bantlı LU'nun bir kez çarpanlara ayrılması, ön-tahsisli
-`Float64Array` çalışma dizileri (adım içinde tahsis yok).
+- EPED onset pressure +<!--num:EPED.p-->21.1<!--/num--> %, temperature +<!--num:EPED.T-->15.4<!--/num--> %; the <!--num:EPED.target-->15<!--/num--> % target is unmet.
+- Predictive-closure H98 target <!--num:H98.lo-->0.8<!--/num-->–<!--num:H98.hi-->1.2<!--/num-->: only one case, <!--num:H98.jet15-->1.02<!--/num-->, is in-band; the others span <!--num:H98.min-->0.29<!--/num-->–<!--num:H98.max-->0.70<!--/num-->.
+- JET15 fusion energy <!--num:JET15.Efus-->81.8<!--/num--> MJ against <!--num:JET15.Efus.ref-->59<!--/num--> ± <!--num:JET15.Efus.unc-->6<!--/num--> MJ: +<!--num:JET15.Efus.dev-->39<!--/num--> %. Thermal share <!--num:JET.thermal-->36.7<!--/num--> % against an approximate <!--num:JET.trend-->50<!--/num--> % trend; #99971 split remains open.
+- Blind NIF gain ratios: N221204 <!--num:NIF.N221204.ratio-->0.45<!--/num-->, N230729 <!--num:NIF.N230729.ratio-->0.35<!--/num-->; no shot-discriminating input.
+- No external FACIT benchmark; hollow-core Kadomtsev behaviour is a convention/fallback.
+- T_ped radial change −<!--num:CONV.Tped-->1.10<!--/num--> % misses the <!--num:CONV.target-->1<!--/num--> % target.
+- Density control within about <!--num:NG.band-->2<!--/num--> % of Greenwald is stochastic; known failures are not presented as successes.
 
-## 10. Yayın kalitesinde figürler
+Other limits are fixed-boundary equilibrium, empirical confinement, approximate RF/NBI and SOL/divertor closures, simplified engineering, incomplete impurity atomic kinetics and representative rather than exhaustive switch-combination coverage. Figure hashes test reproducibility within their supported runtime; they do not prove external predictive accuracy. The [v3-to-v4 number reconciliation](v4-numbers-diff.md) attributes changed headline numbers to power accounting, geometry/preset inputs, discretisation, remapping, island flattening and ICF calibration. No coefficients or literature ranges were retuned during release closeout.
 
-`src/plot/` bağımlılıksız bir çizim motorudur: görüntü listesi → SVG ve PDF 1.4 (standart-14
-Type 1 yazı tipleri Times/Symbol, FlateDecode, saydamlık), mini-TeX etiketleri (italik
-değişkenler, düz alt simgeler, Yunan harfleri), marching-squares konturları, viridis/magma/
-inferno/RdBu renk haritaları, Okabe–Ito renk-körü dostu palet, dergi sütun genişlikleri
-(tek sütun 3.37 in, çift sütun 7.0 in), içe dönük dört-kenar çentikleri. `npm run figures`
-Şekil 1–9'u `docs/figures/` altına yazar; `captions.md` şekil altyazılarını ve güncel sayıları
-içerir. **Dergi gönderimi için** yazı tiplerini gömmek: `gs -dNOPAUSE -dBATCH -sDEVICE=pdfwrite
--dEmbedAllFonts=true -dSubsetFonts=true -sOutputFile=out.pdf in.pdf`.
+The software and documentation were developed by Mustafa Karatum with substantial assistance from Claude Code (Anthropic), Codex (OpenAI) and MiMo under the author's direction. Automated tests and AI-assisted reviews are not a substitute for independent expert review. The JOSS package in `paper/` is prepared, not submitted. Funding, submission and any future adoption statement require the author's review.
 
-Arayüzden de (Rapor ekranı) herhangi bir atış için zaman izleri, 1.5D profiller ve GS kesiti
-SVG/PDF olarak dışa aktarılabilir (grafik kütüphanesi tıklamada tembel yüklenir).
+## References and reproduction data
 
-![Şekil 1](figures/fig01_equilibrium.svg)
+- Fusion Reactor Simulator. [10.5281/zenodo.22259861](https://doi.org/10.5281/zenodo.22259861).
+- ``PROCESS'': A systems code for fusion power plants---Part 1: Physics. [10.1016/j.fusengdes.2014.09.018](https://doi.org/10.1016/j.fusengdes.2014.09.018).
+- ``PROCESS'': A systems code for fusion power plants---Part 2: Engineering. [10.1016/j.fusengdes.2016.01.007](https://doi.org/10.1016/j.fusengdes.2016.01.007).
+- cfspopcon: a Python package for plasma operating contours. [10.5281/zenodo.10054879](https://doi.org/10.5281/zenodo.10054879).
+- Contour analysis of fusion reactor plasma performance. [10.1088/0029-5515/22/7/006](https://doi.org/10.1088/0029-5515/22/7/006).
+- FreeGS: a free-boundary Grad--Shafranov solver. [freegs](https://github.com/freegs-plasma/freegs).
+- FreeGSNKE: A Python-based dynamic free-boundary toroidal plasma equilibrium solver. [10.1063/5.0188467](https://doi.org/10.1063/5.0188467).
+- TORAX: A Fast and Differentiable Tokamak Transport Simulator in JAX. [10.48550/arXiv.2406.06718](https://doi.org/10.48550/arXiv.2406.06718).
+- METIS: a fast integrated tokamak modelling tool for scenario design. [10.1088/1741-4326/aad5b1](https://doi.org/10.1088/1741-4326/aad5b1).
+- Improved formulas for fusion cross-sections and thermal reactivities. [10.1088/0029-5515/32/4/I07](https://doi.org/10.1088/0029-5515/32/4/I07).
+- Chapter 2: Plasma confinement and transport. [10.1088/0029-5515/39/12/302](https://doi.org/10.1088/0029-5515/39/12/302).
+- Power requirement for accessing the H-mode in ITER. [10.1088/1742-6596/123/1/012033](https://doi.org/10.1088/1742-6596/123/1/012033).
+- Transient simulation of silicon devices and circuits. [10.1109/TCAD.1985.1270142](https://doi.org/10.1109/TCAD.1985.1270142).
+- Theory of plasma transport in toroidal confinement systems. [10.1103/RevModPhys.48.239](https://doi.org/10.1103/RevModPhys.48.239).
+- Neoclassical conductivity and bootstrap current formulas for general axisymmetric equilibria and arbitrary collisionality regime. [10.1063/1.873240](https://doi.org/10.1063/1.873240).
+- Noncircular, finite aspect ratio, local equilibrium model. [10.1063/1.872666](https://doi.org/10.1063/1.872666).
+- Neoclassical tearing modes and their control. [10.1063/1.2180747](https://doi.org/10.1063/1.2180747).
+- A first-principles predictive model of the pedestal height and width: development, testing and ITER optimization with the EPED model. [10.1088/0029-5515/51/10/103016](https://doi.org/10.1088/0029-5515/51/10/103016).
+- Chapter 1: Overview and summary. [10.1088/0029-5515/47/6/S01](https://doi.org/10.1088/0029-5515/47/6/S01).
+- JET D-T scenario with optimized non-thermal fusion. [10.1088/1741-4326/ace2d8](https://doi.org/10.1088/1741-4326/ace2d8).
+- Overview of interpretive modelling of fusion performance in JET DTE2 discharges with TRANSP. [10.1088/1741-4326/ad0310](https://doi.org/10.1088/1741-4326/ad0310).
+- Lawson criterion for ignition exceeded in an inertial fusion experiment. [10.1103/PhysRevLett.129.075001](https://doi.org/10.1103/PhysRevLett.129.075001).
+- Achievement of target gain larger than unity in an inertial fusion experiment. [10.1103/PhysRevLett.132.065102](https://doi.org/10.1103/PhysRevLett.132.065102).
+- Design of first experiment to achieve fusion target gain $>$ 1. [10.1063/5.0210904](https://doi.org/10.1063/5.0210904).
 
-**Şekil 1.** (a) ITER 1.5D dengesi (t = 400 s), T_e renkli; (b) Cerfon–Freidberg tek-null
-Solov'ev dengesi (ayırıcı, X-noktası, SOL); (c) q, s ve tam f_t profilleri.
-
-![Şekil 2](figures/fig02_profiles.svg)
-
-**Şekil 2.** Düz tepe radyal profilleri: sıcaklıklar ve pedestal, yoğunluk ve Z_eff, q ve
-kayma (rasyonel yüzeyler), akım bileşenleri, χ_e/χ_i, güç yoğunlukları.
-
-![Şekil 3](figures/fig03_timetraces.svg)
-
-**Şekil 3.** ITER 1.5D atışının zaman izleri: L–H geçişi (≈ 6.5 s), testere dişi tohumlu 3/2
-NTM başlangıcı (≈ 81 s) ve sonrasında Q ≈ 10 düz tepe; 1022 tip-I ELM, 24 testere dişi.
-
-![Şekil 6](figures/fig06_reactivity_lawson.svg)
-
-**Şekil 6.** (a) Reaktiviteler (fitler yalnız geçerlilik aralıklarında); (b) Lawson diyagramı
-(Q = 1, 10, ∞) ve benzetimlerin çalışma noktaları.
-
-![Şekil 8](figures/fig08_mhd.svg)
-
-**Şekil 8.** MHD olayları: testere dişi çöküşü (ρ_{q=1}, ρ_mix), tip-I ELM pedestal çöküşü,
-2 ms örneklemeli ELM döngüsü, NTM ada genişlikleri.
-
-## 11. Sınırlamalar
-
-* **Sabit sınır:** LCFS Miller biçimindedir; serbest-sınır denge, bobin akımları ve X-noktalı
-  gerçek ayırıcı taşınım hesabında yoktur (Solov'ev tek-null yalnız doğrulama/gösterim içindir).
-* **Taşınım kapanışı:** 'scaling' modu genliği ölçeklemeye kısıtlar — öngörücü değildir;
-  'cgm' kalibrasyonsuzdur. Türbülans (TGLF/QLKNN) modeli yoktur.
-* **Kaynaklar:** RF için ışın izleme, NBI için Monte-Carlo hızlı iyon (NUBEAM) yoktur;
-  demet-hedef payı (JET) yavaşlama modeline duyarlıdır.
-* **MHD:** olay-tabanlı indirgenmiş modeller; doğrusal olmayan MHD, RWM, kilitli mod dinamiği yok.
-* **Kenar:** iki-nokta SOL; divertör ayrılması (detachment) ve nötral taşınımı yok.
-* Sonuçlar eğitim, ön-tasarım ve senaryo keşfi içindir; makine mühendisliği kararları için
-  birincil kaynak değildir.
-
-## 12. Yeniden üretilebilirlik
-
-```bash
-npm install
-npm test            # 44 birim testi (vitest)
-npm run validate    # 25 preset, 19 literatür ölçütü (işçi havuzu; --threads N, --only ITER15,JET15)
-npm run figures     # docs/figures/*.svg|pdf + captions.md (--only popcon,mhd; --scan 7; --formats pdf)
-npm run dev         # etkileşimli arayüz (Vite)
-npm run build       # tip denetimi + üretim derlemesi
-```
-
-Her atış, yapılandırma + tohum ile bit düzeyinde yeniden üretilebilir (ELM/testere dişi
-dizileri dahil); geri sarma sonrası devam belirlenimcidir (birim testte doğrulanır).
-
-## Kaynakça
-
-1. H.-S. Bosch, G. M. Hale, *Nucl. Fusion* **32** (1992) 611 — füzyon tesir kesitleri ve reaktiviteler.
-2. W. M. Nevins, R. Swain, *Nucl. Fusion* **40** (2000) 865 — p–¹¹B reaktivitesi.
-3. ITER Physics Expert Groups, *Nucl. Fusion* **39** (1999) 2175 — IPB98(y,2).
-4. M. Shimada *et al.*, *Nucl. Fusion* **47** (2007) S1 — ITER fizik temeli ilerlemesi (Q = 10 tabanı).
-5. O. Sauter, C. Angioni, Y. R. Lin-Liu, *Phys. Plasmas* **6** (1999) 2834; düzeltme **9** (2002) 5140.
-6. B. B. Kadomtsev, *Sov. J. Plasma Phys.* **1** (1975) 389 — testere dişi yeniden bağlanması.
-7. F. Porcelli, D. Boucher, M. N. Rosenbluth, *Plasma Phys. Control. Fusion* **38** (1996) 2163.
-8. R. J. La Haye, *Phys. Plasmas* **13** (2006) 055501 — NTM'ler ve denetimi.
-9. P. B. Snyder *et al.*, *Phys. Plasmas* **16** (2009) 056118 — EPED pedestal modeli.
-10. J. W. Connor, R. J. Hastie, J. B. Taylor, *Phys. Rev. Lett.* **40** (1978) 396 — balonlama kipleri.
-11. A. J. Cerfon, J. P. Freidberg, *Phys. Plasmas* **17** (2010) 032502 — analitik GS çözümleri.
-12. Y. M. Jeon, *J. Korean Phys. Soc.* **67** (2015) 843 — serbest-sınır denge çözücüsü (profil biçimi).
-13. L. L. Lao *et al.*, *Nucl. Fusion* **25** (1985) 1611 — denge yeniden yapılandırması (EFIT).
-14. G. H. Shortley, R. Weller, *J. Appl. Phys.* **9** (1938) 334 — düzensiz sınırlarda sonlu farklar.
-15. D. L. Scharfetter, H. K. Gummel, *IEEE Trans. Electron Devices* **16** (1969) 64.
-16. S. V. Patankar, *Numerical Heat Transfer and Fluid Flow*, Hemisphere (1980).
-17. G. V. Pereverzev, P. N. Yushmanov, *ASTRA*, IPP-Report 5/98 (2002).
-18. J. Citrin *et al.*, *TORAX*, arXiv:2406.06718 (2024).
-19. J.-F. Artaud *et al.*, *Nucl. Fusion* **58** (2018) 105001 — METIS.
-20. X. Garbet *et al.*, *Plasma Phys. Control. Fusion* **46** (2004) 1351 — kritik-gradyan modeli.
-21. C. S. Chang, F. L. Hinton, *Phys. Fluids* **25** (1982) 1493 — neoklasik iyon ısı iletimi.
-22. W. A. Houlberg, S. E. Attenberger, L. M. Hively, *Nucl. Fusion* **22** (1982) 935 — POPCON.
-23. Y. R. Martin *et al.*, *J. Phys.: Conf. Ser.* **123** (2008) 012033 — L–H eşiği.
-24. T. Eich *et al.*, *Nucl. Fusion* **53** (2013) 093031 — λ_q ölçeklemesi.
-25. P. C. Stangeby, *The Plasma Boundary of Magnetic Fusion Devices*, IOP (2000).
-26. F. Albajar, J. Johner, G. Granata, *Nucl. Fusion* **41** (2001) 665 — senkrotron kaybı.
-27. A. A. Mavrin, *Radiat. Eff. Defects Solids* **173** (2018) 388 — koronal soğuma oranları.
-28. R. K. Janev, C. D. Boley, D. E. Post, *Nucl. Fusion* **29** (1989) 2125 — demet durdurma.
-29. T. H. Stix, *Plasma Phys.* **14** (1972) 367 — nötr demet ısıtması, kritik enerji.
-30. A. C. C. Sips *et al.*, *Plasma Phys. Control. Fusion* **47** (2005) A19 — ITER senaryoları.
-31. A. J. Creely *et al.*, *J. Plasma Phys.* **86** (2020) 865860502 — SPARC.
-32. M. Siccinio *et al.*, *Fusion Eng. Des.* **156** (2020) 111603 — EU DEMO fiziği.
-33. H. Abu-Shawareb *et al.* (Indirect Drive ICF Collaboration), *Phys. Rev. Lett.* **132** (2024) 065102 — NIF.
-34. M. Maslov *et al.* (JET contributors), *Nucl. Fusion* (2023) — JET DTE2 59 MJ.
-35. F. Troyon *et al.*, *Plasma Phys. Control. Fusion* **26** (1984) 209; M. Greenwald *et al.*, *Nucl. Fusion* **28** (1988) 2199.
-36. T. C. Hender *et al.*, *Nucl. Fusion* **47** (2007) S128; M. N. Rosenbluth, S. V. Putvinski, *Nucl. Fusion* **37** (1997) 1355.
-37. J. R. Dormand, P. J. Prince, *J. Comput. Appl. Math.* **6** (1980) 19; E. Hairer, S. P. Nørsett, G. Wanner, *Solving ODEs I*, Springer.
-38. M. Okabe, K. Ito, *Color Universal Design* (2008) — renk-körü dostu palet.
+The full bibliography is [paper.bib](../paper/paper.bib). Each validation row links its primary reference; detailed range derivations and source limitations are in [references.ts](../src/physics/validation/references.ts). Figure captions, manifests, golden JSON and its reasons ledger are committed with the source. Run `npm run figures:check -- --threads 2` to check the archived figures without overwriting them.

@@ -48,12 +48,19 @@ type LeafType = 'number' | 'string' | 'boolean';
 
 interface Template {
   leaves: Map<string, LeafType>;
+  /** optional object sections whose members are checked against leaves below them */
+  objects: Set<string>;
   /** paths that hold a programme, a list of [x, y] number pairs */
   series: Set<string>;
   /** sections every configuration of the method has (those of the method's default preset) */
   required: string[];
   enums: Map<string, Set<string>>;
-  ranges: Map<string, [number, number]>;
+  ranges: Map<string, readonly [number, number]>;
+  exclusiveMins: Set<string>;
+  exclusiveMaxs: Set<string>;
+  integers: Set<string>;
+  explicitRanges: Set<string>;
+  hardRanges: Set<string>;
 }
 
 const templates = new Map<Method, Template>();
@@ -95,12 +102,25 @@ const SYSTEMS_OPTION_TYPES: { [K in keyof SystemsConfig]-?: NonNullable<SystemsC
  */
 const NONLINEAR_SOLVER_CHOICES: Record<NonNullable<ProfileSettings['nonlinearSolver']>, true> = { auto: true, picard: true, newton: true, pc: true };
 const NEOCLASSICAL_MODEL_CHOICES: Record<NonNullable<ProfileSettings['neoclassicalModel']>, true> = { sauter: true, redl: true };
+const PEDESTAL_MODEL_CHOICES: Record<NonNullable<ProfileSettings['pedestalModel']>, true> = { fixed: true, eped1: true };
+const ELM_LOSS_CHOICES: Record<NonNullable<ProfileSettings['elmLoss']>, true> = { fixed: true, loarte: true };
+const FAST_ION_MODEL_CHOICES: Record<NonNullable<ProfileSettings['fastIonModel']>, true> = { scalar: true, profile: true };
+const CD_MODEL_CHOICES: Record<NonNullable<ProfileSettings['cdModel']>, true> = { legacy: true, physics: true };
+const SAWTOOTH_TRIGGER_CHOICES: Record<NonNullable<ProfileSettings['sawtoothTrigger']>, true> = { shear: true, porcelli: true };
+const SAWTOOTH_RECONNECTION_CHOICES: Record<NonNullable<ProfileSettings['sawtoothReconnection']>, true> = { legacy: true, kadomtsev: true };
 const PROFILE_SERIES = ['profiles.IpWaveform'];
 /** The profile-resolved impurity settings (no default value either: absent is the scalar model), exhaustive over their choices like the solver above */
 const IMPURITY_TRANSPORT_CHOICES: Record<NonNullable<ProfileSettings['impurityTransport']>, true> = { legacy: true, anomalous: true, facit: true };
 const IMPURITY_SETPOINT_CHOICES: Record<NonNullable<ProfileSettings['impuritySetpoint']>, true> = { average: true, separatrix: true };
 /** a type-only exhaustive list: importing the species table would split physics/constants into a chunk of its own and grow the main one */
 const IMPURITY_SPECIES_CHOICES: Record<ImpuritySpecies, true> = { Be: true, C: true, Ne: true, Ar: true, W: true };
+/** EccdLauncher is numeric-only; exhaustive so its importer leaf list follows the public type. */
+const ECCD_OPTION_TYPES: { [K in keyof NonNullable<ProfileSettings['eccd']>]-?: LeafType } = {
+  harmonic: 'number', freq_GHz: 'number', nPar: 'number', thetaP_deg: 'number', rho: 'number', width: 'number',
+};
+const ECCD_OPTION_RANGES: { [K in keyof NonNullable<ProfileSettings['eccd']>]-?: [number, number] } = {
+  harmonic: [1, 3], freq_GHz: [0, 1000], nPar: [-0.99, 0.99], thetaP_deg: [-180, 180], rho: [0, 1], width: [0, 1],
+};
 
 function walk(v: unknown, path: string, leaves: Map<string, LeafType>, sections?: string[]): void {
   if (v === undefined || v === null) return;
@@ -116,6 +136,7 @@ function templateFor(method: Method): Template {
   let t = templates.get(method);
   if (t) return t;
   const leaves = new Map<string, LeafType>();
+  const objects = new Set<string>();
   const required: string[] = [];
   for (const p of PRESETS) if (p.cfg.method === method) walk(p.cfg, '', leaves);
   walk(METHOD_DEFAULT[method], '', leaves, required);
@@ -136,14 +157,46 @@ function templateFor(method: Method): Template {
     enums.set('profiles.nonlinearSolver', new Set(Object.keys(NONLINEAR_SOLVER_CHOICES)));
     leaves.set('profiles.neoclassicalModel', 'string');
     enums.set('profiles.neoclassicalModel', new Set(Object.keys(NEOCLASSICAL_MODEL_CHOICES)));
+    for (const [k, choices] of [
+      ['pedestalModel', PEDESTAL_MODEL_CHOICES], ['elmLoss', ELM_LOSS_CHOICES],
+      ['fastIonModel', FAST_ION_MODEL_CHOICES], ['cdModel', CD_MODEL_CHOICES],
+      ['sawtoothTrigger', SAWTOOTH_TRIGGER_CHOICES], ['sawtoothReconnection', SAWTOOTH_RECONNECTION_CHOICES],
+    ] as const) {
+      const path = `profiles.${k}`;
+      leaves.set(path, 'string');
+      enums.set(path, new Set(Object.keys(choices)));
+    }
     for (const s of PROFILE_SERIES) series.add(s);
+    for (const k of ['pedPbGradient', 'pedKbmCoefficient', 'pedDensityExponent', 'fastOrbitScale']) leaves.set(`profiles.${k}`, 'number');
+    objects.add('profiles.eccd');
+    for (const [k, type] of Object.entries(ECCD_OPTION_TYPES)) leaves.set(`profiles.eccd.${k}`, type);
     for (const k of ['impurityDoverDe', 'impurityPinchOverPe', 'impurityExtraConcentration']) leaves.set(`profiles.${k}`, 'number');
     for (const [k, choices] of [['impurityTransport', IMPURITY_TRANSPORT_CHOICES], ['impuritySetpoint', IMPURITY_SETPOINT_CHOICES], ['impurityExtraSpecies', IMPURITY_SPECIES_CHOICES]] as const) {
       leaves.set(`profiles.${k}`, 'string');
       enums.set(`profiles.${k}`, new Set(Object.keys(choices)));
     }
   }
-  const ranges = new Map<string, [number, number]>();
+  const ranges = new Map<string, readonly [number, number]>();
+  const exclusiveMins = new Set<string>();
+  const exclusiveMaxs = new Set<string>();
+  const integers = new Set<string>();
+  const explicitRanges = new Set<string>();
+  const hardRanges = new Set<string>();
+  if (method === 'tokamak' || method === 'spherical_tokamak') {
+    for (const [path, range] of [
+      ['profiles.pedPbGradient', [0, 100]], ['profiles.pedKbmCoefficient', [0, 10]],
+      ['profiles.pedDensityExponent', [0, 5]], ['profiles.fastOrbitScale', [0, 10]],
+    ] as const) { ranges.set(path, range); explicitRanges.add(path); hardRanges.add(path); }
+    exclusiveMins.add('profiles.pedPbGradient');
+    exclusiveMins.add('profiles.pedKbmCoefficient');
+    for (const [k, range] of Object.entries(ECCD_OPTION_RANGES)) {
+      const path = `profiles.eccd.${k}`;
+      ranges.set(path, range); explicitRanges.add(path); hardRanges.add(path);
+    }
+    integers.add('profiles.eccd.harmonic');
+    exclusiveMins.add('profiles.eccd.freq_GHz'); exclusiveMins.add('profiles.eccd.width');
+    exclusiveMaxs.add('profiles.eccd.rho');
+  }
   for (const step of stepsFor(method)) {
     for (const f of step.fields) {
       const type = f.type ?? 'number';
@@ -152,7 +205,7 @@ function templateFor(method: Method): Template {
       if (type === 'number' && f.min !== undefined && f.max !== undefined) ranges.set(f.path, [f.min * (f.scale ?? 1), f.max * (f.scale ?? 1)]);
     }
   }
-  t = { leaves, series, required: required.filter((s) => !OPTIONAL_SECTIONS.some((o) => s === o || s.startsWith(`${o}.`))), enums, ranges };
+  t = { leaves, objects, series, required: required.filter((s) => !OPTIONAL_SECTIONS.some((o) => s === o || s.startsWith(`${o}.`))), enums, ranges, exclusiveMins, exclusiveMaxs, integers, explicitRanges, hardRanges };
   templates.set(method, t);
   return t;
 }
@@ -185,6 +238,14 @@ export function checkConfig(cfg: unknown): Check {
     }
     const known = tpl.leaves.get(path);
     if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+      if (tpl.objects.has(path)) {
+        if (depth > LIMITS.cfgDepth) { push(errors, `${path}: nested too deeply`); return; }
+        for (const [k, x] of Object.entries(v)) {
+          if (FORBIDDEN_KEYS.has(k)) { push(errors, `${path}.${k}: forbidden key`); continue; }
+          visit(x, `${path}.${k}`, depth + 1);
+        }
+        return;
+      }
       if (known) { push(errors, `${path}: expected a ${known}, found an object`); return; }
       if (depth > LIMITS.cfgDepth) { push(errors, `${path}: nested too deeply`); return; }
       for (const [k, x] of Object.entries(v)) {
@@ -197,8 +258,13 @@ export function checkConfig(cfg: unknown): Check {
       push(errors, `${path}: ${kindOf(v)} is not a value a configuration can hold`);
       return;
     }
-    if (!known) { push(warnings, `${path}: unknown field (from a newer version?), kept as it is`); return; }
+    if (!known) {
+      if (tpl.objects.has(path)) push(errors, `${path}: expected an object, found ${kindOf(v)}`);
+      else push(warnings, `${path}: unknown field (from a newer version?), kept as it is`);
+      return;
+    }
     if (typeof v !== known) { push(errors, `${path}: expected a ${known}, found ${kindOf(v)}`); return; }
+    if (tpl.integers.has(path) && !Number.isInteger(v)) { push(errors, `${path}: expected an integer, found ${v}`); return; }
     if (typeof v === 'string') {
       if (v.length > LIMITS.stringChars) { push(errors, `${path}: text too long`); return; }
       const opts = tpl.enums.get(path);
@@ -232,9 +298,23 @@ export function checkConfig(cfg: unknown): Check {
   const c = cfg as unknown as ReactorConfig;
   for (const [path, [lo, hi]] of tpl.ranges) {
     const v = getPath(c, path);
-    if (typeof v !== 'number' || !Number.isFinite(v) || !fieldVisible(c.method, path, c)) continue;
+    if (typeof v !== 'number' || !Number.isFinite(v) || (!tpl.explicitRanges.has(path) && !fieldVisible(c.method, path, c))) continue;
     const slack = 1e-9 * Math.max(Math.abs(lo), Math.abs(hi));
-    if (v < lo - slack || v > hi + slack) push(warnings, `${path} = ${v} is outside the wizard's range [${lo}, ${hi}]`);
+    const outside = tpl.hardRanges.has(path)
+      ? v < lo || v > hi || (tpl.exclusiveMins.has(path) && v <= lo) || (tpl.exclusiveMaxs.has(path) && v >= hi)
+      : v < lo - slack || v > hi + slack || (tpl.exclusiveMins.has(path) && v <= lo) || (tpl.exclusiveMaxs.has(path) && v >= hi);
+    if (outside) {
+      if (tpl.hardRanges.has(path)) {
+        const loText = tpl.exclusiveMins.has(path) ? `(${lo}` : `[${lo}`;
+        const hiText = tpl.exclusiveMaxs.has(path) ? `${hi})` : `${hi}]`;
+        push(errors, `${path} = ${v} is outside the supported range ${loText}, ${hiText}`);
+      } else if (!tpl.explicitRanges.has(path)) push(warnings, `${path} = ${v} is outside the wizard's range [${lo}, ${hi}]`);
+      else {
+        const loText = tpl.exclusiveMins.has(path) ? `(${lo}` : `[${lo}`;
+        const hiText = tpl.exclusiveMaxs.has(path) ? `${hi})` : `${hi}]`;
+        push(warnings, `${path} = ${v} is outside the supported range ${loText}, ${hiText}`);
+      }
+    }
   }
   for (const m of missingRequired(c)) push(warnings, `${m.field.path} is blank or not finite (the run will be refused until it is set)`);
   return { errors, warnings };

@@ -287,6 +287,88 @@ describe('share codec: decoding refuses what is not a configuration', () => {
     expect(checkConfig(nif).errors.join('; ')).toMatch(/profiles\.IpWaveform: an array is not a value a configuration can hold/);
   });
 
+  it('1.5D physics options survive import round trips with known enums, nested ECCD fields and supported ranges', async () => {
+    const cfg = structuredClone(PRESETS.find((p) => p.id === 'ITER15')!.cfg) as unknown as Record<string, unknown>;
+    const profiles = cfg.profiles as Record<string, unknown>;
+    Object.assign(profiles, {
+      neoclassicalModel: 'redl', pedestalModel: 'eped1', elmLoss: 'loarte',
+      pedPbGradient: 6.2, pedKbmCoefficient: 0.076, pedDensityExponent: 0.34,
+      impurityTransport: 'facit', impuritySetpoint: 'separatrix', impurityDoverDe: 0.5, impurityPinchOverPe: 1.2,
+      impurityExtraSpecies: 'W', impurityExtraConcentration: 0.001,
+      fastIonModel: 'profile', fastOrbitScale: 0.5, cdModel: 'physics',
+      eccd: { harmonic: 2, freq_GHz: 170, nPar: -0.3, thetaP_deg: 45, rho: 0.5, width: 0.05 },
+      sawtoothTrigger: 'porcelli', sawtoothReconnection: 'kadomtsev',
+    });
+
+    for (const transportModel of ['bgb', 'ifspppl'] as const) {
+      profiles.transportModel = transportModel;
+      expect(checkConfig(cfg), transportModel).toEqual({ errors: [], warnings: [] });
+      const back = (await decodeShare(await encodeShare({ cfg: cfg as unknown as ReactorConfig }))).payload.cfg;
+      expect(same(back, cfg), transportModel).toBe(true);
+      expect(checkConfig(back).warnings, transportModel).toEqual([]);
+    }
+  });
+
+  it('rejects malformed optional physics settings and out-of-domain numeric ranges', async () => {
+    const cfg = structuredClone(PRESETS.find((p) => p.id === 'ITER15')!.cfg) as unknown as Record<string, unknown>;
+    const profiles = cfg.profiles as Record<string, unknown>;
+    const badCases: [string, unknown, RegExp][] = [
+      ['pedestalModel', 'eped2', /profiles\.pedestalModel: 'eped2' is not one of/],
+      ['elmLoss', 'loarte-2003', /profiles\.elmLoss: 'loarte-2003' is not one of/],
+      ['fastIonModel', 'profiled', /profiles\.fastIonModel: 'profiled' is not one of/],
+      ['cdModel', 'start-cordey', /profiles\.cdModel: 'start-cordey' is not one of/],
+      ['sawtoothTrigger', 'kadomtsev', /profiles\.sawtoothTrigger: 'kadomtsev' is not one of/],
+      ['sawtoothReconnection', 'porcelli', /profiles\.sawtoothReconnection: 'porcelli' is not one of/],
+      ['pedKbmCoefficient', '0.076', /profiles\.pedKbmCoefficient: expected a number/],
+      ['fastOrbitScale', true, /profiles\.fastOrbitScale: expected a number/],
+      ['eccd', 3, /profiles\.eccd: expected an object/],
+    ];
+    for (const [key, value, message] of badCases) {
+      profiles[key] = value;
+      expect(checkConfig(cfg).errors.join('; '), key).toMatch(message);
+      await expect(encodeShare({ cfg: cfg as unknown as ReactorConfig }), key).rejects.toThrow(message);
+      delete profiles[key];
+    }
+
+    profiles.eccd = { harmonic: '2' };
+    expect(checkConfig(cfg).errors.join('; ')).toMatch(/profiles\.eccd\.harmonic: expected a number/);
+    await expect(encodeShare({ cfg: cfg as unknown as ReactorConfig })).rejects.toThrow(/profiles\.eccd\.harmonic: expected a number/);
+    profiles.eccd = { harmonic: 1.5 };
+    expect(checkConfig(cfg).errors.join('; ')).toMatch(/profiles\.eccd\.harmonic: expected an integer/);
+    await expect(encodeShare({ cfg: cfg as unknown as ReactorConfig })).rejects.toThrow(/profiles\.eccd\.harmonic: expected an integer/);
+    profiles.eccd = { extra: 1 };
+    expect(checkConfig(cfg).warnings.join('; ')).toMatch(/profiles\.eccd\.extra: unknown field/);
+
+    Object.assign(profiles, { pedPbGradient: 0, pedKbmCoefficient: 11, pedDensityExponent: 6, fastOrbitScale: -1, eccd: { freq_GHz: 0, nPar: 1, rho: 1, width: 0 } });
+    const rangeErrors = checkConfig(cfg).errors.join('; ');
+    for (const path of ['pedPbGradient', 'pedKbmCoefficient', 'pedDensityExponent', 'fastOrbitScale', 'eccd.freq_GHz', 'eccd.nPar', 'eccd.rho', 'eccd.width']) {
+      expect(rangeErrors, path).toContain(`profiles.${path} =`);
+    }
+    await expect(encodeShare({ cfg: cfg as unknown as ReactorConfig })).rejects.toThrow(/outside the supported range/);
+
+    Object.assign(profiles, {
+      pedPbGradient: 100, pedKbmCoefficient: 10, pedDensityExponent: 0, fastOrbitScale: 0,
+      eccd: { harmonic: 1, freq_GHz: 1000, nPar: -0.99, thetaP_deg: -180, rho: 0, width: 1 },
+    });
+    expect(checkConfig(cfg).errors).toEqual([]);
+    Object.assign(profiles, {
+      pedDensityExponent: 5, fastOrbitScale: 10,
+      eccd: { harmonic: 3, freq_GHz: 1, nPar: 0.99, thetaP_deg: 180, rho: 0.999, width: 0.001 },
+    });
+    expect(checkConfig(cfg).errors).toEqual([]);
+
+    const justOutside: [string, unknown, RegExp][] = [
+      ['fastOrbitScale', -Number.EPSILON, /profiles\.fastOrbitScale/],
+      ['fastOrbitScale', 10 + 1e-8, /profiles\.fastOrbitScale/],
+      ['pedDensityExponent', -Number.EPSILON, /profiles\.pedDensityExponent/],
+      ['eccd', { nPar: 0.99 + 1e-10 }, /profiles\.eccd\.nPar/],
+    ];
+    for (const [key, value, path] of justOutside) {
+      profiles[key] = value;
+      expect(checkConfig(cfg).errors.join('; '), `${key}=${String(value)}`).toMatch(path);
+    }
+  });
+
   it('the systems-lite options (systems.*) are known settings of every magnetic method (no warning) and typed', () => {
     for (const id of ['ITER', 'SPARC15', 'W7X']) {
       const c = structuredClone(PRESETS.find((p) => p.id === id)!.cfg) as unknown as { systems?: Record<string, unknown> };

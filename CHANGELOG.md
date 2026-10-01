@@ -5,6 +5,7 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 ## [Unreleased]
 
 ### Added
+- Combined profile-module integration conserves species/energy at equilibrium adoption, books ELM losses from actual composition, rolls back complete suspended-step state, and validates every optional profile setting on import.
 - Opt-in fast-ion energy profiles, delayed heating and orbit smoothing, NBCD/ECCD current drive, Porcelli sawtooth triggering and Kadomtsev reconnection, with seeded bitwise chunk-invariance guards.
 - Opt-in EPED1-type pedestal and Loarte ELM energy closure, dynamic pedestal diagnostics, discriminating acceptance tests and a dedicated combined golden case.
 - Opt-in profile-resolved impurity and helium-ash transport, anomalous/FACIT closures, local radiation/composition, conservative inventory ledgers and dedicated neoclassical golden guards.

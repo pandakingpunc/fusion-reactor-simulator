@@ -617,6 +617,15 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 - The default vitest `testTimeout` is 30 s (was 5 s): CLI and lazy-chunk tests timed out under a shared CPU while passing alone.
 
 ### Fixed
+- NTM islands in the 1.5D model: the +5 m²/s flattening was added whole to every face with |ρ − ρ_s| < w/2, so the width
+  actually flattened depended on the radial grid (0.78 of the island width at 25 and at 50 cells, 1.12 at 35, 0.98 at
+  100 on the default grid) and the saturated island width and the ITER15 flat-top Q followed the grid (−1.74 % between
+  50 and 100 cells). Each face now gets the share of its control interval that lies inside the island
+  (transport/islandCoverage.ts), so the flattened width is the island width on any grid. ITER15 flat-top Q at 25 / 50 /
+  100 cells goes from 10.44 / 10.69 / 10.51 (oscillatory, GCI 7.1 %) to 10.16 / 10.45 / 10.51 (monotone, order 2.28,
+  GCI 0.18 %); the default ITER15 Q moves from 10.69 to 10.45 (−2.25 %). Two golden cases move (ITER15,
+  ITER15-impurity; see test/golden/CHANGES.md), `npm run validate` stays at 36 passed and 6 known failures. The pedestal
+  temperature still differs by −1.1 % between 50 and 100 cells; the NTM model itself and its constants are unchanged.
 - Sawteeth on a hollow q core (q₀ > 1 with q < 1 in an annulus): the Kadomtsev mixing radius returned a grid-dependent
   sentinel of about −1e24 whenever the core's helical-flux deficit outweighed the first q < 1 cell, so the default
   shear trigger opened and closed on a grid artefact. It now follows its definition (the return of ψ* to zero behind

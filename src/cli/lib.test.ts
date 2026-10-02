@@ -110,17 +110,14 @@ describe('library build', { timeout: 300_000 }, () => {
     const g15 = g15file.scalars;
     expect(near(o.jet.Q, g.Q_sci_max), `Q ${o.jet.Q} vs golden ${g.Q_sci_max}`).toBe(true);
     expect(near(o.jet.E, g.E_fusion_MJ)).toBe(true);
-    // 1.5D Q on Node 20/22 is 5.515583174878725 against the Node 24 golden 5.515561963773908
-    // (rel 3.8e-6), past this 1e-9 check and past REL_TOL_OTHER_NODE. The recording major still
-    // checks it; another major only has to have run.
-    const sameMajor = process.versions.node.split('.')[0] === /^v?(\d+)/.exec(g15file.meta.node)?.[1];
-    if (sameMajor) {
-      expect(near(o.sparc.Q, g15.Q_sci_max), `1.5D Q ${o.sparc.Q} vs golden ${g15.Q_sci_max}`).toBe(true);
-      expect(near(o.sparc.E, g15.E_fusion_MJ)).toBe(true);
-    } else {
-      expect(Number.isFinite(o.sparc.Q) && o.sparc.Q > 0).toBe(true);
-      expect(Number.isFinite(o.sparc.E)).toBe(true);
-    }
+    // 1.5D on another OS or Node major drifts past 1e-9. Ubuntu Node 24: Q 5.515588370210899 vs
+    // the Windows golden 5.515561963773908 (rel 4.8e-6). Windows Node 20/22: 5.515583174878725
+    // (rel 3.8e-6). 1e-4 covers both; the recording machine still uses 1e-9.
+    const recordedHere = process.platform === 'win32' && process.versions.node.split('.')[0] === /^v?(\d+)/.exec(g15file.meta.node)?.[1];
+    const tol15 = recordedHere ? 1e-9 : 1e-4;
+    const near15 = (a: number, b: number) => Math.abs(a - b) <= tol15 * Math.max(Math.abs(a), Math.abs(b), 1e-300);
+    expect(near15(o.sparc.Q, g15.Q_sci_max), `1.5D Q ${o.sparc.Q} vs golden ${g15.Q_sci_max}`).toBe(true);
+    expect(near15(o.sparc.E, g15.E_fusion_MJ)).toBe(true);
     const jet = PRESETS.find((x) => x.id === 'JET')!.cfg;
     expect(o.jet.fp).toBe(runFingerprint(jet, (jet as { seed: number }).seed, [], '4.0.0'));
     expect(o.valid).toBe(true);

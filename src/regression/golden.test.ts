@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  FAST_CASES, GOLDEN_CASES, GOLDEN_SCHEMA, GoldenSnapshot, REL_TOL_OTHER_NODE, REL_TOL_SAME_NODE, caseConfig, compareSnapshots, countBySection,
+  FAST_CASES, GOLDEN_CASES, GOLDEN_SCHEMA, GoldenSnapshot, REL_TOL_OTHER_NODE, REL_TOL_OTHER_OS, REL_TOL_SAME_NODE, caseConfig, compareSnapshots, countBySection,
   flattenScalars, formatDiffTable, goldenCase, historyStats, parseSnapshot, relDiff, runGoldenCase, runsProfiles, sampleIndices,
   serializeSnapshot, snapshotFromRun, summarizeChange, toleranceFor,
 } from './golden';
@@ -131,14 +131,16 @@ describe('golden comparator (self-test)', () => {
     expect(() => parseSnapshot('{"a": 1}', { anySchema: true })).toThrow(/no meta object/);
   });
 
-  it('tolerance: 1e-9 on the same Node major, 1e-6 otherwise; relative with a 1e-300 floor', () => {
-    expect(toleranceFor('v24.19.0', 'v24.1.0')).toBe(1e-9);
-    expect(toleranceFor('v22.11.0', 'v24.19.0')).toBe(1e-6);
-    expect(toleranceFor('garbage', 'v24.19.0')).toBe(1e-6);
+  it('tolerance: 1e-9 on Windows and the same Node major, 1e-6 on Windows otherwise, 1e-4 on another OS; numerical zeros compare equal', () => {
+    expect(toleranceFor('v24.19.0', 'v24.1.0', 'win32')).toBe(REL_TOL_SAME_NODE);
+    expect(toleranceFor('v22.11.0', 'v24.19.0', 'win32')).toBe(REL_TOL_OTHER_NODE);
+    expect(toleranceFor('garbage', 'v24.19.0', 'win32')).toBe(REL_TOL_OTHER_NODE);
+    expect(toleranceFor('v24.19.0', 'v24.21.0', 'linux')).toBe(REL_TOL_OTHER_OS);
     expect(relDiff(0, 0)).toBe(0);
     expect(relDiff(1, 1 + 1e-7)).toBeCloseTo(1e-7, 12);
     expect(relDiff(-2, 2)).toBe(2);
-    expect(relDiff(0, 1e-310)).toBeLessThan(1e-9);
+    expect(relDiff(0, 1e-310)).toBe(0);
+    expect(relDiff(-9.73e-16, -2.15e-15)).toBe(0);
   });
 
   it('flattens nested report fields and samples traces evenly in time', () => {

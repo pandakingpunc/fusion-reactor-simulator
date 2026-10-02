@@ -51,11 +51,12 @@ import type { ProfileState } from './state';
 const LONG = 180_000;
 
 /**
- * The ELM shot's Grad–Shafranov acceptance sits on GS_ACCEPT_RESIDUAL (1e-4). Node 24 adopts an
- * update after the first ELM (0.788 s, above); Node 20 and 22 do not. Measured on one Windows
- * checkout, so this is V8, not CRLF. Those assertions stay on the recording major.
+ * The ELM shot's Grad–Shafranov acceptance sits on GS_ACCEPT_RESIDUAL (1e-4). Windows Node 24
+ * adopts an update after the first ELM (0.788 s, above). Node 20/22, and Ubuntu Node 24, do not.
+ * Same checkout on Windows across majors, so this is libm/V8, not CRLF. The assertions stay on
+ * the machine the goldens were recorded on.
  */
-const elmAdoptionPinned = process.versions.node.split('.')[0] === '24';
+const elmAdoptionPinned = process.platform === 'win32' && process.versions.node.split('.')[0] === '24';
 
 const COMMON = {
   nRho: 24, eqNR: 33, impurityTransport: 'facit', impurityExtraSpecies: 'Ne', impurityExtraConcentration: 1e-3,

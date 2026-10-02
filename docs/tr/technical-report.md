@@ -5,6 +5,7 @@
 **Lisans:** MIT
 **Kavram DOI:** [10.5281/zenodo.22259861](https://doi.org/10.5281/zenodo.22259861)
 **Sürüm DOI (4.0.0):** [10.5281/zenodo.23100241](https://doi.org/10.5281/zenodo.23100241)
+**Sürüm DOI (4.0.1, yama sürümü):** [10.5281/zenodo.23109193](https://doi.org/10.5281/zenodo.23109193)
 **English:** [technical-report.md](../technical-report.md)
 
 ## 1. Kapsam ve model katmanları

@@ -5,6 +5,7 @@
 **License:** MIT
 **Concept DOI:** [10.5281/zenodo.22259861](https://doi.org/10.5281/zenodo.22259861)
 **Version DOI (4.0.0):** [10.5281/zenodo.23100241](https://doi.org/10.5281/zenodo.23100241)
+**Version DOI (4.0.1, patch release):** [10.5281/zenodo.23109193](https://doi.org/10.5281/zenodo.23109193)
 **Türkçe:** [technical-report.md](tr/technical-report.md)
 
 ## 1. Scope and model hierarchy

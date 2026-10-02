@@ -445,7 +445,7 @@ If you use this software, please cite it with the information in [`CITATION.cff`
 
 > Karatum, M. *Fusion Reactor Simulator*. Zenodo. [10.5281/zenodo.22259861](https://doi.org/10.5281/zenodo.22259861)
 
-The badge and the line above give the concept DOI, which covers all versions and always resolves to the latest one. The DOI of version 4.0.0 is [10.5281/zenodo.23100241](https://doi.org/10.5281/zenodo.23100241); the DOI of each version is listed on Zenodo.
+The badge and the line above give the concept DOI, which covers all versions and always resolves to the latest one. The DOI of version 4.0.1 is [10.5281/zenodo.23109193](https://doi.org/10.5281/zenodo.23109193) (4.0.0: [10.5281/zenodo.23100241](https://doi.org/10.5281/zenodo.23100241)); the DOI of each version is listed on Zenodo.
 
 ## AI assistance
 

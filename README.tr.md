@@ -427,7 +427,7 @@ Bu yazılımı kullanıyorsanız, lütfen [`CITATION.cff`](CITATION.cff) içinde
 
 > Karatum, M. *Fusion Reactor Simulator*. Zenodo. [10.5281/zenodo.22259861](https://doi.org/10.5281/zenodo.22259861)
 
-Rozet ve yukarıdaki satır, tüm sürümleri kapsayan ve her zaman en son sürüme çözülen kavram DOI'sini verir. 4.0.0 sürümünün DOI'si [10.5281/zenodo.23100241](https://doi.org/10.5281/zenodo.23100241); her sürümün DOI'si Zenodo'da listelenir.
+Rozet ve yukarıdaki satır, tüm sürümleri kapsayan ve her zaman en son sürüme çözülen kavram DOI'sini verir. 4.0.1 sürümünün DOI'si [10.5281/zenodo.23109193](https://doi.org/10.5281/zenodo.23109193) (4.0.0: [10.5281/zenodo.23100241](https://doi.org/10.5281/zenodo.23100241)); her sürümün DOI'si Zenodo'da listelenir.
 
 ## Yapay zeka yardımı
 

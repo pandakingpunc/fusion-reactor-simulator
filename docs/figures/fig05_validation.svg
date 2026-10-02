@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="5.06in" height="3.75in" viewBox="0 0 363.96 270" style="font-kerning:none;font-variant-ligatures:none">
 <title>Validation against published values</title>
-<metadata><frs:provenance xmlns:frs="https://doi.org/10.5281/zenodo.22259861" generator="fusion-reactor-simulator" version="4.0.0" config-sha256="4bdbeab8c2fdf8cb58e4fed28a4c18a4c9e54fc5c9bdcb9b4e2e620a1c796ec2"/></metadata>
+<metadata><frs:provenance xmlns:frs="https://doi.org/10.5281/zenodo.22259861" generator="fusion-reactor-simulator" version="4.0.1" config-sha256="4bdbeab8c2fdf8cb58e4fed28a4c18a4c9e54fc5c9bdcb9b4e2e620a1c796ec2"/></metadata>
 <rect width="363.96" height="270" fill="#ffffff"/>
 <clipPath id="Validationagains_c0"><rect x="97.2" y="15.84" width="198.36" height="218.16"/></clipPath><g clip-path="url(#Validationagains_c0)">
 <path d="M146.79 15.84L245.97 15.84L245.97 234L146.79 234Z" fill="#7a7a7a" opacity="0.1"/>

@@ -2,6 +2,16 @@
 
 Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [SemVer](https://semver.org/) izler.
 
+## [4.0.1] — 2026-10-02
+
+Patch release: continuous-integration and cross-platform fixes after 4.0.0. No change to the physics models or to the 4.0.0 results on the reference platform (Node 24).
+
+### Fixed
+- A failed solver step reports no disruption report instead of `false` in the comparison view (type error on Linux CI).
+- `.mjs` scripts are kept with LF line endings, so Windows checkouts can import scripts that start with a shebang line.
+- The CLI pool loads `.ts` workers through tsx on Node 20.
+- Cross-platform tests: one-ulp tolerance across V8 builds in the scaling checks; 1.5D golden and equilibrium-event checks no longer require bitwise Node 24 results on other Node majors or on Linux, while Windows Node 24 stays at 1e-9; the tight golden and figure checks run on Windows Node 24 only.
+
 ## [4.0.0] — 2026-10-01
 
 Version 4 completes deterministic replay and reduced 1.5D transport, conservative equilibrium

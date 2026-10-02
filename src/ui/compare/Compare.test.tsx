@@ -56,7 +56,7 @@ describe('Compare 2.0', () => {
   });
 
   it('names a solver failure as the Report does (translated), and prints any other end reason as it is', async () => {
-    const failed: SavedShot = { ...sparc2, id: 9, name: 'stalled', report: { ...sparc2.report, termination: { ...sparc2.report.termination, natural: false, disruption: false, reason: 'Numerical failure' } } };
+    const failed: SavedShot = { ...sparc2, id: 9, name: 'stalled', report: { ...sparc2.report, termination: { ...sparc2.report.termination, natural: false, disruption: undefined, reason: 'Numerical failure' } } };
     const { store } = mount([sparc, failed]);
     const table = screen.getAllByRole('table')[0];
     const row = within(table).getByText('Termination').closest('tr')!;

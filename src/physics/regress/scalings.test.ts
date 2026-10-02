@@ -1,7 +1,7 @@
 /**
  * Hooks for later lanes (lane ws2b): confinement scalings as data (ConfinementScalingParams) and the
  * ITPA20 / ITPA20-IL H-mode scalings of Verdoolaege et al., Nucl. Fusion 61 (2021) 076006.
- * The existing scalings must stay bit-for-bit unchanged (values recorded from v4/integration @ 3d04e96).
+ * The existing scalings must stay at the bits recorded on Node 24 (v4/integration @ 3d04e96), to one ulp.
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -11,13 +11,22 @@ import {
 
 const ITER_G = { R: 6.2, a: 2.0, kappa: 1.7, delta: 0.33 };
 
+/**
+ * Bits recorded on Node 24 (v4/integration @ 3d04e96). V8's Math.pow is not correctly rounded, so
+ * another major can differ by one ulp — Node 20/22 return 1.5175655970640807 where Node 24 records
+ * 1.517565597064081 for ITER89-P. A change to the formula moves these by far more than one ulp.
+ */
+function recorded(actual: number, bits: number): void {
+  expect(Math.abs(actual - bits)).toBeLessThanOrEqual(Math.abs(bits) * Number.EPSILON * 2);
+}
+
 describe('existing scalings are bitwise unchanged', () => {
   it('IPB98(y,2), ITER89-P, ISS04, ST (Valovič), Martin', () => {
-    expect(tauIPB98y2(ITER_G, 15, 5.3, 1.0e20, 100e6, 2.5)).toBe(3.2622945692361656);
-    expect(tauITER89P(ITER_G, 15, 5.3, 1.0e20, 100e6, 2.5)).toBe(1.517565597064081);
-    expect(tauISS04({ R: 5.5, a: 0.53, kappa: 1, delta: 0 }, 2.5, 0.8e20, 7e6, 0.9, 0.8)).toBe(0.14556055876359475);
-    expect(tauSTValovic({ R: 0.85, a: 0.65, kappa: 2.5, delta: 0.5 }, 1, 0.75, 0.4e20, 5e6, 2)).toBe(0.06784486602886657);
-    expect(pLH_Martin(1e20, 5.3, 683, 2.5)).toBe(69229821.91554333);
+    recorded(tauIPB98y2(ITER_G, 15, 5.3, 1.0e20, 100e6, 2.5), 3.2622945692361656);
+    recorded(tauITER89P(ITER_G, 15, 5.3, 1.0e20, 100e6, 2.5), 1.517565597064081);
+    recorded(tauISS04({ R: 5.5, a: 0.53, kappa: 1, delta: 0 }, 2.5, 0.8e20, 7e6, 0.9, 0.8), 0.14556055876359475);
+    recorded(tauSTValovic({ R: 0.85, a: 0.65, kappa: 2.5, delta: 0.5 }, 1, 0.75, 0.4e20, 5e6, 2), 0.06784486602886657);
+    recorded(pLH_Martin(1e20, 5.3, 683, 2.5), 69229821.91554333);
   });
 });
 

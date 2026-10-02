@@ -50,9 +50,9 @@ golden and figures steps, `CI_LOCAL_FIGURES=0` skips the figures step (it regene
 and `CI_LOCAL_BUNDLE=0` skips the build and bundle-budget steps. `npm run ci:local -- --dry-run`
 lists the steps without running them.
 
-The golden snapshots are compared at a tight tolerance and are recorded on Node 24. On another Node major the
-unit tests, the validation and the build still apply, but a small golden difference can be a floating-point
-artefact of that Node version rather than a regression.
+The golden snapshots are compared at a tight tolerance and are recorded on Windows Node 24. On another OS or
+Node major the unit tests, the validation and the build still apply, but a 1.5D golden difference can be a
+floating-point artefact rather than a regression. CI runs `npm run golden` and `figures:check` on Windows Node 24 only.
 
 ## Golden regression policy
 

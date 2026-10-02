@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  FAST_CASES, GOLDEN_CASES, GOLDEN_SCHEMA, GoldenSnapshot, REL_TOL_OTHER_NODE, REL_TOL_OTHER_OS, REL_TOL_SAME_NODE, caseConfig, compareSnapshots, countBySection,
+  FAST_CASES, GOLDEN_CASES, GOLDEN_SCHEMA, GoldenSnapshot, REL_TOL_OTHER_NODE, REL_TOL_SAME_NODE, caseConfig, compareSnapshots, countBySection,
   flattenScalars, formatDiffTable, goldenCase, historyStats, parseSnapshot, relDiff, runGoldenCase, runsProfiles, sampleIndices,
   serializeSnapshot, snapshotFromRun, summarizeChange, toleranceFor,
 } from './golden';
@@ -131,11 +131,10 @@ describe('golden comparator (self-test)', () => {
     expect(() => parseSnapshot('{"a": 1}', { anySchema: true })).toThrow(/no meta object/);
   });
 
-  it('tolerance: 1e-9 on Windows and the same Node major, 1e-6 on Windows otherwise, 1e-4 on another OS; numerical zeros compare equal', () => {
-    expect(toleranceFor('v24.19.0', 'v24.1.0', 'win32')).toBe(REL_TOL_SAME_NODE);
-    expect(toleranceFor('v22.11.0', 'v24.19.0', 'win32')).toBe(REL_TOL_OTHER_NODE);
-    expect(toleranceFor('garbage', 'v24.19.0', 'win32')).toBe(REL_TOL_OTHER_NODE);
-    expect(toleranceFor('v24.19.0', 'v24.21.0', 'linux')).toBe(REL_TOL_OTHER_OS);
+  it('tolerance: 1e-9 on the same Node major, 1e-6 otherwise; numerical zeros compare equal', () => {
+    expect(toleranceFor('v24.19.0', 'v24.1.0')).toBe(REL_TOL_SAME_NODE);
+    expect(toleranceFor('v22.11.0', 'v24.19.0')).toBe(REL_TOL_OTHER_NODE);
+    expect(toleranceFor('garbage', 'v24.19.0')).toBe(REL_TOL_OTHER_NODE);
     expect(relDiff(0, 0)).toBe(0);
     expect(relDiff(1, 1 + 1e-7)).toBeCloseTo(1e-7, 12);
     expect(relDiff(-2, 2)).toBe(2);
@@ -322,13 +321,13 @@ describe('golden cases', () => {
 
 describe('golden regression (fast subset; full suite: npm run golden)', { timeout: 30_000 }, () => {
   for (const id of FAST_CASES) {
-    // 1.5D equilibrium on another Node major drifts past REL_TOL_OTHER_NODE (1e-6). Measured on
-    // Node 20 and 22 against this Node 24 file: ℓ_i 2.5e-5, q95 1.1e-5, and Z_axis ~1e-15 against
-    // ~1e-15 (relative 0.24). Same checkout as Node 24, which matches, so this is V8, not CRLF.
-    // `npm run golden` on the recording major still checks the case at 1e-9. 0D cases stay in band.
+    // 1.5D on another machine does not stay in band. Windows Node 20/22: ℓ_i 2.5e-5. Ubuntu Node 24:
+    // edge P_ohm up to 0.3 %, history.dWdt.min 3.8 %. A tolerance wide enough for that would hide a
+    // real change (the golden CLI tamper test moves a key by 1e-7). The recording machine still
+    // checks this case at 1e-9, and CI runs that check on Windows Node 24. 0D cases stay in band.
     const recordedMajor = /^v?(\d+)/.exec(parseSnapshot(readFileSync(goldenFile(id), 'utf8')).meta.node)?.[1];
-    const otherMajor15 = id === 'SPARC15-short' && recordedMajor !== process.versions.node.split('.')[0];
-    it.skipIf(otherMajor15)(`${id} matches test/golden/${id}.json`, () => {
+    const otherMachine15 = id === 'SPARC15-short' && (process.platform !== 'win32' || recordedMajor !== process.versions.node.split('.')[0]);
+    it.skipIf(otherMachine15)(`${id} matches test/golden/${id}.json`, () => {
       const stored = parseSnapshot(readFileSync(goldenFile(id), 'utf8'));
       const fresh = snapshot(id);
       const diffs = compareSnapshots(stored, fresh, toleranceFor(stored.meta.node));

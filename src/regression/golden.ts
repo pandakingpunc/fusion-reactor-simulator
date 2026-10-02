@@ -22,10 +22,12 @@
  *
  * Files are canonical JSON (sorted keys, shortest round-trip number representation, i.e. full
  * double precision). Comparison is by key path, so key order never matters. Numbers match when
- * |a − b| / max(|a|, |b|, 1e-300) ≤ tol. The files were recorded on Windows. tol = 1e-9 on that OS
- * and the same Node major, 1e-6 on Windows with another major (V8's Math.* last bits), and 1e-4
- * on any other OS: Ubuntu Node 24 against these files moves ℓ_i by 4.1e-5 and q95 by 1.6e-5.
- * Two values both below 1e-12 compare equal (a symmetric equilibrium's Z_axis is ~1e-15 either way).
+ * |a − b| / max(|a|, |b|, 1e-300) ≤ tol, with tol = 1e-9 if the file was written by the same Node
+ * major version and 1e-6 otherwise (different V8 builds may differ in the last bits of Math.*).
+ * Two values both below 1e-12 compare equal: a symmetric equilibrium's Z_axis is ~1e-15 either way,
+ * and the relative difference of two numerical zeros is not a physics change.
+ * The files were recorded on Windows. A 1.5D case on Ubuntu does not stay inside 1e-6 (SPARC15-short
+ * edge profiles move by 0.1–0.3 %, and history.dWdt.min by 3.8 %). That comparison runs on Windows.
  *
  * Node-only (worker CLI and vitest); not part of the browser bundle.
  */
@@ -42,8 +44,6 @@ export const GOLDEN_SCHEMA = 2;
 export const TRACE_SAMPLES = 20;
 export const REL_TOL_SAME_NODE = 1e-9;
 export const REL_TOL_OTHER_NODE = 1e-6;
-/** Cross-OS. Measured Ubuntu Node 24 vs the Windows golden: ℓ_i 4.1e-5, q95 1.6e-5, Q rel 4.8e-6. */
-export const REL_TOL_OTHER_OS = 1e-4;
 export const ABS_FLOOR = 1e-300;
 /** Both sides at or below this are the same value (numerical zero, not a physical one). */
 export const ABS_NOISE = 1e-12;
@@ -430,12 +430,8 @@ export interface GoldenDiff {
 
 const nodeMajor = (v: string): number => parseInt(/^v?(\d+)/.exec(v)?.[1] ?? 'NaN', 10);
 
-/**
- * 1e-9 on Windows and the recording Node major (the files were written there), 1e-6 on Windows
- * with another major, 1e-4 on any other OS. `platform` defaults to this process.
- */
-export function toleranceFor(storedNode: string, currentNode: string = process.version, platform: string = process.platform): number {
-  if (platform !== 'win32') return REL_TOL_OTHER_OS;
+/** 1e-9 if both versions share the Node major version, else 1e-6. */
+export function toleranceFor(storedNode: string, currentNode: string = process.version): number {
   const a = nodeMajor(storedNode), b = nodeMajor(currentNode);
   return Number.isFinite(a) && a === b ? REL_TOL_SAME_NODE : REL_TOL_OTHER_NODE;
 }

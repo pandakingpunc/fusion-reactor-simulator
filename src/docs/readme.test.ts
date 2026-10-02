@@ -465,7 +465,7 @@ describe.each(LANGS)('%s: every number of the text is held to its source', (lang
     }
     const dois = [...text.matchAll(/10\.\d{4,9}\/[^\s)\]]+/g)].map((m) => m[0].replace(/\.svg$/, '').replace(/[.,;]+$/, ''));
     expect(dois.length).toBeGreaterThan(0);
-    for (const d of dois) expect(d, 'only the concept DOI is written down: a version DOI does not exist until the release is published').toBe('10.5281/zenodo.22259861');
+    for (const d of dois) expect(['10.5281/zenodo.22259861', '10.5281/zenodo.23100241'], 'only the concept DOI and the 4.0.0 version DOI are written down').toContain(d);
     expect(text).not.toMatch(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
   });
 

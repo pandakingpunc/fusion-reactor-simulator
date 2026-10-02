@@ -4,6 +4,7 @@
 **Yayın tarihi:** 2026-10-01
 **Lisans:** MIT
 **Kavram DOI:** [10.5281/zenodo.22259861](https://doi.org/10.5281/zenodo.22259861)
+**Sürüm DOI (4.0.0):** [10.5281/zenodo.23100241](https://doi.org/10.5281/zenodo.23100241)
 **English:** [technical-report.md](../technical-report.md)
 
 ## 1. Kapsam ve model katmanları

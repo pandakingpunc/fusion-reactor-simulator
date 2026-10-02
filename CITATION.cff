@@ -15,7 +15,7 @@ authors:
     family-names: Karatum
     affiliation: Independent researcher
 license: MIT
-doi: 10.5281/zenodo.22259861
+doi: 10.5281/zenodo.23100241
 identifiers:
   - type: doi
     value: 10.5281/zenodo.22259861
@@ -23,6 +23,9 @@ identifiers:
   - type: doi
     value: 10.5281/zenodo.22925078
     description: DOI of version 3.0.0
+  - type: doi
+    value: 10.5281/zenodo.23100241
+    description: DOI of version 4.0.0
 version: "4.0.0"
 date-released: "2026-10-01"
 keywords:

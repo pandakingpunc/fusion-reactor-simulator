@@ -75,6 +75,16 @@ describe('fields of the v4 configuration options', () => {
     expect(paths(setPath(DIRECT_DRIVE, 'driverEff', undefined))).toEqual([]); // blank runs as the default
   });
 
+  it('does not offer an input that the model accepts but does not read: the MTF liner thickness, the FRC beam energy (the presets keep them)', () => {
+    for (const m of ['mtf_liner', 'mtf_piston', 'maglif', 'zpinch_sfs'] as const) expect(allFields(m).map((f) => f.path), m).not.toContain('linerThicknessRatio');
+    expect(allFields('frc').map((f) => f.path)).not.toContain('E_NBI_keV');
+    expect(allFields('tokamak').map((f) => f.path)).toContain('heating.E_NBI_keV'); // the beam energy of a tokamak is read (shine-through, ion heating)
+    // a configuration made in the wizard still carries them (it starts from a preset or the method default), so it validates as before
+    for (const m of ['mtf_liner', 'mtf_piston', 'maglif', 'zpinch_sfs'] as const) expect(getPath(METHOD_DEFAULT[m], 'linerThicknessRatio'), m).toBeTypeOf('number');
+    expect(getPath(METHOD_DEFAULT.frc, 'E_NBI_keV')).toBeTypeOf('number');
+    expect(paths(TAE)).toEqual([]);
+  });
+
   it('the mirror plug potential is shown for a tandem mirror only', () => {
     expect(field('mirror', 'plugPotential')).toMatchObject({ def: 1, min: 0 });
     expect(fieldVisible('mirror', 'plugPotential', MIRROR)).toBe(true);

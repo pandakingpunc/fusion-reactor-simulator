@@ -1706,7 +1706,7 @@
           "type": "number",
           "minimum": 0,
           "maximum": 100,
-          "description": "Liner thickness over radius (magneto-Rayleigh-Taylor)."
+          "description": "Liner thickness over radius. Accepted but not used by the current model: the instability loss of the compression depends on jitter_us and, for zpinch_sfs, flowShear only."
         },
         "preheat_kJ": {
           "type": "number",
@@ -1822,7 +1822,7 @@
           "type": "number",
           "exclusiveMinimum": 0,
           "maximum": 100000,
-          "description": "Neutral-beam energy per atom. Unit: keV.",
+          "description": "Neutral-beam energy per atom. Accepted but not used by the current model: the single-temperature FRC model absorbs a fixed share of P_NBI_MW and has no beam-ion population. Unit: keV.",
           "x-unit": "keV"
         },
         "t_end": {

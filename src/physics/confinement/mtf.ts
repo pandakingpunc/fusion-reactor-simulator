@@ -4,7 +4,8 @@
  * durgunlukta füzyon yanması birikir.
  *
  * Silindirik liner: n ∝ C², T ∝ C^p (p≈0.68, ideal 4/3'ten kayıplı), B ∝ C².
- * Kararsızlık (MRT / kink) jitter, liner kalınlığı ve kesme-akış ile modellenir.
+ * Kararsızlık (MRT / kink) jitter ve (zpinch_sfs için) kesme-akış ile modellenir; liner kalınlığı
+ * (linerThicknessRatio) yapılandırmada kabul edilir ama bu model onu okumaz.
  * Kaynaklar: Lindemuth & Kirkpatrick, Nucl. Fusion 23 (1983) 263; Slutz 2010 (MagLIF);
  * Shumlak 2020 (kesme-akış Z-pinch).
  * Durum y: [0] E_fus [J]  [1] E_in [J]  [2] N_n
@@ -158,7 +159,7 @@ export class MTFModel extends PulsedBase {
     const last = hist[hist.length - 1];
     const G = (last.d.Efus_MJ ?? 0) / Math.max(this.cfg.driverEnergy_MJ, 1e-6);
     const warnings: string[] = [];
-    if (this.CR_eff < 0.9 * this.cfg.compressionRatio) warnings.push(`Instability reduced effective compression: CR ${this.cfg.compressionRatio} → ${this.CR_eff.toFixed(1)} (jitter/liner/flow shear).`);
+    if (this.CR_eff < 0.9 * this.cfg.compressionRatio) warnings.push(`Instability reduced effective compression: CR ${this.cfg.compressionRatio} → ${this.CR_eff.toFixed(1)} (jitter/flow shear).`);
     if (G < 0.01) warnings.push('MTF is far from net energy at these parameters (G≪1) — consistent with current experiments.');
     return this.buildReport(hist, events, {
       fuel: this.cfg.fuel, wallArea: 2 * Math.PI * this.cfg.r0_m * this.cfg.L_m,

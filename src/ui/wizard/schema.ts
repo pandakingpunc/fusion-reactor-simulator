@@ -215,7 +215,6 @@ const MTF_STEPS: StepDef[] = [
     { path: 'r0_m', label: 'Initial radius r₀', unit: 'm', min: 1e-4, max: 3, step: 1e-3 },
     { path: 'L_m', label: 'Length L', unit: 'm', min: 1e-3, max: 5, step: 1e-3 },
     { path: 'compressionRatio', label: 'Compression ratio r₀/r_min', min: 1, max: 60, step: 0.5 },
-    { path: 'linerThicknessRatio', label: 'Liner Δr/r', min: 0, max: 1, step: 0.01, hint: 'Thin liner → magneto-RT growth' },
     { path: 'seed', label: 'RNG seed', min: 0, max: 1e6, step: 1 },
   ] },
   { id: 'fuel', title: 'Fuel & initial plasma', fields: [
@@ -249,7 +248,6 @@ const FRC_STEPS: StepDef[] = [
   { id: 'driver', title: 'Field', fields: [{ path: 'Be_T', label: 'External field B_e', unit: 'T', min: 0.01, max: 10, step: 0.01 }] },
   { id: 'heating', title: 'NBI', fields: [
     { path: 'P_NBI_MW', label: 'P_NBI', unit: 'MW', min: 0, max: 200, step: 0.5 },
-    { path: 'E_NBI_keV', label: 'E_NBI', unit: 'keV', min: 5, max: 500, step: 1 },
   ] },
 ];
 
@@ -321,7 +319,6 @@ export function fieldVisible(method: Method, path: string, cfg?: ReactorConfig):
   if (path === 'flowShear') return method === 'zpinch_sfs';
   if (path === 'preheat_kJ') return method === 'maglif';
   if (path === 'jitter_us') return method !== 'zpinch_sfs';
-  if (path === 'linerThicknessRatio' || path === 'compressionRatio' || path === 'driverEnergy_MJ' || path === 'compressionTime_us') return method !== 'zpinch_sfs' || path !== 'linerThicknessRatio';
   return true;
 }
 

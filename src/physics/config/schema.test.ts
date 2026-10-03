@@ -7,7 +7,8 @@
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { PRESETS } from '../presets';
+import { MTF_LINER, PRESETS, TAE, ZMACHINE } from '../presets';
+import { Simulation } from '../simulation';
 import { SCENARIO_CONTROLS } from '../scenario';
 import { closest } from './dsl';
 import { GOLDEN_CASES, caseConfig } from '../../regression/golden';
@@ -564,6 +565,14 @@ describe('field descriptions', () => {
       expect(text, text).toMatch(/volume average[^,;]*0D|0D[^,;]*volume average/);
       expect(text, text).toMatch(/line average[^,;]*1\.5D|1\.5D[^,;]*line average/);
     }
+  });
+  it('a field the model accepts but does not read says so, and changing it changes nothing: the MTF liner thickness, the FRC beam energy', () => {
+    for (const m of ['mtf_liner', 'mtf_piston', 'maglif', 'zpinch_sfs'] as const) expect(fieldInfo(m, 'linerThicknessRatio')!.doc, m).toMatch(/not used by the current model/);
+    expect(fieldInfo('frc', 'E_NBI_keV')!.doc).toMatch(/not used by the current model/);
+    const history = (cfg: ReactorConfig): string => { const sim = new Simulation(cfg); sim.runAll(); return JSON.stringify(sim.history); };
+    for (const base of [ZMACHINE, MTF_LINER]) expect(history({ ...base, linerThicknessRatio: 0 }), base.method).toBe(history({ ...base, linerThicknessRatio: 1 }));
+    const frc = { ...TAE, t_end: 0.01 };
+    expect(history({ ...frc, E_NBI_keV: 5 })).toBe(history({ ...frc, E_NBI_keV: 500 }));
   });
 });
 

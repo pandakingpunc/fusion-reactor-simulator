@@ -423,7 +423,7 @@ export interface MTFConfig {
   driverEnergy_MJ: number;
   compressionTime_us: number;
   jitter_us: number; // piston senkron hatası
-  linerThicknessRatio: number; // Δr/r (MRT için)
+  linerThicknessRatio: number; // Δr/r; kabul edilir ama mevcut model okumaz (eski yapılandırmalar yüklensin diye)
   preheat_kJ: number; // MagLIF lazer ön-ısıtma
   current_MA: number; // Z-pinch / MagLIF sürücü akımı
   flowShear: number; // Z-pinch kesme-akış (0-1) — stabilizasyon
@@ -437,7 +437,7 @@ export interface FRCConfig {
   L_m: number;
   Be_T: number; // dış alan
   n0: number; T0_keV: number;
-  P_NBI_MW: number; E_NBI_keV: number;
+  P_NBI_MW: number; E_NBI_keV: number; // E_NBI_keV: kabul edilir ama mevcut FRC modeli okumaz (demet iyonu yok)
   t_end: number; seed: number; fuel: FuelType;
 }
 export interface MirrorConfig {

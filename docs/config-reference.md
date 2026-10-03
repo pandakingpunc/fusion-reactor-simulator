@@ -494,7 +494,7 @@ Magnetised target fusion, Z-pinch and MagLIF.
 | `driverEnergy_MJ` | number, required | MJ | — | (0, 1e6] | Driver energy. |
 | `compressionTime_us` | number, required | us | — | (0, 1e9] | Compression duration. |
 | `jitter_us` | number, required | us | — | [0, 1e9] | Piston or liner synchronisation error. |
-| `linerThicknessRatio` | number, required | — | — | [0, 100] | Liner thickness over radius (magneto-Rayleigh-Taylor). |
+| `linerThicknessRatio` | number, required | — | — | [0, 100] | Liner thickness over radius. Accepted but not used by the current model: the instability loss of the compression depends on jitter_us and, for zpinch_sfs, flowShear only. |
 | `preheat_kJ` | number, required | kJ | — | [0, 1e6] | MagLIF laser preheat energy. |
 | `current_MA` | number, required | MA | — | [0, 1000] | Z-pinch or MagLIF driver current. |
 | `flowShear` | number, required | — | — | [0, 1] | Z-pinch sheared-flow stabilisation (0 to 1). |
@@ -518,7 +518,7 @@ Field-reversed configuration.
 | `n0` | number, required | m^-3 | — | (0, 1e30] | Density. |
 | `T0_keV` | number, required | keV | — | (0, 1000] | Initial temperature. |
 | `P_NBI_MW` | number, required | MW | — | [0, 10000] | Neutral-beam power. |
-| `E_NBI_keV` | number, required | keV | — | (0, 100000] | Neutral-beam energy per atom. |
+| `E_NBI_keV` | number, required | keV | — | (0, 100000] | Neutral-beam energy per atom. Accepted but not used by the current model: the single-temperature FRC model absorbs a fixed share of P_NBI_MW and has no beam-ion population. |
 | `t_end` | number, required | s | — | (0, 10000] | Duration. |
 | `seed` | integer, required | — | — | [0, 4294967295] | Seed of the deterministic random generator (ELM, sawtooth and jitter sequences); an unsigned 32-bit integer. |
 | `fuel` | string, required | — | — | `"DT"`, `"DD"`, `"DHe3"`, `"pB11"` | Fuel cycle: D-T, D-D, D-3He or p-11B. |

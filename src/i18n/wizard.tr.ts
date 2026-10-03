@@ -205,8 +205,6 @@ export const wizardTr: Readonly<Record<string, string>> = {
   'Initial radius r₀': 'Başlangıç yarıçapı r₀',
   'Length L': 'Uzunluk L',
   'Compression ratio r₀/r_min': 'Sıkıştırma oranı r₀/r_min',
-  'Liner Δr/r': 'Liner Δr/r',
-  'Thin liner → magneto-RT growth': 'İnce liner → manyeto-RT büyümesi',
   'Initial n': 'Başlangıç n',
   'Initial T': 'Başlangıç T',
   'Initial B': 'Başlangıç B',

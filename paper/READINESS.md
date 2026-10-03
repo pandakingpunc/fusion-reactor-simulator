@@ -14,7 +14,7 @@ The software release and the journal submission are separate actions.
 | Traceable paper numbers | `npm run paper:numbers`; `-- --live` reruns validation |
 | Bibliography and length | `npm run paper:check`; all cited entries used and all have DOI or URL; body 750–1000 words |
 | Community and security | CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md, issue forms, PR template |
-| Archive | Zenodo concept DOI [10.5281/zenodo.22259861](https://doi.org/10.5281/zenodo.22259861); version 4.0.1 DOI [10.5281/zenodo.23109193](https://doi.org/10.5281/zenodo.23109193) |
+| Archive | Zenodo concept DOI [10.5281/zenodo.22259861](https://doi.org/10.5281/zenodo.22259861); version 4.1.0 DOI [10.5281/zenodo.23121818](https://doi.org/10.5281/zenodo.23121818) |
 | Author identity | Mustafa Karatum; Independent researcher; no ORCID supplied |
 | AI disclosure | paper.md and README.md disclose substantial assistance from Claude Code, Codex and MiMo |
 

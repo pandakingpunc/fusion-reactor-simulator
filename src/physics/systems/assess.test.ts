@@ -167,6 +167,32 @@ describe('assessSystems', () => {
     expect(plain.warnings.some((w) => w.startsWith('CS flux swing'))).toBe(false);
   });
 
+  it('the CS flux warning prints the swing of the solenoid it tests, and a given PF flux that covers the pulse clears it', () => {
+    // DEMO with a weaker solenoid: the CS alone is short of 70 % of a 2 h burn at 35 mV
+    const at = (pfFlux_Vs: number) => assessSystems(inputOf({ ...DEMO, systems: { ...DEMO.systems, cs: { B_max_T: 8, pfFlux_Vs } } },
+      { P_fus_MW: 2000, P_neutron_MW: 1600, flux: { Vloop_V: 0.035, duration_s: 7200 } }));
+    const csWarning = (s: ReturnType<typeof assessSystems>) => s.warnings.filter((w) => w.startsWith('CS flux swing'));
+    const swing = (s: ReturnType<typeof assessSystems>) => `CS flux swing ${s.cs!.psiCS_Vs.toFixed(0)} V s is ${(100 * s.cs!.psiCS_Vs / s.cs!.psiRequired_Vs).toFixed(0)} % of the ${s.cs!.psiRequired_Vs.toFixed(0)} V s`;
+    const none = at(0);
+    expect(none.cs!.psiCS_Vs).toBeLessThan((1 - PF_FLUX_SHARE_MAX) * none.cs!.psiRequired_Vs);
+    expect(csWarning(none)).toHaveLength(1);
+    expect(csWarning(none)[0].startsWith(swing(none))).toBe(true);
+    expect(csWarning(none)[0]).toContain('give the PF flux');
+    // the PF flux of the design makes up the rest: positive margin, no warning
+    const covered = at(450);
+    expect(covered.cs!.psiCS_Vs).toBe(none.cs!.psiCS_Vs);
+    expect(covered.cs!.margin).toBeGreaterThan(0);
+    expect(csWarning(covered)).toEqual([]);
+    // a PF flux that does not: the solenoid swing, the share with the PF flux, and no request for a PF flux that is given
+    const short = at(100);
+    expect(short.cs!.margin).toBeLessThan(0);
+    expect(csWarning(short)).toHaveLength(1);
+    const w = csWarning(short)[0];
+    expect(w.startsWith(swing(short))).toBe(true);
+    expect(w).toContain(`${(100 * short.cs!.psiAvailable_Vs / short.cs!.psiRequired_Vs).toFixed(0)} %`);
+    expect(w).not.toContain('give the PF flux');
+  });
+
   it('report keys are finite numbers and the margin follows the stress', () => {
     // whatever the verdict on a preset's own leg thickness is (the presets are reviewed on their own, not pinned here), the report
     // keys are finite and the sign of the margin and the warning follow the stress against the technology limit

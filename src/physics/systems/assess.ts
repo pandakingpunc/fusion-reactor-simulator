@@ -123,8 +123,14 @@ export function assessSystems(inp: SystemsInput): SystemsAssessment {
   if (tf.overstress) warnings.push(`TF coil stress ${tf.tresca_MPa.toFixed(0)} MPa > ${spec.stress_MPa} MPa limit.`);
   // The flux budget is reported for every tokamak, but only checked (warning) when the design gives the solenoid (`systems.cs`): the
   // radial build of the presets does not resolve the solenoid (ITER: TF inner radius 2.0 m against a CS outer radius of 2.08 m).
-  if (cs && sys?.cs !== undefined && isFinite(cs.margin) && cs.psiCS_Vs < (1 - PF_FLUX_SHARE_MAX) * cs.psiRequired_Vs) {
-    warnings.push(`CS flux swing ${cs.psiAvailable_Vs.toFixed(0)} V s is ${(100 * cs.psiAvailable_Vs / cs.psiRequired_Vs).toFixed(0)} % of the ${cs.psiRequired_Vs.toFixed(0)} V s the pulse needs — the PF coils would have to supply more than ${(100 * PF_FLUX_SHARE_MAX).toFixed(0)} % of it; enlarge the solenoid, raise its field or give the PF flux (systems.cs.pfFlux_Vs).`);
+  // The solenoid is short if the PF coils would have to supply more than PF_FLUX_SHARE_MAX of the requirement, unless a PF flux of the
+  // design makes up the rest (without one the available flux is the swing of the solenoid, below the requirement).
+  if (cs && sys?.cs !== undefined && isFinite(cs.margin) && cs.psiCS_Vs < (1 - PF_FLUX_SHARE_MAX) * cs.psiRequired_Vs && cs.psiAvailable_Vs < cs.psiRequired_Vs) {
+    const share = (psi: number) => `${(100 * psi / cs.psiRequired_Vs).toFixed(0)} %`;
+    const swing = `CS flux swing ${cs.psiCS_Vs.toFixed(0)} V s is ${share(cs.psiCS_Vs)} of the ${cs.psiRequired_Vs.toFixed(0)} V s the pulse needs`;
+    warnings.push(cs.psiPF_Vs === 0
+      ? `${swing} — the PF coils would have to supply more than ${(100 * PF_FLUX_SHARE_MAX).toFixed(0)} % of it; enlarge the solenoid, raise its field or give the PF flux (systems.cs.pfFlux_Vs).`
+      : `${swing}, and with the ${cs.psiPF_Vs.toFixed(0)} V s of the PF coils ${share(cs.psiAvailable_Vs)} — enlarge the solenoid, raise its field or the PF flux (systems.cs.pfFlux_Vs).`);
   }
   return { tf, build, tbr, breederFraction: sys?.blanket?.breederFraction, cs, csGiven: sys?.cs !== undefined, cryo, pulseLength_s, notes: [...notes, ...tf.notes], nuclearHeating_W: Qnuc, coldMass_kg: coldMass, warnings };
 }

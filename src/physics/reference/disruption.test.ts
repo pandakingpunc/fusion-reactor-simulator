@@ -13,6 +13,9 @@ import { describe, expect, it } from 'vitest';
 import { DISRUPTION_FIXES, DISRUPTION_LABELS, DisruptionCause, disruptionReport } from '../disruption';
 import { crossSectionArea } from '../geometry';
 import { forAll, gen } from '../../testing/prop';
+import { requirePreset } from '../config/registry';
+import { Simulation } from '../simulation';
+import type { MagneticConfig } from '../types';
 
 const mu0 = 1.25663706212e-6;
 const rel = (a: number, b: number) => Math.abs(a / b - 1);
@@ -61,6 +64,15 @@ describe('disruption report', () => {
       expect(r.runaway_current_MA).toBeLessThanOrEqual(0.7 * s.I * (1 + 1e-12));
       for (const [k, v] of Object.entries(r)) if (typeof v === 'number') expect(Number.isFinite(v) && v >= 0, k).toBe(true);
     }, { runs: 300 });
+  });
+
+  it('the q95 label states no threshold of its own: a limit other than 2 does not contradict the diagnosis', () => {
+    const jet = requirePreset('JET').cfg as MagneticConfig;
+    const rep = new Simulation({ ...jet, t_end: 0.5, limits: { ...jet.limits, q95_limit: 4 } }).runAll();
+    expect(rep.termination.disruption).toBeTruthy();
+    expect(rep.termination.reason).toBe(DISRUPTION_LABELS.q95_limit);
+    expect(rep.termination.reason).not.toMatch(/< ?2\b/);
+    expect(rep.termination.diagnosis).toMatch(/q95 = [\d.]+ < 4/);
   });
 
   it('every cause has a label and a fix', () => {

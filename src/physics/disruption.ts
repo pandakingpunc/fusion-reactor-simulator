@@ -80,7 +80,7 @@ export function disruptionReport(p: {
 export const DISRUPTION_LABELS: Record<DisruptionCause, string> = {
   density_limit: 'Density-limit disruption (Greenwald)',
   beta_limit: 'Beta limit — ideal MHD instability (Troyon)',
-  q95_limit: 'q95 < 2 — locked mode / vertical displacement (VDE)',
+  q95_limit: 'q95 below its limit — locked mode / vertical displacement (VDE)', // the limit is limits.q95_limit; the diagnosis gives both values
   radiative_collapse: 'Radiative collapse (P_rad > P_heat)',
   tungsten_accumulation: 'Tungsten accumulation — core radiative collapse',
   vde: 'Vertical displacement event (VDE)',

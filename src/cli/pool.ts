@@ -150,7 +150,8 @@ export interface PoolOptions<T, R> {
   onProgress?: (progress: PoolProgress) => void;
   /**
    * Wall-clock limit per task [ms], measured from the moment the task is sent to its worker. A number
-   * applies to every task; a function chooses per task. `undefined`, 0 and Infinity mean no limit.
+   * applies to every task; a function chooses per task. `undefined`, 0 and Infinity mean no limit, and so
+   * does a limit above {@link MAX_TIMEOUT_MS} (about 24.8 days), which a timer cannot hold.
    * A task over its limit fails with `timedOut: true` and its worker is terminated.
    */
   timeoutMs?: number | ((task: T, index: number) => number | undefined);
@@ -177,12 +178,19 @@ export function checkThreads(threads: unknown): number {
   return threads;
 }
 
-/** Validates a timeout; undefined, 0 and Infinity mean "no limit" (→ undefined). */
+/**
+ * The longest delay setTimeout honours [ms]. Node runs a longer one after 1 ms (TimeoutOverflowWarning), which would
+ * fail every task at once under a limit meant as "practically none".
+ */
+export const MAX_TIMEOUT_MS = 2 ** 31 - 1;
+
+/** Validates a timeout; undefined, 0, Infinity and anything above MAX_TIMEOUT_MS mean "no limit" (→ undefined). */
 function checkTimeout(ms: unknown, what: string): number | undefined {
   if (ms === undefined || ms === 0 || ms === Infinity) return undefined;
   if (typeof ms !== 'number' || !(ms > 0) || !Number.isFinite(ms)) {
     throw new PoolConfigError(`${what} must be a positive number of milliseconds, 0 or Infinity, got ${typeof ms === 'number' ? ms : JSON.stringify(ms)}`);
   }
+  if (ms > MAX_TIMEOUT_MS) return undefined;
   return ms;
 }
 

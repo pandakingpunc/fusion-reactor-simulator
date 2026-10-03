@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { availableParallelism } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { PoolAbortError, PoolConfigError, PoolProgress, PoolTaskError, checkThreads, defaultThreads, runPool } from './pool';
+import { MAX_TIMEOUT_MS, PoolAbortError, PoolConfigError, PoolProgress, PoolTaskError, checkThreads, defaultThreads, runPool } from './pool';
 
 interface Task { id: string; action: 'double' | 'echo' | 'slow' | 'hang' | 'spin' | 'throw' | 'crash' | 'exit' | 'twice' | 'throwString'; v?: number; code?: number; ms?: number }
 interface Res { id: string; v: number | null; error?: string }
@@ -185,6 +185,13 @@ describe('worker pool options', { timeout: 30_000 }, () => {
     // 0 and Infinity mean "no limit"
     expect(await runPool<Task, Res>(doubles(2), FIXTURE, { threads: 1, timeoutMs: 0 })).toHaveLength(2);
     expect(await runPool<Task, Res>(doubles(2), FIXTURE, { threads: 1, timeoutMs: Infinity })).toHaveLength(2);
+  });
+
+  it('a limit too long for a timer (> 2^31 - 1 ms, about 24.8 days) means no limit, not a time-out after 1 ms', async () => {
+    const slow: Task[] = [{ id: 'a', action: 'slow', v: 1, ms: 50 }, { id: 'b', action: 'slow', v: 2, ms: 50 }];
+    for (const timeoutMs of [MAX_TIMEOUT_MS, MAX_TIMEOUT_MS + 1, 3e9, 1e10, () => 1e12]) {
+      expect(await runPool<Task, Res>(slow, FIXTURE, { threads: 1, timeoutMs, onTaskError: asResult })).toEqual([{ id: 'a', v: 1 }, { id: 'b', v: 2 }]);
+    }
   });
 
   it('an AbortSignal cancels the pool: before the start or mid-run, with no results reported afterwards', async () => {

@@ -62,6 +62,21 @@ describe('plot engine', () => {
     const offs = [...xref.matchAll(/^(\d{10}) 00000 n/gm)].map((m) => parseInt(m[1], 10));
     for (const [k, o] of offs.entries()) expect(pdf.slice(o, o + 12)).toMatch(new RegExp(`^${k + 1} 0 obj`));
   });
+
+  it('a constant series on a log axis (the MUON T_i, the ZAP n_e) gets a decade around its value, not NaN coordinates', () => {
+    const fonts = nodeFontSet();
+    for (const [scale, v] of [['y', 7.76e-5], ['y', 1000], ['x', 3e17]] as const) {
+      const fig = new Figure(3.37, 2.4);
+      const [ax] = fig.subplots(1, 1);
+      const t = [0, 0.5, 1], c = [v, v, v];
+      if (scale === 'y') ax.plot(t, c).set({ yscale: 'log' });
+      else ax.plot(c, t).set({ xscale: 'log' });
+      const svg = fig.toSVG({ fonts });
+      expect(svg).not.toContain('NaN');
+      expect(new TextDecoder('latin1').decode(fig.toPDF({ fonts }))).not.toContain('NaN');
+      expect(svg).toMatch(/<path [^>]*d="M[\d.]+ [\d.]+L/); // the curve is drawn
+    }
+  });
 });
 
 describe('POPCON (steady-state 0D power balance)', () => {

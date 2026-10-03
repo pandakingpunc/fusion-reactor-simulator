@@ -174,7 +174,10 @@ export class Axes {
     if (!Number.isFinite(xmin)) { xmin = o.xscale === 'log' ? 1 : 0; xmax = o.xscale === 'log' ? 10 : 1; }
     if (!Number.isFinite(ymin)) { ymin = o.yscale === 'log' ? 1 : 0; ymax = o.yscale === 'log' ? 10 : 1; }
     const pad = (lo: number, hi: number, m: number, log: boolean): [number, number] => {
-      if (log) { const f = Math.pow(hi / lo, m); return [lo / f, hi * f]; }
+      if (log) {
+        if (!(hi > lo)) return [lo / Math.sqrt(10), hi * Math.sqrt(10)]; // one value (a constant series): a decade around it, as colorLimits; f = 1 gave [lo, lo] and NaN coordinates
+        const f = Math.pow(hi / lo, m); return [lo / f, hi * f];
+      }
       if (hi === lo) { const d = Math.abs(lo) * 0.1 || 1; return [lo - d, hi + d]; }
       const d = (hi - lo) * m; return [lo - d, hi + d];
     };

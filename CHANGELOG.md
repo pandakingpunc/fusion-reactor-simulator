@@ -4,8 +4,26 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 
 ## [Unreleased]
 
+Bug fixes from a test-and-review pass. No golden case or paper figure changes on the reference platform: the physics fixes touch only paths those runs do not take, which was checked bit for bit.
+
 ### Fixed
-- The CLI pool loads `.ts` workers through tsx on every Node version. `validate`, `golden`, `scan`, `uq`, `figures` and `fusion-sim scan` run from source failed with ERR_MODULE_NOT_FOUND on Node 22.18–22.22.2, 23.x and 24.0–24.10, where a worker thread neither inherits `--import tsx` nor resolves extensionless imports by native type stripping. CI uses the newest patch of each major, which does pass the loader on, so it did not see the failure.
+- The CLI pool loads `.ts` workers through tsx on every Node version. `validate`, `golden`, `scan`, `uq`, `figures` and `fusion-sim scan` run from source failed with ERR_MODULE_NOT_FOUND on Node 22.18–22.22.2, 23.x and 24.0–24.10, where a worker thread neither inherits `--import tsx` nor resolves extensionless imports by native type stripping. CI uses the newest patch of each major, which does pass the loader on, so it did not see the failure. `bench/pause-latency.ts` had the same problem.
+- CLI: a `--timeout` above 2³¹ − 1 ms (about 24.8 days) means no limit; it used to fail every task after 1 ms. A forbidden key (`constructor`, `prototype`, `__proto__`) in a `--config` patch and an `--out` that cannot be written are input errors (exit 2), not internal errors with a stack trace. The study tools (`scan`, `uq`, `optimize`) accept a `--scenario` file with a UTF-8 byte order mark, as `fusion-sim run` does. `fusion-sim run --profiles` writes the profiles to JSON output without `--series`.
+- Python wrapper: `validate()` raises `FusionSimError` (127) when the command cannot be started, like every other function, instead of `FileNotFoundError`; `run(profiles=True)` returns the profiles.
+- `uq` and `scan`: a sampled or scanned configuration outside the model's domain (e.g. `fuelFracA` > 1, `H98` ≤ 0) is a failed shot with the schema's message, not a valid shot whose meaningless metrics entered the statistics. A sensitivity study lists only the failures `runs.failed` counts.
+- `optimize` no longer reports an "Optimum" (exit 0) while listing VIOLATED constraints: the verdict and the per-constraint flags share the solver's `feasTol`.
+- 1.5D: `'bgb'` transport with `pedestalModel: 'eped1'` takes its non-local edge temperature at the EPED1 pedestal top instead of the nominal width (χ_Bohm was about 20 % low; JET15 P_fus about 19 % high). The fixed pedestal is unchanged.
+- 1.5D disruptions: thermal- and current-quench frames report the decaying density, β, P_cond and kinetic profiles instead of the last pre-disruption values.
+- 1.5D: a rewind with `cdModel: 'physics'` and `fastIonModel: 'profile'` into a beam-off window replays exactly (the NBI birth pitch is checkpointed).
+- ICF: a laser pulse shorter than about 0.4 ns no longer drops the part of the burn before t = 0, so `E_fusion_MJ` and `Q_sci_max` agree with the gain G of the same report. Presets are unchanged.
+- The q95-limit disruption label no longer names a fixed threshold ("q95 < 2") when `limits.q95_limit` is another value.
+- Economics: a zero discount rate gives a finite LCOE (CRF = 1/N), and a missing LCOE is labelled by its cause. `costAccounts`/`costOfElectricity` stay finite when the optional component lifetimes are omitted. The CS flux warning prints the solenoid swing it tests and is cleared by a given PF flux that covers the pulse.
+- Config validation: an issue's JSON Pointer keeps a property name that contains a `.` as one token.
+- Scenario schema and docs match `validateScenario`: the 20000-point total is an x-rule, and name and id lengths are counted in code points. The docs of `n_target` (volume average in 0D, line average in 1.5D), the ECCD launcher `width` (1/e half-width) and the unused `linerThicknessRatio` (MTF) and FRC `E_NBI_keV` say what the code does; the wizard no longer offers the unused fields.
+- NetCDF export: quantities with a known unit are no longer tagged dimensionless (`units = "1"`), and a key of unknown unit gets no `units`. The UTF-8 decoder follows RFC 3629, so `readNetcdf3` no longer throws a `RangeError` on malformed bytes.
+- Figures: a constant series on a log axis gets a decade around its value instead of NaN coordinates (Report SVG/PDF export of the MUON and ZAP shots).
+- Interface: the scenario editor no longer freezes the page when a point is added at the end of a step lane; the Report time chart keeps the user's log/lin choice across re-renders; Escape in the Saved runs rename field cancels the rename instead of closing the dialog; the Turkish Report translates the 'CS flux budget' and 'Impurity transport' rows.
+- Interface: an imported run file's shot is keyed by the file, so an edited copy is never shown with the genuine file's verdict (or the reverse); "Load configuration" also loads the file's scenario (or clears the old one); shot ids and `#n` names are never reused, so auto-save keeps a run that follows a removed shot; the Report's Run again and Edit act on the shot it shows.
 
 ## [4.0.1] — 2026-10-02
 

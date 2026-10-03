@@ -721,6 +721,16 @@ describe('remaining paths', () => {
     const im = json((await cli([...a, '--format', 'imas', '--every', '40', '--indent', '0'])).out);
     expect(im.core_profiles.profiles_1d.length).toBeLessThan(30);
   });
+  it('json --profiles does not need --series: the same frames (--every) as with it, and no series', async () => {
+    const a = ['run', '--preset', 'SPARC15', '--t-end', '0.4', '--set', 'profiles.nRho=20', '--set', 'profiles.eqNR=25', '--profiles'];
+    const alone = json((await cli([...a, '--every', '40'])).out);
+    expect(alone.series).toBeUndefined();
+    expect(alone.profiles).toEqual(json((await cli([...a, '--every', '40', '--series', 'Q'])).out).profiles);
+    expect(alone.profiles.length).toBeLessThan(30);
+    expect(alone.profiles[0].Te).toHaveLength(20);
+    // without --every: every frame that has profiles
+    expect(json((await cli(a)).out).profiles.length).toBeGreaterThan(alone.profiles.length);
+  });
   it('schema --check counts one problem in the singular', async () => {
     const r = await cli(['schema', '--check', 'a.json'], { files: { 'a.json': JSON.stringify({ ...getPreset('ITER')!.cfg, B0: -1 }) } });
     expect(r.err).toMatch(/invalid configuration \(1 problem\):/);

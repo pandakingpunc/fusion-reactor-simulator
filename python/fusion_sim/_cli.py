@@ -197,9 +197,10 @@ def run(
     shorthand arguments ``t_end``, ``seed``, ``fidelity`` and ``fuel`` come before ``set``.
 
     ``format`` decides the return value: ``"json"`` (default) the parsed document (report, flat-top and burn
-    averages, events, resolved configuration, provenance; with ``series`` also the time series), ``"csv"`` and ``"text"``
-    a string, ``"ndjson"`` a list of records, ``"imas"`` the parsed IMAS-like document, ``"netcdf"`` the bytes of a
-    NetCDF-3 file. With ``out`` the result is written to that file and its path is returned instead.
+    averages, events, resolved configuration, provenance; with ``series`` also the time series, with ``profiles`` the
+    radial profiles of a 1.5D run, both thinned by ``every``), ``"csv"`` and ``"text"`` a string, ``"ndjson"`` a list
+    of records, ``"imas"`` the parsed IMAS-like document, ``"netcdf"`` the bytes of a NetCDF-3 file. With ``out`` the
+    result is written to that file and its path is returned instead.
 
     Raises :class:`ConfigError` for an invalid configuration, :class:`FusionSimError` for a failed run.
     """

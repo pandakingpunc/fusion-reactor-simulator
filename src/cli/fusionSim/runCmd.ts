@@ -34,7 +34,7 @@ export const RUN_CLI = defineCli({
     scenario: { type: 'string', metavar: 'FILE', help: 'scenario JSON file (schema 1): waveforms of the controls and triggers on the diagnostics; the run stays deterministic and its fingerprint covers the scenario (json output: provenance.scenarioSha256 and the scenario itself)' },
     out: { type: 'string', metavar: 'FILE', help: 'write here instead of stdout (`-` is stdout)' },
     series: { type: 'list', metavar: 'KEY,…', help: 'diagnostics to include (`all` for every one); csv, ndjson, netcdf: default all; json: default none' },
-    every: { type: 'int', min: 1, help: 'keep every N-th frame (csv, ndjson, imas)' },
+    every: { type: 'int', min: 1, help: 'keep every N-th frame (csv, ndjson, imas, and the series and profiles of json)' },
     profiles: { type: 'bool', help: 'ndjson and json: include the radial profiles of a 1.5D run (they are always in netcdf and imas)' },
     'no-profiles': { type: 'bool', help: 'netcdf and imas: leave the radial profiles out' },
     indent: { type: 'int', min: 0, max: 8, default: 2, help: 'JSON indentation (json and imas)' },
@@ -121,13 +121,14 @@ export async function runCommand(argv: readonly string[], ctx: CliContext): Prom
         },
         report: result.report, flatTop: result.flatTop, burn: result.burn, events: result.events,
       };
+      // the frames kept by --every, for the series and the profiles (--profiles does not need --series)
+      const every = args.every ?? 1;
+      const idx = result.sim.history.map((_, i) => i).filter((i, k, a) => i % every === 0 || k === a.length - 1);
       if (all || keys) {
-        const every = args.every ?? 1;
-        const idx = result.sim.history.map((_, i) => i).filter((i, k, a) => i % every === 0 || k === a.length - 1);
         const cols = keys ?? [...new Set(result.sim.history.flatMap((h) => Object.keys(h.d)))];
         doc.series = { t: idx.map((i) => result.sim.history[i].t), ...Object.fromEntries(cols.map((k) => [k, idx.map((i) => result.sim.history[i].d[k] ?? null)])) };
-        if (args.profiles) doc.profiles = idx.filter((i) => result.sim.history[i].prof).map((i) => ({ t: result.sim.history[i].t, ...result.sim.history[i].prof }));
       }
+      if (args.profiles) doc.profiles = idx.filter((i) => result.sim.history[i].prof).map((i) => ({ t: result.sim.history[i].t, ...result.sim.history[i].prof }));
       emit(ctx.io, args.out, JSON.stringify(doc, null, args.indent) + '\n');
       break;
     }

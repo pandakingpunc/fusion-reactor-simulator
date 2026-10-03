@@ -120,6 +120,12 @@ class CommandLineTests(unittest.TestCase):
         self.assertEqual(sorted(doc["series"]), ["P_fus", "Q", "t"])
         self.assertEqual(len(doc["series"]["t"]), len(doc["series"]["Q"]))
 
+    def test_profiles_in_json_without_series(self):
+        doc = fs.run("SPARC15", t_end=0.3, set={"profiles.nRho": 20, "profiles.eqNR": 25}, every=50, profiles=True)
+        self.assertNotIn("series", doc)
+        self.assertLess(len(doc["profiles"]), 10)
+        self.assertEqual(len(doc["profiles"][0]["Te"]), 20)
+
     def test_csv_ndjson_text_imas_netcdf(self):
         csv = fs.run("JET", t_end=0.3, format="csv", series=["Q"])
         self.assertTrue(csv.startswith("t,Q\n"))

@@ -216,6 +216,17 @@ describe('the reader', () => {
     expect(() => readNetcdf3(Uint8Array.of(0x43, 0x44, 0x46, 5, 0, 0, 0, 0))).toThrow(/CDF-5/);
     expect(() => readNetcdf3(Uint8Array.of(0x43, 0x44, 0x46, 9, 0, 0, 0, 0))).toThrow(/version byte 9/);
   });
+  it('ill-formed UTF-8 in a name, an attribute or char data (another tool, Latin-1 text) reads as U+FFFD, not a RangeError', () => {
+    const file = writeNetcdf3({ dims: [{ name: 'xxx', size: 4 }], attrs: { title: 'aXXXXb' }, vars: [{ name: 'c', dims: ['xxx'], type: 'char', data: 'YYYY' }] });
+    const at = (s: string): number => file.findIndex((_, i) => [...s].every((ch, k) => file[i + k] === ch.charCodeAt(0)));
+    file.set([0xed, 0xa0, 0x80], at('xxx')); // an encoded surrogate (U+D800)
+    file.set([0xf4, 0x90, 0x80, 0x80], at('XXXX')); // past U+10FFFF
+    file.set([0xf4, 0xb0, 0xb1, 0xb2], at('YYYY')); // "ô°±²" in Latin-1
+    const f = readNetcdf3(file);
+    expect(f.dims[0].name).toBe('���');
+    expect(f.attrs.title.value).toBe('a����b');
+    expect(f.vars.c.data).toBe('����');
+  });
   it('detects a truncated file and data that runs past the end', () => {
     const good = writeNetcdf3(TINY);
     expect(() => readNetcdf3(good.slice(0, 30))).toThrow(/truncated/);

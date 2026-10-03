@@ -263,16 +263,21 @@ export function utf8(s: string): Uint8Array {
   return Uint8Array.from(out);
 }
 
-/** UTF-8 decoding without TextDecoder; malformed sequences become U+FFFD. */
+/**
+ * UTF-8 decoding without TextDecoder. Only the well-formed sequences of RFC 3629 decode: after E0, ED, F0 and F4 the second
+ * byte has a narrower range (Unicode Table 3-7), which rules out overlong forms, the surrogates U+D800..U+DFFF and code
+ * points past U+10FFFF. Every byte of an ill-formed or truncated sequence becomes U+FFFD; nothing throws.
+ */
 export function utf8Decode(b: Uint8Array): string {
   let s = '';
+  const cont = (k: number, lo = 0x80, hi = 0xbf): boolean => k < b.length && b[k] >= lo && b[k] <= hi;
   for (let i = 0; i < b.length;) {
     const c = b[i];
     let cp = 0xfffd, n = 1;
     if (c < 0x80) cp = c;
-    else if (c >= 0xc2 && c < 0xe0 && i + 1 < b.length && (b[i + 1] & 0xc0) === 0x80) { cp = ((c & 31) << 6) | (b[i + 1] & 63); n = 2; }
-    else if (c >= 0xe0 && c < 0xf0 && i + 2 < b.length && (b[i + 1] & 0xc0) === 0x80 && (b[i + 2] & 0xc0) === 0x80) { cp = ((c & 15) << 12) | ((b[i + 1] & 63) << 6) | (b[i + 2] & 63); n = 3; }
-    else if (c >= 0xf0 && c < 0xf5 && i + 3 < b.length && (b[i + 1] & 0xc0) === 0x80 && (b[i + 2] & 0xc0) === 0x80 && (b[i + 3] & 0xc0) === 0x80) { cp = ((c & 7) << 18) | ((b[i + 1] & 63) << 12) | ((b[i + 2] & 63) << 6) | (b[i + 3] & 63); n = 4; }
+    else if (c >= 0xc2 && c < 0xe0 && cont(i + 1)) { cp = ((c & 31) << 6) | (b[i + 1] & 63); n = 2; }
+    else if (c >= 0xe0 && c < 0xf0 && cont(i + 1, c === 0xe0 ? 0xa0 : 0x80, c === 0xed ? 0x9f : 0xbf) && cont(i + 2)) { cp = ((c & 15) << 12) | ((b[i + 1] & 63) << 6) | (b[i + 2] & 63); n = 3; }
+    else if (c >= 0xf0 && c < 0xf5 && cont(i + 1, c === 0xf0 ? 0x90 : 0x80, c === 0xf4 ? 0x8f : 0xbf) && cont(i + 2) && cont(i + 3)) { cp = ((c & 7) << 18) | ((b[i + 1] & 63) << 12) | ((b[i + 2] & 63) << 6) | (b[i + 3] & 63); n = 4; }
     s += cp >= 0x10000 ? String.fromCodePoint(cp) : String.fromCharCode(cp);
     i += n;
   }

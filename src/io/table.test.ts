@@ -55,6 +55,22 @@ describe('UTF-8 without TextEncoder', () => {
     expect(utf8Decode(Uint8Array.of(0x61, 0xff, 0x62))).toBe('a�b');
     expect(utf8Decode(Uint8Array.of(0xe2, 0x82))).toBe('��');
   });
+  it('ill-formed sequences of RFC 3629 (overlong forms, surrogates, past U+10FFFF) decode to U+FFFD like TextDecoder, never throw', () => {
+    const td = new TextDecoder();
+    const bad = [[0xc0, 0x80], [0xc1, 0xbf], [0xe0, 0x80, 0x80], [0xe0, 0x9f, 0xbf], [0xed, 0xa0, 0x80], [0xed, 0xbf, 0xbf],
+      [0xf0, 0x80, 0x80, 0x80], [0xf0, 0x8f, 0xbf, 0xbf], [0xf4, 0x90, 0x80, 0x80], [0xf4, 0xbf, 0xbf, 0xbf], [0xf5, 0x80, 0x80, 0x80]];
+    for (const seq of bad) {
+      const b = Uint8Array.of(0x61, ...seq, 0x62);
+      const name = seq.map((x) => x.toString(16)).join(' ');
+      expect(utf8Decode(b), name).toBe(`a${'�'.repeat(seq.length)}b`);
+      expect(utf8Decode(b), name).toBe(td.decode(b));
+    }
+    // the code points at the edges of the forbidden ranges are well-formed
+    for (const cp of [0x7f, 0x80, 0x7ff, 0x800, 0xd7ff, 0xe000, 0xffff, 0x10000, 0x10ffff]) {
+      const ch = String.fromCodePoint(cp);
+      expect(utf8Decode(utf8(ch)), cp.toString(16)).toBe(ch);
+    }
+  });
 });
 
 describe('tables of a run', () => {

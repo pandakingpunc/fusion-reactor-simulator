@@ -164,8 +164,10 @@ export function partial<T>(shape: Shape<T>, o: ObjOpts = {}): Field<Partial<T>> 
 // ── validation ─────────────────────────────────────────────────────────────────────────────────────
 
 const join = (path: ConfigPath, key: string): ConfigPath => (path === '' ? key : `${path}.${key}`);
-/** The RFC 6901 JSON Pointer of a dotted path. */
-export const pointerOf = (path: ConfigPath): string => (path === '' ? '' : '/' + path.split('.').map((s) => s.replace(/~/g, '~0').replace(/\//g, '~1')).join('/'));
+/** One RFC 6901 reference token appended to a pointer: a property name is never split, even when it contains a '.'. */
+const joinPointer = (pointer: string, key: string): string => `${pointer}/${key.replace(/~/g, '~0').replace(/\//g, '~1')}`;
+/** The RFC 6901 JSON Pointer of a dotted path whose property names contain no '.'. */
+export const pointerOf = (path: ConfigPath): string => (path === '' ? '' : path.split('.').reduce(joinPointer, ''));
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -242,72 +244,73 @@ export function checkNumber(n: NumberNode, v: unknown): { code: IssueCode; messa
 
 /**
  * Validates `value` against `node`, appending every problem to `issues`. Unknown properties are reported
- * unless `unknownKeys` is 'ignore'.
+ * unless `unknownKeys` is 'ignore'. `pointer` is the JSON Pointer of `path`; it is built one property at a
+ * time, so it stays exact for a property name that contains a '.' (which the dotted path cannot tell apart).
  */
-export function validateNode(node: Node, value: unknown, path: ConfigPath, issues: ValidationIssue[], unknownKeys: 'error' | 'ignore' = 'error'): void {
-  const add = (p: ConfigPath, code: IssueCode, message: string, hint?: string) =>
-    issues.push({ path: p, pointer: pointerOf(p), code, message, ...(hint !== undefined ? { hint } : {}) });
+export function validateNode(node: Node, value: unknown, path: ConfigPath, issues: ValidationIssue[], unknownKeys: 'error' | 'ignore' = 'error', pointer: string = pointerOf(path)): void {
+  const add = (p: ConfigPath, ptr: string, code: IssueCode, message: string, hint?: string) =>
+    issues.push({ path: p, pointer: ptr, code, message, ...(hint !== undefined ? { hint } : {}) });
   switch (node.kind) {
     case 'number': {
       const r = checkNumber(node, value);
-      if (r) add(path, r.code, r.message);
+      if (r) add(path, pointer, r.code, r.message);
       return;
     }
     case 'boolean':
-      if (typeof value !== 'boolean') add(path, 'type', `must be true or false, got ${describeValue(value)}`);
+      if (typeof value !== 'boolean') add(path, pointer, 'type', `must be true or false, got ${describeValue(value)}`);
       return;
     case 'enum':
-      if (typeof value !== 'string') add(path, 'type', `must be a string, got ${describeValue(value)}`);
+      if (typeof value !== 'string') add(path, pointer, 'type', `must be a string, got ${describeValue(value)}`);
       else if (!node.values.includes(value)) {
         const c = closest(value, node.values);
-        add(path, 'enum', `must be one of ${node.values.map((s) => `'${s}'`).join(', ')}, got '${value}'`, c !== undefined ? `did you mean '${c}'?` : undefined);
+        add(path, pointer, 'enum', `must be one of ${node.values.map((s) => `'${s}'`).join(', ')}, got '${value}'`, c !== undefined ? `did you mean '${c}'?` : undefined);
       }
       return;
     case 'series': {
-      if (!Array.isArray(value)) { add(path, 'type', `must be an array of [${describeSeriesAxes(node)}] points, got ${describeValue(value)}`); return; }
+      if (!Array.isArray(value)) { add(path, pointer, 'type', `must be an array of [${describeSeriesAxes(node)}] points, got ${describeValue(value)}`); return; }
       if (value.length < node.minItems || value.length > node.maxItems) {
-        add(path, 'range', `must have ${node.minItems === node.maxItems ? String(node.minItems) : `between ${node.minItems} and ${node.maxItems}`} points, got ${value.length}`);
+        add(path, pointer, 'range', `must have ${node.minItems === node.maxItems ? String(node.minItems) : `between ${node.minItems} and ${node.maxItems}`} points, got ${value.length}`);
         return;
       }
       let prevX: number | undefined;
       for (let k = 0; k < value.length; k++) {
         const pt = value[k];
-        const at = join(path, String(k));
-        if (!Array.isArray(pt) || pt.length !== 2) { add(at, 'type', `must be a [${describeSeriesAxes(node)}] pair, got ${describeValue(pt)}`); prevX = undefined; continue; }
+        const at = join(path, String(k)), atPtr = joinPointer(pointer, String(k));
+        if (!Array.isArray(pt) || pt.length !== 2) { add(at, atPtr, 'type', `must be a [${describeSeriesAxes(node)}] pair, got ${describeValue(pt)}`); prevX = undefined; continue; }
         const rx = checkNumber(node.x, pt[0]), ry = checkNumber(node.y, pt[1]);
-        if (rx) add(join(at, '0'), rx.code, rx.message);
-        if (ry) add(join(at, '1'), ry.code, ry.message);
-        if (!rx && prevX !== undefined && !((pt[0] as number) > prevX)) add(join(at, '0'), 'cross_field', `must be greater than the previous point's ${String(prevX)} (the points increase in the first number), got ${String(pt[0])}`);
+        if (rx) add(join(at, '0'), joinPointer(atPtr, '0'), rx.code, rx.message);
+        if (ry) add(join(at, '1'), joinPointer(atPtr, '1'), ry.code, ry.message);
+        if (!rx && prevX !== undefined && !((pt[0] as number) > prevX)) add(join(at, '0'), joinPointer(atPtr, '0'), 'cross_field', `must be greater than the previous point's ${String(prevX)} (the points increase in the first number), got ${String(pt[0])}`);
         prevX = rx ? undefined : (pt[0] as number);
       }
       return;
     }
     case 'object': {
-      if (!isPlainObject(value)) { add(path, 'type', `must be an object, got ${describeValue(value)}`); return; }
+      if (!isPlainObject(value)) { add(path, pointer, 'type', `must be an object, got ${describeValue(value)}`); return; }
       const known = Object.keys(node.props);
       const bad = new Set<string>();
       for (const key of known) {
         const f = node.props[key];
         const v = value[key];
         if (v === undefined) {
-          if (!f.optional) { add(join(path, key), 'required', 'is required'); bad.add(key); }
+          if (!f.optional) { add(join(path, key), joinPointer(pointer, key), 'required', 'is required'); bad.add(key); }
           continue;
         }
         const n = issues.length;
-        validateNode(f.node, v, join(path, key), issues, unknownKeys);
+        validateNode(f.node, v, join(path, key), issues, unknownKeys, joinPointer(pointer, key));
         if (issues.length > n) bad.add(key);
       }
       if (unknownKeys === 'error') {
         for (const key of Object.keys(value)) {
           if (Object.prototype.hasOwnProperty.call(node.props, key) || value[key] === undefined) continue;
           const c = closest(key, known);
-          add(join(path, key), 'unknown_key', 'is not a known property', c !== undefined ? `did you mean '${c}'?` : undefined);
+          add(join(path, key), joinPointer(pointer, key), 'unknown_key', 'is not a known property', c !== undefined ? `did you mean '${c}'?` : undefined);
         }
       }
       // a cross-field rule runs only when every property it reads is itself valid
       for (const rule of node.rules) {
         if (rule.reads.some((r) => bad.has(r))) continue;
-        for (const r of rule.check(value)) add(join(path, r.path), 'cross_field', r.message);
+        for (const r of rule.check(value)) add(join(path, r.path), pointer + pointerOf(r.path), 'cross_field', r.message);
       }
       return;
     }

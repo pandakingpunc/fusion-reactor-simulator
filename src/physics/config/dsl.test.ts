@@ -81,6 +81,10 @@ describe('objects', () => {
     expect(pointerOf('a.b~c/d')).toBe('/a/b~0c~1d');
     expect(pointerOf('')).toBe('');
   });
+  it('the pointer keeps a property name that contains a "." as one token (the dotted path cannot)', () => {
+    const iss = issuesOf(shape, { a: 1, c: { d: true, 'x.y': 1, 'p/q~r': 2 }, 'P.NBI': 5 });
+    expect(iss.map((i) => [i.path, i.pointer])).toEqual([['c.x.y', '/c/x.y'], ['c.p/q~r', '/c/p~1q~0r'], ['P.NBI', '/P.NBI']]);
+  });
   it('partial makes every property optional', () => {
     const p = partial<{ a: number; b: number }>({ a: num(), b: int() });
     expect(issuesOf(p, {})).toEqual([]);

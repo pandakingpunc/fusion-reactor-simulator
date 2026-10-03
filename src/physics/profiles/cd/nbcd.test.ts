@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { criticalEnergy, spitzerSlowingDownTime } from '../../heating';
 import { ITER_15D, JET_15D } from '../../presets';
+import type { ScenarioSpec } from '../../scenario';
 import type { MagneticConfig } from '../../types';
 import { gaffeyCurrentIntegral, gaffeyDistribution, pitchScatteringZhat } from '../fastions/slowingDown';
 import { Simulation } from '../../simulation';
@@ -210,5 +211,26 @@ describe('the physics current drive in a running shot', () => {
     // the diagnostics are consistent: f_cd is the total driven current over I_p
     const d = ref.history[ref.history.length - 1].d;
     expect(Math.abs(d.f_cd - (d.I_nbcd + d.I_eccd) / d.Ip)).toBeLessThan(1e-9);
+  }, 120000);
+
+  it('a rewind into a beam-off window replays bitwise: the decaying fast-ion current keeps the birth pitch of the deposit before the switch-off, not that of a later one', () => {
+    // NBI on → off (0.1 s) → on (0.2 s): with profile fast ions the current goes on from the decaying fields while the beam is off, with the
+    // pitch of the last deposit; the run reaches the deposits after 0.2 s before it is rewound to 0.15 s
+    const cfg: MagneticConfig = physicsCfg({ ...JET_15D, t_end: 0.3 }, { fastIonModel: 'profile' });
+    const scenario: ScenarioSpec = { schema: 1, waveforms: { P_NBI_MW: { kind: 'step', points: [[0, null], [0.1, 0], [0.2, null]] } } };
+    const ref = new Simulation(cfg, { scenario });
+    ref.runAll();
+    const idx = ref.history.findIndex((h) => h.t >= 0.15);
+    expect(ref.history[idx].sim?.controls.P_NBI_MW).toBe(0);
+    expect(ref.history[idx].d.I_nbcd).toBeGreaterThan(0);
+    const sim = new Simulation(cfg, { scenario });
+    sim.runAll();
+    sim.rewindTo(idx);
+    sim.advance(cfg.t_end);
+    expect(sim.history.length).toBe(ref.history.length);
+    for (let k = idx + 1; k < ref.history.length; k++) {
+      expect(sim.history[k].y, `y at frame ${k}`).toEqual(ref.history[k].y);
+      for (const key of ['I_nbcd', 'f_cd', 'Te0']) expect(sim.history[k].d[key], `${key} at frame ${k}`).toBe(ref.history[k].d[key]);
+    }
   }, 120000);
 });

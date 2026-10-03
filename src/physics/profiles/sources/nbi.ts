@@ -23,6 +23,7 @@ import { FUEL_CHANNELS, FUEL_SPECIES, beamTargetDensity } from '../../reactivity
 import { criticalEnergy, fastIonEnergyTime, ionHeatingFraction, slowingDownTime } from '../../heating';
 import { KEV, ProfileContext, StepConstants } from '../context';
 import { BeamTargetTable } from '../beamtarget';
+import type { CheckpointAux, CheckpointRecord } from '../checkpoint';
 import type { ProfileState } from '../state';
 import { NbiChord, volumeIntegral } from './deposition';
 import { cdDensity20, cdTeFactor } from './current';
@@ -138,5 +139,20 @@ export class NbiSource implements SourceModel {
     const gam = Math.min(ctx.ps.nbcdEff * (Tw / s) * Math.sqrt(Math.min(K.Eb / 1000, 1)), 0.5);
     const Icd = (gam * K.P_NBI * s) / (nbar20 * g.R0);
     for (let i = 0; i < N; i++) w.jcdB[i] += ((Icd * w.nbiDep[i]) / s) * 2 * Math.PI * g.RgeoC[i] * g.B0;
+  }
+
+  /**
+   * Checkpoint: the birth pitch is state the source keeps from step to step. The deposit refills it only while the beam is on, and with the
+   * 'profile' fast-ion model cd/nbcd.ts drives the current of the decaying fields with it after the beam is off, so a rewind into such a window
+   * needs the pitch of the deposit before it, not that of a later one. It goes into aux by copy (the birth power is refilled by every prepare).
+   */
+  save(_rec: CheckpointRecord, aux: CheckpointAux): void {
+    if (this.birthPitch.length) aux.nbi_birthPitch = this.birthPitch.map((p) => Float64Array.from(p));
+  }
+
+  /** Restore: the pitch of the checkpoint; a record without it (from elsewhere) keeps the pitch of the last deposit */
+  restore(_rec: Readonly<CheckpointRecord>, aux: Readonly<CheckpointAux> | undefined): void {
+    const saved = aux?.nbi_birthPitch as Float64Array[] | undefined;
+    if (saved && saved.length === this.birthPitch.length) saved.forEach((p, k) => this.birthPitch[k].set(p));
   }
 }

@@ -5,7 +5,7 @@
  * a second time in Q_eng.
  */
 import { describe, expect, it } from 'vitest';
-import { icfFuelData } from '../confinement/icf';
+import { icfFuelData, icfStagnation } from '../confinement/icf';
 import { NIF } from '../presets';
 import { Simulation } from '../simulation';
 import { FuelType } from '../reactivity';
@@ -69,5 +69,20 @@ describe('ICF engineering gain', () => {
     expect(a.Q_eng / (0.1 * 0.4) / a.Q_sci_max).toBeCloseTo(1, 3); // defaults: 10 % laser wall-plug, 40 % thermal
     const c = run({ ...NIF, driverEff: 0.2, thermalEff: 0.45 });
     expect(c.Q_eng / (0.2 * 0.45) / c.Q_sci_max).toBeCloseTo(1, 3);
+  });
+});
+
+// Bang-time was pulse_ns and the burn a Gaussian of σ = 0.08 ns around it, integrated from t = 0: for pulse_ns ≲ 0.25 ns
+// part of the burn fell before t = 0 and was lost from E_fusion_MJ and the neutron yield (NIF at 0.05 ns: 1.006 instead of
+// 1.370 MJ) while the gain G and the score still used the closed-form total.
+describe('ICF burn pulse of a short laser pulse', () => {
+  it('the whole burn is integrated: E_fusion and the neutron yield equal the closed-form totals for every pulse length', () => {
+    const st = icfStagnation(NIF);
+    for (const pulse_ns of [8, 0.5, 0.25, 0.05, 0.01]) {
+      const r = run({ ...NIF, pulse_ns });
+      expect((r.E_fusion_MJ * 1e6) / st.E_fus_total, `pulse_ns ${pulse_ns}`).toBeCloseTo(1, 5);
+      expect(r.neutronYield / st.N_n_total, `pulse_ns ${pulse_ns}`).toBeCloseTo(1, 5);
+      expect(r.engineering['Gain G'], `pulse_ns ${pulse_ns}`).toBe(+(st.E_fus_total / (NIF.E_laser_MJ * 1e6)).toFixed(2));
+    }
   });
 });

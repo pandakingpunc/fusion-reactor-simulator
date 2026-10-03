@@ -32,6 +32,14 @@ export const ICF_CAL = 0.03931;
 /** Default driver (laser) wall-plug efficiency and thermal conversion efficiency (used when ICFConfig gives none) */
 const DRIVER_EFF_DEFAULT = 0.1;
 const THERMAL_EFF_DEFAULT = 0.4;
+/** Width σ of the Gauss burn pulse around bang-time [ns] */
+const BURN_SIGMA_NS = 0.08;
+/**
+ * Earliest bang-time [ns]. Bang-time is the end of the laser pulse, pulse_ns, but not earlier than 5σ: the integration starts at
+ * t = 0, and with a shorter pulse the part of the burn before t = 0 would be lost from E_fusion and the neutron yield (the yield of
+ * icfStagnation does not depend on pulse_ns). The part left before t = 0, Φ(−5) ≈ 3e-7, is below the integrator tolerance.
+ */
+const BANG_MIN_NS = 5 * BURN_SIGMA_NS;
 
 export interface ICFFuelData {
   /** mean fuel-ion mass [amu] and mean charge (x_a, x_b = FUEL_SPECIES.fracA) */
@@ -179,18 +187,19 @@ export class ICFModel extends PulsedBase {
   private chi_ig: number; // ateşleme parametresi
   private T_hs: number; // hotspot sıcaklığı [keV]
   private bang: number; // ns
-  private sigma = 0.08; // ns, yanma darbe genişliği
+  private sigma = BURN_SIGMA_NS; // ns, yanma darbe genişliği
   private ignited: boolean;
 
   constructor(cfg: ICFConfig) {
-    const tEnd = cfg.pulse_ns + 3;
+    const bang = Math.max(cfg.pulse_ns, BANG_MIN_NS); // end of the laser pulse; see BANG_MIN_NS
+    const tEnd = bang + 3;
     const atol = new Float64Array(NSTATE);
     atol.set([1e2, 1e2, 1e12]);
     super({ seed: cfg.seed, tEnd, timeUnit: 'ns', dt0: 0.01,
       integratorOpts: { rtol: 1e-5, atol, dtMin: 1e-4, dtMax: 0.02, nonNegative: true }, outputDt: tEnd / 1000 });
     this.method = cfg.method;
     this.cfg = cfg;
-    this.bang = cfg.pulse_ns;
+    this.bang = bang;
     this.E_laser_J = cfg.E_laser_MJ * 1e6;
 
     this.fuelData = icfFuelData(cfg.fuel);

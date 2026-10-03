@@ -168,14 +168,22 @@ export function movePoint(s: ScenarioSpec, key: string, i: number, t: number, v:
   return withWaveforms(s, { ...s.waveforms, [key]: { kind: w.kind, points } });
 }
 
-/** Adds a point at (t, v), in time order (a step waveform's point is nudged off an existing time). Returns the spec and the index of the new point. */
+/**
+ * Adds a point at (t, v), in time order. A step waveform's point is nudged off an existing time: later first, then, when the
+ * times up to tEnd are taken, earlier (index -1 when no time in [0, tEnd] is free). Returns the spec and the index of the new point.
+ */
 export function insertPoint(s: ScenarioSpec, key: string, t: number, v: number | null, tEnd: number): { spec: ScenarioSpec; index: number } {
   const w = s.waveforms?.[key];
   if (!w || !Number.isFinite(t)) return { spec: s, index: -1 };
   let nt = clamp(t, 0, tEnd);
   if (w.kind === 'step') {
+    // one direction at a time: alternating up and down never ended with points at tEnd − gap and tEnd ((tEnd − gap) + gap = tEnd)
     const gap = Math.max(tEnd * 1e-6, 1e-12);
-    while (w.points.some((p) => p[0] === nt)) nt = nt + gap <= tEnd ? nt + gap : nt - gap;
+    const taken = (x: number) => w.points.some((p) => p[0] === x);
+    const start = nt;
+    while (taken(nt) && nt + gap <= tEnd) nt += gap;
+    if (taken(nt)) for (nt = start; taken(nt) && nt - gap >= 0;) nt -= gap;
+    if (taken(nt)) return { spec: s, index: -1 };
   }
   const nv = v === null ? null : clampValue(key, v);
   let index = w.points.findIndex((p) => p[0] > nt);

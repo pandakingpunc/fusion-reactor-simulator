@@ -85,6 +85,22 @@ describe('editing points', () => {
     expect(insertPoint(s, 'bogus', 0, 0, T).index).toBe(-1);
   });
 
+  it('a step lane with points at tEnd − gap and tEnd: inserting at tEnd terminates and goes earlier (the editor\'s second "Add point")', () => {
+    const gap = T * 1e-6;
+    const st = lane([[0, null], [T - gap, null], [T, null]], 'step');
+    for (const at of [T, T - gap]) {
+      const r = insertPoint(st, 'P_NBI_MW', at, 3, T);
+      const pts = r.spec.waveforms!.P_NBI_MW.points;
+      expect(r.index).toBe(1);
+      expect(pts).toHaveLength(4);
+      expect(pts[1]).toEqual([T - 2 * gap, 3]);
+      expect(new Set(pts.map((p) => p[0])).size).toBe(4);
+    }
+    // nothing free in [0, tEnd] (a tEnd of two gaps holds three points): no point is added
+    const full = lane([[0, null], [1e-12, null], [2e-12, null]], 'step');
+    expect(insertPoint(full, 'P_NBI_MW', 1e-12, 3, 2e-12)).toEqual({ spec: full, index: -1 });
+  });
+
   it('removes a point, and the lane with its last point', () => {
     const s = lane([[0, 13], [0.02, 4], [T, 13]]);
     expect(removePoint(s, 'P_NBI_MW', 1).waveforms!.P_NBI_MW.points).toEqual([[0, 13], [T, 13]]);

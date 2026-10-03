@@ -101,6 +101,15 @@ describe('persistence UI: the archive', () => {
     const row = await within(dialog).findByText('TAE Norman (FRC) #1');
     expect(row).toBeTruthy();
 
+    // Escape cancels a rename and leaves the dialog open
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Rename' }));
+    const cancelled = within(dialog).getByLabelText('Rename') as HTMLInputElement;
+    fireEvent.change(cancelled, { target: { value: 'not this' } });
+    fireEvent.keyDown(cancelled, { key: 'Escape' });
+    expect(screen.getByRole('dialog', { name: 'Saved runs' })).toBe(dialog);
+    expect(within(dialog).queryByLabelText('Rename')).toBeNull();
+    expect(within(dialog).getByText('TAE Norman (FRC) #1')).toBeTruthy();
+
     // rename
     fireEvent.click(within(dialog).getByRole('button', { name: 'Rename' }));
     const input = within(dialog).getByLabelText('Rename') as HTMLInputElement;

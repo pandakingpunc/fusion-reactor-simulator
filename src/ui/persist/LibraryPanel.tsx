@@ -113,7 +113,10 @@ export default function LibraryPanel({ onClose }: { onClose(): void }) {
                       <input type="text" autoFocus value={renaming.name} aria-label={p('persist.lib.rename')}
                         onChange={(e) => setRenaming({ id: r.id, name: e.target.value })}
                         onBlur={() => void commitRename()}
-                        onKeyDown={(e) => { if (e.key === 'Enter') void commitRename(); else if (e.key === 'Escape') setRenaming(null); }} />
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') void commitRename();
+                          else if (e.key === 'Escape') { e.stopPropagation(); setRenaming(null); } // cancels the rename only: the Modal closes on an Escape that reaches the document
+                        }} />
                     ) : (
                       <strong className="persist-name">{r.name}</strong>
                     )}

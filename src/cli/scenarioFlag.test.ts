@@ -50,6 +50,11 @@ describe('loadScenarioFile', () => {
     expect(loadScenarioFile(messy, JET).spec.waveforms!.P_NBI_MW.points).toEqual([[0.2, null], [0.8, 4]]);
   });
 
+  it('a file that starts with a UTF-8 byte order mark (Windows PowerShell writes one) reads like the same file without it', () => {
+    const bom = file('bom.json', `\uFEFF${scenarioToJSON(TRIP)}`);
+    expect(loadScenarioFile(bom, JET, { tEnd: 1 })).toEqual({ file: bom, spec: TRIP, empty: false });
+  });
+
   it('an empty scenario is flagged: attaching it changes nothing', () => {
     expect(loadScenarioFile(file('empty.json', { schema: 1 }), JET).empty).toBe(true);
   });

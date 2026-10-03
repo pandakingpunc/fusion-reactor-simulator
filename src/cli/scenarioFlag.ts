@@ -42,7 +42,7 @@ export function scenarioFileProblems(file: string, issues: readonly ScenarioIssu
 export function loadScenarioFile(file: string, base: ReactorConfig, opts: { tEnd?: number } = {}): LoadedScenario {
   let text: string;
   try {
-    text = fs.readFileSync(file, 'utf8');
+    text = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''); // a byte order mark, as Windows PowerShell writes, like fusion-sim run
   } catch (e) {
     throw new RangeError(`--scenario ${file}: cannot read the file (${e instanceof Error ? e.message : String(e)})`);
   }

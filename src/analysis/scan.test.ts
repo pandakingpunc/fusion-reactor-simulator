@@ -144,6 +144,15 @@ describe('scan result', () => {
     expect(r.points[1].metrics!.Pfus_flat_MW).toBeGreaterThan(r.points[0].metrics!.Pfus_flat_MW);
   });
 
+  it('a point outside the domain of the model fails alone, with the schema issue', async () => {
+    // fuelFracA = 1.4 used to run to a negative fusion power and count as a valid point that ran to its end
+    const p = planScan(spec({ axes: [{ path: 'fuelFracA', lo: 0.5, hi: 1.4, points: 2 }] }));
+    const r = summarizeScan(p, await serialRunner(p.tasks()));
+    expect(r.runs).toEqual({ total: 2, valid: 1, failed: 1, completed: 1, disrupted: 0 });
+    expect(r.points[0].metrics!.Pfus_flat_MW).toBeGreaterThan(0);
+    expect(r.points[1]).toEqual({ index: 1, values: { fuelFracA: 1.4 }, metrics: null, endReason: 'FAILED', error: 'ConfigValidationError: fuelFracA: must be >= 0 and <= 1, got 1.4' });
+  });
+
   it('non-magnetic configurations scan too', () => {
     const p = planScan({ base: NIF, axes: [{ path: 'E_laser_MJ', lo: 1.8, hi: 2.2, points: 2 }], mode: 'grid', seed: 1, maxRuns: 10 });
     const r = summarizeScan(p, [okOutcome(), okOutcome()]);

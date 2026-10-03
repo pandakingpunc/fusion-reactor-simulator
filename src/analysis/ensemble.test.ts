@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { ITER_15D, JET, NIF } from '../physics/presets';
-import type { MagneticConfig } from '../physics/types';
+import type { MagneticConfig, ReactorConfig } from '../physics/types';
 import {
   CAVEAT, EnsemblePlan, EnsembleSpec, SimOutcome, ensembleHash, planEnsemble, quantileLabel, resolveSpec, runEnsemble, summarizeEnsemble, toCsv, toJson,
 } from './ensemble';
 import { METRIC_KEYS, MetricKey, RunMetrics } from './metrics';
 import { PriorSet, defaultPriors } from './priors';
-import { serialRunner } from './run';
+import { serialRunner, simulateMetrics } from './run';
 
 const PRIORS: PriorSet = {
   params: [
@@ -350,6 +350,32 @@ describe('a real ensemble (short JET shots)', () => {
     expect(result.runs.failed).toBe(4);
     expect(result.runs.valid).toBe(0);
     expect(result.runs.failures[0].error.length).toBeGreaterThan(5);
+  });
+
+  it('a sampled configuration outside the domain of the model is a failed shot with the schema issue; the other shots run', async () => {
+    // fuelFracA ~ U(0.5, 1.5): a fraction above 1 used to run to a negative fusion power, counted as a valid shot
+    const s = spec({ n: 4, sampler: 'lhs', priors: { params: [{ path: 'fuelFracA', dist: { type: 'uniform', lo: 0.5, hi: 1.5 } }] }, bootstrap: 0 });
+    const { plan, outcomes, result } = await runEnsemble(s, serialRunner);
+    const outside = Array.from(plan.values, (v) => v > 1);
+    expect(outside.filter(Boolean)).toHaveLength(2); // one Latin-hypercube point per quarter of the range
+    outcomes.forEach((o, row) => expect(o.ok, `row ${row}`).toBe(!outside[row]));
+    expect(result.runs).toMatchObject({ total: 4, valid: 2, failed: 2 });
+    for (const f of result.runs.failures) expect(f.error).toMatch(/^ConfigValidationError: fuelFracA: must be >= 0 and <= 1, got 1\.\d+$/);
+    expect(result.outputs.Pfus_flat_MW.min).toBeGreaterThan(0);
+  });
+
+  it('the shot runner reports every schema issue on one line; a property the model ignores is no issue', () => {
+    const bad = simulateMetrics({ ...JET, H98: -0.5, geometry: { ...JET.geometry, a: 3.5 }, t_end: 1 });
+    expect(bad.ok).toBe(false);
+    const error = (bad as { error: string }).error;
+    expect(error).toMatch(/^ConfigValidationError: /);
+    const issues = error.slice('ConfigValidationError: '.length).split('; ');
+    expect(issues).toHaveLength(2);
+    expect(issues.some((i) => /^H98: must be > 0 and <= 10, got -0\.5/.test(i))).toBe(true);
+    expect(issues.some((i) => /^geometry\.a: must be smaller than geometry\.R/.test(i))).toBe(true);
+    expect(error).not.toMatch(/\n/); // the reports keep the first line of an error
+    // --t-end gives a t_end to a family that has no shot duration (ICF): the model ignores it, the shot runs
+    expect(simulateMetrics({ ...NIF, t_end: 1 } as ReactorConfig).ok).toBe(true);
   });
 
   it('non-magnetic configurations run with explicit parameters (metrics that do not exist are NaN)', async () => {

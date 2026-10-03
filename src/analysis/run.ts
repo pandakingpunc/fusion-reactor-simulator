@@ -6,12 +6,21 @@
 import { Simulation } from '../physics/simulation';
 import type { ReactorConfig } from '../physics/types';
 import type { ScenarioSpec } from '../physics/scenario';
+import { formatIssue, validateConfig } from '../physics/config/schema';
 import type { BatchRunner, SimOutcome, SimTask } from './ensemble';
 import { MetricsOptions, runMetrics } from './metrics';
 
-/** Runs one configuration to its end and returns its metrics; a run that throws is reported as a failed outcome, not raised. */
+/**
+ * Runs one configuration to its end and returns its metrics; a run that throws is reported as a failed outcome, not raised.
+ * So is a configuration outside the domain of the model (a sampled or scanned value the configuration schema rejects, e.g. a
+ * fuel fraction above 1): the model would run it to meaningless metrics (a negative fusion power) that count as a valid shot.
+ */
 export function simulateMetrics(cfg: ReactorConfig, opts: MetricsOptions & { scenario?: ScenarioSpec } = {}): SimOutcome {
   try {
+    // every issue on one line (the reports keep the first line of an error); a property the schema does not know is no
+    // issue here: the model ignores it, and --t-end gives a t_end to the families that have no shot duration (ICF, MTF, muon)
+    const v = validateConfig(cfg, { unknownKeys: 'ignore' });
+    if (!v.ok) return { ok: false, error: `ConfigValidationError: ${v.issues.map(formatIssue).join('; ')}` };
     const { scenario, ...metricsOpts } = opts;
     const sim = new Simulation(cfg, scenario ? { scenario } : {});
     const report = sim.runAll();

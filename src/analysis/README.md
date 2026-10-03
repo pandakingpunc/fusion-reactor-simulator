@@ -40,7 +40,9 @@ The modules are pure TypeScript (no DOM, no Node API) except `node/`, which hold
   `n (d + 2)` shots; use a power of two for `n` with the Sobol' sampler. The A and B blocks double as the propagation sample.
 
 The metrics of a disrupted shot are taken over the frames up to the disruption onset: after it the plasma current collapses and
-n/n_G (which divides by the instantaneous I_p) blows up. A shot that fails with an error is a failed shot, counted and excluded.
+n/n_G (which divides by the instantaneous I_p) blows up. A shot that fails with an error is a failed shot, counted and excluded;
+so is a shot whose sampled or scanned values put the configuration outside the domain of the model (the schema of
+`src/physics/config`, e.g. a fuel fraction above 1 drawn from an untruncated normal prior), with the schema's message.
 The intervals of probabilities (Wilson) and of the bootstrap treat the runs as independent draws; for Sobol' and Latin hypercube
 designs they are conservative.
 

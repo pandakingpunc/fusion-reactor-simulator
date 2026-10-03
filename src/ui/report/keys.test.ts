@@ -86,6 +86,7 @@ describe('report key table', () => {
     expect(describeReportValue('partially detached', 'en')).toBe('partially detached');
     expect(describeReportValue('partially detached', 'tr')).toBe('kısmen ayrılmış');
     expect(describeReportValue('n/a (net<0)', 'tr')).toBe('yok (net < 0)');
+    expect(describeReportValue('n/a (no electricity sold)', 'tr')).toBe('yok (elektrik satılmıyor)');
     expect(describeReportValue('hohlraum 15%', 'tr')).toBe('hohlraum %15');
     expect(describeReportValue('direct 80%', 'tr')).toBe('doğrudan %80');
     expect(describeReportValue('≥ 3.20 (> 100 % in 40 % of the flat top)', 'tr')).toBe('≥ 3.20 (düz tepenin %40’sinde > %100)');

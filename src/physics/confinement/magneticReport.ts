@@ -21,6 +21,16 @@ export const LAWSON_DT = 3e21;
  */
 export const BLANKET_NEUTRON_MULT = 1.18;
 
+/**
+ * The LCOE row of the report: the value, or the reason there is none — a negative net electric power, no electricity sold (zero
+ * net power or availability), or 'n/a' for anything else.
+ */
+function lcoeEntry(eco: { LCOE_USD_MWh: number; P_net_MW: number }, availability: number): number | string {
+  if (isFinite(eco.LCOE_USD_MWh)) return +eco.LCOE_USD_MWh.toFixed(0);
+  if (eco.P_net_MW < 0) return 'n/a (net<0)';
+  return eco.P_net_MW === 0 || availability === 0 ? 'n/a (no electricity sold)' : 'n/a';
+}
+
 export interface MagneticReportContext {
   cfg: MagneticConfig;
   method: Method;
@@ -130,7 +140,7 @@ export function buildMagneticReport(ctx: MagneticReportContext, hist: HistoryFra
       'TBR': +tbr.toFixed(3), 'Tritium burn fraction': +(last.d.burnFrac ?? 0).toFixed(3),
       'Avg. P_fusion (MW)': +Pfus_avg.toFixed(1), 'P_thermal (MW)': +eco.P_th_MW.toFixed(0), 'Gross P_electric (MW)': +eco.P_gross_MW.toFixed(0),
       'P_recirculating (MW)': +eco.P_recirc_MW.toFixed(0), 'Net P_electric (MW)': +eco.P_net_MW.toFixed(0),
-      'Capital cost (M$)': +eco.Ccap_MUSD.toFixed(0), 'LCOE ($/MWh)': isFinite(eco.LCOE_USD_MWh) ? +eco.LCOE_USD_MWh.toFixed(0) : 'n/a (net<0)', 'EROI': +eco.EROI.toFixed(1),
+      'Capital cost (M$)': +eco.Ccap_MUSD.toFixed(0), 'LCOE ($/MWh)': lcoeEntry(eco, c.economics.availability), 'EROI': +eco.EROI.toFixed(1),
       ...systemsReportKeys(sys),
       ...(ctx.extraEngineering ?? {}),
     },

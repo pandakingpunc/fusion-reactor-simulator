@@ -3,7 +3,8 @@
  * engineering.ts, which re-exports it).
  *
  * Capital cost after Sheffield & Milora (2016) type volume scaling: C_cap = 3.5 G$ (V_core / 1000 m^3)^0.6 f_magnet + a fixed
- * 1.5 G$ (balance of plant, buildings). LCOE = (CRF C_cap + O&M) / (P_net availability 8760 h), CRF = r (1+r)^N / ((1+r)^N - 1).
+ * 1.5 G$ (balance of plant, buildings). LCOE = (CRF C_cap + O&M) / (P_net availability 8760 h), CRF = r (1+r)^N / ((1+r)^N - 1)
+ * (its limit 1/N at r = 0).
  * APPROXIMATION: mature-technology series production, not first-of-a-kind costs. The PROCESS-style account structure is in
  * `costs.ts`.
  */
@@ -28,7 +29,7 @@ export function economics(p: {
   const P_net = P_gross - P_recirc;
   const Q_eng = P_recirc > 0 ? P_gross / P_recirc : Infinity;
   const r = p.discountRate, N = p.lifetime_yr;
-  const CRF = (r * Math.pow(1 + r, N)) / (Math.pow(1 + r, N) - 1);
+  const CRF = r === 0 ? 1 / N : (r * Math.pow(1 + r, N)) / (Math.pow(1 + r, N) - 1); // r = 0 (allowed) is 0/0 in the closed form
   const OM = 0.04 * Ccap; // annual O&M about 4 % (tritium and replacement parts not included)
   const E_yr_MWh = Math.max(P_net, 0) * p.availability * 8760;
   const LCOE = E_yr_MWh > 0 ? ((CRF * Ccap + OM) * 1e6) / (E_yr_MWh * 1e3) * 1e3 : Infinity; // $/MWh

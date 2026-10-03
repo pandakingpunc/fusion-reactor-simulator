@@ -169,6 +169,7 @@ const VALUES_TR: Record<string, string> = {
   detached: 'ayrılmış',
   'n/a': 'yok',
   'n/a (net<0)': 'yok (net < 0)',
+  'n/a (no electricity sold)': 'yok (elektrik satılmıyor)',
   'n/a (> 100 %)': 'yok (> % 100)',
   '1.5D profiles + Grad–Shafranov': '1.5D profiller + Grad–Shafranov',
   'profiles, anomalous': 'profiller, anomal',

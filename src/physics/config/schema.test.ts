@@ -8,6 +8,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { PRESETS } from '../presets';
+import { SCENARIO_CONTROLS } from '../scenario';
 import { closest } from './dsl';
 import { GOLDEN_CASES, caseConfig } from '../../regression/golden';
 import { stepsFor } from '../../ui/wizard/schema';
@@ -556,6 +557,13 @@ describe('field descriptions', () => {
   it('the method list matches METHOD_LABELS and every method has a family', () => {
     expect([...METHODS]).toEqual(Object.keys(METHOD_LABELS));
     for (const mm of METHODS) expect(METHOD_FAMILY[mm as Method]).toBeDefined();
+  });
+  it('the density target names the average each model holds: the volume average in 0D, the line average in 1.5D (control/fueling.ts)', () => {
+    // the field of the configuration (also the JSON Schema and docs/config-reference.md) and the scenario control that drives it
+    for (const text of [fieldInfo('tokamak', 'n_target')!.doc!, SCENARIO_CONTROLS.n_target_1e20.label]) {
+      expect(text, text).toMatch(/volume average[^,;]*0D|0D[^,;]*volume average/);
+      expect(text, text).toMatch(/line average[^,;]*1\.5D|1\.5D[^,;]*line average/);
+    }
   });
 });
 

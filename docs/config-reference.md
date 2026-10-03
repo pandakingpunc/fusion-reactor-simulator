@@ -91,7 +91,7 @@ Rules the JSON Schema cannot express (the runtime validator enforces them):
 | `Ip_MA` | number, required | MA | — | [0, 200] | Plasma current (0 for a stellarator: bootstrap current neglected). |
 | `fuel` | string, required | — | — | `"DT"`, `"DD"`, `"DHe3"`, `"pB11"` | Fuel cycle: D-T, D-D, D-3He or p-11B. |
 | `fuelFracA` | number, required | — | — | [0, 1] | Fraction of the first species (D-T: n_D / (n_D + n_T)). |
-| `n_target` | number, required | m^-3 | — | (0, 1e23] | Target volume-averaged electron density. |
+| `n_target` | number, required | m^-3 | — | (0, 1e23] | Target electron density: the volume average in the 0D model, the line average in the 1.5D model. |
 | `n_rampTime` | number, required | s | — | [0, 100000] | Density ramp time. |
 | `heating` | object, required | — | — | — | Auxiliary heating. |
 | `fueling` | object, required | — | — | — | Fuelling. |
@@ -597,7 +597,7 @@ Other keys are accepted if the model of the run exposes them (rule `known-keys`)
 | `P_ICRH_MW` | ICRH power | MW | ≥ 0 |
 | `P_ECRH_MW` | ECRH power | MW | ≥ 0 |
 | `P_aux_MW` | auxiliary power | MW | ≥ 0 |
-| `n_target_1e20` | density target (volume average) | 1e20 m⁻³ | ≥ 0 |
+| `n_target_1e20` | density target (volume average in 0D, line average in 1.5D) | 1e20 m⁻³ | ≥ 0 |
 | `H98` | confinement multiplier H98 | — | ≥ 0 |
 | `H_ISS04` | confinement multiplier H_ISS04 | — | ≥ 0 |
 | `cZ` | impurity concentration | — | ≥ 0 |

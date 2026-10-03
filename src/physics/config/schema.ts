@@ -234,7 +234,7 @@ const magneticShape: Shape<MagneticConfig> = {
   Ip_MA: num({ min: 0, max: 200, unit: 'MA', doc: 'Plasma current (0 for a stellarator: bootstrap current neglected).' }),
   fuel: fuel(),
   fuelFracA: fraction('Fraction of the first species (D-T: n_D / (n_D + n_T)).'),
-  n_target: num({ exMin: 0, max: 1e23, unit: 'm^-3', doc: 'Target volume-averaged electron density.' }),
+  n_target: num({ exMin: 0, max: 1e23, unit: 'm^-3', doc: 'Target electron density: the volume average in the 0D model, the line average in the 1.5D model.' }),
   n_rampTime: num({ min: 0, max: 1e5, unit: 's', doc: 'Density ramp time.' }),
   heating: object<Heating>({
     P_NBI_MW: num({ min: 0, max: 5000, unit: 'MW', doc: 'Neutral-beam power.' }),

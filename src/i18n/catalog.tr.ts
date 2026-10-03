@@ -156,7 +156,7 @@ export const catalogTr: Readonly<Record<string, string>> = {
   'ICRH power': 'ICRH gücü',
   'ECRH power': 'ECRH gücü',
   'auxiliary power': 'yardımcı güç',
-  'density target (volume average)': 'yoğunluk hedefi (hacim ortalaması)',
+  'density target (volume average in 0D, line average in 1.5D)': 'yoğunluk hedefi (0D\'de hacim ortalaması, 1.5D\'de çizgi ortalaması)',
   'confinement multiplier H98': 'hapsetme çarpanı H98',
   'confinement multiplier H_ISS04': 'hapsetme çarpanı H_ISS04',
   'impurity concentration': 'safsızlık derişimi',

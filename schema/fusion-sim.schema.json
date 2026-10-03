@@ -708,7 +708,7 @@
           "type": "number",
           "exclusiveMinimum": 0,
           "maximum": 1e+23,
-          "description": "Target volume-averaged electron density. Unit: m^-3.",
+          "description": "Target electron density: the volume average in the 0D model, the line average in the 1.5D model. Unit: m^-3.",
           "x-unit": "m^-3"
         },
         "n_rampTime": {

@@ -60,7 +60,7 @@
         },
         "n_target_1e20": {
           "$ref": "#/$defs/waveform_range_0_any",
-          "title": "density target (volume average)",
+          "title": "density target (volume average in 0D, line average in 1.5D)",
           "x-unit": "1e20 m⁻³"
         },
         "H98": {

@@ -177,7 +177,7 @@ export const SCENARIO_CONTROLS: Readonly<Record<string, ControlInfo>> = {
   P_ICRH_MW: { label: 'ICRH power', unit: 'MW', min: 0 },
   P_ECRH_MW: { label: 'ECRH power', unit: 'MW', min: 0 },
   P_aux_MW: { label: 'auxiliary power', unit: 'MW', min: 0 },
-  n_target_1e20: { label: 'density target (volume average)', unit: '1e20 m⁻³', min: 0 },
+  n_target_1e20: { label: 'density target (volume average in 0D, line average in 1.5D)', unit: '1e20 m⁻³', min: 0 },
   H98: { label: 'confinement multiplier H98', unit: '', min: 0 },
   H_ISS04: { label: 'confinement multiplier H_ISS04', unit: '', min: 0 },
   cZ: { label: 'impurity concentration', unit: '', min: 0 },

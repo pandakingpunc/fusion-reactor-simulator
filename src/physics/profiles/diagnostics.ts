@@ -291,12 +291,36 @@ export function stateDiagnostics(ctx: ProfileContext, st: ProfileState, K: StepC
   writeDiagnostics(ctx, st, { ...P, W, dWdt: 0, W_alpha: ctx.WfAlpha, W_beam: ctx.WfBeam, tauE, tauScal, P_loss, nbar, P_bound: boundaryPower(ctx, st), H });
 }
 
-/** Diagnostics during the quench phases of a disruption: only the quantities the quench changes */
+/**
+ * Diagnostics during the quench phases of a disruption: only the quantities the quench changes, patched on top of
+ * the last normal step. The temperatures, the density and I_p are those of the decaying state, β and P_cond follow
+ * its W (τ_E of the last normal step), and the profile snapshot gets its kinetic profiles; the current, transport
+ * and source profiles stay those of the last normal step (the equations are not solved in the quench).
+ */
 export function quenchDiagnostics(ctx: ProfileContext, st: ProfileState): void {
+  const g = ctx.tg, w = ctx.w;
   const W = ctx.storedEnergy(st);
+  const Ip = st.s.Ip, Ip_MA = Ip / 1e6;
+  const nbar = ctx.lineAvg(st.ne);
+  // β as in writeDiagnostics: the fast ions are lost at the onset, so the total β is the thermal one
+  const pAvg = W / (1.5 * g.volume);
+  const betaT = (2 * MU0 * pAvg) / (g.B0 * g.B0);
+  const betaN = (betaT * 100 * g.a * g.B0) / Math.max(Ip_MA, 0.01);
+  const Bpa = (MU0 * Ip) / g.perimeter;
   Object.assign(ctx.lastDiag, {
-    W: W / 1e6, Te: ctx.volAvg(st.Te), Ti: ctx.volAvg(st.Ti), Te0: st.Te[0], Ti0: st.Ti[0], Ip: st.s.Ip / 1e6,
+    W: W / 1e6, Te: ctx.volAvg(st.Te), Ti: ctx.volAvg(st.Ti), Te0: st.Te[0], Ti0: st.Ti[0], Ip: Ip_MA,
+    ne: ctx.volAvg(st.ne) / 1e20, nbar: nbar / 1e20, ne0: st.ne[0] / 1e20, nG_frac: nbar / greenwaldDensity(Math.max(Ip_MA, 0.01), g.a),
+    betaN, betaN_th: betaN, betaT: betaT * 100, betaP: (2 * MU0 * pAvg) / (Bpa * Bpa), P_cond: W / ctx.lastDiag.tauE / 1e6,
     P_fus: 0, P_alpha: 0, P_beam_heat: 0, P_aux: 0, P_heat: 0, Q: 0, P_bt: 0, P_neutron: 0, P_charged: 0, Wf: 0, W_alpha: 0, W_beam: 0,
   });
+  // the kinetic profiles of the state, in a copy: the frames hold the earlier snapshots by reference. The pressure is that of
+  // storedEnergy (no temperature floor: T → 5 eV here), so that 3/2 ∫p dV is the W of the frame
+  ctx.lastProf = {
+    ...ctx.lastProf,
+    Te: Array.from(st.Te), Ti: Array.from(st.Ti), ne: Array.from(st.ne, (x) => x * 1e-20),
+    p: Array.from(st.ne, (n, i) => (n * st.Te[i] + w.ni[i] * st.Ti[i]) * KEV * 1e-3),
+    ...(ctx.fast ? { pfast: Array.from(ctx.fast.pFast, (x) => x * 1e-3) } : {}),
+  };
+  ctx.impurity?.profiles(st, ctx.lastProf);
 }
 

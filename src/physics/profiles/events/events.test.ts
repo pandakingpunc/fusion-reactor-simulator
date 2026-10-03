@@ -436,4 +436,44 @@ describe('disruptions', () => {
     expect(term.reason).toBe('Density-limit disruption (Greenwald)');
     expect(term.disruption?.tau_CQ_ms).toBeGreaterThan(0);
   });
+
+  it('quench frames describe the decaying state: density, β and P_cond follow it, and so do the kinetic profiles of the snapshot', () => {
+    const { ctx, y, st, d0 } = shot();
+    const dis = new DisruptionEvents();
+    after(dis, ctx, 1, st, { ...safe(d0), nG_frac: 1.2 });
+    const g = ctx.tg, tauE = ctx.lastDiag.tauE, betaN0 = ctx.lastDiag.betaN, ne00 = ctx.lastDiag.ne0;
+    // the snapshot of the last normal step: the frames hold it by reference, so the quench must not mutate it
+    const onset = ctx.lastProf, onsetTe = [...onset.Te], onsetNe = [...onset.ne];
+    const rel = (a: number, b: number) => Math.abs(a - b) / Math.abs(b);
+    let t = 1, steps = 0;
+    // through the thermal quench and half of the current quench (I_p, and with it n_G and β_N, decays there)
+    while ((ctx.phase !== 'current_quench' || st.s.Ip > 0.5 * ctx.disruption.Ip) && steps++ < 1000) {
+      dis.quenchProgress(ctx, t, st, ctx.lastDiag, []);
+      t = dis.quenchStep(ctx, t, y, t + 1);
+      const d = ctx.lastDiag, prof = ctx.lastProf, Ip_MA = st.s.Ip / 1e6, at = `t = ${t}`;
+      expect(rel(d.ne0, st.ne[0] / 1e20), at).toBeLessThan(1e-12);
+      expect(rel(d.ne, volumeIntegral(g, st.ne) / g.volume / 1e20), at).toBeLessThan(1e-12);
+      expect(rel(d.nbar, ctx.lineAvg(st.ne) / 1e20), at).toBeLessThan(1e-12);
+      expect(rel(d.nG_frac, ctx.lineAvg(st.ne) / ((Ip_MA / (Math.PI * g.a * g.a)) * 1e20)), at).toBeLessThan(1e-12);
+      // β from the reported W, thermal only (the fast ions are lost at the onset); P_cond = W/τ_E with the τ_E of the onset
+      const pAvg = (2 / 3) * (d.W * 1e6) / g.volume, mu0 = 4e-7 * Math.PI;
+      expect(rel(d.betaN, ((2 * mu0 * pAvg) / g.B0 ** 2) * 100 * g.a * g.B0 / Ip_MA), at).toBeLessThan(1e-9);
+      expect(d.betaN_th, at).toBe(d.betaN);
+      expect(rel(d.betaP, (2 * mu0 * pAvg) / ((mu0 * st.s.Ip) / g.perimeter) ** 2), at).toBeLessThan(1e-9);
+      expect(rel(d.P_cond, d.W / tauE), at).toBeLessThan(1e-12);
+      // the profile snapshot: the kinetic profiles of the state, a pressure that integrates to W; the rest is the last normal step's
+      expect(prof, at).not.toBe(onset);
+      expect(prof.Te, at).toEqual(Array.from(st.Te));
+      expect(prof.Ti, at).toEqual(Array.from(st.Ti));
+      expect(prof.ne, at).toEqual(Array.from(st.ne, (x) => x * 1e-20));
+      expect(rel(1.5 * volumeIntegral(g, prof.p) * 1e3, d.W * 1e6), at).toBeLessThan(1e-12);
+      expect(prof.q, at).toBe(onset.q);
+    }
+    expect(ctx.phase).toBe('current_quench');
+    expect(ctx.lastDiag.ne0).toBeLessThan(0.9 * ne00);
+    expect(ctx.lastDiag.betaN).toBeLessThan(0.01 * betaN0);
+    expect(ctx.lastProf.Te[0]).toBeLessThan(0.01);
+    expect(onset.Te).toEqual(onsetTe);
+    expect(onset.ne).toEqual(onsetNe);
+  });
 });

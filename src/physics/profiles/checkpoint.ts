@@ -113,11 +113,11 @@ export class CheckpointStore {
  * flag) is reset.
  *
  * The last diagnostics and profiles are part of it because the quench phases of a disruption
- * patch them in place on top of the values of the last normal step (quenchDiagnostics): they
+ * patch them on top of the values of the last normal step (quenchDiagnostics): they
  * cannot be rebuilt from y there, and a frame or report after a replay from a quench frame would
  * otherwise lack most keys. The diagnostics are a copy (that patching mutates them), the profiles
- * are kept by reference (a step replaces them, never mutates them) and only in the quench phases,
- * where nothing else refreshes them; in the normal phase the next step rewrites both.
+ * are kept by reference (a step or a quench patch replaces them, never mutates them) and only in the quench phases,
+ * where nothing rewrites them whole; in the normal phase the next step rewrites both.
  */
 export function contextCheckpoint(ctx: ProfileContext): Checkpointable {
   return {

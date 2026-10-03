@@ -497,7 +497,7 @@
           "type": "number",
           "exclusiveMinimum": 0,
           "maximum": 1,
-          "description": "ECRH deposition width. Unit: rho_tor.",
+          "description": "ECRH deposition width: the 1/e half-width of the Gaussian layer, exp(-((rho - ecrhRho)/ecrhWidth)^2); its rms width is ecrhWidth/sqrt(2). Unit: rho_tor.",
           "x-unit": "rho_tor",
           "default": 0.08
         },
@@ -598,7 +598,7 @@
               "type": "number",
               "exclusiveMinimum": 0,
               "maximum": 1,
-              "description": "Width of the deposition layer (default ecrhWidth). Unit: rho_tor.",
+              "description": "Width of the deposition layer: the 1/e half-width of the Gaussian layer, exp(-((rho - aim)/width)^2); its rms width is width/sqrt(2) (default ecrhWidth, the same convention). Unit: rho_tor.",
               "x-unit": "rho_tor"
             }
           },

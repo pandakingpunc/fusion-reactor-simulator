@@ -3,7 +3,7 @@
  * given frequency, and the figure of merit ζ = 32.7 n_20 R I/(T_keV P) of the current it drives.
  */
 import { describe, expect, it } from 'vitest';
-import { validateConfig } from '../../config/schema';
+import { fieldInfo, validateConfig } from '../../config/schema';
 import { DIIID } from '../../presets';
 import type { MagneticConfig } from '../../types';
 import { ProfileModel } from '../model';
@@ -74,6 +74,22 @@ describe('the ECCD source', () => {
     const withEff = evaluated(diiid({ eccd: { rho: 0.5 }, eccdEff: 0.4 }));
     const without = evaluated(diiid({ eccd: { rho: 0.5 }, eccdEff: 0 }));
     expect(Array.from(withEff.m.ctx.w.jcdB)).toEqual(Array.from(without.m.ctx.w.jcdB));
+  });
+
+  it('the width of the launcher is the 1/e half-width of the layer, exp(-((ρ - aim)/width)²): the rms of the layer over ρ is width/√2, as its description says', () => {
+    for (const path of ['profiles.eccd.width', 'profiles.ecrhWidth']) {
+      const doc = fieldInfo('tokamak', path)!.doc!;
+      expect(doc, path).toMatch(/1\/e half-width/);
+      expect(doc, path).toMatch(/rms[^.]*width\/sqrt\(2\)/i);
+    }
+    for (const width of [0.05, 0.08]) {
+      const { m, g } = evaluated(diiid({ nRho: 200, eccd: { rho: 0.5, width } }));
+      const P = m.ctx.w.PecE;
+      let s0 = 0, s1 = 0, s2 = 0;
+      for (let i = 0; i < m.ctx.N; i++) { const p = P[i] * g.dRhoC[i]; s0 += p; s1 += p * g.rhoC[i]; s2 += p * g.rhoC[i] ** 2; }
+      const rms = Math.sqrt(s2 / s0 - (s1 / s0) ** 2);
+      expect(rel(rms, width / Math.SQRT2), `width ${width}: rms ${rms}`).toBeLessThan(0.02);
+    }
   });
 
   it('drives current along the plasma current for n∥ > 0 and against it for n∥ < 0, in w.jcdB and the diagnostics part, the ohmic-free part of f_cd', () => {

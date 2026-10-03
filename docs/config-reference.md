@@ -337,7 +337,7 @@ Economics.
 | Field | Type | Unit | Default | Allowed values / range | Description |
 |---|---|---|---|---|---|
 | `profiles.ecrhRho` | number | rho_tor | `0.3` | [0, 1] | ECRH deposition centre. |
-| `profiles.ecrhWidth` | number | rho_tor | `0.08` | (0, 1] | ECRH deposition width. |
+| `profiles.ecrhWidth` | number | rho_tor | `0.08` | (0, 1] | ECRH deposition width: the 1/e half-width of the Gaussian layer, exp(-((rho - ecrhRho)/ecrhWidth)^2); its rms width is ecrhWidth/sqrt(2). |
 | `profiles.icrhWidth` | number | rho_tor | `0.3` | (0, 1] | ICRH deposition width. |
 | `profiles.nbiRtan` | number | — | `0.9` | (0, 2] | NBI tangency radius over the major radius. |
 
@@ -394,7 +394,7 @@ ECCD launcher of cdModel 'physics': harmonic, frequency, parallel index, poloida
 | `profiles.eccd.nPar` | number | — | `0.3` | [-0.99, 0.99] | Parallel refractive index; positive drives current along the plasma current, negative against it (default 0.3). |
 | `profiles.eccd.thetaP_deg` | number | deg | `0` | [-180, 180] | Poloidal angle of the absorption on the flux surface: 0 outboard midplane, 180 inboard. |
 | `profiles.eccd.rho` | number | rho_tor | — | [0, 1) | Aim: normalised radius of the deposition layer (default ecrhRho). |
-| `profiles.eccd.width` | number | rho_tor | — | (0, 1] | Width of the deposition layer (default ecrhWidth). |
+| `profiles.eccd.width` | number | rho_tor | — | (0, 1] | Width of the deposition layer: the 1/e half-width of the Gaussian layer, exp(-((rho - aim)/width)^2); its rms width is width/sqrt(2) (default ecrhWidth, the same convention). |
 
 #### `systems`
 

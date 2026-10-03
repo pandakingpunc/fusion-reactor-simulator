@@ -54,7 +54,10 @@ export interface EccdLauncher {
   thetaP_deg?: number;
   /** aim: normalised radius of the deposition layer (default ProfileSettings.ecrhRho) */
   rho?: number;
-  /** rms width of the layer over the radius (default ProfileSettings.ecrhWidth) */
+  /**
+   * 1/e half-width of the Gaussian layer over the radius, exp(-((ρ - rho)/width)²): the rms width of the layer is width/√2
+   * (default ProfileSettings.ecrhWidth, the same convention)
+   */
   width?: number;
 }
 

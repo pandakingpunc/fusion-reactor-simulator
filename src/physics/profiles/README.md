@@ -622,8 +622,9 @@ pitch: the presets' tangency radius is one value for all machines). *ECCD* (`ecc
 Plasmas 10 (2003) 4064 (equations 10-43 and appendix A: relativistic Fisch high-velocity collision model, response function F(u) H(λ) with the trapped-particle
 function of the circular model equilibrium, integral over the resonance curve), ⟨j∥⟩ = 2π ζ* T_e Q/(32.74 n_20), for the launcher `ProfileSettings.eccd`
 (harmonic, n∥ with the sign of the driven current, θ_p of the absorption, aim and width of the layer, optionally the frequency, from which y = ℓ ω_c/ω follows at
-every cell; without it y is the one whose resonance curve starts at u∥ = u_e). The power is deposited in the source's own Gaussian layer (full single-pass
-absorption, no ray tracing). The curves of Fig. 1 of the paper are reproduced to about 0.02 in ζ (`cd/eccd.test.ts`). The preprint prints √(2ε(1 + ε)) under the second root
+every cell; without it y is the one whose resonance curve starts at u∥ = u_e). The power is deposited in the source's own Gaussian layer exp(−((ρ − ρ_aim)/w)²)
+(the launcher `width` w is the 1/e half-width, as `ecrhWidth` is, so the rms width of the layer is w/√2; full single-pass absorption, no ray tracing). The curves of
+Fig. 1 of the paper are reproduced to about 0.02 in ζ (`cd/eccd.test.ts`). The preprint prints √(2ε(1 + ε)) under the second root
 of A.13; the closed form of the integral has 1 − ε (checked against the average over θ_p), which is used. New diagnostics I_nbcd, I_eccd [MA] (only in this mode); f_cd is
 their sum over I_p.
 

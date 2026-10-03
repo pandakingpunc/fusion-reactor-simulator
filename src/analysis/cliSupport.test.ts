@@ -126,6 +126,17 @@ describe('text reports', () => {
     expect(text).toMatch(/Wilson 90 % interval/);
   });
 
+  it('formatEnsemble of a sensitivity result: a failed run of an AB block is reported with the indices, not under the runs', () => {
+    const plan = planEnsemble(resolveSpec({ preset: 'JET', base: JET, priors, n: 8, analysis: 'sensitivity', bootstrap: 0 }));
+    expect(plan.block(17)).toBe('AB1');
+    const outcomes: SimOutcome[] = Array.from({ length: plan.runs }, (_, r) => (r === 17 ? { ok: false as const, error: 'boom in AB1' } : { ok: true as const, metrics: metrics({ Q_flat: plan.values[r * 2] * 10 }) }));
+    const text = formatEnsemble(summarizeEnsemble(plan, outcomes));
+    expect(text).toMatch(/Runs: 16 valid of 16 \(0 failed\)/);
+    expect(text).not.toMatch(/failed run/);
+    expect(text).toMatch(/Sobol' indices \(32 runs, 1 failed; S = first order/);
+    expect(text).toMatch(/Q_flat \(flat-top Q; 7 rows\)/);
+  });
+
   it('formatScan: axes, bookkeeping and the table, truncated after maxRows', () => {
     const plan = planScan({ preset: 'JET', base: JET, axes: [{ path: 'H98', lo: 0.8, hi: 1.2, points: 6 }], mode: 'grid', seed: 1, maxRuns: 100, tEnd: 1 });
     const outcomes: SimOutcome[] = Array.from({ length: 6 }, (_, i) => (i === 2 ? { ok: false as const, error: 'x' } : { ok: true as const, metrics: metrics({ Q_flat: i }) }));

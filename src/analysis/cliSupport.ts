@@ -157,7 +157,8 @@ export function formatEnsemble(r: EnsembleResult): string {
     for (const [metric, row] of rc) L.push(`  ${metric.padEnd(14)} ${Object.entries(row).map(([k, v]) => `${k} ${v.toFixed(2)}`).join('   ')}`);
   }
   if (r.sensitivity) {
-    L.push('', `Sobol' indices (${r.sensitivity.runs} runs; S = first order, ST = total; bracket = ${level(r.design.confidence)} % bootstrap interval):`);
+    const failed = r.sensitivity.failedRuns ? `, ${r.sensitivity.failedRuns} failed` : ''; // the AB rows are not in the runs above
+    L.push('', `Sobol' indices (${r.sensitivity.runs} runs${failed}; S = first order, ST = total; bracket = ${level(r.design.confidence)} % bootstrap interval):`);
     for (const t of r.sensitivity.targets) {
       L.push(`  ${t.metric} (${t.label}; ${t.nUsed} rows)`);
       for (const i of t.indices) {

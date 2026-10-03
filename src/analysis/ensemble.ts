@@ -287,8 +287,10 @@ export function summarizeEnsemble(plan: EnsemblePlan, outcomes: readonly SimOutc
   const inSample = (row: number) => !plan.saltelli || row < 2 * spec.n; // propagation sample: all rows, or the A and B blocks
   const valid: { row: number; m: RunMetrics }[] = [];
   outcomes.forEach((o, row) => {
+    if (!inSample(row)) return; // an AB row serves the indices only (a failed one counts in sensitivity.failedRuns)
     if (!o.ok) { if (failures.length < 20) failures.push({ run: row, error: o.error.split('\n')[0] }); return; }
-    if (inSample(row)) { endReasons[o.metrics.endReason] = (endReasons[o.metrics.endReason] ?? 0) + 1; valid.push({ row, m: o.metrics }); }
+    endReasons[o.metrics.endReason] = (endReasons[o.metrics.endReason] ?? 0) + 1;
+    valid.push({ row, m: o.metrics });
   });
   const total = plan.saltelli ? 2 * spec.n : runs;
   const failed = total - valid.length;

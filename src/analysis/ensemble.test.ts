@@ -281,6 +281,16 @@ describe('sensitivity analysis of the outcomes', () => {
     expect(d.indices.find((i) => i.path === 'H98')!.ST).toBeLessThan(0.1);
     expect(d.indices[0].S1_ci).toBeUndefined(); // bootstrap 0: no intervals
   });
+
+  it('a failed run of an AB block counts for the indices only, not in the bookkeeping of the propagation sample', () => {
+    const plan = planEnsemble(spec({ n: 8, analysis: 'sensitivity', bootstrap: 0 }));
+    expect([plan.block(9), plan.block(17)]).toEqual(['B', 'AB1']);
+    const outcomes = fake(plan, ([h], row) => (row === 9 || row === 17 ? { ok: false, error: `Error: boom ${plan.block(row)}` } : ok({ Q_flat: 10 * h })));
+    const res = summarizeEnsemble(plan, outcomes);
+    expect(res.runs).toMatchObject({ total: 16, valid: 15, failed: 1 });
+    expect(res.runs.failures).toEqual([{ run: 9, error: 'Error: boom B' }]); // the failures listed are the failed ones counted
+    expect(res.sensitivity!.failedRuns).toBe(2);
+  });
 });
 
 describe('reports', () => {

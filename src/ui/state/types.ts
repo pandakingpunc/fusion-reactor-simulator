@@ -23,7 +23,7 @@ export interface SavedShot {
   prov?: RunProvenance;
   /** id of this shot's record in the browser archive (set for shots opened from it) */
   archiveId?: string;
-  /** where an opened shot came from ('archive:<id>', 'import:<fingerprint>'): opening the same source again shows the shot that is there */
+  /** where an opened shot came from ('archive:<id>', 'import:<SHA-256 of the file>', 'share:<fingerprint>'): opening the same source again shows the shot that is there */
   sourceKey?: string;
   /** for an imported shot: how re-simulating it turned out */
   verification?: VerifyStatus;

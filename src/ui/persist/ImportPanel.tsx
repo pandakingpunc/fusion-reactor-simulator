@@ -1,4 +1,5 @@
 import { DragEvent, useEffect, useRef, useState } from 'react';
+import { sha256Hex } from '../../physics/kernel/sha256';
 import { METHOD_LABELS } from '../../physics/types';
 import { useAppStore } from '../state/store';
 import { useWizText } from '../wizard/wizText';
@@ -14,7 +15,7 @@ type Phase =
   | { kind: 'idle' }
   | { kind: 'checking'; name: string; pct: number }
   | { kind: 'failed'; reason: string }
-  | { kind: 'done'; rec: ParsedRecord; v: Verified };
+  | { kind: 'done'; rec: ParsedRecord; v: Verified; key: string };
 
 export function readFileText(file: Blob): Promise<string> {
   if (typeof file.text === 'function') return file.text();
@@ -50,11 +51,14 @@ export function ImportPanel({ onDone }: { onDone(): void }) {
     setSaved(false);
     setPhase({ kind: 'checking', name: file.name, pct: 0 });
     try {
-      const rec = parseRunRecord(await readFileText(file));
+      const text = await readFileText(file);
+      const rec = parseRunRecord(text);
       const v = await verifyRecord(rec, deps.replay, {
         signal: ac.signal, onProgress: ({ t, tEnd }) => setPhase({ kind: 'checking', name: file.name, pct: Math.min(100, Math.round((100 * t) / tEnd)) }),
       });
-      setPhase({ kind: 'done', rec, v });
+      // the shot is keyed by the file itself, not by the fingerprint it claims (an edited copy keeps the genuine file's):
+      // opening the same file again shows the shot that is there, any other file is a shot of its own with its own verdict
+      setPhase({ kind: 'done', rec, v, key: `import:${sha256Hex(text)}` });
     } catch (e) {
       if (ac.signal.aborted) { setPhase({ kind: 'idle' }); return; }
       setPhase({ kind: 'failed', reason: e instanceof RunRecordError ? e.message : errorText(e) });
@@ -70,8 +74,8 @@ export function ImportPanel({ onDone }: { onDone(): void }) {
 
   const openReport = () => {
     if (phase.kind !== 'done') return;
-    const { rec, v } = phase;
-    actions.openShot(importedShot(rec, v.result, v.verify.status, `import:${rec.fingerprint ?? v.verify.fingerprint.computed}`));
+    const { rec, v, key } = phase;
+    actions.openShot(importedShot(rec, v.result, v.verify.status, key));
     onDone();
   };
 

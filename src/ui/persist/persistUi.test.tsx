@@ -79,11 +79,12 @@ async function completeTAE(h: Harness) {
   await waitFor(async () => expect((await h.archive().then((a) => a.list())).length).toBe(1));
 }
 
-/** the run file of TAE, as the report's JSON button writes it */
+/** the run file of TAE, as the report's JSON button writes it; `mutate` edits a copy, never the preset */
 function taeRunFile(mutate?: (rec: Record<string, unknown>) => void): string {
-  const sim = new Simulation(TAE);
+  const cfg = { ...TAE };
+  const sim = new Simulation(cfg);
   const report = sim.runAll();
-  const rec = buildRunRecord({ name: 'TAE file', cfg: TAE, report, events: sim.events, prov: { interventions: 0 } });
+  const rec = buildRunRecord({ name: 'TAE file', cfg, report, events: sim.events, prov: { interventions: 0 } });
   if (mutate) mutate(rec as unknown as Record<string, unknown>);
   return serializeRunRecord(rec);
 }
@@ -210,6 +211,33 @@ describe('persistence UI: import of a run file', () => {
     importFile(dialog, '{ this is not json');
     expect((await within(dialog).findByRole('alert')).textContent).toMatch(/could not be imported/);
   }, 30000);
+
+  it('opens each imported file as its own shot: an edited copy is not shown as the genuine run, nor the other way round', async () => {
+    const h = mount();
+    const importAndOpen = async (text: string, verdict: RegExp) => {
+      const dialog = await openLibrary();
+      importFile(dialog, text);
+      await within(dialog).findByText(verdict, {}, { timeout: 15000 });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Open report' }));
+      await waitFor(() => expect(h.store.getState().tab).toBe('report'));
+      const s = h.store.getState();
+      return s.shots.find((x) => x.id === s.viewId);
+    };
+    // the edited copy keeps the fingerprint the genuine file claims
+    const genuine = taeRunFile();
+    const edited = taeRunFile((rec) => { rec.name = 'TAE edited'; (rec.cfg as { seed: number }).seed = 12345; });
+    expect(await importAndOpen(edited, /Inputs changed/)).toMatchObject({ name: 'TAE edited', verification: 'tampered', cfg: { seed: 12345 } });
+    expect(await importAndOpen(genuine, /Verified reproduction/)).toMatchObject({ name: 'TAE file', verification: 'verified', cfg: { seed: TAE.seed } });
+    // a copy whose report was edited has the genuine inputs, and so does one without a fingerprint (shown with its own report)
+    const reportEdited = taeRunFile((rec) => { (rec.report as { Q_sci_max: number }).Q_sci_max = 99; });
+    expect(await importAndOpen(reportEdited, /Report differs/)).toMatchObject({ verification: 'mismatch' });
+    const unsigned = taeRunFile((rec) => { delete rec.fingerprint; (rec.report as { Q_sci_max: number }).Q_sci_max = 7; });
+    expect(await importAndOpen(unsigned, /Not signed/)).toMatchObject({ verification: 'unsigned', report: { Q_sci_max: 7 } });
+    expect(h.store.getState().shots).toHaveLength(4);
+    // the same file again shows the shot that is there
+    expect(await importAndOpen(edited, /Inputs changed/)).toMatchObject({ name: 'TAE edited', verification: 'tampered' });
+    expect(h.store.getState().shots).toHaveLength(4);
+  }, 60000);
 });
 
 describe('persistence UI: sharing', () => {

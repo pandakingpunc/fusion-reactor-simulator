@@ -10,6 +10,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import App, { preloadRunScreen } from '../../App';
 import { Simulation } from '../../physics/simulation';
 import { PRESETS, TAE } from '../../physics/presets';
+import { dropTemplate, type ScenarioSpec } from '../../physics/scenario';
 import { ReactorConfig } from '../../physics/types';
 import { makeMeta } from '../../worker/host';
 import { toUiFrame } from '../../worker/protocol';
@@ -79,12 +80,13 @@ async function completeTAE(h: Harness) {
   await waitFor(async () => expect((await h.archive().then((a) => a.list())).length).toBe(1));
 }
 
-/** the run file of TAE, as the report's JSON button writes it; `mutate` edits a copy, never the preset */
-function taeRunFile(mutate?: (rec: Record<string, unknown>) => void): string {
+/** the run file of TAE (with a scenario when given), as the report's JSON button writes it; `mutate` edits a copy, never the preset */
+function taeRunFile(mutate?: (rec: Record<string, unknown>) => void, scenario?: ScenarioSpec): string {
   const cfg = { ...TAE };
-  const sim = new Simulation(cfg);
+  const sim = new Simulation(cfg, scenario ? { scenario } : {});
   const report = sim.runAll();
-  const rec = buildRunRecord({ name: 'TAE file', cfg, report, events: sim.events, prov: { interventions: 0 } });
+  const prov = scenario ? { interventions: 0, scenario, fingerprint: sim.fingerprint(APP_VERSION) } : { interventions: 0 };
+  const rec = buildRunRecord({ name: 'TAE file', cfg, report, events: sim.events, prov });
   if (mutate) mutate(rec as unknown as Record<string, unknown>);
   return serializeRunRecord(rec);
 }
@@ -237,6 +239,23 @@ describe('persistence UI: import of a run file', () => {
     // the same file again shows the shot that is there
     expect(await importAndOpen(edited, /Inputs changed/)).toMatchObject({ name: 'TAE edited', verification: 'tampered' });
     expect(h.store.getState().shots).toHaveLength(4);
+  }, 60000);
+
+  it("loads a file's configuration into the wizard with the file's scenario, and without the one the wizard held", async () => {
+    const h = mount();
+    act(() => h.store.actions.setScenario(dropTemplate('H98', 100, 0.7)));
+    const load = async (text: string) => {
+      const dialog = await openLibrary();
+      importFile(dialog, text);
+      await within(dialog).findByText(/Verified reproduction/, {}, { timeout: 15000 });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Load configuration' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      return h.store.getState();
+    };
+    // a file without a scenario clears the old one (an ITER control the TAE model does not have)
+    expect(await load(taeRunFile())).toMatchObject({ tab: 'setup', cfg: TAE, cfgName: 'TAE file', scenario: null });
+    const scenario = dropTemplate('P_NBI_MW', 0.02, 2);
+    expect((await load(taeRunFile(undefined, scenario))).scenario).toEqual(scenario);
   }, 60000);
 });
 

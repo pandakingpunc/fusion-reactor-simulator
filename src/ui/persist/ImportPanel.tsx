@@ -1,5 +1,6 @@
 import { DragEvent, useEffect, useRef, useState } from 'react';
 import { sha256Hex } from '../../physics/kernel/sha256';
+import type { ScenarioSpec } from '../../physics/scenario';
 import { METHOD_LABELS } from '../../physics/types';
 import { useAppStore } from '../state/store';
 import { useWizText } from '../wizard/wizText';
@@ -96,6 +97,8 @@ export function ImportPanel({ onDone }: { onDone(): void }) {
     if (phase.kind !== 'done') return;
     actions.setCfg(phase.rec.cfg);
     actions.setCfgName(phase.rec.name);
+    // the scenario is part of the run (the re-run used it); a file without one clears the wizard's old one
+    actions.setScenario((phase.rec.scenario as ScenarioSpec | undefined) ?? null);
     actions.setTab('setup');
     onDone();
   };

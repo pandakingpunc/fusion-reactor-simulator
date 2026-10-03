@@ -30,7 +30,9 @@
  * of the commit that has it), and give both `--priority high` so that the OS does not preempt the worker for tens of
  * milliseconds at a time. The spinner of the tasks mode keeps one core busy while it runs. Not part of ci:local.
  */
+import { createRequire } from 'node:module';
 import * as os from 'node:os';
+import { pathToFileURL } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { defineCli, parseArgsOrExit } from '../src/cli/args';
 import { PRESETS } from '../src/physics/presets';
@@ -60,9 +62,20 @@ const preset = (id: string) => {
 };
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/**
+ * The .ts worker through tsx's tsImport, as src/cli/pool.ts does (kept here so that the two bench files still run in an older
+ * checkout): a worker thread does not inherit `--import tsx` on every Node, and native type stripping cannot resolve
+ * extensionless imports.
+ */
+function openTsWorker(url: URL): Worker {
+  const api = JSON.stringify(pathToFileURL(createRequire(import.meta.url).resolve('tsx/esm/api')).href);
+  const boot = `import { workerData } from 'node:worker_threads';import { tsImport } from ${api};await tsImport(workerData.__worker, workerData.__worker);`;
+  return new Worker(new URL(`data:text/javascript,${encodeURIComponent(boot)}`), { workerData: { __worker: url.href } });
+}
+
 /** request latency of a pause in a real worker thread */
 async function measureThread(id: string, speed: number, seconds: number) {
-  const worker = new Worker(new URL('./pause-latency.worker.ts', import.meta.url));
+  const worker = openTsWorker(new URL('./pause-latency.worker.ts', import.meta.url));
   let waiting: ((m: FromWorker) => boolean) | null = null;
   let onReply: (() => void) | null = null;
   let frames = 0, done = false, failed = '';

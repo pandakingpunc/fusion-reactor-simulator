@@ -185,6 +185,10 @@ class CommandLineTests(unittest.TestCase):
             with self.assertRaises(fs.FusionSimError) as cm:
                 fs.version()
             self.assertEqual(cm.exception.returncode, 127)
+            # validate() starts the command itself (exit code 1 is its answer, not an error): the same error, not FileNotFoundError
+            with self.assertRaises(fs.FusionSimError) as cm:
+                fs.validate({"t_end": 1})
+            self.assertEqual(cm.exception.returncode, 127)
         finally:
             if old is None:
                 os.environ.pop("FUSION_SIM_CLI", None)

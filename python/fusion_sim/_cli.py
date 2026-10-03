@@ -137,14 +137,19 @@ def _config_args(
     return args
 
 
-def _exec(args: Sequence[str], timeout: Optional[float]) -> "subprocess.CompletedProcess[str]":
-    cmd = cli_command() + list(args)
+def _start(cmd: Sequence[str], timeout: Optional[float]) -> "subprocess.CompletedProcess[str]":
+    """Runs the command whatever its exit code; a command that cannot start or does not finish is a FusionSimError."""
     try:
-        r = subprocess.run(cmd, capture_output=True, timeout=timeout, text=True, encoding="utf-8")
+        return subprocess.run(cmd, capture_output=True, timeout=timeout, text=True, encoding="utf-8")
     except subprocess.TimeoutExpired as e:
         raise FusionSimError(f"fusion-sim did not finish within {timeout} s", -1, "", cmd) from e
     except FileNotFoundError as e:
         raise FusionSimError(f"cannot start {cmd[0]}: {e}", 127, "", cmd) from e
+
+
+def _exec(args: Sequence[str], timeout: Optional[float]) -> "subprocess.CompletedProcess[str]":
+    cmd = cli_command() + list(args)
+    r = _start(cmd, timeout)
     if r.returncode != 0:
         raise _error(cmd, r.returncode, r.stderr)
     return r
@@ -300,7 +305,7 @@ def validate(config: Union[str, os.PathLike, Mapping[str, Any]]) -> List[str]:
         else:
             path = os.fspath(config)
         cmd = cli_command() + ["schema", "--check", path]
-        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
+        r = _start(cmd, None)
         if r.returncode == 0:
             return []
         if r.returncode == 1:

@@ -146,6 +146,28 @@ describe('persistence UI: the archive', () => {
     expect((await h.archive().then((a) => a.list())).length).toBe(0);
   });
 
+  it('saves a run that completes after the newest shot was removed from the comparison (the new shot does not take its id)', async () => {
+    const h = mount();
+    const names = async () => (await h.archive().then((a) => a.list())).map((r) => r.name).sort();
+    const runPreset = (id: string) => {
+      const before = h.store.getState().shots.length;
+      act(() => h.store.actions.setTab('setup'));
+      fireEvent.click(presetRunButton(id));
+      h.roundTrip();
+      h.advance(1e3); // past the end of each of these runs (a pulsed ZAP shot has no t_end)
+      expect(h.store.getState().shots).toHaveLength(before + 1);
+    };
+    await completeTAE(h);
+    runPreset('MIRROR');
+    await waitFor(async () => expect(await names()).toEqual(['TAE Norman (FRC) #1', 'Tandem mirror #2']));
+    act(() => h.store.actions.setTab('compare'));
+    const remove = await screen.findAllByTitle('Remove from list');
+    fireEvent.click(remove[remove.length - 1]);
+    runPreset('ZAP');
+    await waitFor(async () => expect(await names()).toEqual(['TAE Norman (FRC) #1', 'Tandem mirror #2', 'Zap FuZE-Q #3']));
+    expect(h.store.getState().shots.map((s) => [s.id, s.name])).toEqual([[1, 'TAE Norman (FRC) #1'], [3, 'Zap FuZE-Q #3']]);
+  });
+
   it('does not save when automatic saving is switched off', async () => {
     localStorage.setItem('fusion-sim.archive.auto', '0');
     try {

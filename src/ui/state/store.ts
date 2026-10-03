@@ -97,6 +97,10 @@ export type AppStore = Store<AppState> & { actions: AppActions };
 export function createAppStore(init: Partial<AppState> = {}): AppStore {
   const store = createStore<AppState>({ ...initialAppState(), ...init });
   const set = (patch: Partial<AppState>) => store.setState((s) => ({ ...s, ...patch }));
+  // Shot ids (and the #n of a run's name) come from a counter that never goes back: a removed shot's id or number is not given to the next
+  // one, so that the auto-save (PersistHost), which knows the shots it has saved by id, does not take a new run for one it saved before.
+  let lastId = 0;
+  const newId = (s: AppState) => (lastId = s.shots.reduce((m, x) => Math.max(m, x.id), lastId) + 1);
   const actions: AppActions = {
     setTab: (tab) => set({ tab }),
     setCfg: (cfg) => set({ cfg }),
@@ -105,8 +109,8 @@ export function createAppStore(init: Partial<AppState> = {}): AppStore {
     archiveShot(key, shot) {
       store.setState((s) => {
         if (s.archivedKey === key) return s;
-        const id = s.shots.reduce((m, x) => Math.max(m, x.id), 0) + 1;
-        return { ...s, archivedKey: key, viewId: null, shots: [...s.shots, { ...shot, id, name: `${s.cfgName} #${s.shots.length + 1}` }] };
+        const id = newId(s);
+        return { ...s, archivedKey: key, viewId: null, shots: [...s.shots, { ...shot, id, name: `${s.cfgName} #${id}` }] };
       });
     },
     removeShot: (id) => store.setState((s) => ({ ...s, shots: s.shots.filter((x) => x.id !== id), viewId: s.viewId === id ? null : s.viewId })),
@@ -115,7 +119,7 @@ export function createAppStore(init: Partial<AppState> = {}): AppStore {
       store.setState((s) => {
         const same = shot.sourceKey ? s.shots.find((x) => x.sourceKey === shot.sourceKey) : undefined;
         if (same) return { ...s, viewId: same.id, tab: 'report' };
-        const id = s.shots.reduce((m, x) => Math.max(m, x.id), 0) + 1;
+        const id = newId(s);
         return { ...s, shots: [...s.shots, { ...shot, id }], viewId: id, tab: 'report' };
       });
     },

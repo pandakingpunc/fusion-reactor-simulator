@@ -51,6 +51,19 @@ describe('app store actions', () => {
     expect(store.getState().shots.map((s) => s.id)).toEqual([1, 3, 4]);
   });
 
+  it('never gives the id or the number of a removed shot to a new one, whether the newest or an older one was removed', () => {
+    const store = createAppStore({ cfgName: 'ITER' });
+    const { actions } = store;
+    actions.archiveShot('1:0', shot());
+    actions.archiveShot('2:0', shot());
+    actions.removeShot(2); // the newest: its id would otherwise come back, and the auto-save (which knows shots by id) would skip the next run
+    actions.archiveShot('3:0', shot());
+    actions.removeShot(1); // an older one: its number would otherwise be the next name's again
+    actions.archiveShot('4:0', shot());
+    actions.openShot({ ...shot(), name: 'Opened' });
+    expect(store.getState().shots.map((s) => [s.id, s.name])).toEqual([[3, 'ITER #3'], [4, 'ITER #4'], [5, 'Opened']]);
+  });
+
   it('opens a shot that did not come from a live run: it is added once per source and shown in the Report', () => {
     const store = createAppStore({ cfgName: 'TAE' });
     const { actions } = store;

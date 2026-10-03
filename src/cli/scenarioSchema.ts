@@ -5,7 +5,8 @@
  * What a scenario file may contain is defined by validateScenario(); this schema states the same rules for editors and other
  * tools, so a JSON-aware editor can complete and check a scenario file. What a schema cannot say is listed as `x-rules` (the
  * points of a step waveform have distinct times; the names of controls and diagnostics must exist in the model the scenario is
- * attached to; a rampStep is not finer than t_end / 10^4). The runtime check of every consumer (worker, the study tools, share and
+ * attached to; a rampStep is not finer than t_end / 10^4; the waveforms have at most 20000 points together). Lengths of strings
+ * are counted in characters (code points) by both. The runtime check of every consumer (worker, the study tools, share and
  * load in the app) is validateScenario, with the model of the run as its context.
  *
  * Generated, not written by hand: `npm run schema:scenario` rewrites the file, `npm run schema:scenario -- --check` compares it.
@@ -21,6 +22,7 @@ const KEY_PATTERN = '^[A-Za-z_][A-Za-z0-9_]{0,63}$';
 const FORBIDDEN_KEYS = ['__proto__', 'constructor', 'prototype'];
 const MAX_KEYS = 64;
 const MAX_POINTS = 4096;
+const MAX_TOTAL_POINTS = 20000;
 const MAX_TRIGGERS = 128;
 const MAX_SET_KEYS = 32;
 
@@ -102,6 +104,7 @@ export function scenarioJsonSchema(): Json {
       { id: 'step-distinct-times', description: 'the points of a step waveform have distinct times (points are sorted by time by the loader)' },
       { id: 'known-keys', description: 'a waveform, a patch and a trigger name only controls and diagnostics that the model of the run exposes' },
       { id: 'ramp-grid', description: `rampStep is at least t_end / ${MAX_RAMP_GRID} of the shot it is used with` },
+      { id: 'total-points', description: `the waveforms have at most ${MAX_TOTAL_POINTS} points together (each at most ${MAX_POINTS})` },
     ],
     $defs,
   };

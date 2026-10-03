@@ -234,6 +234,8 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 }
 
 const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+/** length of a string in characters (code points), as JSON Schema's maxLength counts it: an emoji is one, not two UTF-16 code units */
+const charCount = (s: string): number => [...s].length;
 
 /**
  * Checks a scenario (any parsed JSON) and returns its normalised form: points sorted by time, default
@@ -286,7 +288,7 @@ export function validateScenario(input: unknown, ctx: ScenarioContext = {}): { o
   if (!isRecord(input)) { bad('', 'a scenario is an object {schema, waveforms, triggers}'); return { ok: false, issues }; }
   noUnknown(input, ['schema', 'name', 'waveforms', 'triggers', 'rampStep'], '');
   if (input.schema !== SCENARIO_SCHEMA) bad('schema', `must be ${SCENARIO_SCHEMA}`);
-  if (input.name !== undefined && (typeof input.name !== 'string' || input.name.length > 120)) bad('name', 'must be a string of at most 120 characters');
+  if (input.name !== undefined && (typeof input.name !== 'string' || charCount(input.name) > 120)) bad('name', 'must be a string of at most 120 characters');
   const rampStep = optNumber(input, 'rampStep', '', 0, true);
   if (rampStep !== undefined) {
     const floor = isFiniteNumber(ctx.tEnd) && ctx.tEnd > 0 ? Math.max(MIN_RAMP_STEP, ctx.tEnd / MAX_RAMP_GRID) : MIN_RAMP_STEP;
@@ -343,7 +345,7 @@ export function validateScenario(input: unknown, ctx: ScenarioContext = {}): { o
       if (!isRecord(tr)) { bad(path, 'must be an object'); return; }
       noUnknown(tr, ['id', 'diag', 'op', 'value', 'hold', 'after', 'set', 'mode', 'hysteresis', 'release'], path);
       const before = issues.length;
-      if (tr.id !== undefined && (typeof tr.id !== 'string' || tr.id.length < 1 || tr.id.length > 64 || /[\u0000-\u001f]/.test(tr.id))) bad(`${path}.id`, 'must be a string of 1 to 64 printable characters');
+      if (tr.id !== undefined && (typeof tr.id !== 'string' || charCount(tr.id) < 1 || charCount(tr.id) > 64 || /[\u0000-\u001f]/.test(tr.id))) bad(`${path}.id`, 'must be a string of 1 to 64 printable characters');
       if (typeof tr.diag !== 'string') bad(`${path}.diag`, 'must be a diagnostic key');
       else checkKey(tr.diag, `${path}.diag`, 'diagnostic');
       if (typeof tr.op !== 'string' || !OPS.includes(tr.op)) bad(`${path}.op`, `must be one of ${OPS.join(' ')}`);

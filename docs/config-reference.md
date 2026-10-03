@@ -584,6 +584,7 @@ Rules the JSON Schema cannot express (the loader enforces them):
 - `step-distinct-times`: the points of a step waveform have distinct times (points are sorted by time by the loader)
 - `known-keys`: a waveform, a patch and a trigger name only controls and diagnostics that the model of the run exposes
 - `ramp-grid`: rampStep is at least t_end / 10000 of the shot it is used with
+- `total-points`: the waveforms have at most 20000 points together (each at most 4096)
 
 ### Controls with a documented limit
 

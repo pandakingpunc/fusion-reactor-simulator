@@ -119,6 +119,10 @@
     {
       "id": "ramp-grid",
       "description": "rampStep is at least t_end / 10000 of the shot it is used with"
+    },
+    {
+      "id": "total-points",
+      "description": "the waveforms have at most 20000 points together (each at most 4096)"
     }
   ],
   "$defs": {

@@ -48,8 +48,9 @@ npx tsx scripts/gen-scenario-schema.ts --check   # exit 1 if it is out of date (
 `src/cli/scenarioSchema.test.ts` fails if the file differs from what the emitter writes, and checks that the schema and the runtime
 validator (`validateScenario`) accept and reject the same documents. Not expressible in JSON Schema, and therefore only in `x-rules`
 annotations: the points of a `step` waveform have distinct times, a waveform or trigger names only the controls and diagnostics that the
-model of the run exposes, and a `rampStep` is not finer than `t_end / 10^4`. The runtime check of every consumer is
-`validateScenario` with the model of the run as its context. The `$id` is a URN; the schema is not hosted anywhere.
+model of the run exposes, a `rampStep` is not finer than `t_end / 10^4`, and the waveforms have at most 20000 points together. Both
+count the length of a name or a trigger id in characters (code points). The runtime check of every consumer is `validateScenario` with
+the model of the run as its context. The `$id` is a URN; the schema is not hosted anywhere.
 
 ```json
 { "json.schemas": [{ "fileMatch": ["*.scenario.json"], "url": "./schema/scenario.schema.json" }] }

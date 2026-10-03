@@ -36,8 +36,10 @@ function evaluate(schema: Any, root: Any, value: unknown, at = ''): string[] {
     if (s.maximum !== undefined && value > s.maximum) out.push(`${at}: above maximum`);
   }
   if (typeof value === 'string') {
-    if (s.minLength !== undefined && value.length < s.minLength) out.push(`${at}: too short`);
-    if (s.maxLength !== undefined && value.length > s.maxLength) out.push(`${at}: too long`);
+    // JSON Schema measures a string in characters (code points), not in UTF-16 code units: an emoji is one character
+    const chars = [...value].length;
+    if (s.minLength !== undefined && chars < s.minLength) out.push(`${at}: too short`);
+    if (s.maxLength !== undefined && chars > s.maxLength) out.push(`${at}: too long`);
     if (s.pattern !== undefined && !new RegExp(s.pattern).test(value)) out.push(`${at}: does not match the pattern`);
   }
   if (Array.isArray(value)) {
@@ -176,11 +178,35 @@ describe('JSON Schema of a scenario', () => {
   });
 
   it('what a schema cannot state is annotated, not silently accepted: x-rules', () => {
-    expect((schema['x-rules'] as Any[]).map((r) => r.id)).toEqual(['step-distinct-times', 'known-keys', 'ramp-grid']);
+    const rules = schema['x-rules'] as Any[];
+    expect(rules.map((r) => r.id)).toEqual(['step-distinct-times', 'known-keys', 'ramp-grid', 'total-points']);
     // a step waveform with a repeated time is invalid for the validator, and valid for the schema (the rule is an annotation)
     const twice = { schema: 1, waveforms: { P_NBI_MW: { kind: 'step', points: [[1, 1], [1, 2]] } } };
     expect(valid(twice)).toBe(false);
     expect(passes(twice)).toBe(true);
+    // the points of all waveforms together: five waveforms of 4096 points are each within their limit, 20480 in all is not
+    const points = (n: number) => Array.from({ length: n }, (_, i) => [i, 1]);
+    const ws = (...n: number[]) => ({ schema: 1, waveforms: Object.fromEntries(n.map((k, i) => [`k${i}`, { kind: 'pwl', points: points(k) }])) });
+    expect(rules.find((r) => r.id === 'total-points')!.description).toMatch(/\b20000 points\b/);
+    expect(valid(ws(4096, 4096, 4096, 4096, 3616))).toBe(true);
+    expect(passes(ws(4096, 4096, 4096, 4096, 3616))).toBe(true);
+    expect(valid(ws(4096, 4096, 4096, 4096, 3617))).toBe(false);
+    expect(passes(ws(4096, 4096, 4096, 4096, 3617))).toBe(true);
+  });
+
+  it('a name and a trigger id are measured in characters (code points), as JSON Schema measures them, not in UTF-16 code units', () => {
+    const emoji = '\u{1F525}'; // one character, two UTF-16 code units
+    const named = (n: number) => ({ schema: 1, name: emoji.repeat(n) });
+    const withId = (n: number) => ({ schema: 1, triggers: [{ id: emoji.repeat(n), diag: 'Q', op: '>', value: 1, set: { P_NBI_MW: 0 } }] });
+    const cases: [string, unknown, boolean][] = [
+      ['name of 120 emoji', named(120), true], ['name of 121 emoji', named(121), false],
+      ['name of 119 letters and an emoji', { schema: 1, name: 'x'.repeat(119) + emoji }, true],
+      ['id of 64 emoji', withId(64), true], ['id of 65 emoji', withId(65), false], ['id of one emoji', withId(1), true],
+    ];
+    for (const [name, doc, ok] of cases) {
+      expect(valid(doc), `validator: ${name}`).toBe(ok);
+      expect(passes(doc), `schema: ${name}`).toBe(ok);
+    }
   });
 
   it('a control with a maximum only, with both limits or with none gets the matching range definition, in step with the validator', () => {

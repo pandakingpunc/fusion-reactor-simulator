@@ -44,7 +44,10 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
   const drag = useRef<{ x0: number; range: [number, number] } | null>(null);
 
   useEffect(() => { setXRange(null); }, [resetKey]);
-  useEffect(() => { setLogY(series.some((s) => s.log)); }, [series]);
+  // back to the default scale when the plotted series change, not whenever the parent builds an equal array again (the Report
+  // does on every render, which threw away the user's log/lin choice on a click of SVG ↓)
+  const seriesId = series.map((s) => `${s.key}${s.log ? ':log' : ''}`).join('|');
+  useEffect(() => { setLogY(series.some((s) => s.log)); }, [seriesId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const el = wrapRef.current; if (!el) return;

@@ -381,6 +381,19 @@ describe('cost of electricity (test_coelc)', () => {
     const c = calendarLifetimes({ blanketFpy: 5, divertorFpy: 60, centrepostFpy: 2 }, fin);
     close(c.blanket, 3.75); close(c.divertor, 60); close(c.currentDrive, 3.75); close(c.centrepost, 1.5);
   });
+  it('the capital recovery factor tends to r for a life that is infinite or overflows (1+r)^n; a centre post without a life is never replaced', () => {
+    expect(capitalRecoveryFactor(0.06, Infinity)).toBe(0.06);
+    expect(capitalRecoveryFactor(0.0435, 2e4)).toBe(0.0435); // 1.0435^20000 overflows
+    expect(capitalRecoveryFactor(0, Infinity)).toBe(0);
+    close(capitalRecoveryFactor(0.0435, 1e4), 0.0435, 1e-12);
+    const fin = costContext({ fin: { lifePlant: 40, availability: 0.75 } }).fin;
+    expect(calendarLifetimes({ blanketFpy: 5, divertorFpy: 60 }, fin).centrepost).toBe(Infinity);
+  });
+  it('with ifueltyp 2 a part that outlasts the plant is not replaced (no negative replacement charge)', () => {
+    const c2 = costOfElectricity({ ...base, lifeBlanket: 50, lifeBlanketFpy: 50, lifeDivertor: Infinity, lifeDivertorFpy: undefined }, costContext({ fin: { ...finRef, ifueltyp: 2 } }));
+    expect(c2.coefwbl).toBe(0); expect(c2.coediv).toBe(0);
+    expect(Number.isFinite(c2.coe)).toBe(true);
+  });
 });
 
 // The whole plant of the second PROCESS reference case (the inputs of the tests above)
@@ -466,6 +479,24 @@ describe('the whole estimate (costAccounts)', () => {
     const e = costAccounts(plant2, costContext({ isReactor: false, fin: { lsa: 2 } }));
     expect(e.c23).toBe(0); expect(e.coe).toBeUndefined();
     close(e.accounts['21'] - acc21(plant2.buildings!, costContext({ isReactor: false, fin: { lsa: 2 } })).c21, 0, 1e-12);
+  });
+  it('the lifetimes are optional: a part without one is never replaced and the cost of electricity stays finite', () => {
+    const { lifeBlanketFpy: _b, lifeDivertorFpy: _d, ...noLives } = plant2;
+    const sph: TFCostInput = { superconducting: false, nCoils: 12, centrepostMass_kg: 1e5, outboardLegsMass_kg: 3e5, spherical: true };
+    for (const ifueltyp of [0, 1, 2] as const) {
+      const c = ctx(2, { fin: { ifueltyp, lifePlant: 40, discountRate: 0.06, fcr0: 0.065, fcap0: 1.15, fcap0cp: 1.06, fcontng: 0.15 }, units: { ucdiv: 500000, ucblvd: 280 } });
+      for (const p of [noLives, { ...noLives, tf: sph }]) {
+        const e = costAccounts(p, c).coe!;
+        for (const [k, v] of Object.entries(e)) expect(Number.isFinite(v), `${k}, ifueltyp ${ifueltyp}, spherical ${p.tf === sph}`).toBe(true);
+        // ifueltyp 0 (no replacement cost) and 2 (the initial set lasts the plant life): nothing to replace
+        if (ifueltyp !== 1) { expect(e.coefwbl).toBe(0); expect(e.coediv).toBe(0); expect(e.coecp).toBe(0); }
+      }
+    }
+    // ifueltyp 1: the part is a recurring cost, paid off with the annuity of an infinite life (the rate r)
+    const withLife = r.coe!, noLife = costAccounts(noLives, c2).coe!;
+    const life = calendarLifetimes({ blanketFpy: 25.6, divertorFpy: 8.2 }, c2.fin);
+    close(noLife.coefwbl, withLife.coefwbl * 0.06 / capitalRecoveryFactor(0.06, life.blanket), 1e-12);
+    close(noLife.coediv, withLife.coediv * 0.06 / capitalRecoveryFactor(0.06, life.divertor), 1e-12);
   });
   it('a helium-3 fuelled plant pays for the fuel per kg and needs no detritiation', () => {
     const he3 = costAccounts({ ...plant2, fuel: { burnRate_per_s: 7.0777619721108953e20, fuelMass_amu: 2.5, tritiumFraction: 1e-4, helium3Fraction: 0.5 } }, c2);

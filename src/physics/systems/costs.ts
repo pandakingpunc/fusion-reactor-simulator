@@ -464,19 +464,22 @@ export function acc9(cdirt: number, ctx: CostCtx): { cindrt: number; ccont: numb
 // Cost of electricity
 // ---------------------------------------------------------------------------------------------------------------------------
 
-/** capital recovery factor of an interest rate r over n years (PROCESS's (1+r)^n r / ((1+r)^n - 1), extended to r = 0) */
+/**
+ * capital recovery factor of an interest rate r over n years (PROCESS's (1+r)^n r / ((1+r)^n - 1), extended to r = 0 and to a life
+ * so long that (1+r)^n overflows, n = Infinity included: there it is its limit r, the annuity of a part that is never replaced)
+ */
 export function capitalRecoveryFactor(r: number, n: number): number {
   if (!(n > 0)) return Infinity;
   if (r === 0) return 1 / n;
   const g = Math.pow(1 + r, n);
-  return (g * r) / (g - 1);
+  return isFinite(g) ? (g * r) / (g - 1) : r;
 }
 
-/** component lifetimes converted from full-power years to calendar years (`convert_fpy_to_calendar`) */
+/** component lifetimes converted from full-power years to calendar years (`convert_fpy_to_calendar`); a centre post without one is never replaced (Infinity) */
 export function calendarLifetimes(a: { blanketFpy: number; divertorFpy: number; centrepostFpy?: number }, fin: CostFinance): { blanket: number; divertor: number; centrepost: number; currentDrive: number } {
   const conv = (fpy: number) => (fpy < fin.lifePlant ? fpy * fin.availability : fpy);
   const blanket = conv(a.blanketFpy);
-  return { blanket, divertor: conv(a.divertorFpy), centrepost: a.centrepostFpy !== undefined ? conv(a.centrepostFpy) : 0, currentDrive: blanket }; // the current drive is assumed to last as long as the blanket
+  return { blanket, divertor: conv(a.divertorFpy), centrepost: conv(a.centrepostFpy ?? Infinity), currentDrive: blanket }; // the current drive is assumed to last as long as the blanket
 }
 
 export interface CoelcInput {
@@ -512,19 +515,22 @@ export function costOfElectricity(inp: CoelcInput, ctx: CostCtx): CoelcResult {
   const coecap = (1e9 * anncap) / kwhpy;
   const indirect = 1 + fin.cfind[lsa - 1];
   const crf = (life: number) => capitalRecoveryFactor(fin.discountRate, life);
+  // ifueltyp 2: the share of the plant life the initial set does not cover; a part that outlasts the plant (or has no life, Infinity)
+  // is not replaced (PROCESS caps the component lives at the plant life)
+  const uncovered = (life: number) => Math.max(1 - life / fin.lifePlant, 0);
   // first wall and blanket
   let annfwbl = (inp.fwallcst + inp.blkcst) * indirect * fin.fcap0cp * crf(inp.lifeBlanket);
-  if (fin.ifueltyp === 2) annfwbl *= 1 - (inp.lifeBlanketFpy ?? inp.lifeBlanket) / fin.lifePlant;
+  if (fin.ifueltyp === 2) annfwbl *= uncovered(inp.lifeBlanketFpy ?? inp.lifeBlanket);
   const coefwbl = (1e9 * annfwbl) / kwhpy;
   // divertor
   let anndiv = inp.divcst * indirect * fin.fcap0cp * crf(inp.lifeDivertor);
-  if (fin.ifueltyp === 2) anndiv *= 1 - (inp.lifeDivertorFpy ?? inp.lifeDivertor) / fin.lifePlant;
+  if (fin.ifueltyp === 2) anndiv *= uncovered(inp.lifeDivertorFpy ?? inp.lifeDivertor);
   const coediv = (1e9 * anndiv) / kwhpy;
   // centre post of a spherical tokamak
   let anncp = 0, coecp = 0;
   if (inp.spherical) {
     anncp = inp.cpstcst * indirect * fin.fcap0cp * crf(inp.lifeCentrepost ?? Infinity);
-    if (fin.ifueltyp === 2) anncp *= 1 - (inp.lifeCentrepostFpy ?? inp.lifeCentrepost ?? 0) / fin.lifePlant;
+    if (fin.ifueltyp === 2) anncp *= uncovered(inp.lifeCentrepostFpy ?? inp.lifeCentrepost ?? Infinity);
     coecp = (1e9 * anncp) / kwhpy;
   }
   // partial current-drive renewal
@@ -566,7 +572,7 @@ export interface CostPlant {
   heat?: HeatTransportInput;
   fuel?: FuelInput;
   /** net electric power [MW] (for the cost of electricity and the pulsed storage) and the burn fraction of the pulse cycle (default 1) */ P_net_MW?: number; burnFraction?: number;
-  /** full-power-year lifetimes [y] of the first wall and blanket, divertor and (spherical) centre post, for the cost of electricity */ lifeBlanketFpy?: number; lifeDivertorFpy?: number; lifeCentrepostFpy?: number;
+  /** full-power-year lifetimes [y] of the first wall and blanket, divertor and (spherical) centre post, for the cost of electricity; a part without one is never replaced */ lifeBlanketFpy?: number; lifeDivertorFpy?: number; lifeCentrepostFpy?: number;
   /** include the fixed allowances of the accounts 22.8, 22.9, 24.1, 24.4, 24.5 and 25 (default true) */ allowances?: boolean;
 }
 

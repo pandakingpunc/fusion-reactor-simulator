@@ -205,6 +205,20 @@ describe('other objectives and options', { timeout: 60_000 }, () => {
     expect(res.constraints.find((c) => c.id === 'Q')!.satisfied).toBe(false);
   });
 
+  it('feasible and the satisfied flags share one tolerance: a solve stopped just above it is not an optimum with violated constraints', () => {
+    // five outer iterations stop at a violation of about 5e-6: above the tolerance (1e-6), below the ten times looser `feasible` of augLag
+    const cut = solveDesign({ base: ITER, objective: 'major-radius', solver: { maxOuter: 5 }, ...FAST });
+    expect(cut.solver.violation).toBeGreaterThan(1e-6);
+    expect(cut.solver.violation).toBeLessThan(1e-5);
+    expect(cut.constraints.some((c) => !c.satisfied)).toBe(true);
+    expect(cut.feasible).toBe(false);
+    // the tolerance is the solver's feasTol: with 1e-5 the same budget gives a feasible design, and then every constraint is satisfied
+    const loose = solveDesign({ base: ITER, objective: 'major-radius', solver: { maxOuter: 5, feasTol: 1e-5 }, ...FAST });
+    expect(loose.solver.violation).toBeLessThanOrEqual(1e-5);
+    expect(loose.feasible).toBe(true);
+    for (const c of loose.constraints) expect(c.satisfied, c.id).toBe(true);
+  });
+
   it('a variable can be given its own bounds; a tight box pins the optimum on its bound', () => {
     const res = solveDesign({ base: ITER, objective: 'major-radius', bounds: { R: [5.9, 6.5] }, ...FAST });
     expect(res.variables[0]).toMatchObject({ name: 'R', lo: 5.9, hi: 6.5 });

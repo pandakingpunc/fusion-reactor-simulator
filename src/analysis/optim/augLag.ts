@@ -67,6 +67,7 @@ export interface AugLagResult {
   f: number;
   /** largest constraint violation at x: max(0, g_i, |h_j|) */
   violation: number;
+  /** violation <= 10 max(feasTol, 1e-6): ten times looser than the convergence test */
   feasible: boolean;
   converged: boolean;
   /** multiplier estimates of the inequality and equality constraints */

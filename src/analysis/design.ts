@@ -213,6 +213,7 @@ export interface DesignVariableResult {
 }
 
 export interface DesignConstraintResult extends ConstraintValue {
+  /** g <= the feasibility tolerance (solver.feasTol, default 1e-6) */
   satisfied: boolean;
   /** within 0.1 % of its limit */
   active: boolean;
@@ -230,6 +231,7 @@ export interface DesignResult {
     Q: number; Paux_MW: number; Pfus_MW: number; betaN: number; nOverNG: number; q95: number; PLoverPLH: number; tauE_s: number; T_keV: number;
     n_vol_m3: number; fHe: number; V_m3: number; B_coil_T: number; aspect: number; wallLoad_MWm2: number;
   };
+  /** every constraint satisfied (the same tolerance as `satisfied`) */
   feasible: boolean;
   solver: { method: string; starts: number; bestStart: number; converged: boolean; reason: string; evals: number; outer: number; violation: number };
 }
@@ -280,6 +282,10 @@ export function solveDesign(spec: DesignSpec): DesignResult {
     lower: names.map(() => 0), upper: names.map(() => 1),
   };
   const temps = spec.startTemperatures ?? [6, 10, 16, 25];
+  // one tolerance for the pick of the multi-start, `feasible` and each `satisfied`: the `feasible` of augLag allows ten times
+  // feasTol, and with it a design stopped short (e.g. by maxEvals) was reported as the optimum with violated constraints
+  const feasTol = spec.solver?.feasTol ?? 1e-6;
+  const ok = (r: ReturnType<typeof augmentedLagrangian>) => r.violation <= feasTol;
   let best: { r: ReturnType<typeof augmentedLagrangian>; start: number } | null = null;
   let evals = 0;
   temps.forEach((T0, s) => {
@@ -287,11 +293,11 @@ export function solveDesign(spec: DesignSpec): DesignResult {
     const cma: AugLagOptions = spec.method === 'cma-es'
       ? { minimizer: (f, x0, lower, upper, maxEvals, outer) => cmaes(f, x0, { lower, upper, maxEvals, sigma0: outer === 1 ? 0.25 : 0.05, seed: 1 + s, tolFun: 1e-14, tolX: 1e-10 }) }
       : {};
-    const r = augmentedLagrangian(problem, start, { feasTol: 1e-6, ...cma, ...spec.solver });
+    const r = augmentedLagrangian(problem, start, { ...cma, ...spec.solver, feasTol });
     evals += r.evals;
     const better = !best
-      || (r.feasible && !best.r.feasible)
-      || (r.feasible === best.r.feasible && (r.feasible ? r.f < best.r.f : r.violation < best.r.violation));
+      || (ok(r) && !ok(best.r))
+      || (ok(r) === ok(best.r) && (ok(r) ? r.f < best.r.f : r.violation < best.r.violation));
     if (better) best = { r, start: s };
   });
   const { r, start } = best!;
@@ -307,13 +313,13 @@ export function solveDesign(spec: DesignSpec): DesignResult {
       name: nm, value: v[nm], lo: bounds[i][0], hi: bounds[i][1], preset: preset[nm],
       atBound: r.x[i] <= 1e-6 ? 'lower' : r.x[i] >= 1 - 1e-6 ? 'upper' : null,
     })),
-    constraints: cv.map((c, k) => ({ ...c, satisfied: c.g <= 1e-6, active: Math.abs(c.g) <= 1e-3, multiplier: r.lambda[k] ?? 0 })),
+    constraints: cv.map((c, k) => ({ ...c, satisfied: c.g <= feasTol, active: Math.abs(c.g) <= 1e-3, multiplier: r.lambda[k] ?? 0 })),
     optimum: {
       Q: s.Q, Paux_MW: s.Paux / 1e6, Pfus_MW: s.Pfus / 1e6, betaN: s.betaN, nOverNG: s.nOverNG, q95: s.q95, PLoverPLH: s.PL / s.PLH, tauE_s: s.tauE, T_keV: s.T,
       n_vol_m3: pt.n, fHe: s.fHe, V_m3: s.V, B_coil_T: pt.magnet.B_coil,
       aspect: pt.aspect, wallLoad_MWm2: pt.wallLoad,
     },
-    feasible: r.feasible,
+    feasible: cv.every((c) => c.g <= feasTol),
     solver: { method: `augmented Lagrangian + ${spec.method === 'cma-es' ? 'CMA-ES' : 'Nelder-Mead'}`, starts: temps.length, bestStart: start, converged: r.converged, reason: r.reason, evals, outer: r.outer, violation: r.violation },
   };
 }

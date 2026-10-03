@@ -21,7 +21,7 @@
     "Grad-Shafranov equilibrium",
     "bootstrap current"
   ],
-  "version": "4.0.1",
+  "version": "4.1.0",
   "related_identifiers": [
     {
       "identifier": "https://github.com/pandakingpunc/fusion-reactor-simulator",
@@ -29,7 +29,7 @@
       "scheme": "url"
     },
     {
-      "identifier": "10.5281/zenodo.23100241",
+      "identifier": "10.5281/zenodo.23109193",
       "relation": "isNewVersionOf",
       "scheme": "doi"
     }

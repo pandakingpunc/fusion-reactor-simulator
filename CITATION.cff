@@ -15,7 +15,7 @@ authors:
     family-names: Karatum
     affiliation: Independent researcher
 license: MIT
-doi: 10.5281/zenodo.23109193
+doi: 10.5281/zenodo.22259861
 identifiers:
   - type: doi
     value: 10.5281/zenodo.22259861
@@ -29,8 +29,8 @@ identifiers:
   - type: doi
     value: 10.5281/zenodo.23109193
     description: DOI of version 4.0.1
-version: "4.0.1"
-date-released: "2026-10-02"
+version: "4.1.0"
+date-released: "2026-10-03"
 keywords:
   - nuclear fusion
   - tokamak

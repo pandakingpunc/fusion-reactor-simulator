@@ -2,7 +2,7 @@
 
 Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [SemVer](https://semver.org/) izler.
 
-## [Unreleased]
+## [4.1.0] — 2026-10-03
 
 Bug fixes from a test-and-review pass. No golden case or paper figure changes on the reference platform: the physics fixes touch only paths those runs do not take, which was checked bit for bit.
 

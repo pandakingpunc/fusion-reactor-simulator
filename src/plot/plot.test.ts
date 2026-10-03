@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Figure } from './figure';
 import { contourLines } from './contour';
-import { linearTicks, logTicks } from './ticks';
+import { formatTick, linearTicks, logTicks, sciLabel, tickLabels } from './ticks';
 import { parseMath } from './mathtext';
 import { nodeFontSet } from './fontsNode';
 import { texify } from './figures/generic';
@@ -23,6 +23,19 @@ describe('plot engine', () => {
     const lg = logTicks(1e-3, 10);
     expect(lg.major).toEqual([1e-3, 1e-2, 1e-1, 1, 10]);
     expect(lg.labels[0]).toBe('$10^{-3}$');
+  });
+
+  it('ticks: edge values and ranges get a label, not NaN or an empty axis', () => {
+    expect([sciLabel(0), sciLabel(1e6), sciLabel(-1e6), sciLabel(-2.5e-4)]).toEqual(['0', '$10^{6}$', '$-10^{6}$', '$−2.5\\times10^{-4}$']);
+    expect([formatTick(Infinity, 1), formatTick(-Infinity, 1), formatTick(NaN, 1)]).toEqual(['∞', '−∞', '']);
+    expect(tickLabels([], 1)).toEqual({ labels: [] });
+    // one value (a constant series), or no usable lower end: one tick, or none
+    expect(logTicks(5, 5)).toEqual({ major: [5], minor: [], labels: ['5'] });
+    expect(logTicks(5, Infinity)).toEqual({ major: [5], minor: [], labels: ['5'] });
+    for (const lo of [0, -1, NaN]) expect(logTicks(lo, 10)).toEqual({ major: [], minor: [], labels: [] });
+    // wide axes label every second (more than 7 decades) or third decade (more than 12)
+    expect(logTicks(1e-4, 1e4).labels).toEqual(['$10^{-4}$', '$10^{-2}$', '1', '$10^{2}$', '$10^{4}$']);
+    expect(logTicks(1e-10, 1e10).labels).toEqual(['$10^{-10}$', '$10^{-7}$', '$10^{-4}$', '$10^{-1}$', '$10^{2}$', '$10^{5}$', '$10^{8}$']);
   });
 
   it('mathtext: italic variables, roman subscripts, Greek and STIX Two Math fallbacks', () => {

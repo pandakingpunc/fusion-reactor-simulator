@@ -284,8 +284,8 @@ is what the physics gives. Every coefficient is the paper's (nothing is fitted h
   JETTO module): χ_e = α_Be χ_B + α_gBe χ_gB, χ_i = α_Bi χ_B + α_gBi χ_gB with α_Be = 8·10⁻⁵, α_Bi = 2 α_Be, α_gBe = 3.5·10⁻², α_gBi = α_gBe/2, the
   Bohm term χ_B = (T_e/eB) (a|∇p_e|/p_e) q² Λ with the non-local factor Λ = [T_e(0.8) − T_e(edge)]/T_e(edge), and the gyro-Bohm term
   χ_gB = (T_e/eB) (a|∇T_e|/T_e) ρ*. Λ is held over the step (`prepare`). The edge is the separatrix value in L-mode and **the top of the pedestal
-  (1 − `pedestalWidth`) in H-mode** (an assumption: with the separatrix as the reference Λ is 40 in an ITER H-mode and χ_B 30 m²/s; the paper's H-mode
-  treatment is not in the open text).
+  (1 − `pedestalWidth`, or 1 − the EPED1 width with `pedestalModel: 'eped1'`) in H-mode** (an assumption: with the separatrix as the reference
+  Λ is 40 in an ITER H-mode and χ_B 30 m²/s; the paper's H-mode treatment is not in the open text).
 - **`'ifspppl'`** (`transport/ifspppl/`; Kotschenreuther, Dorland, Beer and Hammett, Phys. Plasmas 2 (1995) 2381, equations (1)–(4), checked against
   the journal pages): the ion critical gradient R/L_Tcrit^(1) and the stiffness G(x) = min(x, √x) H(x) of the deuterium mode, the carbon mode, and
   χ_e from the ratio of the electron to the ion flux, in units of ρ_i² v_ti/R with C0 = 12. It replaces the constants of `'cgm'` (κ_c = 4.5, q^3/2,

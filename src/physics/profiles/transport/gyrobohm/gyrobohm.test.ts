@@ -74,8 +74,8 @@ describe('the mixed Bohm/gyro-Bohm formula', () => {
 });
 
 describe("the 'bgb' transport model", () => {
-  const setup = () => {
-    const sim = new Simulation({ ...JET_15D, t_end: 0.05, profiles: { transportModel: 'bgb' } });
+  const setup = (pedestalModel: 'fixed' | 'eped1' = 'fixed') => {
+    const sim = new Simulation({ ...JET_15D, t_end: 0.05, profiles: { transportModel: 'bgb', pedestalModel } });
     const m = sim.model as ProfileModel;
     const y = m.initialState();
     m.diagnostics(0, y);
@@ -105,6 +105,20 @@ describe("the 'bgb' transport model", () => {
     close(hmode, nonLocalFactor(interpCells(g, st.Te, 0.8), interpCells(g, st.Te, 1 - ctx.ps.pedestalWidth)));
     // the H-mode value is the smaller: the temperature at the pedestal top is above the separatrix value
     expect(hmode).toBeLessThan(lmode);
+  });
+
+  it('with the EPED1 pedestal the H-mode edge is the pedestal top of that pedestal (1 − its width), not the nominal pedestalWidth', () => {
+    const { y, ctx, tr } = setup('eped1');
+    const st = ctx.view(y);
+    const g = ctx.tg;
+    // the first diagnostics evaluated the EPED1 width: well inside the nominal one on JET
+    expect(ctx.ped).not.toBeNull();
+    expect(ctx.pedWidth).toBeLessThan(0.75 * ctx.ps.pedestalWidth);
+    ctx.hmode = true;
+    tr.prepare(ctx, 0, st);
+    const inner = interpCells(g, st.Te, 0.8);
+    close(tr.nonLocal, nonLocalFactor(inner, interpCells(g, st.Te, 1 - ctx.pedWidth)));
+    expect(Math.abs(tr.nonLocal - nonLocalFactor(inner, interpCells(g, st.Te, 1 - ctx.ps.pedestalWidth)))).toBeGreaterThan(0.1 * tr.nonLocal);
   });
 
   it('gives finite χ_e, χ_i of the order of a few m²/s in the confinement zone of a JET-size plasma, twice as large for the ions in the Bohm limit', () => {

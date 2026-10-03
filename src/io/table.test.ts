@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { cfTimeUnit, cfUnit, columnsFor, formatNumber, profilesFromSource, secondsPer, strictTimeSource, tableFromSource, utf8, utf8Decode } from './table';
-import { jet, nif, sparc15 } from './testdata/fixtures';
+import { PROFILE_INFO, type RunSource, cfTimeUnit, cfUnit, columnsFor, formatNumber, profilesFromSource, secondsPer, strictTimeSource, tableFromSource, utf8, utf8Decode } from './table';
+import { jet, nif, sparc15, sparc15Full } from './testdata/fixtures';
 
 describe('cfUnit: model units in UDUNITS spelling', () => {
   it.each([
@@ -64,13 +64,27 @@ describe('tables of a run', () => {
     expect(tab.t).toEqual(src.history.map((f) => f.t));
     expect(tab.values[0]).toEqual(src.history.map((f) => f.d.Q));
     expect(tab.values[1].every(Number.isNaN)).toBe(true);
-    expect(tab.columns[1]).toEqual({ key: 'nonexistent', label: 'nonexistent', unit: '', group: '' });
+    // a key nobody describes has no unit (not '', which would say it is dimensionless)
+    expect(tab.columns[1]).toEqual({ key: 'nonexistent', label: 'nonexistent', group: '' });
+    expect(tab.columns[1].unit).toBeUndefined();
     expect(tab.timeUnit).toBe('s');
   });
   it('columns carry the model labels, units and groups', () => {
     const { src } = jet();
     const c = columnsFor(src.history, src.diagSpecs).find((x) => x.key === 'P_fus')!;
     expect(c).toEqual({ key: 'P_fus', label: 'P_fusion', unit: 'MW', group: 'Power' });
+  });
+  it('a key the model writes without a DiagSpec takes its unit from DIAG_INFO (P_neutron is MW, not dimensionless)', () => {
+    const unit = (src: RunSource, k: string) => columnsFor(src.history, src.diagSpecs, [k])[0].unit;
+    for (const k of ['P_heat', 'P_charged', 'P_neutron']) expect(unit(jet().src, k), k).toBe('MW');
+    for (const k of ['Efus_MJ', 'Ein_MJ']) expect(unit(jet().src, k), k).toBe('MJ');
+    expect(unit(jet().src, 'f_NI')).toBe('');
+    expect(unit(sparc15().src, 'P_neutron')).toBe('MW');
+    expect(unit(sparc15().src, 'psi_res')).toBe('V s');
+    expect(unit(nif().src, 'Ein_MJ')).toBe('MJ');
+    // every diagnostic of a 0D and a 1.5D tokamak run has a known unit; ICF's triple is a placeholder (always 0) without one
+    for (const { src } of [jet(), sparc15()]) expect(columnsFor(src.history, src.diagSpecs).filter((x) => x.unit === undefined).map((x) => x.key)).toEqual([]);
+    expect(columnsFor(nif().src.history, nif().src.diagSpecs).filter((x) => x.unit === undefined).map((x) => x.key)).toEqual(['triple']);
   });
   it('a pulsed model keeps its time unit', () => {
     expect(tableFromSource(nif().src).timeUnit).toBe(nif().sim.model.timeUnit);
@@ -86,6 +100,19 @@ describe('tables of a run', () => {
     expect(p.columns[iTe]).toMatchObject({ unit: 'keV', group: 'profile' });
     expect(p.values[iTe][5]).toEqual(src.history[p.frameIndex[5]].prof!.Te);
     expect(p.columns.map((c) => c.key)).not.toContain('rho');
+  });
+  it('profiles: every profile the 1.5D model writes, the optional ones too, has a label and a unit', () => {
+    const { src } = sparc15Full();
+    const keys = new Set<string>();
+    for (const f of src.history) for (const k of Object.keys(f.prof ?? {})) keys.add(k);
+    for (const k of ['pfast', 'nHe', 'nZ', 'nSeed', 'nExtra']) expect(keys.has(k), k).toBe(true);
+    expect([...keys].filter((k) => !(k in PROFILE_INFO))).toEqual([]);
+    const p = profilesFromSource(src)!;
+    const unit = (k: string) => p.columns.find((c) => c.key === k)!.unit;
+    expect(unit('pfast')).toBe(unit('p'));
+    expect(unit('pfast')).toBe('kPa');
+    for (const k of ['nHe', 'nZ', 'nSeed', 'nExtra']) expect(unit(k), k).toBe('1e20 m⁻³');
+    expect(profilesFromSource({ ...src, history: src.history.map((f) => (f.prof ? { ...f, prof: { ...f.prof, mystery: f.prof.rho } } : f)) })!.columns.find((c) => c.key === 'mystery')!.unit).toBeUndefined();
   });
   it('profiles: every n-th frame and a key selection', () => {
     const { src } = sparc15();

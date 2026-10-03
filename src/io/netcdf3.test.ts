@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { type NcDataset, ncName, netcdfFromRun, planNetcdf3, readNetcdf3, writeNetcdf3, writeRunNetcdf } from './netcdf3';
 import { cfUnit, tableFromSource } from './table';
-import { jet, nif, sparc15 } from './testdata/fixtures';
+import { jet, nif, sparc15, sparc15Full } from './testdata/fixtures';
 
 const hex = (b: Uint8Array): string => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join(' ');
 
@@ -246,7 +246,8 @@ describe('a run as a CF dataset', () => {
       expect(v, c.key).toBeDefined();
       expect(v.dims).toEqual(['time']);
       expect(v.attrs.long_name.value).toBe(c.label);
-      expect(v.attrs.units.value).toBe(cfUnit(c.unit));
+      expect(c.unit, c.key).toBeDefined();
+      expect(v.attrs.units.value).toBe(cfUnit(c.unit!));
       expect(v.attrs.diagnostic_key.value).toBe(c.key);
       const got = v.data as Float64Array;
       for (let k = 0; k < got.length; k++) expect(Object.is(got[k], tab.values[i][k]) || (Number.isNaN(got[k]) && Number.isNaN(tab.values[i][k])), `${c.key}[${k}]`).toBe(true);
@@ -256,6 +257,33 @@ describe('a run as a CF dataset', () => {
     expect(f.vars.n_wall.attrs.units_original.value).toBe('MW/m²');
     expect(f.vars.ne.attrs.units.value).toBe('1e20 m-3');
     expect(f.vars.ne.attrs.units_original.value).toBe('1e20 m⁻³');
+    // diagnostics the model writes without a DiagSpec carry their unit, not '1'
+    for (const k of ['P_heat', 'P_charged', 'P_neutron']) expect(f.vars[k].attrs.units.value, k).toBe('MW');
+    for (const k of ['Efus_MJ', 'Ein_MJ']) expect(f.vars[k].attrs.units.value, k).toBe('MJ');
+  });
+  it('a quantity whose unit is not known has no units attribute: "1" would call it dimensionless', () => {
+    const nc = readNetcdf3(writeRunNetcdf(nif().src));
+    expect(nc.vars.triple.attrs.units).toBeUndefined();
+    expect(nc.vars.triple.attrs.long_name.value).toBe('triple');
+    expect(nc.vars.Ein_MJ.attrs.units.value).toBe('MJ');
+    const { src } = sparc15();
+    const mystery = { ...src, history: src.history.map((h) => ({ ...h, d: { ...h.d, mystery: 1 }, ...(h.prof ? { prof: { ...h.prof, mystery: h.prof.rho } } : {}) })) };
+    const f = readNetcdf3(writeRunNetcdf(mystery, { keys: ['Q', 'mystery'] }));
+    expect(f.vars.mystery.attrs).toEqual({ long_name: { type: 'char', value: 'mystery' }, diagnostic_key: { type: 'char', value: 'mystery' } });
+    expect(f.vars.profile_mystery.attrs).toEqual({ long_name: { type: 'char', value: 'mystery' }, profile_key: { type: 'char', value: 'mystery' } });
+    expect(f.vars.Q.attrs.units.value).toBe('1');
+    expect(f.vars.profile_q.attrs.units.value).toBe('1');
+    expect(f.vars.profile_ne.attrs.units_original.value).toBe('1e20 m⁻³');
+  });
+  it('1.5D run with the optional profiles: fast-ion pressure in kPa, impurity densities in 1e20 m-3', () => {
+    const f = readNetcdf3(writeRunNetcdf(sparc15Full().src));
+    expect(f.vars.profile_pfast.attrs.units.value).toBe('kPa');
+    expect(f.vars.profile_pfast.attrs.long_name.value).toBe('fast-ion pressure');
+    for (const k of ['nHe', 'nZ', 'nSeed', 'nExtra']) {
+      expect(f.vars[`profile_${k}`].attrs.units.value, k).toBe('1e20 m-3');
+      expect(f.vars[`profile_${k}`].attrs.units_original.value, k).toBe('1e20 m⁻³');
+    }
+    for (const v of Object.values(f.vars)) if (v.name.startsWith('profile_')) expect(v.attrs.units, v.name).toBeDefined();
   });
   it('1.5D run: profile variables on (profile_time, rho)', () => {
     const { src } = sparc15();

@@ -16,8 +16,8 @@ import type { DiagSpec, HistoryFrame, ReactorConfig, ShotReport, SimEvent } from
 export interface ColumnInfo {
   key: string;
   label: string;
-  /** the unit as the model states it (`keV`, `1e20 m⁻³`, `MW/m²`, '' for dimensionless) */
-  unit: string;
+  /** the unit as the model states it (`keV`, `1e20 m⁻³`, `MW/m²`, '' for dimensionless); absent when it is not known */
+  unit?: string;
   group: string;
 }
 
@@ -109,9 +109,38 @@ export const PROFILE_INFO: Readonly<Record<string, { label: string; unit: string
   Prad: { label: 'radiated power density', unit: 'MW/m³' },
   Pohm: { label: 'ohmic heating density', unit: 'MW/m³' },
   p: { label: 'thermal pressure', unit: 'kPa' },
+  pfast: { label: 'fast-ion pressure', unit: 'kPa' },
   Zeff: { label: 'effective charge', unit: '' },
   shear: { label: 'magnetic shear', unit: '' },
   alpha: { label: 'normalised pressure gradient alpha_MHD', unit: '' },
+  // profile-resolved impurities (impurity/model.ts profiles)
+  nHe: { label: 'helium ash density', unit: '1e20 m⁻³' },
+  nZ: { label: 'intrinsic impurity density', unit: '1e20 m⁻³' },
+  nSeed: { label: 'seeded impurity density', unit: '1e20 m⁻³' },
+  nExtra: { label: 'third impurity species density', unit: '1e20 m⁻³' },
+};
+
+/**
+ * Labels and units of the diagnostics that models write into the history without a DiagSpec of their own (0D magnetic,
+ * 1.5D and pulsed models). A model's DiagSpec wins; a key in neither has no known unit, and the formats leave the unit
+ * out rather than call the quantity dimensionless.
+ */
+export const DIAG_INFO: Readonly<Record<string, { label: string; unit: string }>> = {
+  Te: { label: 'T_e', unit: 'keV' },
+  P_heat: { label: 'P_heat (heating power deposited in the plasma)', unit: 'MW' },
+  P_charged: { label: 'P_fusion in charged products', unit: 'MW' },
+  P_neutron: { label: 'P_fusion in neutrons', unit: 'MW' },
+  Efus_MJ: { label: 'Fusion energy released (cumulative)', unit: 'MJ' },
+  Ein_MJ: { label: 'Energy input (cumulative)', unit: 'MJ' },
+  Nn: { label: 'Neutron count', unit: '' },
+  f_cd: { label: 'Driven-current fraction', unit: '' },
+  f_NI: { label: 'Non-inductive fraction (bootstrap + driven)', unit: '' },
+  dWdt: { label: 'dW/dt', unit: 'MW' },
+  betaT: { label: 'β_T', unit: '%' },
+  qmin: { label: 'q_min', unit: '' },
+  NTM: { label: 'NTM (0/1)', unit: '' },
+  psi_res: { label: 'Resistive flux consumption (with the ramp-up)', unit: 'V s' },
+  psi_ind: { label: 'Inductive flux (psi_used − psi_res)', unit: 'V s' },
 };
 
 /** Columns for the given keys (or every key present in the history): DiagSpec order first, then the rest sorted. */
@@ -120,8 +149,8 @@ export function columnsFor(history: readonly HistoryFrame[], diagSpecs: readonly
   for (const f of history) for (const k of Object.keys(f.d)) present.add(k);
   const spec = new Map(diagSpecs.map((s) => [s.key, s]));
   const info = (k: string): ColumnInfo => {
-    const s = spec.get(k);
-    return { key: k, label: s?.label ?? k, unit: s?.unit ?? '', group: s?.group ?? '' };
+    const s: { label: string; unit: string; group?: string } | undefined = spec.get(k) ?? DIAG_INFO[k];
+    return { key: k, label: s?.label ?? k, unit: s?.unit, group: s?.group ?? '' };
   };
   if (keys) return keys.map(info);
   const ordered = diagSpecs.map((s) => s.key).filter((k) => present.has(k));
@@ -163,7 +192,7 @@ export function profilesFromSource(src: RunSource, opts: { every?: number; keys?
   if (!idx.length) return undefined;
   const first = src.history[idx[0]].prof!;
   const keys = (opts.keys ?? Object.keys(first)).filter((key) => key !== 'rho' && key in first);
-  const info = (key: string): ColumnInfo => ({ key, label: PROFILE_INFO[key]?.label ?? key, unit: PROFILE_INFO[key]?.unit ?? '', group: 'profile' });
+  const info = (key: string): ColumnInfo => ({ key, label: PROFILE_INFO[key]?.label ?? key, unit: PROFILE_INFO[key]?.unit, group: 'profile' });
   return {
     t: idx.map((i) => src.history[i].t),
     frameIndex: idx,

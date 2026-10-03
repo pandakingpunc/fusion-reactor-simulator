@@ -7,7 +7,9 @@ code serves a download button, a worker and the command line. The library entry 
 Every writer takes a `RunSource` (`sourceFromSimulation(sim, meta)` builds one from a `Simulation`): the history,
 the events, the model's diagnostics table (`DiagSpec`: key, label, unit, group), the report, the configuration and
 optional provenance (`RunMeta`: version, commit, preset, fingerprint, configuration hash; a creation date only if
-you pass one, so the same run always gives the same bytes). A diagnostic a frame lacks is NaN there.
+you pass one, so the same run always gives the same bytes). A diagnostic a frame lacks is NaN there. A history key
+without a `DiagSpec` takes its label and unit from `DIAG_INFO` (table.ts), a radial profile from `PROFILE_INFO`; a key
+in neither has no known unit, and NetCDF writes it without `units` (NDJSON without `unit`), never as dimensionless.
 
 **The terminal frame.** A 1.5D shot that ends in a step that made no progress in time ('Numerical failure') records
 one frame at the time of the frame before it (kernel contract, `HistoryFrame`). CSV and NDJSON keep every frame, so
@@ -27,11 +29,12 @@ Dimensions `time` (one per history frame) and, for a 1.5D run, `profile_time` an
 one `double key(time)` per diagnostic (`Q`, `P_fus`, `Ti`, ...), and `time_profiles(profile_time)`, `rho(rho)`,
 `profile_<key>(profile_time, rho)` for the radial profiles (`profile_Te` and the scalar `Te` are different
 variables). Each has `long_name` and `units` in UDUNITS spelling (`keV`, `1e20 m-3`, `MW m-2`, `1` for
-dimensionless; the model's own spelling is kept in `units_original` when it differs), diagnostics also `group` and
-`diagnostic_key`. Global attributes: `Conventions = "CF-1.8"`, `title`, `source`, `comment`, `simulation_method`,
-`simulation_preset`, `simulation_version`, `simulation_fingerprint`, `simulation_seed`, `simulation_end_reason`,
-`simulation_natural_end`, and every finite number of the shot report as `report_<name>`. The time axis is model
-time (no calendar), so it carries `axis = "T"` and no reference date. NaN marks a missing value.
+dimensionless, none when the unit is not known; the model's own spelling is kept in `units_original` when it
+differs), diagnostics also `group` and `diagnostic_key`. Global attributes: `Conventions = "CF-1.8"`, `title`,
+`source`, `comment`, `simulation_method`, `simulation_preset`, `simulation_version`, `simulation_fingerprint`,
+`simulation_seed`, `simulation_end_reason`, `simulation_natural_end`, and every finite number of the shot report
+as `report_<name>`. The time axis is model time (no calendar), so it carries `axis = "T"` and no reference date.
+NaN marks a missing value.
 
 The writer emits fixed dimensions only (a run is complete when it is written) and picks CDF-2 when an offset
 would pass 2 GiB. The reader also reads record variables, so files from other tools can be read; CDF-5 and

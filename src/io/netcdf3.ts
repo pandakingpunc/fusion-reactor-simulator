@@ -14,7 +14,8 @@
  * Layout of a run (netcdfFromRun): dimension `time` (one per history frame), variable `time(time)` and one
  * `double` variable per diagnostic `key(time)`; a 1.5D run adds dimensions `profile_time` and `rho`, the
  * variables `time_profiles(profile_time)`, `rho(rho)` and `profile_<key>(profile_time, rho)`. Every variable
- * has `long_name` and `units` (UDUNITS spelling, `1` for dimensionless); the file has `Conventions = "CF-1.8"`
+ * has `long_name` and `units` (UDUNITS spelling, `1` for dimensionless; left out for a key whose unit is not known,
+ * see DIAG_INFO and PROFILE_INFO in table.ts); the file has `Conventions = "CF-1.8"`
  * and global attributes with the method, the preset, the version, the run fingerprint, the seed and the
  * numbers of the shot report (`report_*`). NaN marks a value that is not available. The time axis is model
  * time in the model's unit (no calendar), so it carries `axis = "T"` and no reference date.
@@ -358,6 +359,16 @@ const finiteReport = (o: unknown, prefix: string, out: Record<string, NcAttr>): 
   }
 };
 
+/**
+ * `units` in UDUNITS spelling and, when it differs, the model's own spelling in `units_original`. A column whose unit is
+ * not known gets neither: `1` would claim it is dimensionless.
+ */
+const unitsOf = (unit: string | undefined): { units?: string; units_original?: string } => {
+  if (unit === undefined) return {};
+  const units = cfUnit(unit);
+  return units !== (unit === '' ? '1' : unit) ? { units, units_original: unit } : { units };
+};
+
 /** The netCDF dataset of a run (see the file header for the layout). */
 export function netcdfFromRun(source: RunSource, opts: RunNetcdfOptions = {}): NcDataset {
   const { src, dropped } = strictTimeSource(source);
@@ -371,8 +382,7 @@ export function netcdfFromRun(source: RunSource, opts: RunNetcdfOptions = {}): N
   const used = new Set<string>(['time']);
   const unique = (n: string): string => { let s = ncName(n), k = 2; while (used.has(s)) s = `${ncName(n)}_${k++}`; used.add(s); return s; };
   tab.columns.forEach((c, i) => {
-    const attrs: Record<string, NcAttr> = { long_name: c.label, units: cfUnit(c.unit) };
-    if (cfUnit(c.unit) !== (c.unit === '' ? '1' : c.unit)) attrs.units_original = c.unit;
+    const attrs: Record<string, NcAttr> = { long_name: c.label, ...unitsOf(c.unit) };
     if (c.group) attrs.group = c.group;
     attrs.diagnostic_key = c.key;
     vars.push({ name: unique(c.key), dims: ['time'], type: 'double', data: tab.values[i], attrs });
@@ -385,8 +395,9 @@ export function netcdfFromRun(source: RunSource, opts: RunNetcdfOptions = {}): N
     prof.columns.forEach((c, i) => {
       const flat: number[] = [];
       for (const frame of prof.values[i]) flat.push(...frame);
-      const attrs: Record<string, NcAttr> = { long_name: c.label, units: cfUnit(c.unit), profile_key: c.key };
-      if (cfUnit(c.unit) !== (c.unit === '' ? '1' : c.unit)) attrs.units_original = c.unit;
+      const { units, units_original } = unitsOf(c.unit);
+      const attrs: Record<string, NcAttr> = { long_name: c.label, ...(units === undefined ? {} : { units }), profile_key: c.key };
+      if (units_original !== undefined) attrs.units_original = units_original;
       vars.push({ name: unique(`profile_${c.key}`), dims: ['profile_time', 'rho'], type: 'double', data: flat, attrs });
     });
   }

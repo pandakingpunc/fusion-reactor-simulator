@@ -23,5 +23,10 @@ function run(name: string, make: () => Simulation): { sim: Simulation; src: RunS
 export const jet = () => run('JET', () => new Simulation({ ...JET, t_end: 1 }));
 /** SPARC 1.5D, 1.5 s, 30 radial cells: profiles on every frame, a dozen equilibrium snapshots */
 export const sparc15 = () => run('SPARC15', () => new Simulation({ ...SPARC_15D, t_end: 1.5, profiles: { nRho: 30, eqNR: 33 } }));
+/** SPARC 1.5D, 0.05 s, 20 radial cells, with the optional profiles too: fast-ion pressure and the densities of He, W, Ne and Ar */
+export const sparc15Full = () => run('SPARC15-full', () => new Simulation({
+  ...SPARC_15D, t_end: 0.05, impurity: { ...SPARC_15D.impurity, seedSpecies: 'Ne', seedConcentration: 0.002 },
+  profiles: { nRho: 20, eqNR: 25, fastIonModel: 'profile', impurityTransport: 'anomalous', impurityExtraSpecies: 'Ar', impurityExtraConcentration: 0.001 },
+}));
 /** NIF (nanosecond time unit) */
 export const nif = () => run('NIF', () => new Simulation(NIF));

@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { CONCEPT_DOI, gitInfo, packageVersion, runtimeInfo } from '../provenance';
 import { requirePreset } from '../../physics/config/registry';
 import { ConfigValidationError, validateConfig } from '../../physics/config/schema';
-import { applyAssignments, mergeConfig } from '../../physics/config/paths';
+import { ConfigPathError, applyAssignments, mergeConfig } from '../../physics/config/paths';
 import { SimulationError } from '../../physics/kernel/errors';
 import { EquilibriumInitFailure, NumericalFailure } from '../../physics/profiles/failures';
 import { canonicalString } from '../../physics/kernel/canonical';
@@ -181,7 +181,12 @@ export function resolveConfig(args: ConfigArgs, sets: readonly string[], io: Cli
   }
   if (args.config !== undefined) {
     const file = parseJsonFile(io, args.config);
-    cfg = cfg === undefined ? file : mergeConfig(cfg, file);
+    try {
+      cfg = cfg === undefined ? file : mergeConfig(cfg, file);
+    } catch (e) {
+      if (e instanceof ConfigPathError) throw new CliInputError(`${args.config}: ${e.message}`); // a forbidden key in the patch, as through --set
+      throw e;
+    }
   }
   const shorthand: string[] = [];
   if (args['t-end'] !== undefined) shorthand.push(`t_end=${args['t-end']}`);
@@ -231,10 +236,16 @@ export function provenanceBlock(ctx: CliContext, cfg: ReactorConfig, preset: str
 
 // ── output ──────────────────────────────────────────────────────────────────────────────────────────
 
-/** Writes to a file, or to stdout when `out` is undefined or '-'. */
+/** Writes to a file, or to stdout when `out` is undefined or '-'. A file system error (missing directory, no permission) is an input error, as on the read side. */
 export function emit(io: CliIo, out: string | undefined, data: string | Uint8Array): void {
-  if (out === undefined || out === '-') io.stdout.write(data);
-  else io.writeFile(resolve(out), data);
+  if (out === undefined || out === '-') { io.stdout.write(data); return; }
+  try {
+    io.writeFile(resolve(out), data);
+  } catch (e) {
+    const code = (e as { code?: string }).code;
+    if (typeof code === 'string') throw new CliInputError(`cannot write ${out}: ${code}`);
+    throw e;
+  }
 }
 
 /** Extension of a path in lower case without the dot ('' if none). */

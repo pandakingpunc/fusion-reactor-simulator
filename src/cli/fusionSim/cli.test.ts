@@ -36,7 +36,7 @@ const VERSION = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')).
 
 interface Result { code: number; out: string; err: string; bin: Uint8Array | undefined; files: Map<string, string | Uint8Array> }
 
-async function cli(argv: string[], opts: { files?: Record<string, string>; tty?: boolean; stderrTty?: boolean; deps?: CliDeps; root?: string | undefined } = {}): Promise<Result> {
+async function cli(argv: string[], opts: { files?: Record<string, string>; tty?: boolean; stderrTty?: boolean; deps?: CliDeps; root?: string | undefined; writeFails?: string } = {}): Promise<Result> {
   let out = '', err = '';
   let bin: Uint8Array | undefined;
   const files = new Map<string, string | Uint8Array>();
@@ -47,7 +47,10 @@ async function cli(argv: string[], opts: { files?: Record<string, string>; tty?:
       if (opts.files && p in opts.files) return opts.files[p];
       throw Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' });
     },
-    writeFile: (p, d) => { files.set(p, d); },
+    writeFile: (p, d) => {
+      if (opts.writeFails) throw Object.assign(new Error(`${opts.writeFails}: ${p}`), { code: opts.writeFails });
+      files.set(p, d);
+    },
   };
   const code = await main(argv, { io, deps: { execute: inProcessExecutor, ...opts.deps }, root: 'root' in opts ? opts.root : ROOT });
   return { code, out, err, bin, files };
@@ -181,6 +184,21 @@ describe('run: configuration', () => {
     const n = await cli(['run', '--config', 'x.json'], { files: { 'x.json': '[1,' } });
     expect(n.code).toBe(2);
     expect(n.err).toMatch(/x\.json: not valid JSON/);
+  });
+  it('a forbidden key in a --config patch over a preset is an input error naming the file, as through --set', async () => {
+    for (const patch of ['{"heating":{"constructor":20}}', '{"prototype":{}}']) {
+      const r = await cli(['run', ...SHORT, '--config', 'patch.json'], { files: { 'patch.json': patch } });
+      expect(r.code).toBe(2);
+      expect(r.err).toMatch(/^fusion-sim run: error: patch\.json: '(constructor|prototype)' is not allowed as a property name/);
+      expect(r.err).not.toMatch(/internal error|\n\s+at /);
+    }
+  });
+  it('an --out that cannot be written is an input error with the errno, not an internal error', async () => {
+    for (const code of ['ENOENT', 'EISDIR', 'EACCES']) {
+      const r = await cli(['run', ...SHORT, '--out', 'no-such-dir/out.json'], { writeFails: code });
+      expect(r.code).toBe(2);
+      expect(r.err).toBe(`fusion-sim run: error: cannot write no-such-dir/out.json: ${code}\n`);
+    }
   });
   it('an invalid configuration: exit 2, every problem with its path, before anything runs', async () => {
     const r = await cli(['run', '--preset', 'ITER', '--set', 'geometry.kappa=0.5', '--set', 'heating.P_NBI_mw=3', '--set', 'B0=-1']);

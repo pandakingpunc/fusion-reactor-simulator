@@ -68,6 +68,11 @@ export function initialAppState(): AppState {
   return { tab: 'setup', cfg: ITER, cfgName: 'ITER', scenario: null, shots: [], archivedKey: null, viewId: null, locale: 'en' };
 }
 
+/** What a shot was run with, as the wizard holds it: its configuration, its name without the ` #n` of a run, and its scenario (null: none). */
+export function shotSetup(shot: SavedShot): Pick<AppState, 'cfg' | 'cfgName' | 'scenario'> {
+  return { cfg: shot.cfg, cfgName: shot.name.replace(/ #\d+$/, ''), scenario: (shot.prov?.scenario as ScenarioSpec | undefined) ?? null };
+}
+
 export interface AppActions {
   setTab(tab: Tab): void;
   setCfg(cfg: ReactorConfig): void;
@@ -123,7 +128,7 @@ export function createAppStore(init: Partial<AppState> = {}): AppStore {
         return { ...s, shots: [...s.shots, { ...shot, id }], viewId: id, tab: 'report' };
       });
     },
-    editShot: (shot) => set({ cfg: shot.cfg, cfgName: shot.name.replace(/ #\d+$/, ''), scenario: (shot.prov?.scenario as ScenarioSpec | undefined) ?? null, tab: 'setup' }),
+    editShot: (shot) => set({ ...shotSetup(shot), tab: 'setup' }),
     async setLocale(locale) {
       // the wizard's own texts come with the dictionary (a failed load leaves them in English; the wizard asks again)
       await Promise.all([loadLocale(locale), loadWizardText(locale).catch(() => undefined), loadScreenDictionaries(locale)]);

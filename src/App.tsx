@@ -4,7 +4,7 @@ import type { ScenarioSpec } from './physics/scenario';
 import { LOCALES, LOCALE_NAMES, Locale, MessageKey } from './i18n';
 import { createSimWorker, useSim } from './ui/useSim';
 import { FrameScheduler, WorkerFactory, completedShotKey } from './ui/state/sim';
-import { useApp, useAppStore, useT } from './ui/state/store';
+import { shotSetup, useApp, useAppStore, useT } from './ui/state/store';
 import { useWizText } from './ui/wizard/wizText';
 import { SavedShot, SimStatus, Tab } from './ui/state/types';
 import { Wizard } from './ui/wizard/Wizard';
@@ -111,6 +111,9 @@ export default function App({ createWorker, schedule }: Props) {
   const liveShot: SavedShot | null = state.report && state.meta && state.cfg
     ? { id: -1, name: cfgName, cfg: state.cfg, meta: state.meta, report: state.report, frames: state.frames, events: state.events, prov: state.provenance ?? { interventions: state.interventions } } : null;
   const reportShot = opened ?? liveShot ?? latest;
+  // Run again and Edit act on the shot the Report shows: the live run as it was loaded, any other shot (opened from the archive or a file,
+  // or the latest while another run is loading) with its own configuration, name and scenario
+  const shownShot = reportShot !== liveShot ? reportShot : null;
 
   const pill = useMemo(() => {
     const s = state.status;
@@ -165,8 +168,17 @@ export default function App({ createWorker, schedule }: Props) {
         {tab === 'report' && (
           <Report
             shot={reportShot}
-            onRerun={() => run(state.cfg ?? cfg, state.cfg ? state.scenario : undefined)}
-            onEdit={() => { actions.setCfg(state.cfg ?? cfg); actions.setTab('setup'); }}
+            onRerun={() => {
+              if (!shownShot) return run(state.cfg ?? cfg, state.cfg ? state.scenario : undefined);
+              const s = shotSetup(shownShot);
+              actions.setCfgName(s.cfgName);
+              run(s.cfg, s.scenario);
+            }}
+            onEdit={() => {
+              if (shownShot) return actions.editShot(shownShot);
+              actions.setCfg(state.cfg ?? cfg);
+              actions.setTab('setup');
+            }}
           />
         )}
         {tab === 'compare' && <Compare shots={shots} onRemove={actions.removeShot} onLoad={actions.editShot} />}

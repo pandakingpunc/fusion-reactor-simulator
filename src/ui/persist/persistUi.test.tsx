@@ -9,7 +9,7 @@ import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import App, { preloadRunScreen } from '../../App';
 import { Simulation } from '../../physics/simulation';
-import { PRESETS, TAE } from '../../physics/presets';
+import { ITER, PRESETS, TAE } from '../../physics/presets';
 import { dropTemplate, type ScenarioSpec } from '../../physics/scenario';
 import { ReactorConfig } from '../../physics/types';
 import { makeMeta } from '../../worker/host';
@@ -211,6 +211,28 @@ describe('persistence UI: import of a run file', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Open report' }));
     await waitFor(() => expect(h.store.getState().tab).toBe('report'));
     expect(h.store.getState().shots[0]).toMatchObject({ name: 'TAE file', verification: 'verified' });
+  }, 30000);
+
+  it('Run again and Edit on the Report of an opened file act on that shot, not on the configuration and scenario of the wizard', async () => {
+    const h = mount();
+    const wizard = () => act(() => { h.store.actions.setCfg(ITER); h.store.actions.setCfgName('ITER'); h.store.actions.setScenario(dropTemplate('P_NBI_MW', 100, 0)); });
+    wizard(); // no live run: the wizard holds ITER with a scenario of its own
+    const dialog = await openLibrary();
+    importFile(dialog, taeRunFile());
+    await within(dialog).findByText(/Verified reproduction/, {}, { timeout: 15000 });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Open report' }));
+    await waitFor(() => expect(h.store.getState().tab).toBe('report'));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Run again' }));
+    const init = h.w.last('init')!;
+    expect(init.cfg).toEqual(TAE);
+    expect(init.scenario).toBeUndefined(); // the file has none
+    expect(h.store.getState()).toMatchObject({ tab: 'run', cfgName: 'TAE file', scenario: null });
+
+    wizard();
+    act(() => h.store.actions.setTab('report')); // the opened shot is still the one shown
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    expect(h.store.getState()).toMatchObject({ tab: 'setup', cfg: TAE, cfgName: 'TAE file', scenario: null });
   }, 30000);
 
   it('says so when the report in the file was edited', async () => {

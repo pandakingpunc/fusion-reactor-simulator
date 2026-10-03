@@ -2,6 +2,11 @@
 
 Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [SemVer](https://semver.org/) izler.
 
+## [Unreleased]
+
+### Fixed
+- The CLI pool loads `.ts` workers through tsx on every Node version. `validate`, `golden`, `scan`, `uq`, `figures` and `fusion-sim scan` run from source failed with ERR_MODULE_NOT_FOUND on Node 22.18–22.22.2, 23.x and 24.0–24.10, where a worker thread neither inherits `--import tsx` nor resolves extensionless imports by native type stripping. CI uses the newest patch of each major, which does pass the loader on, so it did not see the failure.
+
 ## [4.0.1] — 2026-10-02
 
 Patch release: continuous-integration and cross-platform fixes after 4.0.0. No change to the physics models or to the 4.0.0 results on the reference platform (Node 24).

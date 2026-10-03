@@ -1,10 +1,11 @@
 /// <reference types="node" />
 /**
  * Çok çekirdekli iş havuzu (Node worker_threads). Her işçi görevleri sırayla işler; sonuçlar
- * görev sırasıyla döner. tsx altında işçiler ana sürecin execArgv'sini (TS yükleyicisi) miras alır.
- * Node 22.18+ and 24 strip types, so a worker loads a .ts file with no loader. Node 20 cannot, and a
- * worker thread does not inherit the parent's `--import tsx` hook (nodejs/node#47747), so those
- * workers are loaded through tsx's tsImport.
+ * görev sırasıyla döner. A .ts worker is always loaded through tsx's tsImport. Native type stripping
+ * (Node 22.18+, 23.6+, 24) does not resolve the sources' extensionless imports, and whether a worker
+ * thread runs the parent's `--import tsx` (nodejs/node#47747) depends on the patch release: Node
+ * 22.22.3 and 24.21 do, 22.18–22.22.2, 23.x and 24.0–24.10 do not, and there the workers failed with
+ * ERR_MODULE_NOT_FOUND.
  *
  * Worker contract: a worker answers every task it receives with exactly one message (the result).
  *
@@ -60,23 +61,14 @@ import { pathToFileURL } from 'node:url';
 
 const require = createRequire(import.meta.url);
 
-/** Type stripping is on by default in Node 22.18+, 23.6+ and 24, unless this process turned it off. */
-function nodeStripsTypes(): boolean {
-  const argv = process.execArgv;
-  if (argv.includes('--no-experimental-strip-types')) return false;
-  if (argv.includes('--experimental-strip-types') || argv.includes('--experimental-transform-types')) return true;
-  const [major, minor] = process.versions.node.split('.').map(Number);
-  return major >= 24 || (major === 23 && minor >= 6) || (major === 22 && minor >= 18);
-}
-
 /**
- * A .ts worker on a Node that cannot strip types. The bootstrap is JavaScript, so it starts, then
- * tsImport compiles the real worker in this same thread (parentPort stays the worker's).
+ * A .ts worker, whatever the Node version (see the header). The bootstrap is JavaScript, so it starts,
+ * then tsImport compiles the real worker in this same thread (parentPort stays the worker's).
  */
 function openWorker(workerUrl: URL): Worker {
   const path = workerUrl.pathname.toLowerCase();
   const typescript = path.endsWith('.ts') || path.endsWith('.tsx') || path.endsWith('.mts');
-  if (!typescript || nodeStripsTypes()) return new Worker(workerUrl);
+  if (!typescript) return new Worker(workerUrl);
   const api = JSON.stringify(pathToFileURL(require.resolve('tsx/esm/api')).href);
   const boot = `import { workerData } from 'node:worker_threads';import { tsImport } from ${api};await tsImport(workerData.__worker, workerData.__worker);`;
   return new Worker(new URL(`data:text/javascript,${encodeURIComponent(boot)}`), { workerData: { __worker: workerUrl.href } });

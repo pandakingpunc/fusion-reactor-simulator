@@ -9,6 +9,7 @@ interface Task { id: string; action: 'double' | 'echo' | 'slow' | 'hang' | 'spin
 interface Res { id: string; v: number | null; error?: string }
 const FIXTURE = new URL('./testdata/pool-fixture.worker.mjs', import.meta.url);
 const BROKEN = new URL('./testdata/pool-broken.worker.mjs', import.meta.url);
+const TS_WORKER = new URL('./testdata/pool-ts.worker.ts', import.meta.url);
 const doubles = (n: number): Task[] => Array.from({ length: n }, (_, i) => ({ id: `t${i}`, action: 'double', v: i }));
 
 async function rejection(p: Promise<unknown>): Promise<unknown> {
@@ -79,6 +80,13 @@ describe('worker pool', () => {
     const e = await rejection(runPool<Task, Res>(doubles(3), BROKEN, 2));
     expect(e).toBeInstanceOf(PoolTaskError);
     expect((e as Error).message).toMatch(/fixture failed to load/);
+  });
+
+  // The vitest process has no `--import tsx` for a worker to inherit, so this is the case that failed on every Node
+  // with type stripping (ERR_MODULE_NOT_FOUND for the extensionless import) before .ts workers went through tsImport.
+  it('a .ts worker with extensionless imports loads whatever the Node version', async () => {
+    const res = await runPool<{ id: string; v: number }, Res>([{ id: 'a', v: 1 }, { id: 'b', v: 2 }, { id: 'c', v: 5 }], TS_WORKER, 2);
+    expect(res).toEqual([{ id: 'a', v: 3 }, { id: 'b', v: 6 }, { id: 'c', v: 15 }]);
   });
 });
 

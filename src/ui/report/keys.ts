@@ -60,6 +60,7 @@ const ROWS: Row[] = [
   ['TF vertical tension per coil (MN)', 'TF vertical tension per coil', 'Bobin başına TF dikey çekme kuvveti', 'MN'],
   ['TF mass (t)', 'Mass of the TF coils', 'TF bobinlerinin kütlesi', 't'],
   ['CS flux swing (V s)', 'Central-solenoid flux swing', 'Merkezi solenoid akı salınımı', 'V·s'],
+  ['CS flux budget', 'Central-solenoid flux budget', 'Merkezi solenoid akı bütçesi', ''],
   ['Flux required (V s)', 'Flux the pulse needs', 'Atımın gerektirdiği akı', 'V·s'],
   ['Flux margin', 'Flux margin', 'Akı payı', ''],
   ['Flux-limited flat top (s)', 'Flat-top length the flux allows', 'Akının izin verdiği düz tepe süresi', 's'],
@@ -89,6 +90,7 @@ const ROWS: Row[] = [
   ['Emergent H98(y,2) (flat-top mean)', 'Emergent confinement factor H98(y,2) (flat-top mean)', 'Ortaya çıkan hapsetme çarpanı H98(y,2) (düz tepe ortalaması)', '', { term: 'h98' }],
   ['Emergent H(ITPA20) (flat-top mean)', 'Emergent confinement factor against ITPA20 (flat-top mean)', 'ITPA20 ölçeklemesine göre ortaya çıkan hapsetme çarpanı (düz tepe ortalaması)', ''],
   // profile-resolved impurities (impurityTransport)
+  ['Impurity transport', 'Impurity transport', 'Safsızlık taşınımı', ''],
   ['He ash fraction n_He/n_e (avg.)', 'Helium ash fraction n_He/n_e (mean)', 'Helyum külü oranı n_He/n_e (ortalama)', '', { term: 'heAsh' }],
   ['He ash fraction on axis (final)', 'Helium ash fraction on axis (final)', 'Eksende helyum külü oranı (son)', '', { term: 'heAsh' }],
   // ---- extras of the magnetic reports
@@ -169,6 +171,9 @@ const VALUES_TR: Record<string, string> = {
   'n/a (net<0)': 'yok (net < 0)',
   'n/a (> 100 %)': 'yok (> % 100)',
   '1.5D profiles + Grad–Shafranov': '1.5D profiller + Grad–Shafranov',
+  'profiles, anomalous': 'profiller, anomal',
+  'profiles, anomalous + FACIT neoclassical': 'profiller, anomal + FACIT neoklasik',
+  'not evaluated: no systems.cs block (the solenoid of this design is not given)': 'değerlendirilmedi: systems.cs bloğu yok (bu tasarımın solenoidi verilmemiş)',
   '~1 (high-β configuration)': '~1 (yüksek-β konfigürasyonu)',
   'yes (loss cone)': 'evet (kayıp konisi)',
   'α-sticking consumes muons (~0.5%/cycle) + muon production is expensive (~5 GeV)': 'α-yapışması müonları tüketir (~%0,5/çevrim) ve müon üretimi pahalıdır (~5 GeV)',

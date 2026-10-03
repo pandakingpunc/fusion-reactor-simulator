@@ -4,6 +4,9 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { describeReportKey, describeReportValue, knownReportKeys, reportKeyInfo } from './keys';
 import { findTerm } from '../../edu/glossary';
+import { requirePreset } from '../../physics/config/registry';
+import { Simulation } from '../../physics/simulation';
+import type { MagneticConfig } from '../../physics/types';
 
 const GOLDEN = fileURLToPath(new URL('../../../test/golden/', import.meta.url));
 
@@ -25,6 +28,7 @@ function goldenKeys(): string[] {
 const TEXT_KEYS = [
   'Detachment state', 'Model', 'Coupling', 'q(0) / q95 (final)', 'Transport steps (accepted / rejected by the error test)',
   'Newton iterations / Jacobians / Picard fallbacks', 'β (FRC)', 'End loss dominant', 'Why Q<1?', 'Status',
+  'CS flux budget', 'Impurity transport',
 ];
 
 describe('report key table', () => {
@@ -86,5 +90,14 @@ describe('report key table', () => {
     expect(describeReportValue('direct 80%', 'tr')).toBe('doğrudan %80');
     expect(describeReportValue('≥ 3.20 (> 100 % in 40 % of the flat top)', 'tr')).toBe('≥ 3.20 (düz tepenin %40’sinde > %100)');
     expect(describeReportValue('3.10 / 4.20', 'tr')).toBe('3.10 / 4.20');
+  });
+
+  it('the text rows of a tokamak without systems.cs (JET) have a Turkish label and value, not the raw English', () => {
+    const eng = new Simulation({ ...(requirePreset('JET').cfg as MagneticConfig), t_end: 0.5 }).runAll().engineering as Record<string, unknown>;
+    const budget = eng['CS flux budget'];
+    expect(typeof budget).toBe('string');
+    expect(describeReportKey('CS flux budget', 'tr').label).not.toBe('CS flux budget');
+    expect(describeReportValue(budget as string, 'tr')).not.toBe(budget);
+    for (const v of ['profiles, anomalous', 'profiles, anomalous + FACIT neoclassical']) expect(describeReportValue(v, 'tr')).not.toBe(v);
   });
 });

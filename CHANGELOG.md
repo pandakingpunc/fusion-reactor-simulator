@@ -2,6 +2,28 @@
 
 Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [SemVer](https://semver.org/) izler.
 
+## [Unreleased]
+
+Interface work on the run screen and the Turkish interface, and four wrong sentences of the physics layer. No number of any model changes: the golden cases, the literature validation and the paper figures are bit for bit those of 4.1.0. Three event or report sentences change their wording (below), and with them the run digest of a shot that emits one; a run file written by 4.1.0 is reported as written by another version, as for every release.
+
+### Added
+- Turkish interface: the sentences the physics layer writes are translated, by pattern, with their numbers kept and the decimal comma set — the event log, the report warnings, the termination reason, diagnosis and fix (run screen, Report, Compare, Learn missions, Validation). `src/i18n/physicsText.ts` is the API and the English fallback, `src/i18n/physicsText.tr.ts` the rule table (55 patterns and 39 fixed sentences, a chunk loaded with the Turkish dictionary). A sentence no rule knows is shown in English; exports, run files and share links are unchanged. `src/i18n/physicsText.test.ts` runs the presets and forced disruptions and fails on an emitted sentence without a rule. The explanatory notes of the report are not covered yet.
+- Event log: a row of toggle chips, one per event kind with its count (ELM 1354, Sawtooth 252, Warning 2, ...). The log shows the newest 200 events of the kinds that are switched on, so the two warnings of an ITER shot are no longer buried under 1600 ELMs and sawteeth; the title shows "shown / total" while a filter is on.
+- Time charts: a second y-axis, chosen automatically. When the series of a chart differ by a factor of 10 or more in magnitude (fuelling 154 next to densities near 1; P_LH and P_loss next to τ_E; n_wall next to q_div), the group that does not contain the first series is drawn dashed against its own axis on the right, marked "→" in the legend. Linear scale only; with hysteresis (split at 10, merged again below 7) so a live run does not flicker.
+
+### Changed
+- Time charts: a minor event kind with a marker every few pixels (an ELM train, sawteeth) is drawn as a rug of short ticks along the top edge instead of full-height dashed lines, which covered the whole plot with a hatch on a long shot. Zoomed in until the events are sparse, the full-height lines are back; major events (L–H, disruption, ignition, ...) are drawn as before.
+- Run screen between 701 and 1200 px (a laptop, a half-screen window): one page that scrolls, with the live values, controls and event log beside the charts and the cross-section, 3D, POPCON and geometry panels as a grid below. It used to squeeze the charts into a box about 230 px high with its own scrollbar and leave half a row empty.
+
+### Fixed
+- Time charts: the y-axis of a live run follows the data. It was computed once and not again while the time window stood still — during the first 2 % of every shot (the first 7.6 s of ITER) and whenever the chart was zoomed while the run went on — so the curves ran off the top of the plot.
+- Live values: the labels are no longer upper-cased. Upper case turned τ_E into Τ_E (read as T_E, next to T_e shown as T_E), β_N into Β_N, n_e into N_E, and, in the Turkish interface, T_i into T_İ and P_fusion into P_FUSİON.
+- The ⓘ buttons stay round on touch screens (they were stretched to tall ovals by the minimum touch height); the touch target is kept by an invisible margin.
+- MTF, MagLIF and Z-pinch: the stagnation event printed the density with two exponents ("n = 2.2e+9e20 m⁻³"); it is now "n = 2.2e29 m⁻³".
+- Divertor heat-flux warnings no longer read "10 MW/m² > 10 MW/m²": the value is printed with as many decimals (up to three) as show it above the limit ("10.1 MW/m² > 10 MW/m²"). Event of the 0D and 1.5D models and the report warning.
+- Stellarator: the density-limit fraction is named n̄/n_Sudo in the diagnostic label and in the warning. It was labelled n̄/n_Greenwald, a limit a current-free device does not have; the number was Sudo's all along.
+- The sheared-flow Z-pinch report no longer says "MTF is far from net energy".
+
 ## [4.1.0] — 2026-10-03
 
 Bug fixes from a test-and-review pass. No golden case or paper figure changes on the reference platform: the physics fixes touch only paths those runs do not take, which was checked bit for bit.

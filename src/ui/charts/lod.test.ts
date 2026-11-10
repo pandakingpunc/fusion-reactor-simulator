@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { forAll, gen, mulberry32 } from '../../testing/prop';
-import { FrameColumns, LOD_MAX_PER_COLUMN, LodFrame, eventFrameIndices, lodIndices, lowerBound, thinEvents, upperBound } from './lod';
+import { FrameColumns, LOD_MAX_PER_COLUMN, LodFrame, eventFrameIndices, lodIndices, lowerBound, rugKinds, thinEvents, upperBound } from './lod';
 
 const frames = (ts: number[], f: (i: number, t: number) => number | undefined): LodFrame[] => ts.map((t, i) => ({ t, d: { v: f(i, t) } }));
 const range = (n: number) => Array.from({ length: n }, (_, i) => i);
@@ -268,5 +268,66 @@ describe('thinEvents', () => {
   it('clips to the window and tolerates an empty one', () => {
     expect(thinEvents(evs, 2, 3, 1000, major).every((e) => e.t >= 2 && e.t <= 3)).toBe(true);
     expect(thinEvents(evs, 3, 3, 10, major)).toEqual([]);
+  });
+});
+
+describe('FrameColumns.magnitude', () => {
+  it('max(|min|, |max|) over all frames, 0 without a finite value', () => {
+    const fr = frames(range(50).map((i) => i), (i) => (i === 10 ? -80 : i === 20 ? undefined : i === 30 ? Number.NaN : i % 5));
+    const cols = FrameColumns.from(fr);
+    expect(cols.magnitude('v')).toBe(80);
+    expect(cols.magnitude('absent')).toBe(0);
+    expect(FrameColumns.from(frames([0, 1], () => 0)).magnitude('v')).toBe(0);
+  });
+
+  it('follows a growing run incrementally and starts over after a rewind', () => {
+    const all = frames(range(2000).map((i) => i), (i) => (i === 1500 ? 500 : i === 1800 ? -900 : 1));
+    const cols = new FrameColumns();
+    cols.sync(all.slice(0, 100));
+    expect(cols.magnitude('v')).toBe(1);
+    cols.sync(all.slice(0, 1600));
+    expect(cols.magnitude('v')).toBe(500);
+    cols.sync(all);
+    expect(cols.magnitude('v')).toBe(900);
+    // rewound to before the peaks: the old maximum must not survive
+    cols.sync(all.slice(0, 1000));
+    expect(cols.magnitude('v')).toBe(1);
+    // the untouched prefix is not read again
+    const spy = { reads: 0 };
+    const counted = all.map((f) => ({ t: f.t, get d() { spy.reads++; return f.d; } }));
+    const c2 = FrameColumns.from(counted.slice(0, 100));
+    c2.magnitude('v');
+    const before = spy.reads;
+    c2.sync(counted.slice(0, 110));
+    c2.magnitude('v');
+    expect(spy.reads - before).toBe(10);
+  });
+});
+
+describe('rugKinds', () => {
+  const major = (k: string) => k === 'disruption';
+  const evs = (kind: string, n: number) => range(n).map(() => ({ kind }));
+  const ORDER = ['ELM', 'sawtooth', 'LH'];
+
+  it('a minor kind with more than one marker per 12 px is a rug kind', () => {
+    expect(rugKinds(evs('ELM', 50), 588, major)).toEqual(['ELM']); // 588 / 12 = 49
+    expect(rugKinds(evs('ELM', 49), 588, major)).toEqual([]);
+    expect(rugKinds(evs('ELM', 10), 588, major)).toEqual([]);
+  });
+
+  it('is decided per kind and ordered by the preferred order, the rest by first appearance', () => {
+    const mixed = [...evs('sawtooth', 100), ...evs('zeta', 100), ...evs('ELM', 100), ...evs('alpha', 100), ...evs('LH', 3)];
+    expect(rugKinds(mixed, 600, major, ORDER)).toEqual(['ELM', 'sawtooth', 'zeta', 'alpha']);
+    expect(rugKinds(mixed, 600, major)).toEqual(['sawtooth', 'zeta', 'ELM', 'alpha']);
+  });
+
+  it('major kinds are never rugs, however many there are', () => {
+    expect(rugKinds(evs('disruption', 1000), 588, major)).toEqual([]);
+  });
+
+  it('works on the output of thinEvents: 1354 ELMs in a 588 px chart are dense, 5 in a zoomed window are not', () => {
+    const all = range(1354).map((i) => ({ t: (i + 0.5) * (400 / 1354), kind: 'ELM' }));
+    expect(rugKinds(thinEvents(all, 0, 400, 588, major), 588, major)).toEqual(['ELM']);
+    expect(rugKinds(thinEvents(all, 0, 10, 588, major), 588, major)).toEqual([]);
   });
 });

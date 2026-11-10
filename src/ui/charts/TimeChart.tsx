@@ -3,7 +3,8 @@ import { SimEvent } from '../../physics/types';
 import { UiFrame } from '../../worker/protocol';
 import { fmtAxis, fmtNum, fmtTime } from '../format';
 import { useT } from '../state/store';
-import { FrameColumns, eventFrameIndices, lodIndices, thinEvents } from './lod';
+import { splitAxes } from './axes';
+import { FrameColumns, eventFrameIndices, lodIndices, rugKinds, thinEvents } from './lod';
 
 export interface Series { key: string; label: string; unit: string; color: string; log?: boolean }
 
@@ -29,6 +30,13 @@ const EVENT_COLOR: Record<string, string> = {
   disruption: '#ef476f', quench: '#ef476f', ignition: '#06d6a0', burn_start: '#06d6a0', burn_end: '#ffd166', warning: '#ffd166', stagnation: '#4cc9f0', end: '#7f8ba3', info: '#7f8ba3',
 };
 const PAD = { l: 58, r: 12, t: 8, b: 22 };
+/** right padding when a second y-axis is drawn: room for its tick labels */
+const PAD_R_SPLIT = 50;
+/** a dense minor event kind is drawn as a rug: ticks this tall, rows this far apart (tick + 1 px gap) */
+const RUG_H = 5, RUG_ROW = RUG_H + 1;
+const EVENT_KINDS = Object.keys(EVENT_COLOR);
+/** dash of the series on the right axis, so the reader can tell the two axes' curves apart */
+const RIGHT_DASH = [6, 3];
 const MAJOR_EVENTS = new Set(['disruption', 'quench', 'ignition', 'LH', 'HL', 'NTM_onset', 'burn_start']);
 const isMajorEvent = (kind: string) => MAJOR_EVENTS.has(kind);
 
@@ -69,27 +77,33 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
     return [0, Math.max(tEnd, tNow, 1e-9)];
   }, [xRange, live, tNow, tEnd]);
 
-  // y aralığı (görünür pencere)
-  const [y0, y1] = useMemo<[number, number]>(() => {
-    let lo = Infinity, hi = -Infinity;
-    for (const s of visible) {
-      const r = cols.range(s.key, x0, x1, logY);
-      if (r) { if (r.lo < lo) lo = r.lo; if (r.hi > hi) hi = r.hi; }
-    }
-    if (!isFinite(lo)) return logY ? [1e-3, 1] : [0, 1];
-    if (logY) { lo = Math.max(lo, hi * 1e-6); return [lo / 2, hi * 2]; }
-    if (hi === lo) { hi = lo + Math.abs(lo) * 0.1 + 1e-9; }
-    const m = (hi - lo) * 0.08;
-    return [lo >= 0 && lo - m < 0 ? 0 : lo - m, hi + m];
-  }, [cols, visible, x0, x1, logY]);
+  // second y-axis when the visible series differ by decades (axes.ts); linear mode only. The magnitude is over the whole
+  // run, not the zoomed window, so zooming never moves a curve to the other axis. The previous decision is kept for the
+  // hysteresis and forgotten when the run or the plotted series change.
+  const axMem = useRef({ key: '', split: false });
+  const rightOf = useMemo<boolean[]>(() => {
+    const none = visible.map(() => false);
+    if (logY) return none;
+    const key = `${resetKey}|${seriesId}`;
+    if (axMem.current.key !== key) axMem.current = { key, split: false };
+    const r = splitAxes(visible.map((s) => cols.magnitude(s.key)), axMem.current.split);
+    axMem.current.split = r.split;
+    return r.split ? r.right : none;
+  }, [frames, cols, visible, logY, resetKey, seriesId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const split = rightOf.some(Boolean);
+  const rightKeys = useMemo(() => new Set(visible.filter((_, i) => rightOf[i]).map((s) => s.key)), [visible, rightOf]);
+  const padR = split ? PAD_R_SPLIT : PAD.r;
 
-  const plotW = width - PAD.l - PAD.r, plotH = height - PAD.t - PAD.b;
+  // y aralığı (görünür pencere), per axis. `cols` is the same object after every sync, so `frames` (a new array whenever the run
+  // grew, was rewound or replaced) is what tells these memos that the data changed while x0/x1 did not (first 2 % of a live shot, zoomed)
+  const [y0, y1] = useMemo(() => yExtent(cols, visible.filter((_, i) => !rightOf[i]), x0, x1, logY), [frames, cols, visible, rightOf, x0, x1, logY]);
+  const [y0r, y1r] = useMemo(() => yExtent(cols, visible.filter((_, i) => rightOf[i]), x0, x1, logY), [frames, cols, visible, rightOf, x0, x1, logY]);
+
+  const plotW = width - PAD.l - padR, plotH = height - PAD.t - PAD.b;
   const xToPx = useCallback((t: number) => PAD.l + ((t - x0) / (x1 - x0)) * plotW, [x0, x1, plotW]);
   const pxToX = useCallback((px: number) => x0 + ((px - PAD.l) / plotW) * (x1 - x0), [x0, x1, plotW]);
-  const yToPx = useCallback((v: number) => {
-    const f = logY ? (Math.log10(v) - Math.log10(y0)) / (Math.log10(y1) - Math.log10(y0)) : (v - y0) / (y1 - y0);
-    return PAD.t + plotH - f * plotH;
-  }, [y0, y1, plotH, logY]);
+  const yToPx = useCallback((v: number) => yPx(v, y0, y1, plotH, logY), [y0, y1, plotH, logY]);
+  const yToPxR = useCallback((v: number) => yPx(v, y0r, y1r, plotH, logY), [y0r, y1r, plotH, logY]);
 
   // çizim
   useEffect(() => {
@@ -104,12 +118,27 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
     const yt = logY ? logTicks(y0, y1) : linTicks(y0, y1, 5);
     for (const v of yt) { const py = yToPx(v); if (py < PAD.t - 1 || py > PAD.t + plotH + 1) continue; ctx.beginPath(); ctx.moveTo(PAD.l, py); ctx.lineTo(PAD.l + plotW, py); ctx.stroke(); ctx.textAlign = 'right'; ctx.fillText(fmtAxis(v), PAD.l - 4, py + 3); }
     for (const t of linTicks(x0, x1, 8)) { const px = xToPx(t); ctx.beginPath(); ctx.moveTo(px, PAD.t); ctx.lineTo(px, PAD.t + plotH); ctx.stroke(); ctx.textAlign = 'center'; ctx.fillText(fmtAxis(t), px, height - 8); }
+    if (split) { // right axis: tick labels only (the grid belongs to the left axis), in the muted text colour
+      ctx.textAlign = 'left';
+      for (const v of linTicks(y0r, y1r, 5)) { const py = yToPxR(v); if (py < PAD.t - 1 || py > PAD.t + plotH + 1) continue; ctx.fillText(fmtAxis(v), PAD.l + plotW + 4, py + 3); }
+    }
     ctx.textAlign = 'left'; ctx.fillText(`t [${timeUnit}]`, PAD.l + plotW - 34, height - 8);
-    if (title) { ctx.fillStyle = '#d6dce8'; ctx.font = '11px Inter, sans-serif'; ctx.fillText(title, PAD.l + 4, PAD.t + 11); }
+    // a minor kind with a marker every few pixels would hatch the whole plot: it becomes a rug of short ticks along the top
+    const shown = thinEvents(events, x0, x1, plotW, isMajorEvent);
+    const rugRow = new Map(rugKinds(shown, plotW, isMajorEvent, EVENT_KINDS).map((k, i) => [k, i]));
+    // the title sits below the rug rows, so the ticks do not run through it
+    if (title) { ctx.fillStyle = '#d6dce8'; ctx.font = '11px Inter, sans-serif'; ctx.fillText(title, PAD.l + 4, PAD.t + 11 + rugRow.size * RUG_ROW); }
     // olaylar
     ctx.save(); ctx.beginPath(); ctx.rect(PAD.l, PAD.t, plotW, plotH); ctx.clip();
-    for (const ev of thinEvents(events, x0, x1, plotW, isMajorEvent)) {
+    for (const ev of shown) {
       const px = xToPx(ev.t);
+      const row = rugRow.get(ev.kind);
+      if (row !== undefined) {
+        const top = PAD.t + row * RUG_ROW;
+        ctx.strokeStyle = EVENT_COLOR[ev.kind] ?? '#7f8ba3'; ctx.globalAlpha = 0.8; ctx.lineWidth = 1; ctx.setLineDash([]);
+        ctx.beginPath(); ctx.moveTo(px, top); ctx.lineTo(px, top + RUG_H); ctx.stroke();
+        continue;
+      }
       const major = isMajorEvent(ev.kind);
       ctx.strokeStyle = EVENT_COLOR[ev.kind] ?? '#7f8ba3'; ctx.globalAlpha = major ? 0.9 : 0.35; ctx.lineWidth = major ? 1.5 : 1;
       ctx.setLineDash(major ? [] : [2, 3]);
@@ -118,17 +147,19 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
     ctx.setLineDash([]); ctx.globalAlpha = 1;
     // series: min/max level of detail per pixel column, event frames kept (lod.ts), so a spike is never thinned away
     const evFrames = eventFrameIndices(cols, events, x0, x1, plotW);
-    for (const s of visible) {
-      ctx.strokeStyle = s.color; ctx.lineWidth = 1.5; ctx.beginPath(); let pen = false;
+    visible.forEach((s, si) => {
+      const onRight = rightOf[si], toPy = onRight ? yToPxR : yToPx;
+      ctx.strokeStyle = s.color; ctx.lineWidth = 1.5; ctx.setLineDash(onRight ? RIGHT_DASH : []); ctx.beginPath(); let pen = false;
       const tv = cols.t, vv = cols.column(s.key);
       for (const i of lodIndices(cols, s.key, x0, x1, plotW, evFrames, logY)) {
         const v = vv[i];
         if (!isFinite(v) || (logY && v <= 0)) { pen = false; continue; }
-        const px = xToPx(tv[i]), py = yToPx(v);
+        const px = xToPx(tv[i]), py = toPy(v);
         if (!pen) { ctx.moveTo(px, py); pen = true; } else ctx.lineTo(px, py);
       }
       ctx.stroke();
-    }
+    });
+    ctx.setLineDash([]);
     // imleç / hover
     const drawV = (px: number, color: string) => { ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(px, PAD.t); ctx.lineTo(px, PAD.t + plotH); ctx.stroke(); };
     if (cursorT !== undefined && cursorT >= x0 && cursorT <= x1) drawV(xToPx(cursorT), '#4cc9f0');
@@ -145,7 +176,7 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
       }
     }
     ctx.restore();
-  }, [frames, cols, visible, events, width, height, x0, x1, y0, y1, logY, xToPx, yToPx, pxToX, plotW, plotH, hover, cursorT, timeUnit, title]);
+  }, [frames, cols, visible, rightOf, split, events, width, height, x0, x1, y0, y1, y0r, y1r, logY, xToPx, yToPx, yToPxR, pxToX, plotW, plotH, hover, cursorT, timeUnit, title]);
 
   // etkileşim
   // Wheel zoom. React registers wheel listeners as passive, where preventDefault() is ignored and the
@@ -191,8 +222,8 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
         onMouseLeave={() => { drag.current = null; setHover(null); }} onDoubleClick={() => setXRange(null)} />
       <div className="chart-legend">
         {series.map((s) => (
-          <button type="button" key={s.key} className={`li ${hidden.has(s.key) ? 'off' : ''}`} aria-pressed={!hidden.has(s.key)} onClick={() => setHidden((h) => { const n = new Set(h); n.has(s.key) ? n.delete(s.key) : n.add(s.key); return n; })}>
-            <span className="sw" style={{ background: s.color }} aria-hidden="true" />{s.label}{s.unit ? ` [${s.unit}]` : ''}
+          <button type="button" key={s.key} className={`li ${hidden.has(s.key) ? 'off' : ''}`} aria-pressed={!hidden.has(s.key)} title={rightKeys.has(s.key) ? t('chart.rightAxis') : undefined} onClick={() => setHidden((h) => { const n = new Set(h); n.has(s.key) ? n.delete(s.key) : n.add(s.key); return n; })}>
+            <span className="sw" style={{ background: s.color }} aria-hidden="true" />{s.label}{s.unit ? ` [${s.unit}]` : ''}{rightKeys.has(s.key) && <span className="axis-mark" aria-hidden="true"> →</span>}
           </button>
         ))}
         <span className="spacer" />
@@ -203,6 +234,23 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
   );
 }
 
+/** y range of a group of series over the window [x0, x1], padded (the rule of the single axis, applied per axis) */
+function yExtent(cols: FrameColumns, group: readonly Series[], x0: number, x1: number, logY: boolean): [number, number] {
+  let lo = Infinity, hi = -Infinity;
+  for (const s of group) {
+    const r = cols.range(s.key, x0, x1, logY);
+    if (r) { if (r.lo < lo) lo = r.lo; if (r.hi > hi) hi = r.hi; }
+  }
+  if (!isFinite(lo)) return logY ? [1e-3, 1] : [0, 1];
+  if (logY) { lo = Math.max(lo, hi * 1e-6); return [lo / 2, hi * 2]; }
+  if (hi === lo) { hi = lo + Math.abs(lo) * 0.1 + 1e-9; }
+  const m = (hi - lo) * 0.08;
+  return [lo >= 0 && lo - m < 0 ? 0 : lo - m, hi + m];
+}
+function yPx(v: number, y0: number, y1: number, plotH: number, logY: boolean): number {
+  const f = logY ? (Math.log10(v) - Math.log10(y0)) / (Math.log10(y1) - Math.log10(y0)) : (v - y0) / (y1 - y0);
+  return PAD.t + plotH - f * plotH;
+}
 function linTicks(a: number, b: number, n: number): number[] {
   const span = b - a; if (span <= 0 || !isFinite(span)) return [a];
   const raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));

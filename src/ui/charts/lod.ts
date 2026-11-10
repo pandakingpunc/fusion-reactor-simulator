@@ -66,6 +66,8 @@ export class FrameColumns {
   n = 0;
   t: Float64Array = new Float64Array(0);
   private cols = new Map<string, Float64Array>();
+  /** per series: max(|v|) over the first `upTo` frames, extended by `magnitude` */
+  private mags = new Map<string, { upTo: number; m: number }>();
   private frames: readonly LodFrame[] = [];
   private last: LodFrame | undefined;
 
@@ -73,7 +75,7 @@ export class FrameColumns {
 
   sync(frames: readonly LodFrame[]): this {
     const m = frames.length;
-    if (!(this.n <= m && (this.n === 0 || frames[this.n - 1] === this.last))) { this.n = 0; this.cols.clear(); }
+    if (!(this.n <= m && (this.n === 0 || frames[this.n - 1] === this.last))) { this.n = 0; this.cols.clear(); this.mags.clear(); }
     this.frames = frames;
     if (m > this.t.length) {
       const cap = Math.max(m, this.t.length * 2, 256);
@@ -99,6 +101,19 @@ export class FrameColumns {
       this.cols.set(key, a);
     }
     return a;
+  }
+
+  /**
+   * max(|min|, |max|) of a series over ALL frames so far (0 when it has no finite value). Kept incrementally: a call
+   * reads only the frames that arrived since the last one, so asking on every redraw of a live run stays cheap.
+   */
+  magnitude(key: string): number {
+    const v = this.column(key);
+    let e = this.mags.get(key);
+    if (!e) this.mags.set(key, e = { upTo: 0, m: 0 });
+    for (let i = e.upTo; i < this.n; i++) { const x = Math.abs(v[i]); if (Number.isFinite(x) && x > e.m) e.m = x; }
+    e.upTo = this.n;
+    return e.m;
   }
 
   /** index of the first frame with t ≥ x */
@@ -242,4 +257,19 @@ export function thinEvents<E extends { t: number; kind: string }>(events: readon
     out.push(ev);
   }
   return out;
+}
+
+/**
+ * Minor event kinds dense enough to be drawn as a rug (short ticks along the top edge) instead of full-height lines:
+ * more than one marker per 12 px of plot width on average, counted after `thinEvents` (so at most one per pixel column).
+ * Full-height dashed lines for an ELM train of a thousand shots cover every curve; a rug leaves them visible.
+ * @param thinned the events `thinEvents` kept
+ * @param order preferred row order (kinds not in it follow in order of first appearance); row 0 is the topmost
+ * @returns the rug kinds, in row order
+ */
+export function rugKinds(thinned: readonly { kind: string }[], plotW: number, isMajor: (kind: string) => boolean, order: readonly string[] = []): string[] {
+  const count = new Map<string, number>();
+  for (const ev of thinned) if (!isMajor(ev.kind)) count.set(ev.kind, (count.get(ev.kind) ?? 0) + 1);
+  const rank = (k: string) => { const i = order.indexOf(k); return i < 0 ? order.length : i; };
+  return [...count.keys()].filter((k) => count.get(k)! > plotW / 12).sort((a, b) => rank(a) - rank(b)); // stable: ties keep first appearance
 }

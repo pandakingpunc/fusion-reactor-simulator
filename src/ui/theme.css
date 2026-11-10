@@ -107,7 +107,8 @@ label.field .lbl .unit { font-family: var(--mono); }
 .run .left, .run .right, .run .center { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow: auto; }
 .kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; }
 .kpi { background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
-.kpi .k { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+/* No upper-casing: the labels are physics symbols, and upper-case changes them (τ_E becomes Τ_E, like T_E; β_N like B_N; under lang="tr" i becomes İ) */
+.kpi .k { font-size: 10px; color: var(--muted); }
 .kpi .v { font-family: var(--mono); font-size: 15px; }
 .kpi .u { font-size: 10px; color: var(--muted); margin-left: 5px; }
 .kpi .u:not(:empty)::before { content: '·'; margin-right: 3px; opacity: 0.6; }
@@ -128,6 +129,16 @@ label.field .lbl .unit { font-family: var(--mono); }
 .event.warning { color: var(--warn); }
 .event.ELM { color: #f8961e; } .event.sawtooth { color: #c77dff; } .event.NTM_onset { color: var(--bad); }
 .event.LH { color: var(--ok); } .event.HL { color: var(--warn); }
+/* Kind filter of the event log: a toggle chip per kind, in the colour of its rows; an unpressed one is dimmed like a hidden chart series.
+   Self-contained (the generic .chip lives in the lazy education stylesheet), and button.event-chip outranks it when that is loaded. */
+.event-filter { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+button.event-chip { background: var(--bg2); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; cursor: pointer; color: var(--muted); font-family: var(--mono); font-size: 11px; line-height: 1.5; }
+button.event-chip:hover { border-color: var(--accent); }
+button.event-chip[aria-pressed=false] { opacity: 0.35; }
+.event-chip.disruption, .event-chip.quench, .event-chip.NTM_onset { color: var(--bad); }
+.event-chip.ignition, .event-chip.burn_start, .event-chip.LH { color: var(--ok); }
+.event-chip.warning, .event-chip.HL { color: var(--warn); }
+.event-chip.ELM { color: #f8961e; } .event-chip.sawtooth { color: #c77dff; }
 .slider-row { display: grid; grid-template-columns: 1fr 90px; gap: 8px; align-items: center; margin-bottom: 6px; }
 .slider-row .lbl { font-size: 11px; color: var(--muted); }
 .speed-btns { display: flex; gap: 2px; }
@@ -157,9 +168,17 @@ table.cmp thead th { color: var(--accent); }
 .badge.ok { border-color: var(--ok); color: var(--ok); } .badge.bad { border-color: var(--bad); color: var(--bad); } .badge.warn { border-color: var(--warn); color: var(--warn); }
 pre.err { white-space: pre-wrap; color: var(--bad); font-size: 11px; }
 @media (max-width: 1200px) {
-  .run { grid-template-columns: 1fr 1fr; }
-  .run .center { grid-column: 1 / -1; }
   .wizard { grid-template-columns: 1fr; }
+}
+/* Laptops and half-screen windows (701-1200 px): the run screen is one naturally scrolling page instead of three
+   squeezed, separately scrolling columns. Transport bar on top; live values/controls/event log beside the charts;
+   the panels of the right column (cross-section, 3D, profiles, POPCON, geometry) as a responsive grid below. */
+@media (min-width: 701px) and (max-width: 1200px) {
+  .run { grid-template-columns: minmax(250px, 300px) minmax(0, 1fr); grid-template-rows: none; height: auto; }
+  .run .left { grid-column: 1; overflow: visible; }
+  .run .center { grid-column: 2; overflow: visible; }
+  .run .right { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); align-items: start; overflow: visible; }
+  .run .right > * { min-width: 0; }
 }
 /* Phones (and anything narrower than 700 px): one column, no horizontal scrolling of the page, wide content scrolls inside its own panel. */
 @media (max-width: 700px) {
@@ -172,7 +191,8 @@ pre.err { white-space: pre-wrap; color: var(--bad); font-size: 11px; }
   .run, .report, .wizard { grid-template-columns: minmax(0, 1fr); height: auto; }
   .run { grid-template-rows: none; }
   .run .left, .run .right, .run .center { overflow: visible; }
-  .run .center { grid-column: auto; }
+  .run .left, .run .center, .run .right { grid-column: auto; }
+  .run .right { display: flex; }
   .fields { grid-template-columns: repeat(auto-fill, minmax(min(180px, 100%), 1fr)); }
   .method-grid { grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); }
   .glossary-list, .mission-grid { grid-template-columns: minmax(0, 1fr); }
@@ -184,6 +204,10 @@ pre.err { white-space: pre-wrap; color: var(--bad); font-size: 11px; }
   button, select, input[type=text], input[type=number], input[type=search], .tab, .step, .chip, .chart-legend .li, .edu-subtabs button, .preset-pick { min-height: 32px; }
   .preset-run { min-width: 32px; min-height: 32px; }
   .speed-btns button { min-width: 32px; }
+  /* The small round (i) buttons: min-height alone made them tall ovals. They stay round (20 px, so the line of a 10 px label is not
+     stretched) and get the 32 px touch target from an invisible ::after instead. .explain .explain-btn outranks edu.css, which loads later. */
+  .explain .explain-btn { min-height: 0; min-width: 0; width: 20px; height: 20px; position: relative; }
+  .explain .explain-btn::after { content: ''; position: absolute; inset: -6px; }
   input[type=range] { min-height: 32px; }
   input[type=checkbox] { width: 20px; height: 20px; }
 }

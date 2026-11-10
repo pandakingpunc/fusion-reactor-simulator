@@ -6,8 +6,9 @@
   "access_right": "open",
   "creators": [
     {
-      "name": "Karatum, Mustafa",
-      "affiliation": "Independent researcher"
+      "name": "Karatüm, Mustafa",
+      "affiliation": "Independent researcher",
+      "orcid": "0009-0006-7053-2872"
     }
   ],
   "keywords": [
@@ -21,7 +22,7 @@
     "Grad-Shafranov equilibrium",
     "bootstrap current"
   ],
-  "version": "4.1.0",
+  "version": "4.2.0",
   "related_identifiers": [
     {
       "identifier": "https://github.com/pandakingpunc/fusion-reactor-simulator",
@@ -29,7 +30,7 @@
       "scheme": "url"
     },
     {
-      "identifier": "10.5281/zenodo.23109193",
+      "identifier": "10.5281/zenodo.23121818",
       "relation": "isNewVersionOf",
       "scheme": "doi"
     }
@@ -40,6 +41,6 @@
     "Sauter, Angioni and Lin-Liu (1999), Neoclassical conductivity and bootstrap current formulas. https://doi.org/10.1063/1.873240",
     "Shimada et al. (2007), Chapter 1: Overview and summary. https://doi.org/10.1088/0029-5515/47/6/S01"
   ],
-  "notes": "Developed by Mustafa Karatum with substantial assistance from AI coding assistants Claude Code (Anthropic), Codex (OpenAI) and MiMo under the author's direction and review. Automated and AI-assisted verification does not replace independent plasma-physics review.",
+  "notes": "Developed by Mustafa Karatüm with substantial assistance from AI coding assistants Claude Code (Anthropic), Codex (OpenAI) and MiMo under the author's direction and review. Automated and AI-assisted verification does not replace independent plasma-physics review.",
   "language": "eng"
 }

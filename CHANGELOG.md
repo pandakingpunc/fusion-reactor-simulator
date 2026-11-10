@@ -2,7 +2,7 @@
 
 Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [SemVer](https://semver.org/) izler.
 
-## [Unreleased]
+## [4.2.0] — 2026-11-10
 
 Interface work on the run screen and the Turkish interface, and four wrong sentences of the physics layer. No number of any model changes: the golden cases, the literature validation and the paper figures are bit for bit those of 4.1.0. Three event or report sentences change their wording (below), and with them the run digest of a shot that emits one; a run file written by 4.1.0 is reported as written by another version, as for every release.
 

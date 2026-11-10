@@ -10,15 +10,21 @@ The interface is in English or Turkish. Every text the interface draws comes fro
 (a decimal comma and a thousands point in Turkish). Files, share links, CSV and JSON exports keep the
 decimal point whatever the language is.
 
-**Known limit: sentences written by the physics layer stay English.** Events, warnings, termination
-reasons and report notes are built as English sentences inside `src/physics` and shown as they are, in the
-Turkish interface too. The one exception is the step-control notes (`src/ui/settingsNotes.ts`), which are
-translated. The Turkish interface is therefore not Turkish all the way down: the labels, buttons,
-explanations, chart texts and units are, the model's own messages are not. The pseudo-locale sweep
-(`src/ui/pseudoLocale.test.tsx`) exempts exactly these sentences (`modelTexts()` in
-`src/ui/testing/appHarness.tsx`) and nothing else. The lasting fix is for the physics layer to return a
-message code with parameters that the interface translates; that is a change to `src/physics` and belongs
-to a later release.
+**Sentences written by the physics layer are translated by pattern.** Events, warnings, termination reasons,
+diagnoses and fixes are built as English sentences inside `src/physics` (part of exports, run files and tests, so
+the physics layer does not change). The interface recognises each sentence by a regular expression and writes it
+again in Turkish with the same numbers and a decimal comma (`src/i18n/physicsText.ts`, the API and the fallback;
+`src/i18n/physicsText.tr.ts`, the rule table, loaded with the Turkish dictionary). It is applied to the
+termination box, the report warnings, the Compare "Termination" row, the Learn and Validation verdicts, and the
+event log. A sentence no rule knows is shown as the model wrote it, and so is a free-text detail inside a known
+sentence (the error message of the equilibrium solver, a scenario trigger's own name); CSV, JSON, run files, figures
+and share links keep the English sentences. The explanatory notes of the report (the definitions under stable time, Q_eng and the
+Lawson ratio) have no rules yet and stay English. The step-control notes (`src/ui/settingsNotes.ts`) have their own
+dictionary keys and are translated first. `src/i18n/physicsText.test.ts` runs the presets and forced shots and fails
+on any emitted sentence that has no rule, so a changed physics template is found there. The pseudo-locale sweep
+(`src/ui/pseudoLocale.test.tsx`) still exempts the model's sentences (`modelTexts()` in
+`src/ui/testing/appHarness.tsx`). The lasting fix remains for the physics layer to return a message code with
+parameters; that is a change to `src/physics`.
 
 A number typed into a field is read the way the interface writes it: `1,5`, `1.5`, `1.234,5` and `1,234.5`
 are accepted, grouping that is not in threes (`1,2,3`) is rejected.
@@ -48,8 +54,7 @@ release notes of the release that was checked:
    and TalkBack (Android): names read sensibly, dialogs announce and trap focus, live values are not noisy.
 2. Real Tab and Shift+Tab pass over every screen: no trap, a visible focus ring, a sensible order.
 3. A real 375 px phone: no horizontal scroll on the wizard, run and compare screens, touch targets reachable.
-4. Turkish reading of the whole interface by a Turkish speaker, including the physics-layer sentences that
-   stay English (see above).
+4. Turkish reading of the whole interface by a Turkish speaker, including the physics-layer sentences (translated by pattern, see above).
 
 ## Known gaps in the automated checks
 

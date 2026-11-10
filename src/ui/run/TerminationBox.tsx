@@ -2,7 +2,7 @@ import React from 'react';
 import { TerminationInfo } from '../../physics/types';
 import { MessageKey } from '../../i18n';
 import { fmtTime } from '../format';
-import { useT } from '../state/store';
+import { usePhysicsText, useT } from '../state/store';
 
 /**
  * How a shot ended when the 1.5D solver, not the plasma, ended it. The model reports these two as
@@ -38,16 +38,17 @@ interface Props {
 /** The verdict of a finished shot: reason, diagnosis and how to fix it (live values panel and report). */
 export function TerminationBox({ term, timeUnit, full, style }: Props) {
   const t = useT();
+  const px = usePhysicsText();
   const failure = solverFailureTitle(term);
   return (
     <div className={`diag-box ${terminationClass(term)}`} style={style}>
       <div>
-        <b>{failure ? t(failure) : term.reason}</b>
+        <b>{failure ? t(failure) : px(term.reason)}</b>
         {full && <span className="muted small"> @ {fmtTime(term.t, timeUnit)}</span>}
       </div>
       {failure && <div className="small warn" style={{ marginTop: 2 }}>{t('end.solverNote')}</div>}
-      <p className={full ? undefined : 'small muted'} style={{ margin: full ? '6px 0' : '4px 0' }}>{term.diagnosis}</p>
-      {term.fix && <div className={full ? undefined : 'small'}><span className="accent">{t('rep.fix')}</span> {term.fix}</div>}
+      <p className={full ? undefined : 'small muted'} style={{ margin: full ? '6px 0' : '4px 0' }}>{px(term.diagnosis)}</p>
+      {term.fix && <div className={full ? undefined : 'small'}><span className="accent">{t('rep.fix')}</span> {px(term.fix)}</div>}
     </div>
   );
 }

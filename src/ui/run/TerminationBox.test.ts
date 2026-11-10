@@ -3,6 +3,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadLocale } from '../../i18n';
+import { requirePreset, runShot } from '../../physics/index';
 import { ITER_15D } from '../../physics/presets';
 import { Simulation } from '../../physics/simulation';
 import { TerminationInfo } from '../../physics/types';
@@ -61,6 +62,24 @@ describe('how a finished shot is shown', () => {
     expect(h).toContain('Bir çözücü hatası');
     expect(h).toContain(numerical.diagnosis);
     expect(html(equilibrium, 'tr')).toContain('Denge hatası');
+  });
+
+  it('writes the reason, diagnosis and fix of a real disruption in Turkish, and leaves them English in English', () => {
+    const term = runShot({ ...(requirePreset('JET').cfg as object), n_target: 3e20, n_rampTime: 1, t_end: 4 } as never).report.termination;
+    expect(term.disruption).toBeDefined();
+    const h = html(term, 'tr', true);
+    expect(h).toContain('Yoğunluk sınırı disrupsiyonu (Greenwald)');
+    expect(h).toContain('Termal sönme');
+    expect(h).toContain('Nasıl düzeltilir:');
+    expect(h).toContain('Hedef yoğunluğu düşürün');
+    expect(h).not.toContain('Thermal quench');
+    expect(html(term, 'en', true)).toContain(term.diagnosis);
+  });
+
+  it('keeps the model text of a sentence no rule knows, in both languages', () => {
+    const odd: TerminationInfo = { t: 1, natural: false, reason: 'Unknown stop', diagnosis: 'Something the model has not said before: 1.5.', fix: 'Try again.' };
+    expect(html(odd, 'tr')).toContain(odd.diagnosis);
+    expect(html(odd, 'tr')).toContain('Try again.');
   });
 
   it('the report layout adds the end time; an empty fix text leaves no fix line', () => {

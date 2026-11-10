@@ -7,6 +7,7 @@ import { createContext, useContext, useMemo, useSyncExternalStore } from 'react'
 import { ReactorConfig } from '../../physics/types';
 import { ITER } from '../../physics/presets';
 import { Locale, Translate, isLocale, loadLocale, setActiveLocale, translator } from '../../i18n';
+import { physicsText } from '../../i18n/physicsText';
 import type { ScenarioSpec } from '../../physics/scenario';
 import { AppState, SavedShot, Tab } from './types';
 import { loadWizardText } from '../wizard/wizTextLoader';
@@ -159,4 +160,10 @@ export function useApp<S>(selector: (s: AppState) => S): S {
 export function useT(): Translate {
   const locale = useApp((s) => s.locale);
   return useMemo(() => translator(locale), [locale]);
+}
+
+/** Translator of the physics layer's sentences (event messages, warnings, termination texts) for the current locale; re-renders when it changes. */
+export function usePhysicsText(): (msg: string) => string {
+  const locale = useApp((s) => s.locale);
+  return useMemo(() => (msg: string) => physicsText(msg, locale), [locale]);
 }

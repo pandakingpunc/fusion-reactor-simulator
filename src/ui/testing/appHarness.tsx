@@ -3,6 +3,7 @@
  * format sweep, the accessibility sweep). It does not depend on any text of the interface: tabs are opened through the store and the run is
  * started with the primary button of the last wizard step, so the same walk works in every language. Not imported by the application bundle.
  */
+import { physicsText } from '../../i18n/physicsText';
 import React from 'react';
 import { act, fireEvent, render } from '@testing-library/react';
 import App from '../../App';
@@ -50,13 +51,13 @@ export function goTab(store: AppStore, tab: Tab): void {
 }
 
 /**
- * What the physics model writes as sentences, English whatever the interface language is (src/physics has no message codes yet): the notes and
+ * What the physics model writes as sentences: English as written, and the Turkish interface shows them translated by physicsText (src/physics has no message codes yet): the notes and
  * warnings of the reports, the reason a run ended and the events of the logs, collected from the shots in the store. The sweeps do not hold
  * these against the interface; nothing else is excused by them.
  */
 export function modelTexts(store: AppStore): Set<string> {
   const out = new Set<string>();
-  const add = (x: unknown) => { if (typeof x === 'string' && x) out.add(x.trim()); };
+  const add = (x: unknown) => { if (typeof x === 'string' && x) { out.add(x.trim()); out.add(physicsText(x, 'tr').trim()); } }; // the sentence as written and as the Turkish interface shows it
   for (const shot of store.getState().shots) {
     const r = shot.report;
     add(r.Q_eng_note); add(r.lawsonNote); add(r.stableDefinition);

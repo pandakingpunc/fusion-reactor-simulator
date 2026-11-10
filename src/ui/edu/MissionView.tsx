@@ -7,6 +7,7 @@ import { METRIC_UNITS, Outcome, PopconReading, RunData, judge, popconMetrics, re
 import { Edits, Lever, Mission, buildConfig, leverStart, leverValues, missionKey, operatingPoint } from '../../edu/missions';
 import { Popcon } from '../charts/Popcon';
 import { fmtNum } from '../format';
+import { usePhysicsText } from '../state/store';
 import { AbortError, RunPool } from '../pool/pool';
 import { Explain } from './Explain';
 import { PowerFlow } from './PowerFlow';
@@ -33,6 +34,7 @@ const fromPos = (l: Lever, p: number) => (l.log ? 10 ** p : p);
 
 export function MissionView({ mission, pool, solved, onSolved, onBack, onOpenGlossary }: Props) {
   const t = useEduT();
+  const px = usePhysicsText();
   const [edits, setEdits] = useState<Edits>({});
   const [hints, setHints] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
@@ -211,8 +213,8 @@ export function MissionView({ mission, pool, solved, onSolved, onBack, onOpenGlo
             {result && (
               <div className={`verdict ${result.outcome.passed ? 'pass' : 'fail'}`} style={{ marginTop: 8 }}>
                 <b className={result.outcome.passed ? 'ok' : 'warn'}>{t(result.outcome.passed ? 'edu.pass' : 'edu.fail')}</b>
-                {result.run && <span className="small">{t('edu.ended', { reason: result.run.report.termination.reason })}</span>}
-                {result.run && !result.run.report.termination.natural && <div className="small muted">{result.run.report.termination.diagnosis}</div>}
+                {result.run && <span className="small">{t('edu.ended', { reason: px(result.run.report.termination.reason) })}</span>}
+                {result.run && !result.run.report.termination.natural && <div className="small muted">{px(result.run.report.termination.diagnosis)}</div>}
                 {result.reading && (
                   <div className="small">
                     {t('edu.popcon.reading', { p: fmtNum(result.reading.Paux_MW), b: fmtNum(result.reading.betaN), g: fmtNum(result.reading.nGfrac) })}

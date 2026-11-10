@@ -334,7 +334,10 @@ Further limits:
   (table above), and the hot spot of the calibration shot is too cold.
 - **FACIT and the pedestal and ELM closures are reduced forms** compared with their sources term by term or with a published fit, not benchmarked
   against NEO, Aurora or EPED output beyond what is stated above.
-- **Sentences written by the physics layer stay English** in the Turkish interface (events, warnings, termination reasons, report notes).
+- **The physics layer writes its sentences in English only.** The Turkish interface translates them by pattern (`src/i18n/physicsText*.ts`: event log, report warnings,
+  termination reason, diagnosis and fix), keeping the numbers; a sentence no rule knows is shown in English, and a free-text detail inside a sentence (a solver's
+  own error message) stays English. The report's explanatory notes (the definitions under
+  stable time, Q_eng and the Lawson ratio) are not covered yet and stay English. Exports, run files and share links keep the English sentences.
 - **The 1.5D model is about <!--n:slower-->5 times slower** than it was before the TR-BDF2 solver with error control and event localisation: the price of
   the convergence above ([docs/v4-numbers-diff.md](docs/v4-numbers-diff.md), section 6).
 

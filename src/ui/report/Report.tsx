@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { HistoryFrame, METHOD_LABELS } from '../../physics/types';
 import { MessageKey } from '../../i18n';
 import { SavedShot } from '../state/types';
-import { useApp, useT } from '../state/store';
+import { useApp, usePhysicsText, useT } from '../state/store';
 import { useWizText } from '../wizard/wizText';
 import { fmtNum, fmtTime } from '../format';
 import { TimeChart } from '../charts/TimeChart';
@@ -29,6 +29,7 @@ const FIG_LABEL: Record<FigKind, MessageKey> = { traces: 'rep.fig.traces', profi
 
 export function Report({ shot, onRerun, onEdit, embedded }: Props) {
   const t = useT();
+  const px = usePhysicsText();
   const wt = useWizText();
   const locale = useApp((s) => s.locale);
   const openGlossary = useOpenGlossary();
@@ -132,7 +133,7 @@ export function Report({ shot, onRerun, onEdit, embedded }: Props) {
         {r.warnings.length > 0 && (
           <>
             <h3 style={{ marginTop: 10 }}>{t('rep.warnings')}</h3>
-            <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>{r.warnings.map((w, i) => <li key={i} className="warn">{localizeWarning(w, cfg, t)}</li>)}</ul>
+            <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>{r.warnings.map((w, i) => <li key={i} className="warn">{px(localizeWarning(w, cfg, t))}</li>)}</ul>
           </>
         )}
       </div>

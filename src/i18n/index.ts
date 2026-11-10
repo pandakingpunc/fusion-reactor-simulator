@@ -17,7 +17,8 @@ export const LOCALE_NAMES: Record<Locale, string> = { en: 'English', tr: 'T√ºrk√
 
 const loaders: Record<Locale, () => Promise<Dict>> = {
   en: async () => en,
-  tr: () => import('./tr').then((m) => m.tr),
+  // the Turkish dictionary and the rules for the physics layer's sentences (physicsText.tr.ts registers itself) are one load
+  tr: () => Promise.all([import('./tr'), import('./physicsText.tr')]).then(([m]) => m.tr),
 };
 const dicts: Partial<Record<Locale, Dict>> = { en };
 let active: Locale = 'en';

@@ -3,6 +3,7 @@ import { ReactorConfig, ShotReport } from '../../physics/types';
 import { PRESETS, Preset } from '../../physics/presets';
 import { WorkerFactory } from '../state/sim';
 import { fmtNum } from '../format';
+import { usePhysicsText } from '../state/store';
 import { useEduT } from '../edu/useEduT';
 import { useWizText } from '../wizard/wizText';
 import '../edu/edu.css';
@@ -92,6 +93,7 @@ function inRange(c: Criterion, r: ShotReport): boolean { const v = c.get(r); ret
 export function Validation({ createWorker, pool: given, tests = TESTS, presets = PRESETS }: Props) {
   const t = useEduT();
   const wt = useWizText();
+  const px = usePhysicsText();
   const [own] = useState(() => (given ? null : new RunPool(createWorker)));
   const pool = given ?? own!;
   const [items, setItems] = useState<Record<string, Item>>({});
@@ -214,7 +216,7 @@ export function Validation({ createWorker, pool: given, tests = TESTS, presets =
                 );
               })}
               {row && (
-                <tr><td className="small muted">{t('val.termination')}</td><td className="small muted">{row.termination.reason} · {it.ms?.toFixed(0)} ms</td></tr>
+                <tr><td className="small muted">{t('val.termination')}</td><td className="small muted">{px(row.termination.reason)} · {it.ms?.toFixed(0)} ms</td></tr>
               )}
             </tbody></table>
           </div>
@@ -236,7 +238,7 @@ export function Validation({ createWorker, pool: given, tests = TESTS, presets =
                     {r ? (
                       <>
                         <td>{fmtNum(r.Q_sci_max)}</td><td>{fmtNum(r.Tmax_keV)}</td><td>{fmtNum(r.E_fusion_MJ)}</td>
-                        <td className={r.termination.disruption ? 'bad' : ''}>{r.termination.reason}</td><td>{Math.round(r.score)}</td>
+                        <td className={r.termination.disruption ? 'bad' : ''}>{px(r.termination.reason)}</td><td>{Math.round(r.score)}</td>
                       </>
                     ) : it.error ? <td colSpan={5} className="bad">{it.error}</td>
                       : <td colSpan={5} className="muted small">{stateText(it)}{pending(it.status) && <div className="val-bar"><span style={{ width: `${Math.round(it.pct * 100)}%` }} /></div>}</td>}

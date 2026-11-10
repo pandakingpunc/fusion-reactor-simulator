@@ -34,7 +34,7 @@ import { fuelCommand } from './densityControl';
 import { PlasmaCircuit } from './circuit';
 import { EDGE_DIAGS, edgeDiagnostics } from '../edge';
 import { RNG } from '../rng';
-import { U } from '../units';
+import { U, aboveLimit } from '../units';
 import { IMPURITIES } from '../constants';
 import { DiagSpec, HistoryFrame, MagneticConfig, ShotReport, SimEvent, SimModel, TerminationInfo } from '../types';
 
@@ -192,7 +192,10 @@ export class MagneticModel implements SimModel {
     this.method = cfg.method;
     this.g = cfg.geometry;
     this.isStell = cfg.method === 'stellarator';
-    this.diagSpecs = this.isStell ? MAGNETIC_DIAGS.filter((s) => s.group !== 'Edge' && s.group !== 'Current') : MAGNETIC_DIAGS; // no two-point SOL and no plasma current in a stellarator
+    // a stellarator has no two-point SOL and no plasma current, hence no Greenwald limit: its density limit is Sudo's, and `nG_frac` is n̄/n_Sudo there
+    this.diagSpecs = this.isStell
+      ? MAGNETIC_DIAGS.filter((s) => s.group !== 'Edge' && s.group !== 'Current').map((s) => (s.key === 'nG_frac' ? { ...s, label: 'n̄/n_Sudo' } : s))
+      : MAGNETIC_DIAGS;
     this.circuit = new PlasmaCircuit({ R: cfg.geometry.R, a: cfg.geometry.a, kappa: cfg.geometry.kappa, alphaN: cfg.transport.alpha_n, alphaT: cfg.transport.alpha_T });
     // volume, surface and cross-section of the boundary (LCFS) Miller shape; q95 and the scalings keep the nominal shape
     this.gB = boundaryShape(cfg);
@@ -807,8 +810,8 @@ export class MagneticModel implements SimModel {
       if (dg.Q < 1 && this.burning) { this.burning = false; ev.push({ t, kind: 'burn_end', msg: 'Q < 1' }); }
 
       // ---- uyarılar ----
-      if (dg.q_div > 10 && !this.warned.has('div')) { this.warned.add('div'); ev.push({ t, kind: 'warning', msg: `Divertor heat flux ${dg.q_div.toFixed(0)} MW/m² > 10 MW/m² — material lifetime at risk` }); }
-      if (dg.nG_frac > 0.85 && !this.warned.has('nG')) { this.warned.add('nG'); ev.push({ t, kind: 'warning', msg: `n̄/n_G = ${dg.nG_frac.toFixed(2)} — approaching the density limit` }); }
+      if (dg.q_div > 10 && !this.warned.has('div')) { this.warned.add('div'); ev.push({ t, kind: 'warning', msg: `Divertor heat flux ${aboveLimit(dg.q_div, 10)} MW/m² > 10 MW/m² — material lifetime at risk` }); }
+      if (dg.nG_frac > 0.85 && !this.warned.has('nG')) { this.warned.add('nG'); ev.push({ t, kind: 'warning', msg: `${this.isStell ? 'n̄/n_Sudo' : 'n̄/n_G'} = ${dg.nG_frac.toFixed(2)} — approaching the density limit` }); }
       if (dg.betaN > 0.85 * c.limits.betaN_limit && !this.warned.has('bN')) { this.warned.add('bN'); ev.push({ t, kind: 'warning', msg: `β_N = ${dg.betaN.toFixed(2)} — approaching the Troyon limit` }); }
 
       // ---- LİMİT KONTROLLERİ → disruption ----

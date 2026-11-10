@@ -8,7 +8,7 @@ import { Geometry } from '../geometry';
 import { MAGNET_TECH, MagnetCheck, economics, neutronWallLoad } from '../engineering';
 import { assessSystems, systemsReportKeys } from '../systems/assess';
 import { fluxFromHistory } from '../systems/csFlux';
-import { U } from '../units';
+import { U, aboveLimit } from '../units';
 import { flatTopMean } from '../analysis/flatTop';
 import { edgeReportEntriesOf } from '../edge';
 import { HistoryFrame, MagneticConfig, Method, ShotReport, SimEvent, TerminationInfo } from '../types';
@@ -97,7 +97,7 @@ export function buildMagneticReport(ctx: MagneticReportContext, hist: HistoryFra
   });
   const warnings: string[] = [];
   if (tbr < 1.05 && c.fuel === 'DT') warnings.push(`TBR = ${tbr.toFixed(2)} < 1.05 — this reactor cannot breed its own tritium.`);
-  if (max(d('q_div')) > 10) warnings.push(`Peak divertor heat flux ${max(d('q_div')).toFixed(0)} MW/m² > 10 MW/m² — target plates cannot withstand this; increase the divertor radiation fraction.`);
+  if (max(d('q_div')) > 10) warnings.push(`Peak divertor heat flux ${aboveLimit(max(d('q_div')), 10)} MW/m² > 10 MW/m² — target plates cannot withstand this; increase the divertor radiation fraction.`);
   warnings.push(...sys.warnings); // TF stress over the limit, CS flux short of the requirement
   if (nwl.dpa_per_year > 20) warnings.push(`Neutron damage ${nwl.dpa_per_year.toFixed(0)} dpa/year — the first wall needs replacement within a few years.`);
   if (eco.P_net_MW < 0) warnings.push(`Negative net electricity (${eco.P_net_MW.toFixed(0)} MW): Q_eng < 1, the plant draws power from the grid.`);

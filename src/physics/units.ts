@@ -43,3 +43,12 @@ export function fmtFixed(x: number, d = 2): string {
   if (!isFinite(x)) return '—';
   return x.toFixed(d);
 }
+
+/**
+ * `value` written with as few decimals (0 to 3) as still show it above `limit`. A warning fires where a quantity crosses its limit,
+ * so the value is often a hair above it: 10.04 against 10 printed with no decimal reads "10 > 10".
+ */
+export function aboveLimit(value: number, limit: number): string {
+  for (let d = 0; d < 3; d++) if (Number(value.toFixed(d)) > limit) return value.toFixed(d);
+  return value.toFixed(3);
+}

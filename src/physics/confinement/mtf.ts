@@ -141,7 +141,7 @@ export class MTFModel extends PulsedBase {
     if (!this._peaked && t >= this.tc && this.CR_eff > 1.0001) {
       this._peaked = true;
       const s = this.state(this.tc);
-      ev.push({ t, kind: 'stagnation', msg: `Stagnation: C = ${s.Cc.toFixed(1)}, n = ${(s.n / 1e20).toExponential(1)}e20 m⁻³, T = ${s.T.toFixed(2)} keV, B = ${s.B.toFixed(0)} T` });
+      ev.push({ t, kind: 'stagnation', msg: `Stagnation: C = ${s.Cc.toFixed(1)}, n = ${s.n.toExponential(1).replace('e+', 'e')} m⁻³, T = ${s.T.toFixed(2)} keV, B = ${s.B.toFixed(0)} T` });
     }
     return ev;
   }
@@ -160,7 +160,7 @@ export class MTFModel extends PulsedBase {
     const G = (last.d.Efus_MJ ?? 0) / Math.max(this.cfg.driverEnergy_MJ, 1e-6);
     const warnings: string[] = [];
     if (this.CR_eff < 0.9 * this.cfg.compressionRatio) warnings.push(`Instability reduced effective compression: CR ${this.cfg.compressionRatio} → ${this.CR_eff.toFixed(1)} (jitter/flow shear).`);
-    if (G < 0.01) warnings.push('MTF is far from net energy at these parameters (G≪1) — consistent with current experiments.');
+    if (G < 0.01) warnings.push(`${this.method === 'zpinch_sfs' ? 'The Z-pinch' : 'MTF'} is far from net energy at these parameters (G≪1) — consistent with current experiments.`);
     return this.buildReport(hist, events, {
       fuel: this.cfg.fuel, wallArea: 2 * Math.PI * this.cfg.r0_m * this.cfg.L_m,
       scoreBreakdown: [

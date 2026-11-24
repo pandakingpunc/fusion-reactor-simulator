@@ -4,7 +4,8 @@ import { ShotReport } from '../../physics/types';
 import { SavedShot } from '../state/types';
 import { diffConfigs, flattenConfig } from './diffConfigs';
 import { LOG_DECADES, RADAR_AXES, radarPoints, radarValues } from './radar';
-import { commonChannels, extent, overlayTraces, tickValues, timeAxisAllowed } from './overlay';
+import { commonChannels, extent, overlayTraces, profileOverlayTraces, tickValues, timeAxisAllowed } from './overlay';
+import { buildCompareCSV } from './exportCompare';
 
 describe('configuration diff', () => {
   it('flattens nested objects and arrays to dotted paths and skips undefined leaves', () => {
@@ -141,5 +142,21 @@ describe('overlay of runs', () => {
     expect(tickValues(1, 1e6, true)).toEqual([1, 10, 100, 1000, 1e4, 1e5, 1e6]);
     expect(tickValues(1, 20, true)).toEqual([1, 2, 5, 10, 20]);
     expect(tickValues(3, 3, false)).toEqual([3]);
+  });
+
+  it('extracts latest 1.5D radial profiles for comparison and formats comparison CSV cleanly', () => {
+    const a = shot(1, 's', ['Q'], 10, 3);
+    a.frames[2] = { t: 10, d: { Q: 5 }, prof: { rho: [0, 0.5, 1], Te: [20, 12, 1] } };
+    const b = shot(2, 's', ['Q'], 10, 3); // no 1.5D profiles
+    const items = profileOverlayTraces([a, b], 'Te');
+    expect(items).toHaveLength(1);
+    expect(items[0].shot.id).toBe(1);
+    expect(items[0].t).toBe(10);
+    expect(items[0].trace.points).toEqual([{ x: 0, y: 20 }, { x: 0.5, y: 12 }, { x: 1, y: 1 }]);
+
+    const csv = buildCompareCSV('Quantity', [a, b], [{ label: 'Q_sci max', values: [10, 5] }, { label: 'Note, "quoted"', unit: 'MW', values: [1, 2] }]);
+    expect(csv.startsWith('\uFEFFQuantity,shot 1,shot 2\r\n')).toBe(true);
+    expect(csv).toContain('Q_sci max,10,5');
+    expect(csv).toContain('"Note, ""quoted"" [MW]",1,2');
   });
 });

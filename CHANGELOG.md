@@ -2,6 +2,23 @@
 
 Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [SemVer](https://semver.org/) izler.
 
+## [Unreleased]
+
+### Added
+- 3D view (`src/ui/viz3d`): helical magnetic field lines swept along an outer-core flux surface using the live safety factor `q(ρ)` (from 1.5D `q` profiles or 0D `q95`, cleanly respecting the cut-away wedge), camera view presets (`Top`, `Section`), a live temperature colour-scale bar with `T₀` and `q` readout, and a `PNG ↓` snapshot button.
+- Interactive 1.5D radius–time (`ρ–t`) heat map (`src/ui/charts/RhoTHeatmap.tsx`) using matplotlib's exact perceptually uniform colormaps (`inferno`, `viridis`, `plasma`, `magma`, `cividis`), event markers, hover readout and click-to-select time: integrated into the Report tab as a full-width 1.5D profile evolution explorer synchronized with a time-sliced `ProfileChart` (with peak-`T_e` comparison overlay), into the Run screen's `ProfilesPanel` (`Profiles` / `ρ–t` toggle), and exposed as `Figure: radius-time map (1.5D)` with quantity selection in the Report SVG/PDF export toolbar.
+- `ProfileChart`: interactive radial hover crosshair showing exact interpolated values for every curve at `ρ_tor` (plus optional reference-profile comparison overlay).
+- Run screen interactivity: synchronized hover crosshair across all open time charts in `ChartsPanel`, nearest-event tooltip inside `TimeChart`, clickable event-log timestamps to rewind to any event when paused/done, and non-intrusive keyboard shortcuts (`Space` play/pause, `.` single step).
+- Compare tab: 1.5D radial profile comparison overlay (`OverlayChart` over `ρ_tor` for `T_e`, `T_i`, `n_e`, `q`, `s`, `j_tot`, `j_bs`, `χ_e`, `χ_i`, `p_α`) and side-by-side comparison table `CSV ↓` export.
+- Setup wizard: instant preset search box and category filter chips (`All`, `1.5D`, `Magnetic`, `Pulsed / alt.`).
+- Turkish interface (`src/i18n/physicsText.tr.ts`): complete translation coverage for the Report's explanatory notes (`stableDefinition`, `Q_eng_note`, `lawsonNote`) across all confinement methods, verified across all presets in `physicsText.test.ts`.
+
+### Fixed
+- Report disruption table now displays the human-readable (and translated) disruption cause label (`DISRUPTION_LABELS`) instead of the raw internal enum key (e.g. `density_limit`).
+- `TransportBar` timeline scrubber now commits rewinds on touch and pointer release (`onTouchEnd`, `onPointerUp`, `onBlur`) in addition to mouse/keyboard release.
+- `TimeChart`: ignore clicks inside the axis label margins so clicking outside the plot area does not rewind to `t = 0`; preserve fallback width when mounted at `clientWidth === 0`; avoid reallocating the canvas backing store on every animation frame.
+- `ProfileChart`, `CrossSection` and `Implosion`: migrated to `useCanvasSize` / `prepareCanvas` so canvases redraw crisply on container resize and DPR changes without per-frame reallocation.
+
 ## [4.2.0] — 2026-11-10
 
 Interface work on the run screen and the Turkish interface, and four wrong sentences of the physics layer. No number of any model changes: the golden cases, the literature validation and the paper figures are bit for bit those of 4.1.0. Three event or report sentences change their wording (below), and with them the run digest of a shot that emits one; a run file written by 4.1.0 is reported as written by another version, as for every release.

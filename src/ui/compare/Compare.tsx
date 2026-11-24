@@ -6,7 +6,7 @@ import type { EduKey } from '../../edu/i18n';
 import { MessageKey } from '../../i18n';
 import { SavedShot } from '../state/types';
 import { useApp, usePhysicsText, useT } from '../state/store';
-import { PALETTE, fmtNum } from '../format';
+import { PALETTE, fmtNum, fmtTime } from '../format';
 import { solverFailureTitle } from '../run/TerminationBox';
 import { Explain } from '../edu/Explain';
 import { PowerFlow } from '../edu/PowerFlow';
@@ -16,10 +16,11 @@ import type { WizText } from '../wizard/schema';
 import { useOpenGlossary } from '../edu/useOpenGlossary';
 import '../edu/edu.css';
 import { ConfigDiff } from './ConfigDiff';
+import { CompareCsvRow, downloadCompareCSV } from './exportCompare';
 import { OverlayChart } from './OverlayChart';
 import { RadarChart } from './RadarChart';
 import { RADAR_AXES, RadarScale, radarValues } from './radar';
-import { TimeAxis, commonChannels, overlayTraces, timeAxisAllowed } from './overlay';
+import { PROFILE_COMPARE_CHANNELS, TimeAxis, commonChannels, overlayTraces, profileOverlayTraces, timeAxisAllowed } from './overlay';
 
 interface Props { shots: SavedShot[]; onRemove: (id: number) => void; onLoad: (s: SavedShot) => void }
 
@@ -60,6 +61,7 @@ export function Compare({ shots, onRemove, onLoad }: Props) {
   const [hidden, setHidden] = useState<ReadonlySet<number>>(new Set());
   const [scale, setScale] = useState<RadarScale>('lin');
   const [channel, setChannel] = useState('');
+  const [profChan, setProfChan] = useState('Te');
   const [axisPref, setAxisPref] = useState<TimeAxis>('abs');
   const [diffA, setDiffA] = useState<number | null>(null);
   const [diffB, setDiffB] = useState<number | null>(null);
@@ -73,6 +75,9 @@ export function Compare({ shots, onRemove, onLoad }: Props) {
   const absOk = timeAxisAllowed(shown);
   const axis: TimeAxis = absOk ? axisPref : 'norm';
   const traces = useMemo(() => (chosen ? overlayTraces(shown, chosen.key, axis) : []), [shown, chosen, axis]);
+  const profSpec = PROFILE_COMPARE_CHANNELS.find((c) => c.key === profChan) ?? PROFILE_COMPARE_CHANNELS[0];
+  const profItems = useMemo(() => profileOverlayTraces(shown, profSpec.key), [shown, profSpec.key]);
+  const has15D = useMemo(() => shown.some((s) => s.frames.some((f) => f.prof?.rho?.length)), [shown]);
 
   // the engineering keys of the shots (the union, in the order they first appear): a shot that lacks one shows a dash
   const engKeys = useMemo(() => { const seen = new Set<string>(); for (const s of shots) for (const k of Object.keys(s.report.engineering)) seen.add(k); return [...seen]; }, [shots]);
@@ -89,10 +94,40 @@ export function Compare({ shots, onRemove, onLoad }: Props) {
 
   const toggle = (id: number) => setHidden((h) => { const n = new Set(h); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
+  const exportCsv = () => {
+    const csvRows: CompareCsvRow[] = [
+      ...ROWS.map((row) => ({
+        label: typeof row.label === 'string' ? t(row.label) : row.label.sym,
+        unit: row.unit,
+        values: shots.map((s) => row.get(s.report, t, wt, px)),
+      })),
+      { label: t('cmp.warnCount'), values: shots.map((s) => s.report.warnings.length) },
+      { label: t('cmp.eventCount'), values: shots.map((s) => s.events.length) },
+      ...engKeys.map((k) => {
+        const d = describeReportKey(k, locale);
+        return {
+          label: d.label,
+          unit: d.unit,
+          values: shots.map((s) => {
+            const v = s.report.engineering[k];
+            return v === undefined ? '' : typeof v === 'boolean' ? t(v ? 'common.yes' : 'common.no') : typeof v === 'number' ? v : describeReportValue(v, locale);
+          }),
+        };
+      }),
+    ];
+    downloadCompareCSV(t('cmp.quantity'), shots, csvRows);
+  };
+
   return (
     <div className="cmp2">
       <div className="panel" style={{ overflowX: 'auto' }}>
-        <div className="panel-title"><h3>{t('cmp.title')}</h3><span className="muted small">{t('cmp.sub', { n: shots.length })}</span></div>
+        <div className="panel-title">
+          <h3>{t('cmp.title')}</h3>
+          <div className="row" style={{ gap: 8 }}>
+            <span className="muted small">{t('cmp.sub', { n: shots.length })}</span>
+            <button type="button" className="btn sm" onClick={exportCsv} title={te('cmp2.exportCsvTitle')}>{te('cmp2.exportCsv')}</button>
+          </div>
+        </div>
         <table className="cmp">
           <thead>
             <tr>
@@ -210,6 +245,27 @@ export function Compare({ shots, onRemove, onLoad }: Props) {
                   series={shown.map((s, i) => ({ id: s.id, name: s.name, color: color(s), trace: traces[i] }))} />
               </>
             ) : <div className="muted">{te('cmp2.noChannel')}</div>}
+          </div>
+        </div>
+      )}
+
+      {has15D && profItems.length > 0 && (
+        <div className="panel">
+          <div className="panel-title">
+            <h3>{te('cmp2.profOverlay')}</h3>
+            <label className="row" style={{ gap: 6 }}>{te('cmp2.profQty')}
+              <select value={profSpec.key} onChange={(e) => setProfChan(e.target.value)} style={{ width: 'auto' }} aria-label={te('cmp2.profQty')}>
+                {PROFILE_COMPARE_CHANNELS.map((c) => <option key={c.key} value={c.key}>{c.label}{c.unit ? ` [${c.unit}]` : ''}</option>)}
+              </select>
+            </label>
+          </div>
+          <OverlayChart title={`${te('cmp2.profOverlay')}: ${profSpec.label}`} log={false}
+            xLabel="ρ_tor" yLabel={`${profSpec.label}${profSpec.unit ? ` [${profSpec.unit}]` : ''}`}
+            series={profItems.map((it) => ({ id: it.shot.id, name: it.shot.name, color: color(it.shot), trace: it.trace }))} />
+          <div className="row small muted" style={{ marginTop: 4, gap: 12 }}>
+            {profItems.map((it) => (
+              <span key={it.shot.id}><span className="sw" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: color(it.shot), marginRight: 4 }} />{it.shot.name} (t = {fmtTime(it.t, it.shot.meta.timeUnit)})</span>
+            ))}
           </div>
         </div>
       )}

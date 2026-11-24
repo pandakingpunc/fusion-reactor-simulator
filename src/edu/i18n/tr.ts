@@ -325,6 +325,10 @@ export const eduTr: EduDict = {
   'cmp2.flow': 'Bir atışın güç akışı',
   'cmp2.flowShot': 'Atış',
   'cmp2.none': 'Hiç atış gösterilmiyor: en az birini işaretleyin.',
+  'cmp2.exportCsv': 'CSV ↓',
+  'cmp2.exportCsvTitle': 'Yan yana karşılaştırma tablosunu CSV olarak indir',
+  'cmp2.profOverlay': 'Radyal profil karşılaştırması (1.5D)',
+  'cmp2.profQty': 'Profil',
 
   // ── doğrulama ekranı ─────────────────────────────────────────────────────────────────────────────
   'val.title': 'Doğrulama',

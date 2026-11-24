@@ -36,6 +36,8 @@ export function Wizard({ cfg, setCfg, name, setName, onRun, scenarioStep, scenar
   const [stepIdx, setStepIdx] = useState(0);
   // which steps have their Advanced section open (kept while the wizard is on the page)
   const [advOpen, setAdvOpen] = useState<Readonly<Record<string, boolean>>>({});
+  const [presetQuery, setPresetQuery] = useState('');
+  const [presetFilter, setPresetFilter] = useState<'all' | '1.5d' | 'magnetic' | 'pulsed'>('all');
   const stepId = STEP_IDS[stepIdx];
   const steps = useMemo(() => stepsFor(cfg.method), [cfg.method]);
   const activePreset = PRESETS.find((p) => p.cfg === cfg)?.id;
@@ -81,6 +83,19 @@ export function Wizard({ cfg, setCfg, name, setName, onRun, scenarioStep, scenar
     for (const m of METHODS) { const k = METHOD_INFO[m].group; g.set(k, [...(g.get(k) ?? []), m]); }
     return [...g.entries()];
   }, []);
+
+  const filteredPresets = useMemo(() => {
+    const q = presetQuery.trim().toLowerCase();
+    return PRESETS.filter((p) => {
+      if (presetFilter === '1.5d' && (p.cfg as { fidelity?: string }).fidelity !== '1.5D') return false;
+      if (presetFilter === 'magnetic' && METHOD_INFO[p.cfg.method].group !== 'Magnetic') return false;
+      if (presetFilter === 'pulsed' && METHOD_INFO[p.cfg.method].group === 'Magnetic') return false;
+      if (!q) return true;
+      const hay = `${p.id} ${p.name} ${wt(p.name)} ${wt(p.desc)} ${wt(METHOD_INFO[p.cfg.method].name)}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [presetQuery, presetFilter, wt]);
+  const presetFiltered = presetQuery.trim() !== '' || presetFilter !== 'all';
 
   const renderStep = (id: StepId) => {
     if (id === 'method') {
@@ -168,9 +183,28 @@ export function Wizard({ cfg, setCfg, name, setName, onRun, scenarioStep, scenar
       </aside>
       <section className="panel" style={{ overflow: 'auto' }} ref={body}>{renderStep(stepId)}</section>
       <aside className="panel" style={{ overflow: 'auto' }}>
-        <div className="panel-title"><h3>{t('wiz.presets')}</h3><span className="muted small">{t('wiz.devices', { n: PRESETS.length })}</span></div>
+        <div className="panel-title">
+          <h3>{t('wiz.presets')}</h3>
+          <span className="muted small">{presetFiltered ? `${filteredPresets.length} / ${PRESETS.length}` : t('wiz.devices', { n: PRESETS.length })}</span>
+        </div>
+        <div className="preset-controls">
+          <input type="search" className="preset-search" value={presetQuery} onChange={(e) => setPresetQuery(e.target.value)}
+            placeholder={t('wiz.presetSearch')} aria-label={t('wiz.presetSearch')} />
+          <div className="row" style={{ gap: 4 }} role="group" aria-label={t('wiz.presetFilter')}>
+            {([
+              ['all', t('wiz.filterAll')],
+              ['1.5d', '1.5D'],
+              ['magnetic', t('wiz.filterMag')],
+              ['pulsed', t('wiz.filterPulsed')],
+            ] as const).map(([key, lbl]) => (
+              <button key={key} type="button" className={`btn sm ${presetFilter === key ? 'active' : ''}`}
+                style={presetFilter === key ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}
+                aria-pressed={presetFilter === key} onClick={() => setPresetFilter(key)}>{lbl}</button>
+            ))}
+          </div>
+        </div>
         <div className="preset-list">
-          {PRESETS.map((p) => (
+          {filteredPresets.map((p) => (
             <div key={p.id} className={`preset ${activePreset === p.id ? 'active' : ''}`}>
               <button type="button" className="preset-pick" aria-pressed={activePreset === p.id} onClick={() => pickPreset(p.id)}>
                 <span className="name">{wt(p.name)}</span>
@@ -182,6 +216,12 @@ export function Wizard({ cfg, setCfg, name, setName, onRun, scenarioStep, scenar
                 onClick={() => { pickPreset(p.id); onRun(p.cfg); }}>▶</button>
             </div>
           ))}
+          {filteredPresets.length === 0 && (
+            <div className="muted small" style={{ padding: '8px 2px' }}>
+              {t('wiz.presetNone')}{' '}
+              <button type="button" className="btn sm" onClick={() => { setPresetQuery(''); setPresetFilter('all'); }}>{t('wiz.presetClear')}</button>
+            </div>
+          )}
         </div>
       </aside>
     </div>

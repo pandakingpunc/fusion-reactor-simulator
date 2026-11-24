@@ -21,6 +21,42 @@ export function timeAxisAllowed(shots: readonly SavedShot[]): boolean {
 
 export interface Trace { shotId: number; points: { x: number; y: number }[] }
 
+export interface ProfileChannel { key: string; label: string; unit: string }
+
+/** Radial profile channels available for 1.5D shot-to-shot comparison. */
+export const PROFILE_COMPARE_CHANNELS: readonly ProfileChannel[] = [
+  { key: 'Te', label: 'T_e', unit: 'keV' },
+  { key: 'Ti', label: 'T_i', unit: 'keV' },
+  { key: 'ne', label: 'n_e', unit: '10²⁰ m⁻³' },
+  { key: 'q', label: 'q', unit: '' },
+  { key: 'shear', label: 's', unit: '' },
+  { key: 'j', label: 'j_tot', unit: 'MA m⁻²' },
+  { key: 'jbs', label: 'j_bs', unit: 'MA m⁻²' },
+  { key: 'chie', label: 'χ_e', unit: 'm² s⁻¹' },
+  { key: 'chii', label: 'χ_i', unit: 'm² s⁻¹' },
+  { key: 'Palpha', label: 'p_α', unit: 'MW m⁻³' },
+];
+
+export interface ProfileOverlayItem { shot: SavedShot; trace: Trace; t: number }
+
+/** Latest radial profile of `key` vs rho_tor for each shot that carries 1.5D profiles. */
+export function profileOverlayTraces(shots: readonly SavedShot[], key: string): ProfileOverlayItem[] {
+  const out: ProfileOverlayItem[] = [];
+  for (const s of shots) {
+    let f = null;
+    for (let i = s.frames.length - 1; i >= 0; i--) {
+      const fr = s.frames[i];
+      if (fr.prof?.rho?.length && fr.prof[key]?.length === fr.prof.rho.length) { f = fr; break; }
+    }
+    if (!f?.prof) continue;
+    const rho = f.prof.rho, ys = f.prof[key];
+    const points: { x: number; y: number }[] = [];
+    for (let i = 0; i < rho.length; i++) if (Number.isFinite(rho[i]) && Number.isFinite(ys[i])) points.push({ x: rho[i], y: ys[i] });
+    if (points.length >= 2) out.push({ shot: s, trace: { shotId: s.id, points }, t: f.t });
+  }
+  return out;
+}
+
 /**
  * The trace of channel `key` of each shot. x is the time in the shot's unit ('abs') or the fraction of the shot's
  * duration ('norm'); at most `maxPoints` points per trace (evenly thinned, the last frame always kept); frames

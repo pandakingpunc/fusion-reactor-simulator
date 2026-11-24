@@ -325,6 +325,10 @@ export const eduEn = {
   'cmp2.flow': 'Power flow of a shot',
   'cmp2.flowShot': 'Shot',
   'cmp2.none': 'No shot is shown: tick at least one.',
+  'cmp2.exportCsv': 'CSV ↓',
+  'cmp2.exportCsvTitle': 'Download the side-by-side comparison table as CSV',
+  'cmp2.profOverlay': 'Radial profile comparison (1.5D)',
+  'cmp2.profQty': 'Profile',
 
   // ── validation view ──────────────────────────────────────────────────────────────────────────────
   'val.title': 'Validation',

@@ -177,4 +177,18 @@ describe('Compare 2.0', () => {
     expect(screen.getByText('2 alan farklı')).toBeTruthy();
     await act(async () => { await store.actions.setLocale('en'); });
   });
+
+  it('overlays 1.5D radial profiles when 1.5D shots are present and offers CSV export', () => {
+    const withProf = (s: SavedShot, scale: number): SavedShot => ({
+      ...s,
+      frames: [...s.frames, { t: 4, d: { Q: 5 }, prof: { rho: [0, 0.5, 1], Te: [20 * scale, 10 * scale, 1], ne: [1.0, 0.9, 0.3] } }],
+    });
+    mount([withProf(sparc, 1), withProf(sparc2, 1.2)]);
+    expect(screen.getByRole('button', { name: 'CSV ↓' })).toBeTruthy();
+    const profSvg = screen.getByRole('img', { name: /Radial profile comparison \(1\.5D\): T_e/ });
+    expect(profSvg.querySelectorAll('polyline')).toHaveLength(2);
+    const select = screen.getByRole('combobox', { name: 'Profile' }) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'ne' } });
+    expect(screen.getByRole('img', { name: /Radial profile comparison \(1\.5D\): n_e/ }).querySelectorAll('polyline')).toHaveLength(2);
+  });
 });

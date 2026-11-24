@@ -18,6 +18,7 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [Se
 - `TransportBar` timeline scrubber now commits rewinds on touch and pointer release (`onTouchEnd`, `onPointerUp`, `onBlur`) in addition to mouse/keyboard release.
 - `TimeChart`: ignore clicks inside the axis label margins so clicking outside the plot area does not rewind to `t = 0`; preserve fallback width when mounted at `clientWidth === 0`; avoid reallocating the canvas backing store on every animation frame.
 - `ProfileChart`, `CrossSection` and `Implosion`: migrated to `useCanvasSize` / `prepareCanvas` so canvases redraw crisply on container resize and DPR changes without per-frame reallocation.
+- Compare radar chart: widened SVG viewBox (`380 → 440`) so right-side Turkish/English vertex labels (e.g. `En yüksek T_i`) no longer clip; kept top-bar status pill on a single line (`white-space: nowrap`) and avoided upper-casing Greek `ρ` in the 1.5D profile evolution heading.
 
 ## [4.2.0] — 2026-11-10
 

@@ -24,6 +24,7 @@ a { color: var(--accent); }
 h1, h2, h3, h4 { margin: 0 0 8px; font-weight: 600; }
 h2 { font-size: 15px; }
 h3 { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+h3.no-upper { text-transform: none; letter-spacing: 0.02em; }
 
 .app { display: flex; flex-direction: column; height: 100%; }
 .topbar { display: flex; align-items: center; gap: 16px; padding: 8px 14px; background: var(--bg2); border-bottom: 1px solid var(--border); }
@@ -35,7 +36,7 @@ h3 { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spa
 .tab.active { color: var(--text); background: var(--panel2); border-color: var(--border); }
 .tab:disabled { opacity: 0.4; cursor: default; }
 .spacer { flex: 1; }
-.status-pill { font-family: var(--mono); font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+.status-pill { font-family: var(--mono); font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
 .status-pill.running { color: var(--ok); border-color: var(--ok); }
 .status-pill.done { color: var(--accent); border-color: var(--accent); }
 .status-pill.error { color: var(--bad); border-color: var(--bad); }

@@ -225,7 +225,7 @@ export function Report({ shot, onRerun, onEdit, embedded }: Props) {
       {profFrames.length >= 2 && activeProfFrame && (
         <div className="panel full">
           <div className="panel-title">
-            <h3>{t('rep.profiles15')}</h3>
+            <h3 className="no-upper">{t('rep.profiles15')}</h3>
             <span className="muted small">{t('rep.profiles15Hint')}</span>
           </div>
           <div className="report-15d">

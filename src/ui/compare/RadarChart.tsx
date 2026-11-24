@@ -9,7 +9,7 @@ interface Props {
   title: string;
 }
 
-const W = 380, H = 330, CX = W / 2, CY = H / 2 + 4, R = 112;
+const W = 440, H = 330, CX = W / 2, CY = H / 2 + 4, R = 112;
 const RINGS = [0.25, 0.5, 0.75, 1];
 
 /** Polygon (radar) chart: one axis per label, one polygon per series, radii already scaled to [0, 1]. */

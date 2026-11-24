@@ -152,6 +152,7 @@ button.event-chip[aria-pressed=false] { opacity: 0.35; }
 /* Report */
 .report { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .report .full { grid-column: 1 / -1; }
+.report-15d { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 12px; align-items: start; }
 table.kv { width: 100%; border-collapse: collapse; }
 table.kv td { padding: 4px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
 table.kv td:first-child { color: var(--muted); width: 55%; }
@@ -190,7 +191,7 @@ pre.err { white-space: pre-wrap; color: var(--bad); font-size: 11px; }
   .main { padding: 10px; }
   .main > * { min-width: 0; }
   .panel { min-width: 0; max-width: 100%; overflow-x: auto; }
-  .run, .report, .wizard { grid-template-columns: minmax(0, 1fr); height: auto; }
+  .run, .report, .report-15d, .wizard { grid-template-columns: minmax(0, 1fr); height: auto; }
   .run { grid-template-rows: none; }
   .run .left, .run .right, .run .center { overflow: visible; }
   .run .left, .run .center, .run .right { grid-column: auto; }

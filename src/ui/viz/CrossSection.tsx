@@ -6,11 +6,12 @@
  * 1.5D: `eq` verilirse Grad–Shafranov çözümünün gerçek akı yüzeyleri ve eksen konumu, renk
  * haritası ise ölçülen T_e(ρ) profilinden çizilir.
  */
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { EqSnapshot } from '../../physics/types';
 import { useT } from '../state/store';
 import { useWizText } from '../wizard/wizText';
 import { localizeDecimals } from '../../i18n';
+import { prepareCanvas, useCanvasSize } from '../hooks/useCanvasSize';
 
 interface Props {
   R: number; a: number; kappa: number; delta: number;
@@ -41,15 +42,13 @@ function tempColor(u: number): string {
 export function CrossSection(p: Props) {
   const wt = useWizText();
   const tr = useT();
-  const ref = useRef<HTMLCanvasElement>(null);
+  const { ref, width, dpr } = useCanvasSize<HTMLCanvasElement>(300);
   const { R, a, kappa, delta, gap, coilThickness, T0_keV, alphaT, Hmode, divertor, stellarator, disrupted, elmFlash = 0, height = 300, eq, prof } = p;
 
   useEffect(() => {
     const cv = ref.current; if (!cv) return;
-    const width = cv.clientWidth || 300;
-    const dpr = window.devicePixelRatio || 1;
-    cv.width = width * dpr; cv.height = height * dpr;
-    const ctx = cv.getContext('2d')!; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const ctx = prepareCanvas(cv, width, height, dpr);
+    if (!ctx) return;
     ctx.clearRect(0, 0, width, height);
     const outer = a + gap + coilThickness;
     const halfH = Math.max(kappa * a * 1.25 + gap + coilThickness, outer);
@@ -137,7 +136,7 @@ export function CrossSection(p: Props) {
     ctx.fillStyle = '#7f8ba3'; ctx.fillText(localizeDecimals(`R=${R.toFixed(2)} a=${a.toFixed(2)} κ=${kappa.toFixed(2)} δ=${delta.toFixed(2)}`), 6, 12);
     if (useEq) { ctx.fillText(localizeDecimals(`GS: q95=${eq!.q95.toFixed(2)} ℓi=${eq!.li.toFixed(2)} βp=${eq!.betaP.toFixed(2)} Δ=${((eq!.Raxis - R) * 100).toFixed(0)} cm`), 6, 24); }
     if (disrupted) { ctx.fillStyle = '#ef476f'; ctx.font = 'bold 12px Inter, sans-serif'; ctx.fillText(wt('DISRUPTION'), 6, 28); }
-  }, [R, a, kappa, delta, gap, coilThickness, T0_keV, alphaT, Hmode, divertor, stellarator, disrupted, elmFlash, height, eq, prof, wt]);
+  }, [R, a, kappa, delta, gap, coilThickness, T0_keV, alphaT, Hmode, divertor, stellarator, disrupted, elmFlash, height, eq, prof, wt, width, dpr, ref]);
 
   return <canvas ref={ref} role="img" aria-label={tr('run.cross.aria')} style={{ width: '100%', height, display: 'block' }} />;
 }

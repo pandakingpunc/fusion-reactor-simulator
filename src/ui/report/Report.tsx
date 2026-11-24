@@ -1,13 +1,14 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { DISRUPTION_LABELS } from '../../physics/disruption';
 import { HistoryFrame, METHOD_LABELS } from '../../physics/types';
 import { MessageKey } from '../../i18n';
 import { SavedShot } from '../state/types';
 import { useApp, usePhysicsText, useT } from '../state/store';
 import { useWizText } from '../wizard/wizText';
-import { fmtNum, fmtTime } from '../format';
+import { fmtNum, fmtTime, PALETTE } from '../format';
 import { TimeChart } from '../charts/TimeChart';
-import { PALETTE } from '../format';
+import { ProfileChart } from '../charts/ProfileChart';
+import { RHOT_UI_QUANTITIES, RhoTHeatmap } from '../charts/RhoTHeatmap';
 import { exportCSV, exportJSON, exportReportCSV } from './exportShot';
 import { TerminationBox } from '../run/TerminationBox';
 import { Explain } from '../edu/Explain';
@@ -25,8 +26,8 @@ interface Props {
   embedded?: boolean;
 }
 
-type FigKind = 'traces' | 'profiles' | 'cross';
-const FIG_LABEL: Record<FigKind, MessageKey> = { traces: 'rep.fig.traces', profiles: 'rep.fig.profiles', cross: 'rep.fig.cross' };
+type FigKind = 'traces' | 'profiles' | 'cross' | 'rhot';
+const FIG_LABEL: Record<FigKind, MessageKey> = { traces: 'rep.fig.traces', profiles: 'rep.fig.profiles', cross: 'rep.fig.cross', rhot: 'rep.fig.rhot' };
 
 export function Report({ shot, onRerun, onEdit, embedded }: Props) {
   const t = useT();
@@ -35,10 +36,24 @@ export function Report({ shot, onRerun, onEdit, embedded }: Props) {
   const locale = useApp((s) => s.locale);
   const openGlossary = useOpenGlossary();
   const [figKind, setFigKind] = useState<FigKind>('traces');
+  const [rhoTKey, setRhoTKey] = useState<string>('Te');
   const [figBusy, setFigBusy] = useState(false);
+  const [sliceIdx, setSliceIdx] = useState<number | null>(null);
+  const [comparePeak, setComparePeak] = useState(false);
   // the power balance needs the power channels of a magnetic run (a hook: before the early return)
   const shotFrames = shot?.frames;
   const hasPowerFlow = useMemo(() => !!shotFrames && powerBalance(pickDiag(shotFrames, 'shot')) !== null, [shotFrames]);
+  const profFrames = useMemo(() => (shotFrames ?? []).filter((f) => f.prof && f.prof.rho?.length), [shotFrames]);
+  const peakProfFrame = useMemo(() => {
+    let best: typeof profFrames[number] | null = null;
+    let bestT = -Infinity;
+    for (const f of profFrames) {
+      const t0 = f.prof?.Te?.[0] ?? -Infinity;
+      if (t0 > bestT) { bestT = t0; best = f; }
+    }
+    return best;
+  }, [profFrames]);
+  useEffect(() => { setSliceIdx(null); setComparePeak(false); }, [shot?.id]);
   if (!shot) return <div className="panel muted">{t('rep.empty')}</div>;
   const { report: r, meta, frames, events, cfg, name } = shot;
   const term = r.termination;
@@ -57,7 +72,13 @@ export function Report({ shot, onRerun, onEdit, embedded }: Props) {
 
   const keyList = ['Ti', 'P_fus', 'Q'].filter((k) => meta.diagSpecs.some((s) => s.key === k));
   const series = keyList.map((k, i) => { const s = meta.diagSpecs.find((x) => x.key === k)!; return { key: k, label: wt(s.label), unit: s.unit, color: PALETTE[i], log: s.log }; });
-  const figKinds: FigKind[] = ['traces', ...(frames.some((f) => f.prof) ? ['profiles' as const] : []), ...(frames.some((f) => f.eq) ? ['cross' as const] : [])];
+  const figKinds: FigKind[] = [
+    'traces',
+    ...(profFrames.length > 0 ? ['profiles' as const] : []),
+    ...(profFrames.length >= 2 ? ['rhot' as const] : []),
+    ...(frames.some((f) => f.eq) ? ['cross' as const] : []),
+  ];
+  const activeFigKind = figKinds.includes(figKind) ? figKind : 'traces';
   // yayın figürü: grafik kütüphanesi yalnız tıklamada yüklenir (dinamik import)
   const exportFig = async (format: 'svg' | 'pdf') => {
     setFigBusy(true);
@@ -65,8 +86,20 @@ export function Report({ shot, onRerun, onEdit, embedded }: Props) {
       const m = await import('./exportFigures');
       // The UI keeps frames without the worker-only rewind state; the figure code reads t, d, prof and eq only.
       const hist: HistoryFrame[] = frames.map((f) => ({ ...f, y: [], internal: {} }));
-      await m.exportFigure({ name, cfg, frames: hist, events, diagSpecs: meta.diagSpecs, timeUnit: meta.timeUnit }, figKinds.includes(figKind) ? figKind : 'traces', format);
+      await m.exportFigure({ name, cfg, frames: hist, events, diagSpecs: meta.diagSpecs, timeUnit: meta.timeUnit }, activeFigKind, format, activeFigKind === 'rhot' ? { rhoTKey } : {});
     } finally { setFigBusy(false); }
+  };
+
+  const activeSliceIdx = profFrames.length ? Math.max(0, Math.min(profFrames.length - 1, sliceIdx ?? profFrames.length - 1)) : 0;
+  const activeProfFrame = profFrames.length ? profFrames[activeSliceIdx] : null;
+  const selectSliceByTime = (targetT: number) => {
+    if (!profFrames.length) return;
+    let best = 0, bestD = Infinity;
+    for (let i = 0; i < profFrames.length; i++) {
+      const d = Math.abs(profFrames[i].t - targetT);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    setSliceIdx(best);
   };
 
   return (
@@ -81,9 +114,14 @@ export function Report({ shot, onRerun, onEdit, embedded }: Props) {
             <button className="btn sm" onClick={() => void exportJSON(name, cfg, r, events, shot.prov)}>JSON ↓</button>
             <button className="btn sm" onClick={() => exportReportCSV(name, r, locale)}>{t('rep.csvSummary')}</button>
             <button className="btn sm" onClick={() => exportCSV(name, frames, meta.diagSpecs, meta.timeUnit)}>{t('rep.csvSeries')}</button>
-            <select value={figKinds.includes(figKind) ? figKind : 'traces'} onChange={(e) => setFigKind(e.target.value as FigKind)} title={t('rep.figTitle')}>
+            <select value={activeFigKind} onChange={(e) => setFigKind(e.target.value as FigKind)} title={t('rep.figTitle')} aria-label={t('rep.figTitle')} style={{ width: 'auto' }}>
               {figKinds.map((k) => <option key={k} value={k}>{t(FIG_LABEL[k])}</option>)}
             </select>
+            {activeFigKind === 'rhot' && (
+              <select value={rhoTKey} onChange={(e) => setRhoTKey(e.target.value)} title={t('rep.rhotQty')} aria-label={t('rep.rhotQty')} style={{ width: 'auto' }}>
+                {RHOT_UI_QUANTITIES.map((q) => <option key={q.key} value={q.key}>{q.label}{q.unit ? ` [${q.unit}]` : ''}</option>)}
+              </select>
+            )}
             <button className="btn sm" disabled={figBusy} onClick={() => exportFig('svg')}>SVG ↓</button>
             <button className="btn sm" disabled={figBusy} onClick={() => exportFig('pdf')}>PDF ↓</button>
             <button className="btn sm" onClick={onEdit}>{t('rep.edit')}</button>
@@ -181,6 +219,43 @@ export function Report({ shot, onRerun, onEdit, embedded }: Props) {
       {hasPowerFlow && (
         <div className="panel full">
           <PowerFlow frames={frames} />
+        </div>
+      )}
+
+      {profFrames.length >= 2 && activeProfFrame && (
+        <div className="panel full">
+          <div className="panel-title">
+            <h3>{t('rep.profiles15')}</h3>
+            <span className="muted small">{t('rep.profiles15Hint')}</span>
+          </div>
+          <div className="report-15d">
+            <div>
+              <RhoTHeatmap frames={frames} events={events} timeUnit={meta.timeUnit} quantity={rhoTKey} onQuantityChange={setRhoTKey}
+                cursorT={activeProfFrame.t} onSelectT={selectSliceByTime} height={240} />
+            </div>
+            <div>
+              <ProfileChart prof={activeProfFrame.prof} t={`t = ${fmtTime(activeProfFrame.t, meta.timeUnit)}`}
+                compareProf={comparePeak && peakProfFrame ? peakProfFrame.prof : null}
+                compareLabel={comparePeak && peakProfFrame ? `t = ${fmtTime(peakProfFrame.t, meta.timeUnit)}` : undefined}
+                height={240} />
+              <div className="row" style={{ gap: 8, marginTop: 6 }}>
+                <label className="row small muted" style={{ flex: 1, gap: 8 }}>
+                  <span>{t('rep.sliceTime')}</span>
+                  <input type="range" min={0} max={profFrames.length - 1} value={activeSliceIdx}
+                    aria-label={t('rep.sliceTime')}
+                    aria-valuetext={fmtTime(activeProfFrame.t, meta.timeUnit)}
+                    onChange={(e) => setSliceIdx(parseInt(e.target.value, 10))} style={{ flex: 1 }} />
+                </label>
+                {peakProfFrame && (
+                  <button type="button" className={`btn sm ${comparePeak ? 'active' : ''}`} aria-pressed={comparePeak}
+                    style={comparePeak ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}
+                    onClick={() => setComparePeak((v) => !v)}>
+                    {t('rep.comparePeak')}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

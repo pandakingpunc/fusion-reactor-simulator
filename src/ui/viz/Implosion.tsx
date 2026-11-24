@@ -5,11 +5,12 @@
  *  - ICF: modelde hidro yok; R(t) şematik — R₀'dan R₀/CR'ye bang-time'a kadar
  *    yumuşak sıkışma, sonra genleşme. APPROXIMATION (yalnızca görsel).
  */
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { UiFrame } from '../../worker/protocol';
 import { fmtAxis } from '../format';
 import { useT } from '../state/store';
 import { localizeDecimals } from '../../i18n';
+import { prepareCanvas, useCanvasSize } from '../hooks/useCanvasSize';
 
 interface Props {
   kind: 'icf' | 'mtf';
@@ -26,7 +27,7 @@ function smooth(x: number): number { const u = Math.min(1, Math.max(0, x)); retu
 
 export function Implosion({ kind, frames, t, tEnd, timeUnit, geometry, bang_ns, height = 240 }: Props) {
   const tr = useT();
-  const ref = useRef<HTMLCanvasElement>(null);
+  const { ref, width, dpr } = useCanvasSize<HTMLCanvasElement>(400);
 
   const r0 = kind === 'icf' ? (geometry.capsuleRadius_um ?? 1000) : (geometry.r0 ?? 0.1);
   const CR = kind === 'icf' ? (geometry.convergenceRatio ?? 30) : (geometry.CR_eff ?? geometry.CR ?? 10);
@@ -50,10 +51,8 @@ export function Implosion({ kind, frames, t, tEnd, timeUnit, geometry, bang_ns, 
 
   useEffect(() => {
     const cv = ref.current; if (!cv) return;
-    const width = cv.clientWidth || 400;
-    const dpr = window.devicePixelRatio || 1;
-    cv.width = width * dpr; cv.height = height * dpr;
-    const ctx = cv.getContext('2d')!; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const ctx = prepareCanvas(cv, width, height, dpr);
+    if (!ctx) return;
     ctx.clearRect(0, 0, width, height);
     const cur = frames.length ? frames[frames.length - 1] : null;
     const R0s = r0 * rScale;
@@ -123,7 +122,7 @@ export function Implosion({ kind, frames, t, tEnd, timeUnit, geometry, bang_ns, 
     ctx.fillStyle = '#4cc9f0'; ctx.textAlign = 'left'; ctx.fillText('r(t)', L + 6, Tp + 24);
     // şimdiki t
     ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(xs(t), Tp); ctx.lineTo(xs(t), Tp + ph); ctx.stroke();
-  }, [frames, t, tEnd, timeUnit, r0, CR, rScale, unitR, radiusAt, pMax, kind, bang_ns, height, tr]);
+  }, [frames, t, tEnd, timeUnit, r0, CR, rScale, unitR, radiusAt, pMax, kind, bang_ns, height, tr, width, dpr, ref]);
 
   return <canvas ref={ref} role="img" aria-label={tr('run.implosion.aria')} style={{ width: '100%', height, display: 'block' }} />;
 }

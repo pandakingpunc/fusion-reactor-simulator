@@ -102,7 +102,7 @@ export function RunScreen({ sim, onReport, onSetup, embedded = false }: Props) {
           <Viz3DPanel meta={meta} cfg={cfg as MagneticConfig} last={last} events={events}
             disrupted={status === 'done' && !!state.report?.termination?.disruption} eqFrame={eqFrame} profFrame={profFrame} />,
         )}
-        {is15 && lazyGuard(<ProfilesPanel profFrame={profFrame} timeUnit={meta.timeUnit} />)}
+        {is15 && lazyGuard(<ProfilesPanel profFrame={profFrame} timeUnit={meta.timeUnit} frames={frames} events={events} onSeek={canSeek ? seekT : undefined} />)}
         {isMag && guard(<PopconPanel cfg={cfg as MagneticConfig} last={last} frames={frames} controls={state.controls} onSteer={sim.control} steerable={status !== 'done'} />)}
         {isPulsed && lazyGuard(<ImplosionPanel meta={meta} cfg={cfg} frames={frames} t={state.t} />)}
         {guard(<GeometryPanel geometry={meta.geometry} />)}

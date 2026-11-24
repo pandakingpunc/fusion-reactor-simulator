@@ -2,7 +2,9 @@
 
 Biçim [Keep a Changelog](https://keepachangelog.com/) esinlidir; sürümler [SemVer](https://semver.org/) izler.
 
-## [Unreleased]
+## [4.3.0] — 2026-11-24
+
+Interactive 3D, 1.5D and workflow upgrades across the web interface plus complete Turkish coverage of the Report explanatory notes and UI bug fixes. No number or sentence of any physics model changes: the 40 golden regression cases, the 46 literature validation checks and the 9 paper figures are bit for bit those of 4.2.0 (the figure provenance carries the new version).
 
 ### Added
 - 3D view (`src/ui/viz3d`): helical magnetic field lines swept along an outer-core flux surface using the live safety factor `q(ρ)` (from 1.5D `q` profiles or 0D `q95`, cleanly respecting the cut-away wedge), camera view presets (`Top`, `Section`), a live temperature colour-scale bar with `T₀` and `q` readout, and a `PNG ↓` snapshot button.

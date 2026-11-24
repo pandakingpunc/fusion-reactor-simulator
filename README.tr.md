@@ -319,9 +319,8 @@ Diğer sınırlar:
 - **FACIT ile pedestal ve ELM kapanışları indirgenmiş biçimlerdir**; kaynaklarıyla terim terim ya da yayımlanmış bir uydurmayla karşılaştırılmıştır, yukarıda belirtilenin ötesinde
   NEO, Aurora ya da EPED çıktılarına karşı kıyaslanmamıştır.
 - **Fizik katmanı cümlelerini yalnızca İngilizce yazar.** Türkçe arayüz bunları kalıba göre çevirir (`src/i18n/physicsText*.ts`: olay günlüğü, rapor uyarıları,
-  sonlanma nedeni, tanısı ve çaresi), sayılar korunur; hiçbir kuralın tanımadığı bir cümle İngilizce gösterilir, bir cümlenin içindeki serbest metin ayrıntısı (çözücünün
-  kendi hata iletisi) İngilizce kalır. Raporun açıklama notları (kararlı süre, Q_eng ve Lawson oranı
-  altındaki tanımlar) henüz kapsanmıyor ve İngilizce kalır. Dışa aktarımlar, koşu dosyaları ve paylaşım bağlantıları İngilizce cümleleri korur.
+  rapor açıklama notları, sonlanma nedeni, tanısı ve çaresi), sayılar korunur; hiçbir kuralın tanımadığı bir cümle İngilizce gösterilir, bir cümlenin içindeki serbest metin ayrıntısı (çözücünün
+  kendi hata iletisi) İngilizce kalır. Dışa aktarımlar, koşu dosyaları ve paylaşım bağlantıları İngilizce cümleleri korur.
 - **1.5D model, hata denetimli ve olay konumlandırmalı TR-BDF2 çözücüden önceye göre yaklaşık <!--n:slower-->5 kat yavaştır**: yukarıdaki yakınsamanın bedeli
   ([docs/v4-numbers-diff.md](docs/v4-numbers-diff.md), bölüm 6).
 

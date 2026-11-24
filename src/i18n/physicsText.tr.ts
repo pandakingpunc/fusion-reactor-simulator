@@ -84,6 +84,25 @@ const EXACT: Record<string, string> = {
     'Basit/tandem aynalar kayıp konisi yüzünden düşük Q verir — akış kayması ya da derin bir potansiyel bariyeri olmadan net enerji beklenmez.',
   'Muon-catalyzed fusion works at room/cold temperatures but remains at Q<1 due to α-sticking and muon production costs (a fundamental physics limit).':
     'Müon katalizli füzyon oda/soğuk sıcaklıklarda çalışır ama α-yapışması ve müon üretim maliyeti yüzünden Q<1 düzeyinde kalır (temel bir fizik sınırı).',
+  // report explanatory notes (stableDefinition, Q_eng_note)
+  'Stable time = duration for which the plasma is sustained without disruption/extinction. Burn time = duration with Q ≥ 1 (P_fusion ≥ P_auxiliary+P_ohmic). Ignition time = duration with P_alpha ≥ P_rad + W/τ_E (conduction plus ELM losses), where P_alpha is the heating by charged fusion products only (beam ions excluded): self-sustaining without external heating.':
+    'Kararlı süre = plazmanın disrupsiyon/sönme olmadan korunduğu süre. Yanma süresi = Q ≥ 1 (P_fusion ≥ P_auxiliary+P_ohmic) koşulunun sağlandığı süre. Ateşleme süresi = P_alpha ≥ P_rad + W/τ_E (iletim + ELM kayıpları) süresi; burada P_alpha yalnızca yüklü füzyon ürünlerinin ısıtmasıdır (demet iyonları hariç): dış ısıtmasız kendi kendini sürdürme.',
+  'Stable time = duration for which the plasma is sustained. Burn time = duration with Q ≥ 1. Ignition time = self-sustaining duration (P_alpha ≥ losses).':
+    'Kararlı süre = plazmanın korunduğu süre. Yanma süresi = Q ≥ 1 süresi. Ateşleme süresi = kendi kendini sürdürme süresi (P_alpha ≥ kayıplar).',
+  'ICF is pulsed: "duration" is the burn window around bang-time (ns). Gain G = E_fusion / E_laser.':
+    'ICF darbelidir: "süre", bang-time çevresindeki yanma penceresidir (ns). Kazanç G = E_fusion / E_laser.',
+  'MTF is pulsed: "duration" is the compression+stagnation window (µs). G = E_fusion / E_driver.':
+    'MTF darbelidir: "süre", sıkıştırma + durgunluk penceresidir (µs). G = E_fusion / E_driver.',
+  'Q_eng (wall plug) is not modeled in detail for this experimental/conceptual device.':
+    'Bu deneysel/kavramsal cihaz için Q_eng (prizden prize) ayrıntılı modellenmemiştir.',
+  'FRC is an experimental configuration; Q_eng is not modeled.':
+    'FRC deneysel bir yapılandırmadır; Q_eng modellenmemiştir.',
+  'Mirrors are conceptual/experimental; Q_eng is not modeled.':
+    'Aynalar kavramsal/deneyseldir; Q_eng modellenmemiştir.',
+  'MTF/MagLIF/Z-pinch are experimental; Q_eng is not modeled.':
+    'MTF/MagLIF/Z-pinch deneyseldir; Q_eng modellenmemiştir.',
+  'For µCF, scientific Q is already <1; engineering Q is even lower.':
+    'µCF için bilimsel Q zaten <1 düzeyindedir; mühendislik Q daha da düşüktür.',
 };
 
 const L = Object.keys(LABELS).map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
@@ -183,6 +202,14 @@ const RULES: PhysicsRule[] = [
   [rx('Transport step at t = # s did not converge in # attempts; forced at Δt = # s \\(Picard not converged\\) — accuracy is reduced here'),
     ([t, n, dt]) => `t = ${t} s zamanındaki taşınım adımı ${n} denemede yakınsamadı; Δt = ${dt} s ile zorlandı (Picard yakınsamadı) — burada doğruluk düşük`],
   [rx('Numerical failure — (.+)'), ([e]) => `Sayısal hata — ${e}`],
+
+  // ---- report explanatory notes (Q_eng_note, lawsonNote)
+  [rx('Q_eng = P_electric,gross / P_recirculating = \\(# MW\\) / \\(# MW\\)\\. Scientific Q is measured at the plasma boundary \\(P_fusion/P_heating,absorbed\\), Q_eng at the wall plug: heating wall-plug efficiency #%, thermal efficiency #%\\.'),
+    ([pg, pr, wp, th]) => `Q_eng = P_elektrik,brüt / P_geri_dönen = (${pg} MW) / (${pr} MW). Bilimsel Q plazma sınırında ölçülür (P_fusion/P_heating,absorbed), Q_eng ise prizde: ısıtma priz verimi %${wp}, ısıl verim %${th}.`],
+  [rx('For ICF, Q_eng = G × η_driver × η_thermal \\(laser wall-plug #%, thermal conversion #%\\); the drive coupling is already inside G\\. Net energy requires G ≳ #\\.'),
+    ([ed, eth, gmin]) => `ICF için Q_eng = G × η_driver × η_thermal (lazer priz verimi %${ed}, ısıl dönüşüm %${eth}); sürücü kuplajı G'nin içindedir. Net enerji için G ≳ ${gmin} gerekir.`],
+  [rx('Reference \\((nTτ_E|nTτ)\\)_ignition ≈ # keV s m⁻³ \\(([A-Za-z0-9]+)\\); 1\\.0 = ignition threshold( \\(profile effects neglected\\))?\\.'),
+    ([sym, ref, fuel, prof]) => `Referans (${sym})_ateşleme ≈ ${ref} keV s m⁻³ (${fuel}); 1.0 = ateşleme eşiği${prof ? ' (profil etkileri ihmal edilmiştir)' : ''}.`],
 
   // ---- scenario triggers (info events)
   [rx("Scenario trigger '(.*?)' re-armed: (.+)"), ([l, rest]) => `Senaryo tetikleyicisi '${l}' yeniden kuruldu: ${rest}`],

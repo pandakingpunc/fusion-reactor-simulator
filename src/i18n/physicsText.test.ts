@@ -123,6 +123,21 @@ const SAMPLES: [string, string][] = [
     '4 taşınım adımı Δt denemelerini tüketti ve Picard yakınsaması olmadan en küçük Δt ile zorlandı — bu zamanlar çevresinde doğruluk düşük.'],
   ['Transport step at t = 1.2000 s did not converge in 8 attempts; forced at Δt = 1.0e-6 s (Picard not converged) — accuracy is reduced here',
     't = 1,2000 s zamanındaki taşınım adımı 8 denemede yakınsamadı; Δt = 1,0e-6 s ile zorlandı (Picard yakınsamadı) — burada doğruluk düşük'],
+  // report explanatory notes
+  ['Stable time = duration for which the plasma is sustained without disruption/extinction. Burn time = duration with Q ≥ 1 (P_fusion ≥ P_auxiliary+P_ohmic). Ignition time = duration with P_alpha ≥ P_rad + W/τ_E (conduction plus ELM losses), where P_alpha is the heating by charged fusion products only (beam ions excluded): self-sustaining without external heating.',
+    'Kararlı süre = plazmanın disrupsiyon/sönme olmadan korunduğu süre. Yanma süresi = Q ≥ 1 (P_fusion ≥ P_auxiliary+P_ohmic) koşulunun sağlandığı süre. Ateşleme süresi = P_alpha ≥ P_rad + W/τ_E (iletim + ELM kayıpları) süresi; burada P_alpha yalnızca yüklü füzyon ürünlerinin ısıtmasıdır (demet iyonları hariç): dış ısıtmasız kendi kendini sürdürme.'],
+  ['ICF is pulsed: "duration" is the burn window around bang-time (ns). Gain G = E_fusion / E_laser.',
+    'ICF darbelidir: "süre", bang-time çevresindeki yanma penceresidir (ns). Kazanç G = E_fusion / E_laser.'],
+  ['MTF is pulsed: "duration" is the compression+stagnation window (µs). G = E_fusion / E_driver.',
+    'MTF darbelidir: "süre", sıkıştırma + durgunluk penceresidir (µs). G = E_fusion / E_driver.'],
+  ['Q_eng = P_electric,gross / P_recirculating = (240 MW) / (135 MW). Scientific Q is measured at the plasma boundary (P_fusion/P_heating,absorbed), Q_eng at the wall plug: heating wall-plug efficiency 50%, thermal efficiency 40%.',
+    'Q_eng = P_elektrik,brüt / P_geri_dönen = (240 MW) / (135 MW). Bilimsel Q plazma sınırında ölçülür (P_fusion/P_heating,absorbed), Q_eng ise prizde: ısıtma priz verimi %50, ısıl verim %40.'],
+  ['For ICF, Q_eng = G × η_driver × η_thermal (laser wall-plug 10%, thermal conversion 40%); the drive coupling is already inside G. Net energy requires G ≳ 25.',
+    "ICF için Q_eng = G × η_driver × η_thermal (lazer priz verimi %10, ısıl dönüşüm %40); sürücü kuplajı G'nin içindedir. Net enerji için G ≳ 25 gerekir."],
+  ['Reference (nTτ_E)_ignition ≈ 3.0e+21 keV s m⁻³ (DT); 1.0 = ignition threshold (profile effects neglected).',
+    'Referans (nTτ_E)_ateşleme ≈ 3,0e+21 keV s m⁻³ (DT); 1,0 = ateşleme eşiği (profil etkileri ihmal edilmiştir).'],
+  ['Reference (nTτ)_ignition ≈ 3.0e+21 keV s m⁻³ (DT); 1.0 = ignition threshold.',
+    'Referans (nTτ)_ateşleme ≈ 3,0e+21 keV s m⁻³ (DT); 1,0 = ateşleme eşiği.'],
   // scenario triggers
   ["Scenario trigger 'dens': n_e = 1.2 > 1 → P_NBI_MW = 0", "Senaryo tetikleyicisi 'dens': n_e = 1,2 > 1 → P_NBI_MW = 0"],
   ["Scenario trigger 'dens' re-armed: n_e = 0.9 → P_NBI_MW = 30", "Senaryo tetikleyicisi 'dens' yeniden kuruldu: n_e = 0,9 → P_NBI_MW = 30"],
@@ -179,11 +194,20 @@ describe('physicsText on real shots', () => {
   const withPatch = (id: string, patch: Record<string, unknown>) => ({ ...cfgOf(id), ...patch }) as unknown as ReactorConfig;
   const part = (id: string, key: string, patch: Record<string, unknown>) => ({ ...(cfgOf(id)[key] as object), ...patch });
 
-  /** every distinct sentence a shot puts into the event log, the warnings and the termination */
+  /** every distinct sentence a shot puts into the event log, the warnings, the explanatory notes and the termination */
   function sentences(cfg: ReactorConfig): string[] {
     const r = runShot(cfg);
     const t = r.report.termination;
-    return [...new Set([...r.sim.events.map((e) => e.msg), ...r.report.warnings, t.reason, t.diagnosis, t.fix].filter((s) => s !== ''))];
+    return [...new Set([
+      ...r.sim.events.map((e) => e.msg),
+      ...r.report.warnings,
+      r.report.stableDefinition,
+      r.report.Q_eng_note,
+      r.report.lawsonNote,
+      t.reason,
+      t.diagnosis,
+      t.fix,
+    ].filter((s) => s !== ''))];
   }
   function expectTranslated(label: string, list: string[]) {
     const left = list.filter((s) => !SAME.has(s) && tr(s) === s);

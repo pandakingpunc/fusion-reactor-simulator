@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { DISRUPTION_LABELS } from '../../physics/disruption';
 import { HistoryFrame, METHOD_LABELS } from '../../physics/types';
 import { MessageKey } from '../../i18n';
 import { SavedShot } from '../state/types';
@@ -99,17 +100,17 @@ export function Report({ shot, onRerun, onEdit, embedded }: Props) {
           <tr><td>{ex('ignition', t('rep.ignition'))}</td><td className="num">{secs(r.ignitionTime_s)}</td></tr>
           <tr><td>{t('rep.burn')}</td><td className="num">{secs(r.burnTime_s)}</td></tr>
           <tr><td>{t('rep.stable')}</td><td className="num">{secs(r.stableTime_s)}</td></tr>
-          <tr><td colSpan={2} className="small muted">{t('rep.stableDef', { def: r.stableDefinition })}</td></tr>
+          <tr><td colSpan={2} className="small muted">{t('rep.stableDef', { def: px(r.stableDefinition) })}</td></tr>
           <tr><td>{ex('qSci', t('rep.qsci'))}</td><td className="num"><b>{fmtNum(r.Q_sci_max)}</b> / {fmtNum(r.Q_sci_avg)}</td></tr>
           <tr><td>{ex('qEng', t('rep.qeng'))}</td><td className="num">{fmtNum(r.Q_eng)} <span className={r.Q_eng >= 1 ? 'ok' : 'bad'}>{t(r.Q_eng >= 1 ? 'rep.netElec' : 'rep.netCons')}</span></td></tr>
-          <tr><td colSpan={2} className="small muted">{r.Q_eng_note}</td></tr>
+          <tr><td colSpan={2} className="small muted">{px(r.Q_eng_note)}</td></tr>
           <tr><td>{t('rep.efus')}</td><td className="num">{fmtNum(r.E_fusion_MJ)} MJ</td></tr>
           <tr><td>{t('rep.ein')}</td><td className="num">{fmtNum(r.E_input_MJ)} MJ</td></tr>
           <tr><td>{t('rep.nYield')}</td><td className="num">{fmtNum(r.neutronYield)}</td></tr>
           <tr><td>{t('rep.nFluence')}</td><td className="num">{fmtNum(r.neutronFluence_m2)} n/m²</td></tr>
           <tr><td>{ex('triple', t('rep.triple'))}</td><td className="num">{fmtNum(r.tripleProduct_max)} keV·s·m⁻³</td></tr>
           <tr><td>{ex('lawson', t('rep.lawson'))}</td><td className="num"><b className={r.lawson_ratio >= 1 ? 'ok' : 'warn'}>{fmtNum(r.lawson_ratio)}</b></td></tr>
-          <tr><td colSpan={2} className="small muted">{r.lawsonNote}</td></tr>
+          <tr><td colSpan={2} className="small muted">{px(r.lawsonNote)}</td></tr>
         </tbody></table>
       </div>
 
@@ -120,7 +121,7 @@ export function Report({ shot, onRerun, onEdit, embedded }: Props) {
           <>
             <h3 style={{ marginTop: 10 }}>{t('rep.disruption')}</h3>
             <table className="kv"><tbody>
-              <tr><td>{t('rep.cause')}</td><td>{term.disruption.cause}</td></tr>
+              <tr><td>{t('rep.cause')}</td><td>{px(DISRUPTION_LABELS[term.disruption.cause] ?? term.disruption.cause)}</td></tr>
               <tr><td>W_th / W_mag</td><td className="num">{fmtNum(term.disruption.W_th_MJ)} / {fmtNum(term.disruption.W_mag_MJ)} MJ</td></tr>
               <tr><td>τ_TQ / τ_CQ</td><td className="num">{fmtNum(term.disruption.tau_TQ_ms)} / {fmtNum(term.disruption.tau_CQ_ms)} ms</td></tr>
               <tr><td>{t('rep.halo')}</td><td className="num">{fmtNum(term.disruption.halo_fraction)} × {fmtNum(term.disruption.TPF)} = {fmtNum(term.disruption.halo_TPF_product)}</td></tr>

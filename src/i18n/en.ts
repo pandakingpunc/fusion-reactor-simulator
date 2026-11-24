@@ -51,6 +51,7 @@ export const en = {
   'run.events': 'Event log',
   'run.noEvents': 'no events yet',
   'run.eventFilter': 'Show event kinds',
+  'run.eventSeek': 'Rewind to {t}',
   'ev.kind.ELM': 'ELM',
   'ev.kind.sawtooth': 'Sawtooth',
   'ev.kind.NTM_onset': 'NTM onset',

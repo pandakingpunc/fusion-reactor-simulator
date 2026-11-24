@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { MagneticConfig } from '../../physics/types';
 import { UiFrame } from '../../worker/protocol';
 import { SimApi } from '../useSim';
@@ -48,6 +48,25 @@ export function RunScreen({ sim, onReport, onSetup, embedded = false }: Props) {
   }), []);
   const { profFrame, eqFrame } = useMemo(() => latestProfileFrames(frames), [frames]);
 
+  // Space toggles play/pause and '.' steps forward when focus is not in a control, dialog or 3D canvas
+  useEffect(() => {
+    if (embedded || !meta) return undefined;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.isContentEditable || target.closest('input, textarea, select, button, a, canvas, [role="dialog"]'))) return;
+      if (e.key === ' ') {
+        if (status === 'running') { e.preventDefault(); sim.pause(); }
+        else if (status === 'ready' || status === 'paused') { e.preventDefault(); sim.play(); }
+      } else if (e.key === '.' && (status === 'ready' || status === 'paused')) {
+        e.preventDefault();
+        sim.step(meta.tEnd / 200);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [embedded, meta, status, sim]);
+
   if (!meta) {
     return (
       <div className="panel">
@@ -84,7 +103,7 @@ export function RunScreen({ sim, onReport, onSetup, embedded = false }: Props) {
       <div className="left">
         {guard(<LiveValuesPanel meta={meta} last={last} report={state.report} frames={frames} />)}
         {guard(<ControlsPanel controls={state.controls} defaults={meta.controls} disabled={status === 'done'} onChange={sim.control} />)}
-        {guard(<EventLogPanel events={events} timeUnit={meta.timeUnit} cfg={cfg} />)}
+        {guard(<EventLogPanel events={events} timeUnit={meta.timeUnit} cfg={cfg} onSeek={canSeek ? seekT : undefined} />)}
       </div>
 
       <div className="center">

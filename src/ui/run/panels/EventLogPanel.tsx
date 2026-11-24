@@ -6,13 +6,20 @@ import { fmtTime } from '../../format';
 import { usePhysicsText, useT } from '../../state/store';
 import { withStepNotes } from '../../settingsNotes';
 
-interface Props { events: SimEvent[]; timeUnit: string; /** the run's configuration: its step-control notes are shown in the interface language and survive a rewind to the start */ cfg?: ReactorConfig }
+interface Props {
+  events: SimEvent[];
+  timeUnit: string;
+  /** the run's configuration: its step-control notes are shown in the interface language and survive a rewind to the start */
+  cfg?: ReactorConfig;
+  /** when seeking is allowed (paused/ready/done), clicking an event timestamp rewinds to that instant */
+  onSeek?: (t: number) => void;
+}
 
 /** Chip order: the kinds the physics can emit, in the order of the dictionary; a kind not listed follows in order of appearance. */
 const KIND_ORDER = ['ELM', 'sawtooth', 'NTM_onset', 'NTM_gone', 'LH', 'HL', 'disruption', 'quench', 'ignition', 'burn_start', 'burn_end', 'warning', 'stagnation', 'end', 'info'];
 
 /** Most recent 200 events of the kinds that are switched on, newest first. */
-export function EventLogPanel({ events, timeUnit, cfg }: Props) {
+export function EventLogPanel({ events, timeUnit, cfg, onSeek }: Props) {
   const t = useT();
   const px = usePhysicsText(); // the model's sentences in the interface language (i18n/physicsText.ts); the step notes are already translated and pass through
   const shown = useMemo(() => (cfg ? withStepNotes(events, cfg, t) : events), [events, cfg, t]);
@@ -43,9 +50,17 @@ export function EventLogPanel({ events, timeUnit, cfg }: Props) {
       )}
       <div className="event-log">
         {shown.length === 0 && <span className="muted">{t('run.noEvents')}</span>}
-        {list.map((ev, i) => (
-          <div key={i} className={`event ${ev.kind}`}><span className="t">{fmtTime(ev.t, timeUnit)}</span><span>{px(ev.msg)}</span></div>
-        ))}
+        {list.map((ev, i) => {
+          const ts = fmtTime(ev.t, timeUnit);
+          return (
+            <div key={i} className={`event ${ev.kind}`}>
+              {onSeek
+                ? <button type="button" className="t event-seek" onClick={() => onSeek(ev.t)} title={t('run.eventSeek', { t: ts })}>{ts}</button>
+                : <span className="t">{ts}</span>}
+              <span>{px(ev.msg)}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

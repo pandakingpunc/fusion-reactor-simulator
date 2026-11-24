@@ -48,6 +48,7 @@ export const tr: Dict = {
   'run.events': 'Olay günlüğü',
   'run.noEvents': 'henüz olay yok',
   'run.eventFilter': 'Gösterilecek olay türleri',
+  'run.eventSeek': '{t} zamanına geri sar',
   'ev.kind.ELM': 'ELM',
   'ev.kind.sawtooth': 'Testere dişi',
   'ev.kind.NTM_onset': 'NTM başlangıcı',

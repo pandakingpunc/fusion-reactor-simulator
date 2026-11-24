@@ -44,7 +44,7 @@ export function TransportBar({ sim, seekTo, onReport, onSetup }: Props) {
       </div>
       <div className="timeline" style={{ marginTop: 6 }}>
         <input type="range" aria-label={t('run.timeline')} min={0} max={Math.max(frames.length - 1, 1)} value={scrubIdx ?? frames.length - 1}
-          onChange={(e) => setScrubIdx(parseInt(e.target.value))} onMouseUp={release} onKeyUp={release} />
+          onChange={(e) => setScrubIdx(parseInt(e.target.value))} onMouseUp={release} onTouchEnd={release} onPointerUp={release} onKeyUp={release} onBlur={release} />
       </div>
       {scrubIdx !== null && frames[scrubIdx] && <div className="small accent">{t('run.rewindTo', { t: fmtTime(frames[scrubIdx].t, meta.timeUnit) })}</div>}
       {status === 'error' && (

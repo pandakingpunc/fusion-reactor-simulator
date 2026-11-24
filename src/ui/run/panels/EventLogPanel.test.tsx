@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** The event log of the run screen: the kind filter chips, the 200-event window over the filtered list and the count in the title. */
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { EventKind, SimEvent } from '../../../physics/types';
 import { AppStoreContext, createAppStore } from '../../state/store';
 import { EventLogPanel } from './EventLogPanel';
@@ -63,5 +63,14 @@ describe('EventLogPanel', () => {
     expect(chip(/^Testere dişi 1$/)).toBeTruthy();
     expect(chip(/^Uyarı 1$/)).toBeTruthy();
     expect(chip(/^mystery 1$/)).toBeTruthy();
+  });
+
+  it('seeks to an event time when onSeek is provided', () => {
+    const store = createAppStore();
+    const onSeek = vi.fn();
+    render(<AppStoreContext.Provider value={store}><EventLogPanel events={[ev(12.5, 'LH', 'L→H transition')]} timeUnit="s" onSeek={onSeek} /></AppStoreContext.Provider>);
+    const btn = screen.getByRole('button', { name: /12\.5/ });
+    fireEvent.click(btn);
+    expect(onSeek).toHaveBeenCalledWith(12.5);
   });
 });

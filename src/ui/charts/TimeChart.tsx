@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SimEvent } from '../../physics/types';
 import { UiFrame } from '../../worker/protocol';
 import { fmtAxis, fmtNum, fmtTime } from '../format';
-import { useT } from '../state/store';
+import { usePhysicsText, useT } from '../state/store';
 import { splitAxes } from './axes';
 import { FrameColumns, eventFrameIndices, lodIndices, rugKinds, thinEvents } from './lod';
 
@@ -22,6 +22,9 @@ interface Props {
   resetKey?: number;
   /** zaman imleci (rewind) → dikey çizgi */
   cursorT?: number;
+  /** synchronized hover time shared across sibling charts */
+  hoverT?: number | null;
+  onHoverT?: (t: number | null) => void;
   onSeek?: (t: number) => void;
 }
 
@@ -40,8 +43,9 @@ const RIGHT_DASH = [6, 3];
 const MAJOR_EVENTS = new Set(['disruption', 'quench', 'ignition', 'LH', 'HL', 'NTM_onset', 'burn_start']);
 const isMajorEvent = (kind: string) => MAJOR_EVENTS.has(kind);
 
-export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height = 220, title, live, resetKey, cursorT, onSeek }: Props) {
+export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height = 220, title, live, resetKey, cursorT, hoverT, onHoverT, onSeek }: Props) {
   const t = useT();
+  const pxText = usePhysicsText();
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [width, setWidth] = useState(600);
@@ -59,8 +63,9 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
 
   useEffect(() => {
     const el = wrapRef.current; if (!el) return;
-    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
-    ro.observe(el); setWidth(el.clientWidth);
+    const read = () => { if (el.clientWidth > 0) setWidth(el.clientWidth); };
+    const ro = new ResizeObserver(read);
+    ro.observe(el); read();
     return () => ro.disconnect();
   }, []);
 
@@ -109,8 +114,10 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
   useEffect(() => {
     const cv = canvasRef.current; if (!cv) return;
     const dpr = window.devicePixelRatio || 1;
-    cv.width = width * dpr; cv.height = height * dpr;
-    const ctx = cv.getContext('2d')!; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const bw = Math.max(1, Math.round(width * dpr)), bh = Math.max(1, Math.round(height * dpr));
+    if (cv.width !== bw) cv.width = bw;
+    if (cv.height !== bh) cv.height = bh;
+    const ctx = cv.getContext('2d')!; ctx.setTransform(bw / Math.max(1, width), 0, 0, bh / Math.max(1, height), 0, 0);
     ctx.clearRect(0, 0, width, height);
     ctx.font = '10px JetBrains Mono, monospace';
     // ızgara + eksenler
@@ -160,23 +167,45 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
       ctx.stroke();
     });
     ctx.setLineDash([]);
-    // imleç / hover
+    // imleç / hover (local pointer or synchronized sibling chart hover)
     const drawV = (px: number, color: string) => { ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(px, PAD.t); ctx.lineTo(px, PAD.t + plotH); ctx.stroke(); };
     if (cursorT !== undefined && cursorT >= x0 && cursorT <= x1) drawV(xToPx(cursorT), '#4cc9f0');
-    if (hover !== null) {
-      drawV(hover, '#d6dce8');
-      const f = nearest(frames, pxToX(hover));
+    const syncedPx = hover === null && hoverT !== null && hoverT !== undefined && hoverT >= x0 && hoverT <= x1 ? xToPx(hoverT) : null;
+    const activePx = hover ?? syncedPx;
+    if (activePx !== null) {
+      drawV(activePx, hover !== null ? '#d6dce8' : 'rgba(214,220,232,0.5)');
+      const targetT = hover !== null ? pxToX(hover) : (hoverT as number);
+      const f = nearest(frames, targetT);
       if (f) {
-        const lines = [fmtTime(f.t, timeUnit), ...visible.map((s) => `${s.label}: ${fmtNum(f.d[s.key])} ${s.unit}`)];
-        const bw = Math.max(...lines.map((l) => l.length)) * 6.2 + 12, bh = lines.length * 13 + 8;
-        const bx = hover + bw + 10 > width ? hover - bw - 6 : hover + 6;
+        // find nearest visible event within 8 px when directly hovering this chart
+        let nearEv: SimEvent | null = null;
+        if (hover !== null) {
+          let bestDist = 8;
+          for (const ev of shown) {
+            const d = Math.abs(xToPx(ev.t) - hover);
+            const bonus = isMajorEvent(ev.kind) ? 0.5 : 1;
+            if (d <= 8 && d * bonus < bestDist) { bestDist = d * bonus; nearEv = ev; }
+          }
+        }
+        const rows: { text: string; color: string }[] = [
+          { text: fmtTime(f.t, timeUnit), color: '#d6dce8' },
+          ...visible.map((s) => ({ text: `${s.label}: ${fmtNum(f.d[s.key])} ${s.unit}`, color: s.color })),
+        ];
+        if (nearEv) {
+          const msg = pxText(nearEv.msg);
+          rows.push({ text: `• ${msg.length > 52 ? `${msg.slice(0, 51)}…` : msg}`, color: EVENT_COLOR[nearEv.kind] ?? '#ffd166' });
+        }
+        ctx.font = '10px JetBrains Mono, monospace';
+        const bw = Math.max(...rows.map((r) => Math.max(ctx.measureText(r.text).width, r.text.length * 6.0))) + 12;
+        const bh = rows.length * 13 + 8;
+        const bx = activePx + bw + 10 > width ? Math.max(PAD.l + 2, activePx - bw - 6) : activePx + 6;
         ctx.fillStyle = 'rgba(11,14,20,0.92)'; ctx.fillRect(bx, PAD.t + 4, bw, bh); ctx.strokeStyle = '#263044'; ctx.strokeRect(bx, PAD.t + 4, bw, bh);
-        ctx.font = '10px JetBrains Mono, monospace'; ctx.textAlign = 'left';
-        lines.forEach((l, i) => { ctx.fillStyle = i === 0 ? '#d6dce8' : visible[i - 1].color; ctx.fillText(l, bx + 6, PAD.t + 17 + i * 13); });
+        ctx.textAlign = 'left';
+        rows.forEach((r, i) => { ctx.fillStyle = r.color; ctx.fillText(r.text, bx + 6, PAD.t + 17 + i * 13); });
       }
     }
     ctx.restore();
-  }, [frames, cols, visible, rightOf, split, events, width, height, x0, x1, y0, y1, y0r, y1r, logY, xToPx, yToPx, yToPxR, pxToX, plotW, plotH, hover, cursorT, timeUnit, title]);
+  }, [frames, cols, visible, rightOf, split, events, width, height, x0, x1, y0, y1, y0r, y1r, logY, xToPx, yToPx, yToPxR, pxToX, plotW, plotH, hover, hoverT, cursorT, timeUnit, title, pxText]);
 
   // etkileşim
   // Wheel zoom. React registers wheel listeners as passive, where preventDefault() is ignored and the
@@ -206,12 +235,15 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
       const a = Math.max(0, drag.current.range[0] + dt);
       setXRange([a, a + (drag.current.range[1] - drag.current.range[0])]);
     }
-    setHover(px >= PAD.l && px <= PAD.l + plotW ? px : null);
+    const inside = px >= PAD.l && px <= PAD.l + plotW;
+    setHover(inside ? px : null);
+    onHoverT?.(inside ? pxToX(px) : null);
   };
   const onUp = (e: React.MouseEvent) => {
     if (drag.current && Math.abs(e.clientX - drag.current.x0) < 3 && onSeek) {
       const rect = canvasRef.current!.getBoundingClientRect();
-      onSeek(pxToX(e.clientX - rect.left));
+      const px = e.clientX - rect.left;
+      if (px >= PAD.l && px <= PAD.l + plotW) onSeek(pxToX(px));
     }
     drag.current = null;
   };
@@ -219,7 +251,7 @@ export function TimeChart({ frames, series, timeUnit, tEnd, events = [], height 
   return (
     <div className="chart-wrap" ref={wrapRef}>
       <canvas ref={canvasRef} role="img" aria-label={title ? t('chart.aria', { title }) : t('chart.ariaPlain')} style={{ height, cursor: 'crosshair' }} onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}
-        onMouseLeave={() => { drag.current = null; setHover(null); }} onDoubleClick={() => setXRange(null)} />
+        onMouseLeave={() => { drag.current = null; setHover(null); onHoverT?.(null); }} onDoubleClick={() => setXRange(null)} />
       <div className="chart-legend">
         {series.map((s) => (
           <button type="button" key={s.key} className={`li ${hidden.has(s.key) ? 'off' : ''}`} aria-pressed={!hidden.has(s.key)} title={rightKeys.has(s.key) ? t('chart.rightAxis') : undefined} onClick={() => setHidden((h) => { const n = new Set(h); n.has(s.key) ? n.delete(s.key) : n.add(s.key); return n; })}>

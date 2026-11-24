@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { SimEvent } from '../../../physics/types';
 import { SimMeta, UiFrame } from '../../../worker/protocol';
 import { Series, TimeChart } from '../../charts/TimeChart';
@@ -23,6 +23,8 @@ interface Props {
 export function ChartsPanel({ meta, frames, events, groupsOn, onToggleGroup, live, resetKey, onSeek }: Props) {
   const t = useT();
   const wt = useWizText();
+  const [hoverT, setHoverT] = useState<number | null>(null);
+  useEffect(() => { setHoverT(null); }, [resetKey]);
   const groups = useMemo(() => {
     const m = new Map<string, Series[]>();
     meta.diagSpecs.forEach((s, i) => {
@@ -48,7 +50,7 @@ export function ChartsPanel({ meta, frames, events, groupsOn, onToggleGroup, liv
       </div>
       {groups.filter((g) => groupsOn.has(g.name)).map((g) => (
         <TimeChart key={g.name} title={wt(g.name)} frames={frames} series={g.series} timeUnit={meta.timeUnit} tEnd={meta.tEnd} events={events}
-          live={live} resetKey={resetKey} height={200} onSeek={onSeek} />
+          live={live} resetKey={resetKey} height={200} hoverT={hoverT} onHoverT={setHoverT} onSeek={onSeek} />
       ))}
     </>
   );

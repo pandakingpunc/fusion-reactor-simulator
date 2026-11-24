@@ -56,4 +56,13 @@ describe('toViewerInput', () => {
     expect(v.disrupted).toBe(true);
     expect(toViewerInput(src()).elmFlash).toBe(0);
   });
+
+  it('derives the field-line safety factor q from 1.5D q(rho) or 0D q95', () => {
+    const v0 = toViewerInput(src({ last: frame(10, { Ti0: 15, q95: 4.0 }) }));
+    expect(v0.shape.q).toBeCloseTo(3.0, 1);
+    const c15 = ITER_15D as MagneticConfig;
+    const prof = { rho: [0, 0.5, 1.0], Te: [20, 10, 1], q: [1.0, 1.8, 3.8] } as never;
+    const v15 = toViewerInput(src({ meta: meta(c15, { profiles: 3 }), cfg: c15, profFrame: frame(10, {}, { prof }) }));
+    expect(v15.shape.q).toBeCloseTo(2.9, 1);
+  });
 });

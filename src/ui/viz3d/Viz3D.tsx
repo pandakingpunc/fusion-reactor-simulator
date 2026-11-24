@@ -8,9 +8,11 @@
  * in development, and the fallback to 2D) gets a fresh element.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { localizeDecimals } from '../../i18n';
 import { useT } from '../state/store';
 import { attachControls } from './controls';
 import { Viz3DSource, toViewerInput } from './input';
+import { centralTemperature, scaleTemperature } from './palette';
 import type { Scene3D } from './scene';
 import { Viewer3D, ViewerInput, ViewerMode } from './viewer';
 
@@ -22,6 +24,7 @@ export interface Viz3DProps extends Viz3DSource {
 }
 
 const toggleStyle = (on: boolean): React.CSSProperties | undefined => (on ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined);
+const SCALE_GRADIENT = 'linear-gradient(90deg, rgb(10,20,60) 0%, rgb(60,20,140) 25%, rgb(190,40,110) 50%, rgb(255,120,40) 75%, rgb(255,235,160) 100%)';
 
 export default function Viz3D(props: Viz3DProps) {
   const t = useT();
@@ -34,6 +37,7 @@ export default function Viz3D(props: Viz3DProps) {
   const [source, setSource] = useState<Scene3D['source'] | null>(null);
   const [cutaway, setCutaway] = useState(true);
   const [coils, setCoils] = useState(true);
+  const [fieldLines, setFieldLines] = useState(true);
   const [spin, setSpin] = useState(false);
 
   const input: ViewerInput = useMemo(
@@ -41,8 +45,8 @@ export default function Viz3D(props: Viz3DProps) {
     [props.meta, props.cfg, props.last, props.events, props.disrupted, props.eqFrame, props.profFrame],
   );
   // what a viewer created later (after a fallback, or by strict mode) has to start from
-  const latest = useRef({ input, toggles: { cutaway, coils, autoRotate: spin }, label: t('viz3d.aria') });
-  latest.current = { input, toggles: { cutaway, coils, autoRotate: spin }, label: t('viz3d.aria') };
+  const latest = useRef({ input, toggles: { cutaway, coils, fieldLines, autoRotate: spin }, label: t('viz3d.aria') });
+  latest.current = { input, toggles: { cutaway, coils, fieldLines, autoRotate: spin }, label: t('viz3d.aria') };
 
   useEffect(() => {
     const host = hostRef.current;
@@ -87,20 +91,45 @@ export default function Viz3D(props: Viz3DProps) {
   }, [mode, height]);
 
   useEffect(() => { viewerRef.current?.setInput(input); }, [input]);
-  useEffect(() => { viewerRef.current?.setToggles({ cutaway, coils, autoRotate: spin }); }, [cutaway, coils, spin]);
+  useEffect(() => { viewerRef.current?.setToggles({ cutaway, coils, fieldLines, autoRotate: spin }); }, [cutaway, coils, fieldLines, spin]);
   useEffect(() => { canvasRef.current?.setAttribute('aria-label', t('viz3d.aria')); }, [t]);
 
+  const savePng = () => {
+    const url = viewerRef.current?.captureDataUrl();
+    if (!url) return;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${props.meta.method}_3d.png`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); }, 100);
+  };
+
+  const T0 = centralTemperature(input.temp);
+  const Tref = scaleTemperature(input.temp);
   const stellarator = props.meta.method === 'stellarator';
   return (
     <div>
-      <div className="row" style={{ gap: 6, marginBottom: 6 }}>
-        <button className="btn sm" aria-pressed={cutaway} style={toggleStyle(cutaway)} onClick={() => setCutaway((v) => !v)}>{t('viz3d.cutaway')}</button>
-        <button className="btn sm" aria-pressed={coils} style={toggleStyle(coils)} onClick={() => setCoils((v) => !v)}>{t('viz3d.coils')}</button>
-        <button className="btn sm" aria-pressed={spin} style={toggleStyle(spin)} onClick={() => setSpin((v) => !v)}>{t('viz3d.spin')}</button>
-        <button className="btn sm" onClick={() => viewerRef.current?.resetView()}>{t('viz3d.reset')}</button>
+      <div className="row" style={{ gap: 5, marginBottom: 6 }}>
+        <button type="button" className="btn sm" aria-pressed={cutaway} style={toggleStyle(cutaway)} onClick={() => setCutaway((v) => !v)}>{t('viz3d.cutaway')}</button>
+        <button type="button" className="btn sm" aria-pressed={coils} style={toggleStyle(coils)} onClick={() => setCoils((v) => !v)}>{t('viz3d.coils')}</button>
+        <button type="button" className="btn sm" aria-pressed={fieldLines} style={toggleStyle(fieldLines)} onClick={() => setFieldLines((v) => !v)}>{t('viz3d.fieldLines')}</button>
+        <button type="button" className="btn sm" aria-pressed={spin} style={toggleStyle(spin)} onClick={() => setSpin((v) => !v)}>{t('viz3d.spin')}</button>
+        <button type="button" className="btn sm" onClick={() => viewerRef.current?.setView('top')}>{t('viz3d.viewTop')}</button>
+        <button type="button" className="btn sm" onClick={() => viewerRef.current?.setView('section')}>{t('viz3d.viewSection')}</button>
+        <button type="button" className="btn sm" onClick={() => viewerRef.current?.resetView()}>{t('viz3d.reset')}</button>
+        <button type="button" className="btn sm" onClick={savePng} title={t('viz3d.snapshotTitle')}>{t('viz3d.snapshot')}</button>
       </div>
       {notice && <div className="hint" role="status" style={{ marginBottom: 4 }}>{t(`viz3d.${notice}` as const)}</div>}
       <div ref={hostRef} />
+      <div className="viz3d-bar" aria-label={t('viz3d.tempScale')}>
+        <span className="mono small">T₀ = {localizeDecimals(T0.toFixed(T0 < 10 ? 2 : 1))} keV</span>
+        {fieldLines && input.shape.q !== undefined && <span className="mono small muted">q ≈ {localizeDecimals(input.shape.q.toFixed(1))}</span>}
+        <span className="spacer" />
+        <span className="mono small muted">0</span>
+        <span className="viz3d-grad" style={{ background: SCALE_GRADIENT }} aria-hidden="true" />
+        <span className="mono small muted">{localizeDecimals(Tref.toFixed(Tref < 10 ? 1 : 0))} keV</span>
+      </div>
       <div id="viz3d-help" className="hint">{t('viz3d.help')}</div>
       <div className="hint">
         {source ? t(source === 'equilibrium' ? 'viz3d.srcEq' : 'viz3d.srcMiller') : ''} · {t('viz3d.schematic')}

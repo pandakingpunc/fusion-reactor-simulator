@@ -7,7 +7,7 @@ import type { EqSnapshot } from '../../physics/types';
 import {
   Contour, Point2, R_MIN, millerAxis, millerContour, millerShift, offsetContour, resampleByAngle, revolvedVolume, toContour,
 } from './contour';
-import { TWO_PI, capBand, capFan, latheShell, latheSolid, sweepTube } from './lathe';
+import { TWO_PI, capBand, capFan, latheShell, latheSolid, sweepPolyline3D, sweepTube } from './lathe';
 import { Bounds, Mesh, Vec3, meshBounds, mergeMeshes, unionBounds } from './mesh';
 
 export type Quality = 'high' | 'low' | 'minimal';
@@ -38,12 +38,16 @@ export interface SceneShape {
   method: 'tokamak' | 'spherical_tokamak' | 'stellarator';
   /** flux surfaces of the 1.5D equilibrium; when absent or unusable, Miller surfaces are built from the shape */
   eq?: EqSnapshot | null;
+  /** safety factor q for helical magnetic field lines (default 3 for tokamaks, 2.5 for stellarators) */
+  q?: number;
 }
 
 export interface SceneOptions {
   /** open a wedge of the torus to show the poloidal cross-section */
   cutaway: boolean;
   coils: boolean;
+  /** draw helical magnetic field lines twisting at pitch 1/q on an outer-core flux surface */
+  fieldLines?: boolean;
   quality: Quality;
   /** number of toroidal field coils (schematic); default by method */
   nCoils?: number;
@@ -63,7 +67,8 @@ export type ItemKind =
   | 'vessel'
   | 'vesselCap'
   | 'coil'
-  | 'xpoint';
+  | 'xpoint'
+  | 'fieldLine';
 
 export interface SceneItem {
   kind: ItemKind;
@@ -193,6 +198,35 @@ export function buildScene(shape: SceneShape, opts: SceneOptions): Scene3D {
       const faces = (phi: number, facing: 1 | -1) => (k === 0 ? capFan(contours[0], axis, phi, facing) : capBand(contours[k - 1], contours[k], phi, facing));
       items.push({ kind: 'cap', mesh: mergeMeshes([faces(phi0, -1), faces(phi1, 1)]), rho: k === 0 ? 0.5 * rho[0] : 0.5 * (rho[k - 1] + rho[k]), k });
     }
+  }
+
+  // helical magnetic field lines on an outer-core flux surface, twisting with d(theta)/d(phi) = 1/q
+  if (opts.fieldLines && nS >= 1) {
+    const flIdx = Math.max(0, Math.min(nS - 1, Math.round((nS - 1) * 0.78)));
+    const fc = contours[flIdx], nC = fc.R.length;
+    const qSafe = Number.isFinite(shape.q) && (shape.q as number) > 0.2
+      ? Math.max(0.7, Math.min(12, shape.q as number))
+      : shape.method === 'stellarator' ? 2.5 : 3.0;
+    const span = phi1 - phi0;
+    const nSteps = Math.max(24, Math.ceil((q.nPhi * span) / TWO_PI) * 2);
+    const tubeR = Math.max(0.012 * shape.a, 0.004 * shape.R);
+    const nStrands = 3;
+    const strands: Mesh[] = [];
+    for (let s = 0; s < nStrands; s++) {
+      const th0 = (TWO_PI * s) / nStrands;
+      const pts: Vec3[] = [];
+      for (let i = 0; i <= nSteps; i++) {
+        const phi = phi0 + (span * i) / nSteps;
+        const th = th0 + (phi - phi0) / qSafe;
+        const u = (((th / TWO_PI) % 1) + 1) % 1 * nC;
+        const j0 = Math.floor(u) % nC, j1 = (j0 + 1) % nC, frac = u - Math.floor(u);
+        const r = fc.R[j0] + (fc.R[j1] - fc.R[j0]) * frac;
+        const z = fc.Z[j0] + (fc.Z[j1] - fc.Z[j0]) * frac;
+        pts.push([r * Math.cos(phi), r * Math.sin(phi), z]);
+      }
+      strands.push(sweepPolyline3D(pts, tubeR, q.coilSeg >= 8 ? 6 : 4));
+    }
+    if (strands.length) items.push({ kind: 'fieldLine', mesh: mergeMeshes(strands), rho: rho[flIdx], k: flIdx });
   }
 
   // the vacuum vessel: a shell outside the plasma and, in the cut, its wall in section

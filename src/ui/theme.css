@@ -146,6 +146,8 @@ button.event-chip[aria-pressed=false] { opacity: 0.35; }
 .speed-btns button.active { border-color: var(--accent); color: var(--accent); }
 .timeline { position: relative; height: 26px; }
 .timeline input { position: absolute; inset: 0; margin: 0; }
+.viz3d-bar { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 4px 6px; background: var(--bg2); border: 1px solid var(--border); border-radius: 5px; }
+.viz3d-grad { width: 96px; height: 8px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.14); flex-shrink: 0; }
 
 /* Report */
 .report { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }

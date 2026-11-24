@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_FOV, MAX_ELEVATION, clipPlanes, eyeOf, fitCamera, identity, lookAt, multiply, orbit, pan, perspective, transformPoint, viewMatrix,
+  DEFAULT_FOV, MAX_ELEVATION, clipPlanes, eyeOf, fitCamera, identity, lookAt, multiply, orbit, pan, perspective, presetCamera, transformPoint, viewMatrix,
   viewProjection, worldPerPixel, zoom,
 } from './camera';
 
@@ -100,5 +100,14 @@ describe('orbit camera', () => {
       expect(f).toBeGreaterThanOrEqual(d + 10); // the far side of the sphere
       if (d > 20) expect(n).toBeLessThanOrEqual(d - 10);
     }
+  });
+
+  it('presetCamera gives distinct isometric, top plan and poloidal section elevations', () => {
+    const iso = presetCamera([0, 0, 0], 10, 'iso');
+    const top = presetCamera([0, 0, 0], 10, 'top');
+    const sec = presetCamera([0, 0, 0], 10, 'section');
+    expect(iso).toEqual(fitCamera([0, 0, 0], 10, 0));
+    expect(top.elevation).toBeGreaterThan((80 * Math.PI) / 180);
+    expect(sec.elevation).toBeLessThan((10 * Math.PI) / 180);
   });
 });

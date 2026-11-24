@@ -38,6 +38,7 @@ class FakeCanvas implements CanvasLike {
   getContext(type: string) { return type === '2d' ? this.ctx : type === 'webgl2' ? this.gl : null; }
   addEventListener(t: string, l: (e: Event) => void) { this.listeners.set(t, [...(this.listeners.get(t) ?? []), l]); }
   removeEventListener(t: string, l: (e: Event) => void) { this.listeners.set(t, (this.listeners.get(t) ?? []).filter((x) => x !== l)); }
+  toDataURL(type?: string) { return `data:${type ?? 'image/png'};base64,MOCK`; }
 }
 
 /** a manual clock and animation-frame queue */
@@ -117,6 +118,11 @@ describe('Viewer3D on the 2D fallback', () => {
     v.resetView();
     expect(v.camera).toEqual(home);
     expect(v.camera).toEqual(fitCamera(v.currentScene!.center, v.currentScene!.radius, DEFAULT_CUT_CENTRE));
+    v.setView('top');
+    expect(v.camera!.elevation).toBeGreaterThan((80 * Math.PI) / 180);
+    v.setView('section');
+    expect(v.camera!.elevation).toBeLessThan((10 * Math.PI) / 180);
+    expect(v.captureDataUrl()).toBe('data:image/png;base64,MOCK');
   });
 
   it('ignores camera moves before a scene exists', () => {

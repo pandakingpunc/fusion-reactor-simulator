@@ -88,6 +88,15 @@ export function fitCamera(center: Vec3, radius: number, azimuth = 0, elevation =
   return { azimuth, elevation, distance: (radius / Math.sin(fovY / 2)) * 1.05, target: [...center] as Vec3, fovY };
 }
 
+export type CameraPreset = 'iso' | 'top' | 'section';
+
+/** Named camera views framing the bounding sphere: 3/4 isometric, top plan view, and poloidal cut-away view. */
+export function presetCamera(center: Vec3, radius: number, preset: CameraPreset, cutCentre = 0): OrbitCamera {
+  if (preset === 'top') return fitCamera(center, radius, cutCentre, (84 * Math.PI) / 180);
+  if (preset === 'section') return fitCamera(center, radius, cutCentre, (4 * Math.PI) / 180);
+  return fitCamera(center, radius, cutCentre);
+}
+
 const TWO_PI = 2 * Math.PI;
 
 /** Turn the eye by (dAzimuth, dElevation) rad; the azimuth wraps, the elevation is kept below the poles. */

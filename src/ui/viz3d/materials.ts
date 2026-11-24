@@ -44,6 +44,7 @@ export const COIL_COLOR: Rgb = [0.55, 0.62, 0.78];
 export const VESSEL_COLOR: Rgb = [0.4, 0.55, 0.8];
 export const VESSEL_CAP_COLOR: Rgb = [0.24, 0.29, 0.4];
 export const XPOINT_COLOR: Rgb = [1, 0.82, 0.4];
+export const FIELD_LINE_COLOR: Rgb = [0.35, 0.92, 1.0];
 export const ELM_COLOR: Rgb = [0.97, 0.59, 0.12];
 export const PEDESTAL_COLOR: Rgb = [0.3, 0.79, 0.94];
 const WHITE: Rgb = [1, 1, 1];
@@ -80,6 +81,9 @@ export function planDraws(scene: Scene3D, st: SceneState): DrawCall[] {
         break;
       case 'xpoint':
         opaque.push({ item, label: 'x-point ring', blend: 'opaque', shading: 'flat', color: XPOINT_COLOR, alpha: 1, glow: 1, cull: false, deform: null });
+        break;
+      case 'fieldLine':
+        opaque.push({ item, label: 'field lines', blend: 'opaque', shading: 'lit', color: greyOut(FIELD_LINE_COLOR, st.disruption.grey), alpha: 1, glow: 1, cull: false, deform: def });
         break;
       case 'cap':
         opaque.push({ item, label: `cut ${item.k}`, blend: 'opaque', shading: 'flat', color: plasmaTint(st, item.rho), alpha: 1, glow: Math.min(glow, 1.6), cull: false, deform: def });

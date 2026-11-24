@@ -6,7 +6,7 @@
  * Drawing is on demand: a frame is scheduled when something changed (new input, camera, size) and keeps itself going only while an
  * animation runs, so an idle 3D view costs no CPU or GPU.
  */
-import { OrbitCamera, fitCamera, orbit, pan, worldPerPixel, zoom } from './camera';
+import { CameraPreset, OrbitCamera, fitCamera, orbit, pan, presetCamera, worldPerPixel, zoom } from './camera';
 import { GlRenderer, Viz3DUnavailable, createGlRenderer } from './gl';
 import { IDLE_STATE, SceneState, planDraws } from './materials';
 import { DISRUPTION_MS, TempModel, disruptionLook } from './palette';
@@ -25,7 +25,7 @@ export interface ViewerInput {
   disrupted: boolean;
 }
 
-export interface ViewerToggles { cutaway: boolean; coils: boolean; autoRotate: boolean }
+export interface ViewerToggles { cutaway: boolean; coils: boolean; autoRotate: boolean; fieldLines?: boolean }
 
 export interface ViewerDeps {
   /** milliseconds */
@@ -49,6 +49,7 @@ export interface CanvasLike {
   getContext(type: string, options?: unknown): unknown;
   addEventListener(type: string, listener: (e: Event) => void): void;
   removeEventListener(type: string, listener: (e: Event) => void): void;
+  toDataURL?(type?: string): string;
 }
 
 interface Backend {
@@ -107,7 +108,8 @@ const SPIN_RAD_PER_S = 0.25;
 /** flux surfaces of an equilibrium arrive with every Grad-Shafranov update; rebuild the meshes at most this often [ms] */
 export const MIN_REBUILD_MS = 250;
 
-const shapeKey = (s: SceneShape) => `${s.method}|${s.R}|${s.a}|${s.kappa}|${s.delta}|${s.gap}|${s.coilThickness}`;
+const fitShapeKey = (s: SceneShape) => `${s.method}|${s.R}|${s.a}|${s.kappa}|${s.delta}|${s.gap}|${s.coilThickness}`;
+const shapeKey = (s: SceneShape, fieldLines: boolean) => (fieldLines ? `${fitShapeKey(s)}|${s.q ?? ''}` : fitShapeKey(s));
 
 export class Viewer3D {
   readonly mode: ViewerMode;
@@ -119,9 +121,9 @@ export class Viewer3D {
   private readonly backend: Backend;
   private readonly deps: ViewerDeps;
   private input: ViewerInput | null = null;
-  private toggles: ViewerToggles = { cutaway: true, coils: true, autoRotate: false };
+  private toggles: ViewerToggles = { cutaway: true, coils: true, autoRotate: false, fieldLines: false };
   private scene: Scene3D | null = null;
-  private builtFor: { eq: unknown; key: string; cutaway: boolean; coils: boolean } | null = null;
+  private builtFor: { eq: unknown; key: string; cutaway: boolean; coils: boolean; fieldLines: boolean } | null = null;
   private lastBuild = -Infinity;
   private cam: OrbitCamera | null = null;
   private fitKey = '';
@@ -164,8 +166,24 @@ export class Viewer3D {
   }
 
   resetView(): void {
-    if (this.scene) this.cam = fitCamera(this.scene.center, this.scene.radius, DEFAULT_CUT_CENTRE);
+    this.setView('iso');
+  }
+
+  setView(preset: CameraPreset): void {
+    if (this.scene) this.cam = presetCamera(this.scene.center, this.scene.radius, preset, DEFAULT_CUT_CENTRE);
     this.requestRender();
+  }
+
+  /** Renders immediately into the canvas drawing buffer and returns a PNG data URL (null if unavailable). */
+  captureDataUrl(): string | null {
+    if (this.disposed || !this.input || typeof this.canvas.toDataURL !== 'function') return null;
+    const now = this.deps.now();
+    if (!this.ensureScene(now) || !this.scene || !this.cam) return null;
+    const inp = this.input;
+    const elapsed = this.disruptStart === null ? null : this.disruptStart === -Infinity ? Infinity : now - this.disruptStart;
+    const state: SceneState = { ...IDLE_STATE, temp: inp.temp, hmode: inp.hmode, elmFlash: inp.elmFlash, disruption: disruptionLook(elapsed) };
+    this.backend.draw(this.scene, state, this.cam, this.cssW, this.cssH, this.dpr);
+    return this.canvas.toDataURL('image/png');
   }
 
   orbitBy(dxPx: number, dyPx: number): void {
@@ -202,18 +220,19 @@ export class Viewer3D {
   private ensureScene(now: number): boolean {
     const inp = this.input;
     if (!inp) return false;
-    const key = shapeKey(inp.shape), eq = inp.shape.eq ?? null;
+    const fl = !!this.toggles.fieldLines;
+    const key = shapeKey(inp.shape, fl), fKey = fitShapeKey(inp.shape), eq = inp.shape.eq ?? null;
     const b = this.builtFor;
-    const same = !!b && b.key === key && b.cutaway === this.toggles.cutaway && b.coils === this.toggles.coils;
+    const same = !!b && b.key === key && b.cutaway === this.toggles.cutaway && b.coils === this.toggles.coils && b.fieldLines === fl;
     if (this.scene && same && b!.eq === eq) return true;
     // the flux surfaces alone changed (an equilibrium update): throttle; anything else rebuilds at once
     if (this.scene && same && now - this.lastBuild < MIN_REBUILD_MS) return true;
-    this.scene = buildScene(inp.shape, { cutaway: this.toggles.cutaway, coils: this.toggles.coils, quality: this.backend.quality });
+    this.scene = buildScene(inp.shape, { cutaway: this.toggles.cutaway, coils: this.toggles.coils, fieldLines: fl, quality: this.backend.quality });
     this.backend.setScene(this.scene);
-    this.builtFor = { eq, key, cutaway: this.toggles.cutaway, coils: this.toggles.coils };
+    this.builtFor = { eq, key, cutaway: this.toggles.cutaway, coils: this.toggles.coils, fieldLines: fl };
     this.lastBuild = now;
     this.onSceneBuilt?.(this.scene);
-    if (!this.cam || this.fitKey !== key) { this.cam = fitCamera(this.scene.center, this.scene.radius, DEFAULT_CUT_CENTRE); this.fitKey = key; }
+    if (!this.cam || this.fitKey !== fKey) { this.cam = fitCamera(this.scene.center, this.scene.radius, DEFAULT_CUT_CENTRE); this.fitKey = fKey; }
     return true;
   }
 

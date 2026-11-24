@@ -329,4 +329,24 @@ describe('scene invariants', () => {
     buildScene(shapeOf(ITER_15D, snap), { cutaway: true, coils: true, quality: 'high' });
     expect(performance.now() - t0).toBeLessThan(400);
   });
+
+  it('builds closed, outward helical field-line tubes whose twist responds to q and respects the cutaway wedge', () => {
+    const lowQ = buildScene({ ...shapeOf(ITER), q: 1.5 }, { cutaway: true, coils: false, fieldLines: true, quality: 'low' });
+    const hiQ = buildScene({ ...shapeOf(ITER), q: 5.0 }, { cutaway: true, coils: false, fieldLines: true, quality: 'low' });
+    const flLow = of(lowQ, 'fieldLine');
+    const flHi = of(hiQ, 'fieldLine');
+    expect(flLow).toHaveLength(1);
+    expect(flHi).toHaveLength(1);
+    expect(checkTopology(flLow[0].mesh)).toMatchObject({ closed: true, openEdges: 0, badEdges: 0, degenerate: 0 });
+    expect(normalsAgreeFraction(flLow[0].mesh)).toBe(1);
+    expect(Array.from(flLow[0].mesh.positions)).not.toEqual(Array.from(flHi[0].mesh.positions));
+    // no field-line vertex enters the open cutaway wedge (centre 0, width 110 deg -> |phi| < 50 deg)
+    const p = flLow[0].mesh.positions;
+    let inWedge = 0;
+    for (let i = 0; i < p.length; i += 3) {
+      const phi = Math.atan2(p[i + 1], p[i]);
+      if (Math.abs(phi) < (45 * Math.PI) / 180) inWedge++;
+    }
+    expect(inWedge).toBe(0);
+  });
 });

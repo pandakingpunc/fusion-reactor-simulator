@@ -16,7 +16,7 @@ authors:
     affiliation: Independent researcher
     orcid: "https://orcid.org/0009-0006-7053-2872"
 license: MIT
-doi: 10.5281/zenodo.22259861
+doi: 10.5281/zenodo.24507079
 identifiers:
   - type: doi
     value: 10.5281/zenodo.22259861
@@ -36,6 +36,9 @@ identifiers:
   - type: doi
     value: 10.5281/zenodo.24111397
     description: DOI of version 4.2.0
+  - type: doi
+    value: 10.5281/zenodo.24507079
+    description: DOI of version 4.3.0
 version: "4.3.0"
 date-released: "2026-11-24"
 keywords:
